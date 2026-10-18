@@ -81,7 +81,7 @@ describe('portable binary archives', () => {
     expect(index).toBeGreaterThan(0)
     bytes[index + 10] = bytes[index + 10]! ^ 0xff
     await expect(parseArchive(new Blob([bytes]))).rejects.toThrow('损坏')
-    await expect(exportArchive(library, async () => undefined)).rejects.toThrow('未生成不完整')
+    await expect(exportArchive(library, async () => undefined)).rejects.toThrow('缺失或损坏')
   })
   it('splits long text into bounded records and retains exact order across parts', async () => {
     let library = fixture()

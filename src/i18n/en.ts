@@ -1,43 +1,30 @@
-// Chinese source messages are stable catalog keys. Never translate stored user content.
+// Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
   'Repeaty 首页': 'Repeaty home',
-  '一点一点，记得更久': 'Little by little, remember longer',
+  间隔复习: 'Spaced repetition',
   主导航: 'Main navigation',
-  学习空间: 'Study space',
+  学习概览: 'Overview',
   全部卡片: 'All cards',
   数据与备份: 'Data & backups',
   我的卡组: 'My decks',
   新建卡组: 'New deck',
-  '好奇心，从第一张卡片开始。': 'Curiosity starts with your first card.',
-  本地学习空间: 'Local workspace',
-  '让知识留下来。': 'Make knowledge stay.',
-  我的空间: 'My space',
-  专注复习: 'Focused review',
+  暂无卡组: 'No decks yet',
+  本地存储: 'Local storage',
+  仅限当前浏览器: 'This browser only',
   关闭提示: 'Dismiss notification',
   本地存储暂不可用: 'Local storage unavailable',
-  '正在打开你的学习空间…': 'Opening your study space…',
-  '每一次回想，都算数': 'Every recall counts',
-  '把好奇变成卡片，把知识留在记忆里。': 'Turn curiosity into cards, and knowledge into memories.',
+  '正在加载…': 'Loading…',
+  卡片与间隔复习: 'Flashcards & spaced repetition',
   添加卡片: 'Add card',
-  今日学习: "Today's practice",
-  '给记忆，一点新的力量。': 'Give your memory a little boost.',
-  '让记忆，慢慢沉淀。': 'Give your memories time to settle.',
-  '今天，想记住什么？': 'What will you remember today?',
-  '{p0} 张到期卡片，{p1} 张新卡片。': 'Due: {p0} · New: {p1}.',
-  '一个小小的开始，就是进步。': 'A small start is still progress.',
-  '今日额度已完成，还有 {p0} 张卡片等待下一天。':
-    "Today's limits are reached. Cards waiting for tomorrow: {p0}.",
-  '也可以在卡组设置中调整额度。': 'You can also adjust the limits in deck settings.',
-  '当前没有可学习的卡片。': 'No cards are ready to study right now.',
-  '稍作休息，或添加一点新知识。': 'Take a break, or add something new to learn.',
-  '从一个问题开始。': 'Start with a question.',
-  '下一次回想，会比这一次更清晰。': 'Each recall brings a little more clarity.',
+  今日学习: 'Study today',
+  '{p0} 张到期卡片 · {p1} 张新卡片': 'Due: {p0} · New: {p1}',
+  '还有 {p0} 张卡片因每日上限未加入学习队列。': 'Cards excluded by daily limits: {p0}.',
+  '可在卡组设置中调整上限。': 'You can adjust the limits in deck settings.',
   开始复习: 'Start review',
   查看复习安排: 'View review schedule',
-  创建第一张卡片: 'Create your first card',
   '最近 7 天': 'Last 7 days',
   复习次数: 'Reviews',
-  次回想: 'recalls',
+  次复习: 'reviews',
   最近七天复习次数: 'Reviews over the last seven days',
   '{p0}：{p1} 次': '{p0}: reviews {p1}',
   '{p0} 次': 'Reviews: {p0}',
@@ -49,67 +36,60 @@ export const en = {
   创建卡组: 'Create deck',
   '打开卡组 {p0}': 'Open deck {p0}',
   '编辑卡组 {p0}': 'Edit deck {p0}',
-  '让每一个值得记住的想法，都有自己的位置。': 'A place for every idea worth remembering.',
   '{p0} 张卡片': 'Cards: {p0}',
   '{p0} 张待学': '{p0} to study',
   '复习卡组 {p0}': 'Review deck {p0}',
-  '新的好奇，新的卡组': 'New curiosity, new deck',
-  '为你的好奇心，留个位置': 'Make room for your curiosity',
-  '创建第一个卡组，或用 5 张示例卡片体验一次完整复习。':
-    'Create your first deck, or try a complete review with 5 sample cards.',
-  体验示例: 'Try sample cards',
-  '小提示：先尝试回想，再翻看答案。主动提取，比反复阅读更有帮助。':
-    'Tip: try to recall before revealing the answer. Active recall helps more than rereading.',
-  '收集值得记住的知识，一张卡片，一个想法。':
-    'Collect knowledge worth keeping. One card, one idea.',
+  还没有卡组: 'No decks yet',
+  '创建卡组后添加卡片，或加载 5 张示例卡片。':
+    'Create a deck and add cards, or load 5 sample cards.',
+  加载示例: 'Load sample cards',
+  '复习快捷键：空格显示答案，1–4 评分，Esc 退出。':
+    'Review shortcuts: Space to show the answer, 1–4 to rate, Esc to exit.',
+  '搜索、编辑卡片，或批量调整卡组和标签。':
+    'Search and edit cards, or change decks and tags in bulk.',
   编辑当前卡组: 'Edit current deck',
   删除当前卡组: 'Delete current deck',
   批量导入: 'Bulk import',
-  '知识是你的，数据也是。': 'Your knowledge. Your data.',
-  '把学习进度好好保存，随时带走。': 'Keep your progress safe and take it with you.',
+  '导出、恢复备份，管理本地数据。':
+    'Export backups, restore your collection, and manage local data.',
   保存在当前浏览器: 'Saved in this browser',
-  '卡片和复习进度保存在当前网站的本地存储中。清除网站数据、更换浏览器或网址后，不会自动保留这些内容，请定期导出备份。':
-    'Cards and progress are stored locally for this website. Clearing site data or switching browsers or addresses will not carry them over. Export backups regularly.',
+  '数据仅保存在当前浏览器，不会自动同步。清除网站数据会删除卡片和复习记录。更换浏览器或网址前，请先导出备份。':
+    'Data is stored in this browser and does not sync automatically. Clearing site data deletes your cards and review history. Export a backup before switching browsers or site addresses.',
   导出备份: 'Export backup',
-  '将卡组、笔记、卡片、复习进度和图片音频保存为一个完整 JSON 文件。':
-    'Save decks, notes, cards, progress, images, and audio in a complete JSON file.',
   '{p0} 个卡组 · {p1} 张卡片 · {p2} 次复习': 'Decks: {p0} · Cards: {p1} · Reviews: {p2}',
   '导出 JSON': 'Export JSON',
   恢复备份: 'Restore backup',
-  '从 Repeaty 导出的 JSON 文件恢复学习空间，确认后会替换当前数据。':
-    'Restore your workspace from a Repeaty JSON export. Confirmation replaces your current data.',
-  'JSON 格式 · 最大 100 MB · 兼容旧版备份': 'JSON · Up to 100 MB · Supports older backups',
   导入备份文件: 'Import backup file',
   选择备份文件: 'Choose backup file',
   自动快照: 'Automatic snapshots',
   立即创建快照: 'Create snapshot now',
-  '打开应用及使用期间每 30 分钟保存变化；删除、编辑、批量修改和恢复前额外保存。保留最近 10 份，并保留其引用的媒体。快照也在本机，清除网站数据会一并删除。':
-    'Changes are saved when opening the app and every 30 minutes during use, plus before deletions, edits, bulk changes, and restores. The latest 10 snapshots and their media are kept locally. Clearing site data also deletes snapshots.',
+  '有数据变化时，在打开应用及使用期间每 30 分钟保存快照；编辑、删除、批量操作和恢复前也会保存。保留最近 10 份及其图片和音频。清除网站数据也会删除快照。':
+    'When data changes, snapshots are saved on startup and every 30 minutes, plus before edits, deletions, bulk changes, and restores. The latest 10 snapshots and their media are kept. Clearing site data also deletes snapshots.',
   '{p0} · {p1} 条笔记 · {p2} 张卡片': '{p0} · Notes: {p1} · Cards: {p2}',
   恢复此快照: 'Restore snapshot',
-  '还没有快照。添加内容后可以立即创建，或等待自动保存。':
-    'No snapshots yet. Add content, then create one or wait for an automatic save.',
-  '生产构建首次联网打开并显示「离线已就绪」后，可断网重新打开、编辑和复习；图片和音频也保存在本地。开发模式不启用离线缓存。':
-    'Once a production build shows “Ready offline” after opening online, you can reopen, edit, and review offline. Images and audio stay local too. Offline caching is disabled in development.',
-  '新版本已就绪，刷新更新': 'Update ready — reload',
-  '制作卡片，主动回忆，按时复习。让学习回到这几件简单的事。':
-    'Create cards, recall actively, and review on time. Keep learning simple.',
+  '暂无快照。添加卡片后可手动创建，也会自动保存。':
+    'No snapshots yet. Add cards to create one manually or wait for an automatic snapshot.',
+  '首次联网加载完成后，可离线打开、制卡和复习。已保存的图片和音频也可离线使用。':
+    'Once the app has loaded online, you can reopen it, add cards, and review offline. Saved images and audio are also available offline.',
+  刷新以更新版本: 'Reload to update',
+  '使用 FSRS 安排复习，数据保存在当前浏览器。':
+    'Reviews are scheduled with FSRS. Data is stored in this browser.',
   编辑卡组: 'Edit deck',
   卡组名称: 'Deck name',
   '例如：英语词汇、计算机基础…': 'e.g. Vocabulary, Computer science…',
   描述: 'Description',
   可选: 'Optional',
-  '这个卡组里，装着哪些值得记住的知识？': 'What knowledge will you keep in this deck?',
+  卡组内容或用途: 'What this deck covers',
   每日新卡上限: 'Daily new card limit',
   每日复习上限: 'Daily review limit',
-  '0 表示不引入该类卡片。当天已开始的学习 / 重学步骤不受额度限制，按本机日历日重置。':
-    'Set to 0 to introduce no cards of that kind. Learning and relearning steps already started today are exempt. Limits reset by your local calendar day.',
+  '每日上限按本机日期重置。设为 0 则不安排该类卡片；学习和重学步骤不受此限制。':
+    'Limits reset each day using your local date. Set a limit to 0 to exclude that card type. Learning and relearning steps are not limited.',
   评分后自动暂缓同笔记的其他卡片至明天:
     'After rating, bury sibling cards from the same note until tomorrow',
   顽固卡遗忘阈值: 'Leech lapse threshold',
   '目标记忆保留率（%）': 'Desired retention (%)',
-  '正式复习遗忘达到阈值后自动标记顽固卡，0 关闭标记。保留率默认 90%，越高复习越频繁；修改仅影响之后的评分，不立即重排已有卡片。':
-    'Cards become leeches when review lapses reach this threshold; 0 disables marking. Retention defaults to 90%. Higher targets mean more frequent reviews. Changes apply to future ratings without immediately rescheduling cards.',
+  '复习时遗忘达到指定次数，会标记为顽固卡；设为 0 关闭。目标保留率默认 90%，越高则复习越频繁。修改仅影响后续评分。':
+    'Cards are marked as leeches after this many review lapses; 0 disables marking. Desired retention defaults to 90%. Higher values mean more frequent reviews. Changes apply to future ratings.',
   卡组颜色: 'Deck color',
   鼠尾草绿: 'Sage',
   暖沙色: 'Sand',
@@ -121,14 +101,14 @@ export const en = {
   保存卡组: 'Save deck',
   编辑卡片: 'Edit card',
   批量导入笔记: 'Import notes',
-  '恢复自动快照？': 'Restore this snapshot?',
-  '此快照包含 {p0} 条笔记、{p1} 张卡片。恢复会替换当前数据，操作前会为当前数据另存快照。':
-    'This snapshot contains notes: {p0}, cards: {p1}. Restoring replaces current data. A snapshot of your current data will be saved first.',
+  '恢复此快照？': 'Restore this snapshot?',
+  '包含 {p0} 条笔记、{p1} 张卡片。恢复会替换当前数据。操作前会保存当前数据的快照。':
+    'Notes: {p0} · Cards: {p1}. Restoring replaces current data. A snapshot of your current data will be saved first.',
   确认恢复快照: 'Confirm restore',
   确认删除: 'Confirm delete',
-  '恢复这个备份？': 'Restore this backup?',
-  '文件校验通过，包含 {p0} 个卡组、{p1} 张卡片和 {p2} 次复习记录。':
-    'File validated. Decks: {p0} · Cards: {p1} · Reviews: {p2}.',
+  '恢复此备份？': 'Restore this backup?',
+  '备份包含 {p0} 个卡组、{p1} 张卡片和 {p2} 条复习记录。':
+    'Backup contents — Decks: {p0} · Cards: {p1} · Reviews: {p2}.',
   '恢复会替换当前所有卡组、卡片和复习进度。建议先导出当前数据作为备份。':
     'Restoring replaces all current decks, cards, and progress. Export a backup of your current data first.',
   替换并恢复: 'Replace and restore',
@@ -156,14 +136,14 @@ export const en = {
   练习模式: 'Practice mode',
   '只练习，不改进度': 'Practice without changing progress',
   评分并更新进度: 'Rate and update progress',
-  本轮最多张数: 'Maximum cards this session',
+  卡片数量上限: 'Card limit',
   开始专项练习: 'Start focused practice',
-  '会提前复习未到期卡片并重排进度；本轮不受每日额度限制，评分计入今日学习。':
-    "Includes early reviews and reschedules cards. Daily limits do not apply, but ratings count toward today's activity.",
-  '只在本轮记录自评分，不改变到期时间、每日额度或学习统计。':
-    'Ratings are kept only for this session. Due dates, daily limits, and study statistics remain unchanged.',
-  '当前筛选有 {p0} 张可练习卡片（跳过暂停和今日暂缓）。{p1} 每张卡片本轮练习一次。':
-    'Available cards: {p0} (excluding suspended and buried cards). {p1} Each card is practiced once per session.',
+  '包含未到期卡片，不受每日上限限制。评分会更新下次复习时间，并计入今日学习。':
+    'Includes cards not yet due and ignores daily limits. Ratings update the next review date and count toward today’s study.',
+  '评分仅用于本轮练习，不改变到期时间、每日用量或统计。':
+    'Ratings apply only to this session. Due dates, daily counts, and statistics stay unchanged.',
+  '可练习 {p0} 张，已排除暂停和今日暂缓的卡片。每张卡片练习一次。{p1}':
+    'Available cards: {p0}. Suspended and buried cards are excluded. Each card is shown once. {p1}',
   '{p0} 张卡片 · {p1} 条笔记': 'Cards: {p0} · Notes: {p1}',
   '已选 {p0} 张卡片（{p1} 条笔记）': 'Selected cards: {p0} · Notes: {p1}',
   删除所选笔记: 'Delete selected notes',
@@ -189,10 +169,10 @@ export const en = {
   '删除卡片 {p0}': 'Delete card {p0}',
   恢复: 'Resume',
   暂停: 'Suspend',
-  还没有匹配的卡片: 'No matching cards yet',
-  '第一张卡片，从这里开始': 'Your first card starts here',
-  '试试其他关键词，或调整筛选条件。': 'Try other keywords or adjust the filters.',
-  '写下一条笔记，生成你的第一张卡片。': 'Write a note to create your first card.',
+  没有匹配的卡片: 'No matching cards',
+  暂无卡片: 'No cards yet',
+  '更换关键词或调整筛选条件。': 'Change the search terms or filters.',
+  '点击「添加卡片」，或从 CSV / TSV 文件导入。': 'Add a card or import a CSV / TSV file.',
   上一页: 'Previous',
   下一页: 'Next',
   '支持 UTF-8 CSV / TSV，最多 5000 条。type 为 basic、reversed 或 cloze；tags 用 | 分隔。支持带引号的逗号与多行字段。':
@@ -204,13 +184,13 @@ export const en = {
   '逗号 CSV': 'Comma (CSV)',
   '制表符 TSV': 'Tab (TSV)',
   或粘贴表格文本: 'Or paste table text',
-  '校验通过：{p0} 条笔记，{p1} 张卡片；{p2} 条内容重复。':
-    'Validated. Notes: {p0} · Cards: {p1} · Duplicates: {p2}.',
-  '跳过同卡组中题型、正面和背面均相同的笔记':
-    'Skip notes with the same type, front, and back in the same deck',
-  校验并预览: 'Validate and preview',
+  '共 {p0} 条笔记，将生成 {p1} 张卡片；其中 {p2} 条重复。':
+    'Notes: {p0} · Cards to generate: {p1} · Duplicate notes: {p2}.',
+  '跳过同卡组中类型、格式、正面和背面均相同的笔记':
+    'Skip notes with the same type, format, front, and back in the same deck',
+  检查并预览: 'Check and preview',
   确认导入: 'Confirm import',
-  '已连续保存 {p0} 条笔记，可以继续添加。': 'Notes saved: {p0}. Keep adding more.',
+  '已保存 {p0} 条笔记。': 'Notes saved: {p0}.',
   笔记类型: 'Note type',
   内容格式: 'Content format',
   'Markdown / 数学公式': 'Markdown / Math',
@@ -220,7 +200,7 @@ export const en = {
   所属卡组: 'Deck',
   '正面 · 问题': 'Front · Question',
   '法国的首都是 {{c1::巴黎::城市}}。': 'The capital of France is {{c1::Paris::city}}.',
-  '你想问自己什么？': 'What would you like to ask yourself?',
+  输入问题: 'Enter the question',
   '选中文字挖空 · Ctrl / ⌘ + Shift + C': 'Cloze selection · Ctrl / ⌘ + Shift + C',
   '使用 {{ c1::答案 }} 或 {{ c1::答案::提示 }}。同编号一起隐藏，不同编号各生成一张卡片；暂不支持嵌套挖空。':
     'Use {{c1::answer}} or {{c1::answer::hint}}. Matching numbers hide together; different numbers generate separate cards. Nested clozes are not supported.',
@@ -228,14 +208,14 @@ export const en = {
   '移除 {p0}': 'Remove {p0}',
   '背面 · 答案': 'Back · Answer',
   '可选，补充解释': 'Optional extra explanation',
-  '用自己的话，写下答案或补充解释。': 'Write the answer or explanation in your own words.',
+  输入答案或补充说明: 'Enter the answer or additional notes',
   '背面图片 / 音频': 'Back images / audio',
   标签: 'Tags',
   '可选，用逗号分隔': 'Optional, comma-separated',
   '英语, 常用词': 'English, common words',
   '将生成 {p0} 张卡片 · 预览': 'Cards to generate: {p0} · Preview',
-  '同一笔记的卡片共享内容，各自记录学习进度。已有且仍然生成的卡片会保留原进度。媒体每个不超过 10 MB。':
-    'Cards from the same note share content but keep separate progress. Existing cards that are still generated retain their progress. Each media file may be up to 10 MB.',
+  '同一笔记生成的卡片共用内容，分别记录复习进度。编辑后保留的卡片会继续沿用原进度。每个附件最大 10 MB。':
+    'Cards from one note share content but have separate review progress. Cards kept after editing retain their progress. Each attachment can be up to 10 MB.',
   '确认移除不再生成的 {p0} 张卡片及其复习记录（会先保存快照）。':
     'Confirm removal of obsolete cards ({p0}) and their review history. A snapshot will be saved first.',
   保存并继续: 'Save and add another',
@@ -243,10 +223,10 @@ export const en = {
   结束专项练习: 'End practice',
   结束复习: 'End review',
   '已复习 {p0} 次 · 当前待学 {p1} 张': 'Reviewed: {p0} · Remaining: {p1}',
-  '只练习：评分仅用于本轮回顾，不改变学习进度、额度或复习统计。':
-    'Practice only: ratings apply to this session without changing progress, limits, or review statistics.',
-  '更新进度：包含未到期卡片，评分会重排到期时间并计入今日学习；本轮不受每日额度限制。':
-    "Update progress: includes cards not yet due. Ratings reschedule cards and count toward today's activity; daily limits do not apply.",
+  '只练习：不保存评分，也不改变复习进度。':
+    'Practice only: ratings are not saved and review progress stays unchanged.',
+  '更新进度：评分会更新复习时间并计入今日学习，不受每日上限限制。':
+    'Update progress: ratings update review dates and count toward today’s study. Daily limits do not apply.',
   '{p0} 每张卡片本轮练习一次，已暂停或今日暂缓的卡片会跳过。':
     '{p0} Each card is practiced once. Suspended and buried cards are skipped.',
   撤销上次评分: 'Undo last rating',
@@ -254,38 +234,35 @@ export const en = {
   暂停此卡: 'Suspend card',
   新卡片: 'New',
   复习卡片: 'Review card',
-  '顽固卡 · 建议改写问题或拆分知识点': 'Leech · Try rewriting the question or splitting the idea',
-  'QUESTION · 问题': 'QUESTION',
-  'ANSWER · 答案': 'ANSWER',
-  '先想一想，给记忆一点时间。': 'Think first. Give your memory a moment.',
+  '顽固卡 · 多次遗忘': 'Leech · Repeated lapses',
+  问题: 'Question',
+  答案: 'Answer',
   显示答案: 'Show answer',
   或按空格键: 'or press Space',
-  '这次回想，感觉如何？': 'How did that recall feel?',
+  根据回答情况评分: 'Rate your answer',
   不改进度: 'Progress unchanged',
-  '本轮专项练习已完成。': 'Practice session complete.',
-  '今日额度已完成。': "Today's limits are reached.",
-  '这一轮，记得更牢了。': 'A little better remembered.',
-  '现在没有待复习的卡片。': 'No cards are due right now.',
-  '还有 {p0} 张卡片受每日额度限制。明天继续，或在卡组设置中调整额度。':
-    'Cards held by daily limits: {p0}. Continue tomorrow, or adjust the limits in deck settings.',
+  本轮练习结束: 'Practice session finished',
+  已达到今日上限: 'Daily limit reached',
+  本轮复习结束: 'Review session finished',
+  暂无待复习卡片: 'No cards due',
+  '还有 {p0} 张卡片因每日上限未加入队列。可明天继续，或调整卡组设置。':
+    'Cards excluded by daily limits: {p0}. Continue tomorrow or change the deck settings.',
   '学习进度保持不变。': 'Your progress is unchanged.',
-  '后续复习将按更新后的时间安排。': 'Future reviews will follow the updated schedule.',
+  '已更新复习时间。': 'Review dates have been updated.',
   '已练习 {p0} 张，其中 {p1} 张选择了重来。{p2}': 'Cards practiced: {p0} · Rated Again: {p1}. {p2}',
   '下一张卡片将在约 {p0} 后到期。': 'The next card is due in about {p0}.',
-  '添加一点新知识，或者稍作休息。': 'Add something new to learn, or take a break.',
   '本轮完成 {p0} 次复习。{p1}': 'Reviews completed this session: {p0}. {p1}',
-  回到学习空间: 'Back to study space',
+  返回: 'Back',
   检查到期卡片: 'Check for due cards',
   '请先选中正面中需要挖空的文字。': 'Select text on the front to turn into a cloze.',
   '暂不支持嵌套挖空，请选择尚未挖空的文字。':
     'Nested clozes are not supported. Select text outside an existing cloze.',
   '最多支持 99 个挖空编号。': 'Up to 99 cloze numbers are supported.',
   '内容超过 10000 字。': 'Content exceeds 10,000 characters.',
-  '完整备份超过 100 MB，请先精简媒体后重试。':
-    'The full backup exceeds 100 MB. Reduce media and try again.',
-  '媒体「{p0}」缺失或损坏，未生成不完整的备份。':
-    'Media “{p0}” is missing or damaged. No incomplete backup was created.',
-  '完整备份超过 100 MB。': 'The full backup exceeds 100 MB.',
+  'JSON 备份超过 100 MB，请改用 .repeaty 格式导出。':
+    'The JSON backup exceeds 100 MB. Export in .repeaty format instead.',
+  '无法导出：附件「{p0}」缺失或损坏。': 'Cannot export: attachment “{p0}” is missing or damaged.',
+  'JSON 备份超过 100 MB。': 'The JSON backup exceeds 100 MB.',
   '备份文件不能超过 100 MB。': 'Backup files must not exceed 100 MB.',
   '文件不是有效的 JSON。': 'The file is not valid JSON.',
   媒体数量不匹配: 'Media count mismatch',
@@ -312,8 +289,8 @@ export const en = {
   '存在重复 ID': 'Duplicate IDs found',
   卡片所属卡组不存在: "The card's deck does not exist",
   复习记录对应的卡片不存在: 'A review refers to a missing card',
-  '每个图片或音频文件须为 1 字节至 10 MB。':
-    'Each image or audio file must be between 1 byte and 10 MB.',
+  '图片或音频文件不能为空，且不能超过 10 MB。':
+    'Image and audio files must not be empty or larger than 10 MB.',
   '支持 PNG、JPEG、WebP、GIF 图片及 MP3、WAV、OGG、M4A、WebM、FLAC、AAC 音频。':
     'Supported images: PNG, JPEG, WebP, GIF. Audio: MP3, WAV, OGG, M4A, WebM, FLAC, AAC.',
   待复习: 'Due',
@@ -337,8 +314,8 @@ export const en = {
   '修改后部分卡片将不再生成，请确认移除这些卡片及其复习记录。':
     'Some cards will no longer be generated. Confirm removal of those cards and their review history.',
   学习如何学习: 'Learning how to learn',
-  '用 5 张小卡片，开始你的间隔复习之旅。':
-    'Start your spaced repetition journey with 5 short cards.',
+  '5 张示例卡片，介绍制卡、评分和间隔复习。':
+    '5 sample cards about creating cards, rating answers, and spaced repetition.',
   '什么是主动回忆？': 'What is active recall?',
   '暂时不看答案，尝试从记忆中提取信息。比如，先回答卡片上的问题，再翻面核对。':
     "Try to retrieve information from memory without looking at the answer. For example, answer a card's question before revealing the back.",
@@ -349,8 +326,6 @@ export const en = {
   '尽量只考一个明确的知识点。问题清楚、答案简短，才能准确判断自己是否记住了。':
     'Aim for one clear idea. A precise question and a short answer make it easier to judge whether you remembered it.',
   '忘记一张卡片时，该如何评分？': 'How should you rate a forgotten card?',
-  '如实选择「重来」。调度器会把它安排到更近的时间，帮你重新巩固。':
-    'Choose Again honestly. The scheduler will bring the card back sooner to help you relearn it.',
   '怎样让每天的复习更容易坚持？': 'How can you make daily reviews easier to maintain?',
   '从少量卡片开始，把复习放在一个固定的日常时刻。先处理到期卡片，再逐渐加入新内容。':
     'Start with a few cards and review at a regular time each day. Review due cards first, then gradually add new material.',
@@ -397,8 +372,6 @@ export const en = {
     'Browser storage is full. Changes were not saved. Export a backup first.',
   '本地数据库版本已更新，请刷新当前页面后重试。':
     'The local database version changed. Refresh the page and try again.',
-  '自动备份未能完成，请导出 JSON 并检查存储空间。':
-    'Automatic backup failed. Export JSON and check available storage.',
   '卡组已不存在。': 'This deck no longer exists.',
   删除卡组前: 'Before deleting a deck',
   编辑笔记前: 'Before editing a note',
@@ -432,8 +405,8 @@ export const en = {
   '字段「{field}」格式不正确，请检查必填内容和取值范围。':
     'Invalid field “{field}”. Check required values and allowed ranges.',
   内容: 'Content',
-  'Repeaty，专注卡片与间隔复习的个人学习空间。':
-    'Repeaty, your personal workspace for flashcards and spaced repetition.',
+  '使用 Repeaty 创建卡片，通过间隔复习学习。支持图片、音频和离线使用。':
+    'Create flashcards and study with spaced repetition. Supports images, audio, and offline use.',
   '确定删除「{name}」吗？其中的 {count} 张卡片及对应复习记录也会被删除。会先自动保存快照。':
     'Delete “{name}”? Its cards ({count}) and review history will also be deleted. A snapshot will be saved first.',
   '确定删除 {notes} 条笔记及其 {cards} 张关联卡片和复习记录吗？会先自动保存快照。':
@@ -448,13 +421,13 @@ export const en = {
   '部分媒体无法读取，请从完整备份恢复。':
     'Some media could not be loaded. Restore from a complete backup.',
   重来: 'Again',
-  还没记住: "Didn't remember",
+  未能答对: 'Incorrect',
   困难: 'Hard',
-  想了很久: 'Took a while',
+  '答对，但有困难': 'Correct with difficulty',
   良好: 'Good',
-  顺利想起: 'Remembered',
+  正确回答: 'Correct',
   简单: 'Easy',
-  轻松记住: 'Recalled easily',
+  轻松答对: 'Correct without effort',
   '正在准备离线资源…': 'Preparing offline resources…',
   '开发模式：未启用离线启动': 'Development mode: offline startup disabled',
   '当前环境不支持离线启动，请使用 HTTPS 或 localhost':
@@ -469,8 +442,8 @@ export const en = {
   '备份包不能超过 2 GB。': 'The backup archive and its expanded contents must not exceed 2 GB.',
   '导出 .repeaty': 'Export .repeaty',
   '导出旧版 JSON': 'Export legacy JSON',
-  '将学习数据和原始图片、音频保存为 .repeaty 备份包，适合较大的学习库。':
-    'Save your study data and original images and audio in a .repeaty archive, suitable for larger collections.',
+  '导出全部学习数据，包含卡组、卡片、复习记录、图片和音频。':
+    'Export all study data, including decks, cards, review history, images, and audio.',
   '支持 .repeaty 备份包和旧版 JSON。检查完成并确认后才会替换当前数据。':
     'Supports .repeaty archives and legacy JSON. Your collection is replaced only after validation and confirmation.',
   '.repeaty 最大 2 GB · 旧版 JSON 最大 100 MB': '.repeaty up to 2 GB · Legacy JSON up to 100 MB',
@@ -485,4 +458,11 @@ export const en = {
     'Save large backups directly to a file to reduce memory use.',
   '复习记录已达到 50 万条上限，请先导出备份。':
     'The limit of 500,000 reviews has been reached. Export a backup first.',
+  '待学习 {count} 张': 'Cards to study: {count}',
+  暂无待学习卡片: 'No cards ready to study',
+  尚未添加卡片: 'No cards added yet',
+  '添加卡片后即可开始学习。': 'Add cards to start studying.',
+  '可添加新卡片，或稍后查看复习安排。': 'Add new cards or check the review schedule later.',
+  '选择「重来」，这张卡片会在较短时间内再次出现。':
+    'Choose Again. The card will appear again after a short interval.',
 } as const

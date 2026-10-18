@@ -97,7 +97,7 @@ const currentDeck = computed(() =>
 const pageTitle = computed(
   () =>
     ({
-      overview: t('学习空间'),
+      overview: t('学习概览'),
       cards: currentDeck.value?.name ?? t('全部卡片'),
       data: t('数据与备份'),
     })[tab.value],
@@ -379,14 +379,14 @@ async function restoreBackup() {
           >.</span
         ></a
       >
-      <span class="sidebar-label">{{ t('一点一点，记得更久') }}</span>
+      <span class="sidebar-label">{{ t('间隔复习') }}</span>
       <nav class="main-nav" :aria-label="t('主导航')">
         <button
           :class="{ active: tab === 'overview' && !review }"
           :aria-current="tab === 'overview' && !review ? 'page' : undefined"
           @click="navigate('overview')"
         >
-          <LayoutGrid :size="19" />{{ t('学习空间') }}
+          <LayoutGrid :size="19" />{{ t('学习概览') }}
         </button>
         <button
           :class="{ active: tab === 'cards' && !review }"
@@ -427,22 +427,20 @@ async function restoreBackup() {
           ><span>{{ deckCards(deck.id) }}</span>
         </button>
         <p v-if="!library.decks.length" class="sidebar-empty">
-          {{ t('好奇心，从第一张卡片开始。') }}
+          {{ t('暂无卡组') }}
         </p>
       </div>
       <div class="sidebar-bottom">
-        <div class="local-status"><span />{{ t('本地学习空间') }}</div>
-        <p>{{ t('让知识留下来。') }}</p>
-        <span class="version">REPEATY CORE · {{ version }}</span>
+        <div class="local-status"><span />{{ t('本地存储') }}</div>
+        <p>{{ t('仅限当前浏览器') }}</p>
+        <span class="version">Repeaty {{ version }}</span>
       </div>
     </aside>
 
     <main class="main-content">
       <header class="topbar">
         <div class="breadcrumb">
-          {{ t('我的空间') }}<ChevronRight :size="14" /><strong>{{
-            review ? t('专注复习') : pageTitle
-          }}</strong>
+          Repeaty<ChevronRight :size="14" /><strong>{{ review ? t('复习') : pageTitle }}</strong>
         </div>
         <div class="topbar-tools">
           <label class="language-picker"
@@ -483,7 +481,7 @@ async function restoreBackup() {
       </section>
       <section v-else-if="!ready" class="empty-state" role="status">
         <Repeat2 :size="32" />
-        <p>{{ t('正在打开你的学习空间…') }}</p>
+        <p>{{ t('正在加载…') }}</p>
       </section>
       <ReviewSession
         v-else-if="review"
@@ -501,9 +499,7 @@ async function restoreBackup() {
       <div v-else-if="tab === 'overview'" class="page dashboard">
         <header class="page-heading">
           <div>
-            <div class="eyebrow">YOUR DAILY PRACTICE</div>
-            <h1>{{ t('每一次回想，都算数') }}<span class="heading-dot">.</span></h1>
-            <p>{{ t('把好奇变成卡片，把知识留在记忆里。') }}</p>
+            <h1>{{ t('学习概览') }}</h1>
           </div>
           <button class="button secondary" :disabled="busy" @click="editCard()">
             <Plus :size="17" />{{ t('添加卡片') }}
@@ -516,30 +512,32 @@ async function restoreBackup() {
               <h2>
                 {{
                   due.length
-                    ? t('给记忆，一点新的力量。')
-                    : library.cards.length
-                      ? t('让记忆，慢慢沉淀。')
-                      : t('今天，想记住什么？')
+                    ? t('待学习 {count} 张', { count: due.length })
+                    : limited
+                      ? t('已达到今日上限')
+                      : library.cards.length
+                        ? t('暂无待学习卡片')
+                        : t('尚未添加卡片')
                 }}
               </h2>
               <p v-if="due.length">
                 {{
-                  t('{p0} 张到期卡片，{p1} 张新卡片。', {
+                  t('{p0} 张到期卡片 · {p1} 张新卡片', {
                     p0: due.length - newCount,
                     p1: newCount,
                   })
-                }}<br />{{ t('一个小小的开始，就是进步。') }}
+                }}
               </p>
               <p v-else-if="limited">
-                {{ t('今日额度已完成，还有 {p0} 张卡片等待下一天。', { p0: limited }) }}<br />{{
-                  t('也可以在卡组设置中调整额度。')
+                {{ t('还有 {p0} 张卡片因每日上限未加入学习队列。', { p0: limited }) }}<br />{{
+                  t('可在卡组设置中调整上限。')
                 }}
               </p>
               <p v-else-if="library.cards.length">
-                {{ t('当前没有可学习的卡片。') }}<br />{{ t('稍作休息，或添加一点新知识。') }}
+                {{ t('可添加新卡片，或稍后查看复习安排。') }}
               </p>
               <p v-else>
-                {{ t('从一个问题开始。') }}<br />{{ t('下一次回想，会比这一次更清晰。') }}
+                {{ t('添加卡片后即可开始学习。') }}
               </p>
               <button
                 class="button dark"
@@ -551,7 +549,7 @@ async function restoreBackup() {
                     ? t('开始复习')
                     : library.cards.length
                       ? t('查看复习安排')
-                      : t('创建第一张卡片')
+                      : t('添加卡片')
                 }}
                 <ArrowRight :size="17" />
               </button>
@@ -560,9 +558,7 @@ async function restoreBackup() {
               <div class="art-card art-back" />
               <div class="art-card art-middle" />
               <div class="art-card art-front">
-                <span>little by little</span><Leaf :size="49" :stroke-width="1.25" /><strong
-                  >a little more<br />stays with you.</strong
-                >
+                <Leaf :size="49" :stroke-width="1.25" />
                 <div class="art-line" />
               </div>
               <span class="art-star">✳</span>
@@ -574,7 +570,7 @@ async function restoreBackup() {
               ><span class="subtle">{{ t('复习次数') }}</span>
             </div>
             <div class="activity-value">
-              {{ activity.reduce((sum, day) => sum + day.count, 0) }}<span>{{ t('次回想') }}</span
+              {{ activity.reduce((sum, day) => sum + day.count, 0) }}<span>{{ t('次复习') }}</span
               ><span class="activity-icon"><BookOpen :size="20" /></span>
             </div>
             <div class="activity-chart" :aria-label="t('最近七天复习次数')">
@@ -655,7 +651,7 @@ async function restoreBackup() {
                 </button>
               </div>
               <button class="deck-title" @click="openDeck(deck)">{{ deck.name }}</button>
-              <p>{{ deck.description || t('让每一个值得记住的想法，都有自己的位置。') }}</p>
+              <p v-if="deck.description">{{ deck.description }}</p>
               <div class="deck-card-bottom">
                 <span
                   >{{ t('{p0} 张卡片', { p0: deckCards(deck.id) })
@@ -673,14 +669,14 @@ async function restoreBackup() {
               </div>
             </article>
             <button class="add-deck-tile" @click="editDeck()">
-              <Plus :size="24" /><span>{{ t('新的好奇，新的卡组') }}</span>
+              <Plus :size="24" /><span>{{ t('新建卡组') }}</span>
             </button>
           </div>
           <div v-else class="welcome-card">
             <div class="welcome-icon"><Layers :size="27" /></div>
             <div>
-              <h3>{{ t('为你的好奇心，留个位置') }}</h3>
-              <p>{{ t('创建第一个卡组，或用 5 张示例卡片体验一次完整复习。') }}</p>
+              <h3>{{ t('还没有卡组') }}</h3>
+              <p>{{ t('创建卡组后添加卡片，或加载 5 张示例卡片。') }}</p>
             </div>
             <div class="welcome-actions">
               <button
@@ -688,7 +684,7 @@ async function restoreBackup() {
                 :disabled="busy"
                 @click="run(workspace.addSample, '示例卡组已添加')"
               >
-                {{ t('体验示例') }}</button
+                {{ t('加载示例') }}</button
               ><button class="button primary" @click="editDeck()">
                 <Plus :size="16" />{{ t('创建卡组') }}
               </button>
@@ -697,17 +693,15 @@ async function restoreBackup() {
         </section>
         <footer class="learning-tip">
           <CircleHelp :size="17" />
-          <p>{{ t('小提示：先尝试回想，再翻看答案。主动提取，比反复阅读更有帮助。') }}</p>
-          <span>KEEP IT SMALL. KEEP IT GOING.</span>
+          <p>{{ t('复习快捷键：空格显示答案，1–4 评分，Esc 退出。') }}</p>
         </footer>
       </div>
 
       <div v-else-if="tab === 'cards'" class="page">
         <header class="page-heading">
           <div>
-            <div class="eyebrow">YOUR KNOWLEDGE, IN CARDS</div>
             <h1>{{ currentDeck?.name ?? t('全部卡片') }}</h1>
-            <p>{{ currentDeck?.description || t('收集值得记住的知识，一张卡片，一个想法。') }}</p>
+            <p>{{ currentDeck?.description || t('搜索、编辑卡片，或批量调整卡组和标签。') }}</p>
           </div>
           <div class="heading-actions">
             <button
@@ -755,9 +749,8 @@ async function restoreBackup() {
       <div v-else class="page data-page">
         <header class="page-heading">
           <div>
-            <div class="eyebrow">A SPACE THAT'S YOURS</div>
-            <h1>{{ t('知识是你的，数据也是。') }}</h1>
-            <p>{{ t('把学习进度好好保存，随时带走。') }}</p>
+            <h1>{{ t('数据与备份') }}</h1>
+            <p>{{ t('导出、恢复备份，管理本地数据。') }}</p>
           </div>
         </header>
         <section class="storage-banner">
@@ -767,7 +760,7 @@ async function restoreBackup() {
             <p>
               {{
                 t(
-                  '卡片和复习进度保存在当前网站的本地存储中。清除网站数据、更换浏览器或网址后，不会自动保留这些内容，请定期导出备份。',
+                  '数据仅保存在当前浏览器，不会自动同步。清除网站数据会删除卡片和复习记录。更换浏览器或网址前，请先导出备份。',
                 )
               }}
             </p>
@@ -782,7 +775,7 @@ async function restoreBackup() {
           <section class="backup-card">
             <span class="stat-icon sage"><ArrowDownToLine :size="22" /></span>
             <h2>{{ t('导出备份') }}</h2>
-            <p>{{ t('将学习数据和原始图片、音频保存为 .repeaty 备份包，适合较大的学习库。') }}</p>
+            <p>{{ t('导出全部学习数据，包含卡组、卡片、复习记录、图片和音频。') }}</p>
             <div class="backup-meta">
               {{
                 t('{p0} 个卡组 · {p1} 张卡片 · {p2} 次复习', {
@@ -851,7 +844,7 @@ async function restoreBackup() {
           <p class="form-note">
             {{
               t(
-                '打开应用及使用期间每 30 分钟保存变化；删除、编辑、批量修改和恢复前额外保存。保留最近 10 份，并保留其引用的媒体。快照也在本机，清除网站数据会一并删除。',
+                '有数据变化时，在打开应用及使用期间每 30 分钟保存快照；编辑、删除、批量操作和恢复前也会保存。保留最近 10 份及其图片和音频。清除网站数据也会删除快照。',
               )
             }}
           </p>
@@ -874,7 +867,7 @@ async function restoreBackup() {
             </li>
           </ul>
           <p v-else class="form-note">
-            {{ t('还没有快照。添加内容后可以立即创建，或等待自动保存。') }}
+            {{ t('暂无快照。添加卡片后可手动创建，也会自动保存。') }}
           </p>
         </section>
         <section class="storage-banner">
@@ -883,9 +876,7 @@ async function restoreBackup() {
             <h2>{{ t(offline.status.value) }}</h2>
             <p>
               {{
-                t(
-                  '生产构建首次联网打开并显示「离线已就绪」后，可断网重新打开、编辑和复习；图片和音频也保存在本地。开发模式不启用离线缓存。',
-                )
+                t('首次联网加载完成后，可离线打开、制卡和复习。已保存的图片和音频也可离线使用。')
               }}
             </p>
             <button
@@ -894,15 +885,15 @@ async function restoreBackup() {
               :disabled="busy"
               @click="offline.applyUpdate"
             >
-              {{ t('新版本已就绪，刷新更新') }}
+              {{ t('刷新以更新版本') }}
             </button>
           </div>
         </section>
         <div class="about-core">
           <Repeat2 :size="21" />
           <div>
-            <h3>Repeaty Core</h3>
-            <p>{{ t('制作卡片，主动回忆，按时复习。让学习回到这几件简单的事。') }}</p>
+            <h3>Repeaty</h3>
+            <p>{{ t('使用 FSRS 安排复习，数据保存在当前浏览器。') }}</p>
           </div>
           <span class="pill">v{{ version }}</span>
         </div>
@@ -931,7 +922,7 @@ async function restoreBackup() {
           v-model.trim="deckForm.description"
           maxlength="300"
           rows="3"
-          :placeholder="t('这个卡组里，装着哪些值得记住的知识？')"
+          :placeholder="t('卡组内容或用途')"
         />
         <div class="limit-fields">
           <label for="new-limit"
@@ -955,9 +946,7 @@ async function restoreBackup() {
           /></label>
         </div>
         <p class="form-note">
-          {{
-            t('0 表示不引入该类卡片。当天已开始的学习 / 重学步骤不受额度限制，按本机日历日重置。')
-          }}
+          {{ t('每日上限按本机日期重置。设为 0 则不安排该类卡片；学习和重学步骤不受此限制。') }}
         </p>
         <label class="check-line"
           ><input v-model="deckForm.burySiblings" type="checkbox" />{{
@@ -990,7 +979,7 @@ async function restoreBackup() {
         <p class="form-note">
           {{
             t(
-              '正式复习遗忘达到阈值后自动标记顽固卡，0 关闭标记。保留率默认 90%，越高复习越频繁；修改仅影响之后的评分，不立即重排已有卡片。',
+              '复习时遗忘达到指定次数，会标记为顽固卡；设为 0 关闭。目标保留率默认 90%，越高则复习越频繁。修改仅影响后续评分。',
             )
           }}
         </p>
@@ -1055,16 +1044,16 @@ async function restoreBackup() {
     /></AppModal>
     <AppModal
       v-if="modal === 'snapshot' && pendingSnapshot"
-      :title="t('恢复自动快照？')"
+      :title="t('恢复此快照？')"
       :busy="busy"
       :error="notice?.error ? t(notice.text) : undefined"
       @close="modal = null"
       ><p class="confirmation-text">
         {{
-          t(
-            '此快照包含 {p0} 条笔记、{p1} 张卡片。恢复会替换当前数据，操作前会为当前数据另存快照。',
-            { p0: pendingSnapshot.notes.length, p1: pendingSnapshot.cards.length },
-          )
+          t('包含 {p0} 条笔记、{p1} 张卡片。恢复会替换当前数据。操作前会保存当前数据的快照。', {
+            p0: pendingSnapshot.notes.length,
+            p1: pendingSnapshot.cards.length,
+          })
         }}
       </p>
       <div class="form-actions">
@@ -1093,12 +1082,12 @@ async function restoreBackup() {
     <AppModal
       :error="notice?.error ? t(notice.text) : undefined"
       v-if="modal === 'import' && pendingBackup"
-      :title="t('恢复这个备份？')"
+      :title="t('恢复此备份？')"
       :busy="busy"
       @close="modal = null"
       ><p class="confirmation-text">
         {{
-          t('文件校验通过，包含 {p0} 个卡组、{p1} 张卡片和 {p2} 次复习记录。', {
+          t('备份包含 {p0} 个卡组、{p1} 张卡片和 {p2} 条复习记录。', {
             p0: pendingBackup.library.decks.length,
             p1: pendingBackup.library.cards.length,
             p2: pendingBackup.library.reviews.length,

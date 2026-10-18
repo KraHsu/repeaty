@@ -33,14 +33,12 @@ export async function exportBackup(
       JSON.stringify(library).length * 3 >
     MAX_BACKUP_BYTES
   )
-    throw new LocalizedError(msg('完整备份超过 100 MB，请先精简媒体后重试。'))
+    throw new LocalizedError(msg('JSON 备份超过 100 MB，请改用 .repeaty 格式导出。'))
   const assets = []
   for (const meta of library.media) {
     const blob = await getMedia(meta.id)
     if (!blob || blob.size !== meta.size || blob.type !== meta.type)
-      throw new LocalizedError(
-        msg('媒体「{p0}」缺失或损坏，未生成不完整的备份。', { p0: meta.name }),
-      )
+      throw new LocalizedError(msg('无法导出：附件「{p0}」缺失或损坏。', { p0: meta.name }))
     const bytes = new Uint8Array(await blob.arrayBuffer())
     let binary = ''
     for (let i = 0; i < bytes.length; i += 0x8000)
@@ -49,7 +47,7 @@ export async function exportBackup(
   }
   const result = JSON.stringify({ format: 'repeaty-backup', version: 3, library, assets })
   if (new Blob([result]).size > MAX_BACKUP_BYTES)
-    throw new LocalizedError(msg('完整备份超过 100 MB。'))
+    throw new LocalizedError(msg('JSON 备份超过 100 MB。'))
   return result
 }
 export function parseBackup(text: string): BackupData {

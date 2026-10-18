@@ -97,9 +97,7 @@ export async function exportArchive(
       const meta = library.media[index]!,
         blob = await getMedia(meta.id)
       if (!blob || blob.size !== meta.size || blob.type !== meta.type)
-        throw new LocalizedError(
-          msg('媒体「{p0}」缺失或损坏，未生成不完整的备份。', { p0: meta.name }),
-        )
+        throw new LocalizedError(msg('无法导出：附件「{p0}」缺失或损坏。', { p0: meta.name }))
       await add(mediaPath(index), blob, 0)
       options.progress?.(Math.min(99, (++complete / Math.max(1, total)) * 100))
     }

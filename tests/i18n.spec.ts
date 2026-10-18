@@ -6,10 +6,10 @@ for (const width of [320, 390, 768, 1440]) {
   test(`language controls remain usable at ${width}px and survive reload`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     await page.goto('./')
-    await expect(page.getByRole('heading', { name: 'Every recall counts.' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible()
     await expect(page.locator('html')).toHaveAttribute('lang', 'en')
     await page.getByLabel('Interface language').selectOption('zh-CN')
-    await expect(page.getByRole('heading', { name: '每一次回想，都算数.' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '学习概览' })).toBeVisible()
     await page.reload()
     await expect(page.getByLabel('界面语言')).toHaveValue('zh-CN')
     await page.getByLabel('界面语言').selectOption('en')
@@ -50,7 +50,7 @@ test('English authoring and language switching preserve the active review and sa
   await expect(page.getByRole('button', { name: /重来/ })).toBeVisible()
   await page.getByLabel('界面语言').selectOption('en')
   await page.getByRole('button', { name: /Easy/ }).click()
-  await expect(page.getByRole('heading', { name: 'A little better remembered.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Review session finished' })).toBeVisible()
   await page.getByRole('button', { name: 'Undo last rating' }).click()
   await expect(page.getByRole('heading', { name: '中文问题' })).toBeVisible()
 })
@@ -66,7 +66,7 @@ test('English remains available offline along with its CSV example and install m
   await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller))
   await context.setOffline(true)
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Every recall counts.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible()
   const assets = await page.evaluate(async () => {
     const [manifest, csv] = await Promise.all([
       fetch('manifest.en.webmanifest'),
@@ -77,5 +77,5 @@ test('English remains available offline along with its CSV example and install m
   expect(assets.lang).toBe('en')
   expect(assets.example).toContain('What is active recall?')
   await page.getByLabel('Interface language').selectOption('zh-CN')
-  await expect(page.getByRole('heading', { name: '每一次回想，都算数.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '学习概览' })).toBeVisible()
 })

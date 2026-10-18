@@ -67,21 +67,21 @@ afterEach(async () => {
 
 it('switches the mounted app, document metadata, and persists the explicit choice on reload', async () => {
   await start()
-  expect(host.querySelector('h1')!.textContent).toContain('Every recall counts')
+  expect(host.querySelector('h1')!.textContent).toContain('Overview')
   expect(document.documentElement.lang).toBe('en')
   expect(document.querySelector('link[rel="manifest"]')!.getAttribute('href')).toContain(
     'manifest.en.webmanifest',
   )
   expect(localStorage.getItem(LOCALE_STORAGE_KEY)).toBeNull()
   await language('zh-CN')
-  expect(host.querySelector('h1')!.textContent).toContain('每一次回想，都算数')
+  expect(host.querySelector('h1')!.textContent).toContain('学习概览')
   expect(document.documentElement.lang).toBe('zh-CN')
-  expect(document.title).toBe('repeaty · 每一次回想，都算数')
+  expect(document.title).toBe('Repeaty · 卡片与间隔复习')
   expect(localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('zh-CN')
   app!.unmount()
   await start()
   expect(host.querySelector<HTMLSelectElement>('.language-picker select')!.value).toBe('zh-CN')
-  expect(host.querySelector('h1')!.textContent).toContain('每一次回想，都算数')
+  expect(host.querySelector('h1')!.textContent).toContain('学习概览')
 })
 
 it('keeps drafts and revealed answers while translating authoring, statuses, and review controls', async () => {
@@ -121,7 +121,7 @@ it('keeps drafts and revealed answers while translating authoring, statuses, and
 
 it('translates an already visible backup error and legacy snapshot labels without changing data', async () => {
   await start()
-  button('Try sample cards').click()
+  button('Load sample cards').click()
   await vi.waitFor(() =>
     expect(host.querySelector('.sidebar-deck')!.textContent).toContain('Learning how to learn'),
   )
@@ -149,7 +149,7 @@ it('translates an already visible backup error and legacy snapshot labels withou
 
 it('keeps persisted filter values and typed search terms unchanged across UI languages', async () => {
   await start()
-  button('Try sample cards').click()
+  button('Load sample cards').click()
   await vi.waitFor(() => expect(host.querySelector('.sidebar-deck')).not.toBeNull())
   const cardsNav = host.querySelectorAll<HTMLButtonElement>('.main-nav button')[1]!
   cardsNav.click()
