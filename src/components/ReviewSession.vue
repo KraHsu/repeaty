@@ -15,13 +15,22 @@ import { studyCards } from '../core/search'
 import { questionPlugin, canReviewCard } from '../plugins'
 import type { QuestionState } from '../plugins/types'
 import type { Assessment } from '../plugins/data'
+import type { Practice, Attempt } from '../core/practice-data'
 
 const props = defineProps<{
   library: Library
   deckId?: string
   study?: StudySession
   busy: boolean
-  submit: (id: string, grade: Grade, assessment?: Assessment) => Promise<boolean>
+  submit: (
+    id: string,
+    grade: Grade,
+    assessment?: Assessment,
+    practiceId?: string,
+  ) => Promise<boolean>
+  workspaceScope: string
+  saveAttempt: (practice: Practice, attempt: Attempt, scope: string) => Promise<void>
+  finishPractice: (id: string, cardId: string, assessment?: Assessment) => Promise<boolean>
   undo: () => Promise<boolean>
   change: (ids: string[], action: 'suspend' | 'bury') => Promise<boolean>
   getMedia: (id: string) => Promise<Blob | undefined>
@@ -63,6 +72,7 @@ watch(
     questionState.allowedGrades = []
     questionState.suggestedGrade = undefined
     questionState.assessment = undefined
+    questionState.practiceId = undefined
     questionState.complete = undefined
     questionState.busy = false
   },
@@ -126,7 +136,11 @@ async function grade(value: Grade) {
     return
   const id = current.value.id
   const complete = questionState.complete
-  if (practice.value || (await props.submit(id, value, questionState.assessment))) {
+  const saved = practice.value
+    ? !questionState.practiceId ||
+      (await props.finishPractice(questionState.practiceId, id, questionState.assessment))
+    : await props.submit(id, value, questionState.assessment, questionState.practiceId)
+  if (saved) {
     await complete?.()
     const effects = practice.value ? undefined : props.library.reviews.at(-1)?.effects
     feedback.value = [
@@ -269,6 +283,10 @@ onUnmounted(() => {
           :get-media="getMedia"
           :state="questionState"
           :revealed="revealed"
+          :workspace-scope="workspaceScope"
+          :practices="library.practices.filter((entry) => entry.cardId === current!.id)"
+          :attempts="library.attempts"
+          :save-attempt="saveAttempt"
         />
         <div
           v-if="revealed"

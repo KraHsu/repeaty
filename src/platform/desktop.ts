@@ -17,7 +17,9 @@ export async function initializePlatform() {
   handleExternalLinks()
 }
 export async function createWorkspaceRepository(onBlocked: () => void) {
-  return remoteWorkspace.value ? createServerRepository() : createRepository('repeaty', onBlocked)
+  return remoteWorkspace.value
+    ? createServerRepository(desktopEndpoint.value)
+    : createRepository('repeaty', onBlocked)
 }
 
 export { createExportFile } from '../desktop/exports'

@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "decks": [
     {
       "id": "deck",
@@ -53,5 +53,7 @@
   ],
   "reviews": [],
   "media": [],
-  "savedSearches": []
+  "savedSearches": [],
+  "practices": [],
+  "attempts": []
 }

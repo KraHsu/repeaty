@@ -87,8 +87,18 @@ async fn accounts_isolate_identical_record_ids_media_and_backups() {
     let app = app(dir.path());
     let alice = register(&app, "alice").await;
     let bob = register(&app, "bob").await;
-    let fixture: Value = serde_json::from_str(include_str!("fixtures/library.json")).unwrap();
-    let patches:Vec<_>=["decks","notes","cards","reviews","savedSearches"].into_iter().flat_map(|store| fixture[store].as_array().unwrap().iter().enumerate().map(move |(position,value)|json!({"store":store,"id":value["id"],"position":position,"value":value}))).collect();
+    let mut fixture: Value = serde_json::from_str(include_str!("fixtures/library.json")).unwrap();
+    fixture["practices"] = json!([{
+        "id":"practice", "cardId":fixture["cards"][0]["id"], "contentRevision":"sha256",
+        "question":{"front":"Problem","back":"","format":"plain","plugin":{"id":"leetcode","version":1,"data":{}}},
+        "startedAt":"2026-10-18T00:00:00.000Z"
+    }]);
+    fixture["attempts"] = json!([{
+        "id":"attempt", "practiceId":"practice", "language":"python3", "code":"private source code",
+        "submittedAt":"2026-10-18T00:00:00.000Z", "updatedAt":"2026-10-18T00:00:00.000Z",
+        "elapsedMs":1000, "status":"unknown"
+    }]);
+    let patches:Vec<_>=["decks","notes","cards","reviews","savedSearches","practices","attempts"].into_iter().flat_map(|store| fixture[store].as_array().unwrap().iter().enumerate().map(move |(position,value)|json!({"store":store,"id":value["id"],"position":position,"value":value}))).collect();
     assert_eq!(
         call(
             &app,
@@ -103,6 +113,14 @@ async fn accounts_isolate_identical_record_ids_media_and_backups() {
     assert_eq!(
         call(&app, "/library", &bob, None).await.1["library"]["notes"],
         json!([])
+    );
+    assert_eq!(
+        call(&app, "/library", &bob, None).await.1["library"]["attempts"],
+        json!([])
+    );
+    assert_eq!(
+        call(&app, "/library", &alice, None).await.1["library"]["attempts"][0]["code"],
+        "private source code"
     );
     assert_eq!(
         call(

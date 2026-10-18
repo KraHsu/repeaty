@@ -267,9 +267,10 @@ async function submitReview(
   id: string,
   grade: Grade,
   assessment?: import('./plugins/data').Assessment,
+  practiceId?: string,
 ) {
   return run(() =>
-    workspace.review(id, grade, Boolean(review.value?.study?.reschedule), assessment),
+    workspace.review(id, grade, Boolean(review.value?.study?.reschedule), assessment, practiceId),
   )
 }
 function deckDue(id: string) {
@@ -531,6 +532,11 @@ async function restoreBackup() {
         :undo="undoReview"
         :change="changeCards"
         :get-media="workspace.getMedia"
+        :workspace-scope="workspace.scope.value"
+        :save-attempt="workspace.recordAttempt"
+        :finish-practice="
+          (id, cardId, assessment) => run(() => workspace.finishPractice(id, cardId, assessment))
+        "
         @close="review = null"
       />
 

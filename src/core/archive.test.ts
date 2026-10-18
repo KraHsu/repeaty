@@ -38,6 +38,35 @@ async function rewrite(blob: Blob, omit: string, extra = false) {
 }
 
 describe('portable binary archives', () => {
+  it.each([3, 4])(
+    'reads a v1 archive with library v%s and no practice collections',
+    async (libraryVersion) => {
+      const library = fixture()
+      const source = new ZipReader(
+        new BlobReader((await exportArchive(library, async () => undefined))!),
+      )
+      const output = new BlobWriter()
+      const writer = new ZipWriter(output, { useWebWorkers: false })
+      for (const entry of await source.getEntries()) {
+        if (entry.directory) continue
+        let blob = await entry.getData(new BlobWriter())
+        if (entry.filename === 'manifest.json') {
+          const manifest = JSON.parse(await blob.text())
+          manifest.version = 1
+          manifest.libraryVersion = libraryVersion
+          delete manifest.counts.practices
+          delete manifest.counts.attempts
+          delete manifest.parts.practices
+          delete manifest.parts.attempts
+          blob = new Blob([JSON.stringify(manifest)])
+        }
+        await writer.add(entry.filename, new BlobReader(blob))
+      }
+      await writer.close()
+      await source.close()
+      expect((await parseArchive(await output.getData())).library).toEqual(library)
+    },
+  )
   it('round-trips 10000-character text and exact original media without Base64', async () => {
     const { library, blob } = sample()
     const archive = (await exportArchive(library, async () => blob))!

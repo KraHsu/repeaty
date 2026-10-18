@@ -9,7 +9,16 @@ export async function storedLibrary(page: Page) {
     })
     try {
       const result: Record<string, unknown> = {}
-      for (const key of ['decks', 'notes', 'cards', 'reviews', 'media', 'savedSearches']) {
+      for (const key of [
+        'decks',
+        'notes',
+        'cards',
+        'reviews',
+        'media',
+        'savedSearches',
+        'practices',
+        'attempts',
+      ]) {
         result[key] = await new Promise((resolve, reject) => {
           const r = db.transaction(key).objectStore(key).getAll()
           r.onsuccess = () => resolve(r.result)

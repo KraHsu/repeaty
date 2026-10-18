@@ -7,6 +7,7 @@ export function setApiTransport(value: ApiTransport) {
   transport = value
 }
 const messages: Record<string, string> = {
+  'incompatible-version': '服务版本不兼容，请同时更新前端和后端。',
   'account-changed': '登录账户已变更，请刷新页面后重试。',
   unauthorized: '请登录；用户名或密码错误时请重新输入。',
   'username-unavailable': '用户名已被使用。',

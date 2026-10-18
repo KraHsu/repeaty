@@ -25,5 +25,7 @@ export const assessmentSchema = z.object({
     .regex(/^\d{1,30}$/)
     .optional(),
   suggestedGrade: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).optional(),
+  answerSeen: z.boolean().optional(),
+  ruleVersion: z.number().int().min(1).max(1000).optional(),
 })
 export type Assessment = z.infer<typeof assessmentSchema>

@@ -2,9 +2,13 @@ import { createServer } from 'vite'
 import { z } from 'zod'
 import { format } from 'prettier'
 import { readFile, writeFile } from 'node:fs/promises'
-const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom' })
+const vite = await createServer({
+  server: { middlewareMode: true, watch: null },
+  appType: 'custom',
+})
 try {
   const model = await vite.ssrLoadModule('/src/core/model.ts')
+  const practices = await vite.ssrLoadModule('/src/core/practice-data.ts')
   const schemas = {}
   for (const [store, name] of Object.entries({
     decks: 'deckSchema',
@@ -13,8 +17,10 @@ try {
     reviews: 'reviewSchema',
     media: 'mediaSchema',
     savedSearches: 'savedSearchSchema',
+    practices: 'practiceSchema',
+    attempts: 'attemptSchema',
   })) {
-    schemas[store] = z.toJSONSchema(model[name], { unrepresentable: 'any' })
+    schemas[store] = z.toJSONSchema(model[name] ?? practices[name], { unrepresentable: 'any' })
   }
   const source = await format(JSON.stringify(schemas), { parser: 'json', printWidth: 100 })
   const path = 'server/schema/entities.json'

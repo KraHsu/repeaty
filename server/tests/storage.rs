@@ -112,3 +112,50 @@ fn retains_only_ten_snapshots_and_validates_media_size() {
     ));
     assert!(db.put_media("bad", "image/svg+xml", b"<script/>").is_err());
 }
+
+#[test]
+fn practice_evidence_survives_snapshots_and_invalid_references_are_rejected() {
+    let mut db = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let mut library = fixture();
+    library["practices"] = json!([{
+        "id":"practice", "cardId":library["cards"][0]["id"], "contentRevision":"sha256",
+        "question":{"front":"Problem","back":"","format":"plain",
+            "plugin":{"id":"leetcode","version":1,"data":{}}},
+        "startedAt":"2026-10-18T00:00:00.000Z"
+    }]);
+    library["attempts"] = json!([{
+        "id":"attempt", "practiceId":"practice", "language":"python3", "code":"return value",
+        "submittedAt":"2026-10-18T00:00:00.000Z", "updatedAt":"2026-10-18T00:00:00.000Z",
+        "elapsedMs":1000, "status":"completed", "submissionId":"123",
+        "result":{"outcome":"accepted","status":"通过","runtime":"1 ms","memory":"10 MB","detail":""}
+    }]);
+    db.commit(commit(0, &library)).unwrap();
+    db.backup_now(true).unwrap();
+    let snapshot = db.backups().unwrap()[0]["id"].as_str().unwrap().to_string();
+    assert_eq!(db.backup(&snapshot).unwrap(), library);
+    let mut broken = library.clone();
+    broken["attempts"][0]["practiceId"] = json!("another-account-practice");
+    assert!(db.commit(commit(1, &broken)).is_err());
+    let mut broken = library.clone();
+    broken["attempts"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("submissionId");
+    assert!(db.commit(commit(1, &broken)).is_err());
+    let mut broken = library.clone();
+    broken["practices"][0]["reviewId"] = json!("missing-review");
+    assert!(db.commit(commit(1, &broken)).is_err());
+    assert_eq!(db.load().unwrap()["library"], library);
+    let deletions: Vec<_> = STORES
+        .iter()
+        .flat_map(|store| {
+            library[store]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(move |entry| json!({"store":store,"id":entry["id"]}))
+        })
+        .collect();
+    db.commit(input(1, json!(deletions))).unwrap();
+    assert_eq!(db.backup(&snapshot).unwrap(), library);
+}

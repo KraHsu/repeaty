@@ -734,4 +734,25 @@ export const en = {
   '提交使用部署者配置的 LeetCode 账号，并写入该账号的提交记录。登录信息只保留在服务端。':
     'Code is submitted using the LeetCode account configured by the deployer and appears in that account\u2019s history. Credentials stay on the server.',
   '后端未安装或未开启此插件。': 'This plugin is not installed or enabled on the service.',
+  '练习记录已变化，请重新打开题目后重试。':
+    'Practice data changed. Reopen the problem and try again.',
+  '无法保存提交记录，请重试。': 'Cannot save the submission record. Try again.',
+  正在提交: 'Submitting',
+  等待判题: 'Waiting for judge',
+  判题结束: 'Judging finished',
+  提交状态未知: 'Submission status unknown',
+  提交失败: 'Submission failed',
+  提交历史: 'Submission history',
+  '历史代码可展开查看。复习时查看往次代码会计为查看答案。':
+    'Expand a submission to view its code. Viewing code from a previous practice counts as revealing the answer.',
+  本次练习: 'Current practice',
+  评分已撤销: 'Rating undone',
+  '复习评分：{grade}': 'Review rating: {grade}',
+  仅练习: 'Practice only',
+  尚未评分: 'Not rated',
+  '暂无提交记录。': 'No submissions yet.',
+  '第 {count} 次提交': 'Submission {count}',
+  '服务版本不兼容，请同时更新前端和后端。':
+    'Incompatible service version. Update both the frontend and backend.',
+  当时的题目: 'Problem at submission',
 } as const

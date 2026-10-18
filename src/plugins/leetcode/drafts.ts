@@ -1,6 +1,8 @@
 import { openDB, type DBSchema } from 'idb'
 import { z } from 'zod'
 const draftSchema = z.object({
+  practiceId: z.string().optional(),
+  attemptId: z.string().optional(),
   revision: z.string(),
   lang: z.string(),
   code: z.record(z.string(), z.string().max(50000)),
@@ -39,20 +41,34 @@ function database() {
     },
   })
 }
-export async function readDraft(id: string, revision: string): Promise<Draft | undefined> {
+export async function readDraft(
+  id: string,
+  revision: string,
+  scope = 'local:repeaty',
+  legacyRevision?: string,
+): Promise<Draft | undefined> {
   const db = await database()
   try {
-    const value = draftSchema.safeParse(await db.get('drafts', id))
-    return value.success && value.data.revision === revision ? value.data : undefined
+    const key = JSON.stringify([scope, id])
+    let raw = await db.get('drafts', key)
+    if (!raw && scope === 'local:repeaty') raw = await db.get('drafts', id)
+    const value = draftSchema.safeParse(raw)
+    return value.success &&
+      (value.data.revision === revision ||
+        (scope === 'local:repeaty' && value.data.revision === legacyRevision))
+      ? { ...value.data, revision }
+      : undefined
   } finally {
     db.close()
   }
 }
-export async function writeDraft(id: string, draft?: Draft) {
+export async function writeDraft(id: string, draft?: Draft, scope = 'local:repeaty') {
   const db = await database()
   try {
-    if (draft) await db.put('drafts', draftSchema.parse(draft), id)
-    else await db.delete('drafts', id)
+    const key = JSON.stringify([scope, id])
+    if (draft) await db.put('drafts', draftSchema.parse(draft), key)
+    else await db.delete('drafts', key)
+    if (scope === 'local:repeaty') await db.delete('drafts', id)
   } finally {
     db.close()
   }

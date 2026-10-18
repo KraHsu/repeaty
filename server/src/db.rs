@@ -9,13 +9,15 @@ use std::{
     time::Duration,
 };
 
-pub const STORES: [&str; 6] = [
+pub const STORES: [&str; 8] = [
     "decks",
     "notes",
     "cards",
     "reviews",
     "media",
     "savedSearches",
+    "practices",
+    "attempts",
 ];
 pub const MAX_MEDIA: usize = 10 * 1024 * 1024;
 
@@ -59,7 +61,7 @@ impl Database {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         let version: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 1 {
+        if version > 2 {
             return Err(Error::invalid());
         }
         let tx = connection.transaction()?;
@@ -79,12 +81,18 @@ impl Database {
                 "reviews" => {
                     ", card_id TEXT GENERATED ALWAYS AS (json_extract(data,'$.cardId')) STORED REFERENCES cards(id) DEFERRABLE INITIALLY DEFERRED"
                 }
+                "practices" => {
+                    ", card_id TEXT GENERATED ALWAYS AS (json_extract(data,'$.cardId')) STORED REFERENCES cards(id) DEFERRABLE INITIALLY DEFERRED"
+                }
+                "attempts" => {
+                    ", practice_id TEXT GENERATED ALWAYS AS (json_extract(data,'$.practiceId')) STORED REFERENCES practices(id) DEFERRABLE INITIALLY DEFERRED"
+                }
                 "media" => ", FOREIGN KEY(id) REFERENCES assets(id) DEFERRABLE INITIALLY DEFERRED",
                 _ => "",
             };
             tx.execute_batch(&format!("CREATE TABLE IF NOT EXISTS {store} (id TEXT PRIMARY KEY, position INTEGER NOT NULL CHECK(position>=0), data TEXT NOT NULL CHECK(json_valid(data)){relation}); CREATE INDEX IF NOT EXISTS {store}_position ON {store}(position);"))?;
         }
-        tx.execute_batch("CREATE INDEX IF NOT EXISTS notes_deck ON notes(deck_id); CREATE INDEX IF NOT EXISTS cards_note ON cards(note_id); CREATE INDEX IF NOT EXISTS reviews_card ON reviews(card_id); PRAGMA user_version=1;")?;
+        tx.execute_batch("CREATE INDEX IF NOT EXISTS notes_deck ON notes(deck_id); CREATE INDEX IF NOT EXISTS cards_note ON cards(note_id); CREATE INDEX IF NOT EXISTS reviews_card ON reviews(card_id); CREATE INDEX IF NOT EXISTS practices_card ON practices(card_id); CREATE INDEX IF NOT EXISTS attempts_practice ON attempts(practice_id); PRAGMA user_version=2;")?;
         tx.commit()?;
         let schemas: HashMap<String, Value> =
             serde_json::from_str(include_str!("../schema/entities.json"))?;
@@ -111,7 +119,7 @@ impl Database {
         Ok(json!({"revision":current,"library":library}))
     }
     fn library(db: &Connection) -> Result<Value> {
-        let mut library = json!({"version":4});
+        let mut library = json!({"version":5});
         for store in STORES {
             let mut stmt = db.prepare(&format!("SELECT data FROM {store} ORDER BY position"))?;
             let rows = stmt
@@ -156,6 +164,21 @@ impl Database {
                             return Err(Error::invalid());
                         }
                     } else if !value["plugin"].is_null() {
+                        return Err(Error::invalid());
+                    }
+                }
+                if patch.store == "practices"
+                    && value["question"]["plugin"]["data"].to_string().len() > 800_000
+                {
+                    return Err(Error::invalid());
+                }
+                if patch.store == "attempts" {
+                    let status = value["status"].as_str().unwrap_or("");
+                    let numbered = value["submissionId"].is_string();
+                    let evaluated = value["result"].is_object();
+                    if ((status == "pending" || status == "completed") && !numbered)
+                        || ((status == "completed") != evaluated)
+                    {
                         return Err(Error::invalid());
                     }
                 }
@@ -216,6 +239,8 @@ impl Database {
                 "notes" => 100000,
                 "cards" => 200000,
                 "reviews" => 500000,
+                "practices" => 100000,
+                "attempts" => 500000,
                 "savedSearches" => 100,
                 _ => 1600000,
             };
@@ -225,6 +250,13 @@ impl Database {
         }
         let bad_media: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM media m LEFT JOIN assets a USING(id) WHERE a.id IS NULL OR json_extract(m.data,'$.type')<>a.mime OR json_extract(m.data,'$.size')<>length(a.body))", [], |r|r.get(0))?;
         if bad_media {
+            return Err(Error::invalid());
+        }
+        let bad_practice: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM reviews r LEFT JOIN practices p ON p.id=json_extract(r.data,'$.practiceId') WHERE json_extract(r.data,'$.practiceId') IS NOT NULL AND (p.id IS NULL OR p.card_id<>r.card_id)) OR EXISTS(SELECT 1 FROM practices p LEFT JOIN reviews r ON r.id=json_extract(p.data,'$.reviewId') WHERE json_extract(p.data,'$.reviewId') IS NOT NULL AND (r.id IS NULL OR r.card_id<>p.card_id OR json_extract(r.data,'$.practiceId') IS NOT p.id OR json_extract(r.data,'$.rating') IS NOT json_extract(p.data,'$.rating')))",
+            [], |r| r.get(0),
+        )?;
+        if bad_practice {
             return Err(Error::invalid());
         }
         if commit
@@ -306,7 +338,7 @@ impl Database {
             })
             .optional()?
             .ok_or_else(Error::missing)?;
-        let mut library = json!({"version":4});
+        let mut library = json!({"version":5});
         for store in STORES {
             let mut rows = BTreeMap::<String, (i64, Value)>::new();
             let mut stmt = self

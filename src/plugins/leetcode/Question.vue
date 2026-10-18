@@ -6,6 +6,9 @@ import type { QuestionProps } from '../types'
 import { automaticGrade, parseJudgeResult, problemSchema, problemUrl, targetMinutes } from './model'
 import { bridgeRequest, BridgeError } from './bridge'
 import { readDraft, writeDraft, type Draft } from './drafts'
+import type { Practice, Attempt } from '../../core/practice-data'
+import { practiceContentRevision } from '../../core/practice'
+import History from './History.vue'
 import Connection from './Connection.vue'
 import Statement from './Statement.vue'
 
@@ -19,7 +22,10 @@ const ready = ref(false)
 const paused = ref(false)
 const codeInput = ref<HTMLTextAreaElement>()
 const abort = new AbortController()
-const revision = `${props.card.updatedAt}:${props.card.plugin?.data.site}:${props.card.plugin?.data.slug}`
+const scope = props.workspaceScope ?? 'local:repeaty'
+let revision = ''
+let activePractice: Practice | undefined
+let activeAttempt: Attempt | undefined
 const initialLang =
   problem?.snippets.find((snippet) => snippet.langSlug === 'python3')?.langSlug ??
   problem?.snippets[0]?.langSlug ??
@@ -72,7 +78,7 @@ function persist() {
   if (!ready.value || finished) return saves
   const value = JSON.parse(JSON.stringify(draft.value)) as Draft
   saves = saves
-    .then(() => writeDraft(props.card.id, value))
+    .then(() => writeDraft(props.card.id, value, scope))
     .then(
       () => {
         storageError.value = false
@@ -99,6 +105,28 @@ watch(
     if (revealed && !accepted.value) draft.value.answerSeen = true
   },
 )
+watch(
+  () => draft.value.answerSeen,
+  async (seen) => {
+    if (
+      !seen ||
+      !ready.value ||
+      working.value ||
+      !activeAttempt ||
+      activePractice?.answerSeen ||
+      disposed
+    )
+      return
+    working.value = true
+    try {
+      await saveAttempt(activeAttempt)
+    } catch (issue) {
+      error.value = issue as Error
+    } finally {
+      working.value = false
+    }
+  },
+)
 watchEffect(() => {
   props.state.busy = working.value || !ready.value
   props.state.allowedGrades =
@@ -108,6 +136,7 @@ watchEffect(() => {
         : [1]
       : []
   props.state.suggestedGrade = suggestion.value
+  props.state.practiceId = draft.value.practiceId
   props.state.assessment = {
     pluginId: 'leetcode',
     mode: draft.value.mode,
@@ -116,13 +145,26 @@ watchEffect(() => {
     outcome: draft.value.result?.outcome ?? 'unanswered',
     submissionId: draft.value.submissionId,
     suggestedGrade: suggestion.value,
+    answerSeen: draft.value.answerSeen,
+    ruleVersion: 1,
   }
 })
 async function complete() {
   finished = true
   clearTimeout(saveTimer)
   await saves
-  await writeDraft(props.card.id).catch(() => {})
+  await writeDraft(props.card.id, undefined, scope).catch(() => {})
+}
+async function saveAttempt(attempt: Attempt) {
+  if (disposed || !props.saveAttempt || !activePractice)
+    throw new Error('无法保存提交记录，请重试。')
+  const practice = {
+    ...activePractice,
+    answerSeen: activePractice.answerSeen || draft.value.answerSeen,
+  }
+  await props.saveAttempt(practice, attempt, scope)
+  activePractice = practice
+  activeAttempt = attempt
 }
 function tick() {
   const now = performance.now()
@@ -151,6 +193,13 @@ async function check() {
   working.value = true
   error.value = ''
   try {
+    if (activeAttempt?.status === 'submitting')
+      await saveAttempt({
+        ...activeAttempt,
+        status: 'pending',
+        submissionId: draft.value.pending,
+        updatedAt: new Date().toISOString(),
+      })
     for (let attempt = 0; attempt < 30; attempt++) {
       const raw = await bridgeRequest(
         { action: 'check', site: problem.site, submissionId: draft.value.pending },
@@ -158,6 +207,13 @@ async function check() {
       )
       const result = parseJudgeResult(raw)
       if (result) {
+        if (activeAttempt)
+          await saveAttempt({
+            ...activeAttempt,
+            status: 'completed',
+            result,
+            updatedAt: new Date().toISOString(),
+          })
         draft.value.result = result
         draft.value.pending = undefined
         await persist()
@@ -188,6 +244,34 @@ async function submitCode() {
   error.value = ''
   try {
     await bridgeRequest({ action: 'ping' }, abort.signal)
+    if (!activePractice) {
+      activePractice = {
+        id: crypto.randomUUID(),
+        cardId: props.card.id,
+        contentRevision: revision,
+        question: {
+          front: props.card.front,
+          back: props.card.back,
+          format: props.card.format,
+          plugin: { id: 'leetcode', version: props.card.plugin!.version, data: { ...problem } },
+        },
+        startedAt: new Date().toISOString(),
+        answerSeen: draft.value.answerSeen,
+      }
+    }
+    const attempt: Attempt = {
+      id: crypto.randomUUID(),
+      practiceId: activePractice.id,
+      submittedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      language: draft.value.lang,
+      code: code.value,
+      elapsedMs: draft.value.elapsedMs,
+      status: 'submitting',
+    }
+    await saveAttempt(attempt)
+    draft.value.practiceId = activePractice.id
+    draft.value.attemptId = attempt.id
     draft.value.awaitingSubmit = true
     await persist()
     const raw = await bridgeRequest(
@@ -212,6 +296,12 @@ async function submitCode() {
     draft.value.submissionId = draft.value.pending
     draft.value.result = undefined
     await persist()
+    await saveAttempt({
+      ...activeAttempt!,
+      status: 'pending',
+      submissionId: draft.value.pending,
+      updatedAt: new Date().toISOString(),
+    })
   } catch (issue) {
     if (draft.value.awaitingSubmit) {
       const certainFailure =
@@ -220,6 +310,15 @@ async function submitCode() {
       if (!certainFailure) {
         draft.value.uncertain = true
         draft.value.mode = 'manual'
+      }
+      if (activeAttempt?.status === 'submitting') {
+        await saveAttempt({
+          ...activeAttempt,
+          status: certainFailure ? 'failed' : 'unknown',
+          updatedAt: new Date().toISOString(),
+        }).catch(() => {
+          storageError.value = true
+        })
       }
       draft.value.awaitingSubmit = false
       await persist()
@@ -246,7 +345,83 @@ function indent(event: KeyboardEvent) {
 }
 onMounted(async () => {
   try {
-    draft.value = (await readDraft(props.card.id, revision)) ?? draft.value
+    revision = await practiceContentRevision(props.card)
+    draft.value.revision = revision
+    draft.value =
+      (await readDraft(
+        props.card.id,
+        revision,
+        scope,
+        `${props.card.updatedAt}:${problem?.site}:${problem?.slug}`,
+      )) ?? draft.value
+    activePractice = props.practices?.find(
+      (entry) =>
+        entry.id === draft.value.practiceId &&
+        !entry.completedAt &&
+        entry.contentRevision === revision,
+    )
+    if (!draft.value.practiceId) {
+      activePractice = [...(props.practices ?? [])]
+        .reverse()
+        .find((entry) => !entry.completedAt && entry.contentRevision === revision)
+      if (activePractice) {
+        const latest = [...(props.attempts ?? [])]
+          .reverse()
+          .find((entry) => entry.practiceId === activePractice!.id)
+        draft.value.practiceId = activePractice.id
+        draft.value.attemptId = latest?.id
+        if (latest) {
+          draft.value.lang = latest.language
+          draft.value.code[latest.language] = latest.code
+          draft.value.elapsedMs = latest.elapsedMs
+        }
+      }
+    }
+    if (draft.value.practiceId && !activePractice) {
+      draft.value = {
+        revision,
+        lang: initialLang,
+        code: {},
+        attempts: 0,
+        elapsedMs: 0,
+        answerSeen: false,
+        awaitingSubmit: false,
+        uncertain: false,
+        mode: 'manual',
+      }
+    }
+    activeAttempt = props.attempts?.find(
+      (entry) => entry.id === draft.value.attemptId && entry.practiceId === activePractice?.id,
+    )
+    if (activeAttempt?.status === 'pending' || activeAttempt?.status === 'completed') {
+      draft.value.awaitingSubmit = false
+      draft.value.pending =
+        activeAttempt.status === 'pending' ? activeAttempt.submissionId : undefined
+      draft.value.submissionId = activeAttempt.submissionId
+      draft.value.result = activeAttempt.result
+      draft.value.attempts = props.attempts!.filter(
+        (entry) => entry.practiceId === activePractice!.id && entry.submissionId,
+      ).length
+    } else if (activeAttempt?.status === 'submitting') {
+      await saveAttempt({
+        ...activeAttempt,
+        status: 'unknown',
+        updatedAt: new Date().toISOString(),
+      })
+      draft.value.awaitingSubmit = true
+    }
+    if (activeAttempt?.status === 'unknown') {
+      draft.value.uncertain = true
+      draft.value.mode = 'manual'
+    }
+    if (activePractice) {
+      draft.value.answerSeen ||= activePractice.answerSeen ?? false
+      draft.value.uncertain ||=
+        props.attempts?.some(
+          (entry) => entry.practiceId === activePractice!.id && entry.status === 'unknown',
+        ) ?? false
+      if (draft.value.uncertain) draft.value.mode = 'manual'
+    }
   } catch {
     storageError.value = true
   }
@@ -284,6 +459,16 @@ onUnmounted(() => {
         }}</a>
       </div>
       <Statement :content="problem.content" />
+      <History
+        :practices="practices ?? []"
+        :attempts="attempts ?? []"
+        :active-id="draft.practiceId"
+        @reveal="
+          (id) => {
+            if (id !== draft.practiceId && !accepted) draft.answerSeen = true
+          }
+        "
+      />
       <div class="leetcode-workspace">
         <div class="leetcode-toolbar">
           <label for="code-language"
