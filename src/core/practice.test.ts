@@ -119,6 +119,25 @@ it('practice-only completion preserves evidence and does not create a review', (
   expect(() => librarySchema.parse({ ...finished, practices: [] })).toThrow()
 })
 
+it('recovers an unknown attempt in place without changing code or counting a submission twice', () => {
+  const { library, practice, attempt, pending, completed } = example()
+  let saved = recordAttempt(library, practice, attempt)
+  saved = recordAttempt(saved, practice, { ...attempt, status: 'unknown' })
+  expect(() => recordAttempt(saved, practice, completed)).toThrow()
+  saved = recordAttempt(saved, practice, pending)
+  expect(saved.attempts).toEqual([pending])
+  expect(() => recordAttempt(saved, practice, { ...completed, submissionId: '124' })).toThrow()
+  const second = { ...attempt, id: 'second' }
+  saved = recordAttempt(saved, practice, second)
+  expect(() => recordAttempt(saved, practice, { ...pending, id: 'second' })).toThrow(
+    '该提交已关联其他记录',
+  )
+  saved = recordAttempt(saved, practice, completed)
+  expect(saved.attempts[0]).toEqual(completed)
+  expect(saved.reviews).toHaveLength(0)
+  expect(saved.cards).toEqual(library.cards)
+})
+
 it('stores and restores code and judge evidence through snapshots, archives and JSON', async () => {
   const { library, practice, attempt, pending, completed } = example()
   const repo = createRepository(crypto.randomUUID())

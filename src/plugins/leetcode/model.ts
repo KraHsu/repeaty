@@ -27,6 +27,33 @@ export const problemSchema = z.object({
     .max(60),
 })
 export type LeetCodeProblem = z.infer<typeof problemSchema>
+export function parseSubmissionInput(
+  value: string,
+  problem: Pick<LeetCodeProblem, 'site' | 'slug'>,
+) {
+  const input = value.trim()
+  if (/^[1-9]\d{0,29}$/.test(input)) return input
+  try {
+    const url = new URL(input)
+    if (
+      url.protocol !== 'https:' ||
+      url.hostname !== problem.site ||
+      url.username ||
+      url.password ||
+      url.port
+    )
+      throw new Error()
+    const detail = url.pathname.match(/^\/submissions\/detail\/([1-9]\d{0,29})\/?$/)
+    const question = url.pathname.match(
+      /^\/problems\/([^/]+)\/(?:submissions|submission-detail)\/([1-9]\d{0,29})\/?$/,
+    )
+    if (detail) return detail[1]!
+    if (question?.[1] === problem.slug) return question[2]!
+  } catch {
+    // Use one readable error for malformed links, sites, and unrelated problems.
+  }
+  throw new Error('请填写当前站点的提交编号，或本题的提交详情链接。')
+}
 export function problemUrl(problem: Pick<LeetCodeProblem, 'site' | 'slug'>) {
   return `https://${problem.site}/problems/${problem.slug}/`
 }

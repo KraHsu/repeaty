@@ -27,12 +27,15 @@ async function connect(
     rejectFirst?: boolean
     checkFails?: boolean
     submitFails?: boolean
+    recoveryError?: string
   } = {},
 ) {
   const site = options.site ?? 'leetcode.cn'
   let submissions = 0
   let checkFails = options.checkFails ?? false
   const sent: unknown[] = []
+  const recovered: unknown[] = []
+  let recoveryError = options.recoveryError
   await context.route('**/__native/leetcode', async (route) => {
     const request = route.request().postDataJSON()
     if (request.action !== 'ping') expect(request.site).toBe(site)
@@ -46,6 +49,10 @@ async function connect(
       if (options.submitFails)
         await route.fulfill({ status: 502, json: { error: 'submission-unknown' } })
       else await route.fulfill({ json: { submission_id: 1000 + submissions } })
+    } else if (request.action === 'recover') {
+      recovered.push(request)
+      if (recoveryError) await route.fulfill({ status: 502, json: { error: recoveryError } })
+      else await route.fulfill({ json: { submissionId: request.submissionId } })
     } else if (request.action === 'check') {
       if (checkFails) await route.fulfill({ status: 502, json: { error: 'request-failed' } })
       else
@@ -61,9 +68,13 @@ async function connect(
   })
   return {
     sent,
+    recovered,
     submissions: () => submissions,
     allowChecks: () => {
       checkFails = false
+    },
+    allowRecovery: () => {
+      recoveryError = undefined
     },
   }
 }
@@ -265,6 +276,94 @@ test('a lost submission response disables automatic ratings and survives reload'
   expect((await storedLibrary(page)).attempts).toMatchObject([
     { value: { status: 'unknown', code: 'def solve(value): return value' } },
   ])
+})
+
+test('an unknown submission recovers the original code once and re-enables automatic ratings', async ({
+  context,
+  page,
+}) => {
+  const remote = await connect(context, { submitFails: true })
+  await create(page)
+  const original = 'def solve(value): return value'
+  await page.getByLabel('代码', { exact: true }).fill(original)
+  await page.getByRole('button', { name: '提交到 LeetCode' }).click()
+  await expect(page.getByRole('heading', { name: '恢复未确认的提交' })).toBeVisible()
+  const before = await storedLibrary(page)
+  await page.getByLabel('代码', { exact: true }).fill('def solve(value): return 999')
+  await page
+    .getByLabel('提交编号或详情链接')
+    .fill('https://leetcode.cn/problems/test-problem/submissions/1001/')
+  await page.getByRole('button', { name: '关联并查询' }).click()
+  await expect(page.locator('.judge-result')).toContainText('通过')
+  await expect(page.getByRole('heading', { name: '恢复未确认的提交' })).toHaveCount(0)
+  await expect(page.getByText(/有一次提交未取得编号/)).toHaveCount(0)
+  await expect(page.getByText(/尝试 1 次/)).toBeVisible()
+  await expect(page.locator('#leetcode-rating option[value="automatic"]')).toBeEnabled()
+  expect(remote.submissions()).toBe(1)
+  expect(remote.recovered).toMatchObject([
+    { code: original, lang: 'python3', questionId: '1', submissionId: '1001' },
+  ])
+  const after = await storedLibrary(page)
+  expect(after.attempts).toMatchObject([
+    { value: { status: 'completed', code: original, submissionId: '1001' } },
+  ])
+  expect(after.cards).toEqual(before.cards)
+  expect(after.reviews).toEqual(before.reviews)
+  await page.getByLabel('复习评分').selectOption('automatic')
+  await page.getByRole('button', { name: '结束作答并查看答案' }).click()
+  await expect(page.getByRole('button', { name: '保存评分：简单' })).toBeEnabled()
+})
+
+test('recovery rejects wrong sites and mismatched remote submissions without altering history', async ({
+  context,
+  page,
+}) => {
+  const remote = await connect(context, { submitFails: true, recoveryError: 'submission-mismatch' })
+  await create(page)
+  await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
+  await page.getByRole('button', { name: '提交到 LeetCode' }).click()
+  await expect(page.getByLabel('提交编号或详情链接')).toBeVisible()
+  const before = await storedLibrary(page)
+  await page.getByLabel('提交编号或详情链接').fill('https://leetcode.com/submissions/detail/1001/')
+  await page.getByRole('button', { name: '关联并查询' }).click()
+  await expect(page.getByRole('alert')).toContainText('请填写当前站点的提交编号')
+  expect(remote.recovered).toHaveLength(0)
+  await page.getByLabel('提交编号或详情链接').fill('1001')
+  await page.getByRole('button', { name: '关联并查询' }).click()
+  await expect(page.getByRole('alert')).toContainText(
+    '该提交的题目、语言、代码或时间与本次记录不符',
+  )
+  expect((await storedLibrary(page)).attempts).toEqual(before.attempts)
+  expect(remote.submissions()).toBe(1)
+  await expect(page.locator('#leetcode-rating option[value="automatic"]')).toBeDisabled()
+})
+
+test('a recovered international submission survives another disconnect and resumes without resubmitting', async ({
+  context,
+  page,
+}) => {
+  const remote = await connect(context, {
+    site: 'leetcode.com',
+    submitFails: true,
+    checkFails: true,
+  })
+  await create(page, 'leetcode.com')
+  await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
+  await page.getByRole('button', { name: '提交到 LeetCode' }).click()
+  await page.getByLabel('界面语言').selectOption('en')
+  await page.getByLabel('Submission ID or detail link').fill('1001')
+  await page.getByRole('button', { name: 'Link and check' }).click()
+  await expect(page.getByRole('alert')).toContainText('Cannot connect to LeetCode')
+  expect((await storedLibrary(page)).attempts).toMatchObject([
+    { value: { status: 'pending', submissionId: '1001' } },
+  ])
+  remote.allowChecks()
+  await page.reload()
+  await page.getByRole('button', { name: 'Start review', exact: true }).click()
+  await expect(page.locator('.judge-result')).toContainText('Accepted')
+  await expect(page.getByText(/Attempts: 1/)).toBeVisible()
+  expect(remote.submissions()).toBe(1)
+  expect(remote.recovered).toHaveLength(1)
 })
 
 test('undoing a rating preserves submission history and reviewing old code reveals the answer', async ({

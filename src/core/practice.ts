@@ -37,6 +37,18 @@ export function recordAttempt(
   )
     throw fail()
   const prior = library.attempts.find((entry) => entry.id === attempt.id)
+  if (
+    attempt.submissionId &&
+    library.attempts.some((entry) => {
+      if (entry.id === attempt.id || entry.submissionId !== attempt.submissionId) return false
+      const owner = library.practices.find((item) => item.id === entry.practiceId)
+      return (
+        owner?.question.plugin.id === practice.question.plugin.id &&
+        owner.question.plugin.data.site === practice.question.plugin.data.site
+      )
+    })
+  )
+    throw new LocalizedError(msg('该提交已关联其他记录，不能重复关联。'))
   if (prior) {
     if (
       prior.practiceId !== attempt.practiceId ||
@@ -60,7 +72,7 @@ export function recordAttempt(
     const transitions: Record<Attempt['status'], readonly string[]> = {
       submitting: ['pending', 'unknown', 'failed'],
       pending: ['completed'],
-      unknown: [],
+      unknown: ['pending'],
       failed: [],
       completed: [],
     }
