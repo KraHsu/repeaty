@@ -141,7 +141,7 @@ onUnmounted(() => abort.abort())
         {{ t('填写 Cookie 的值。保存后立即生效，无需重启服务；已保存的值不会回填。') }}
       </p>
       <div class="credential-fields" @keydown.enter.stop.prevent="configure('save')">
-        <label :for="`${fieldId}-session`"
+        <label class="form-field" :for="`${fieldId}-session`"
           >LEETCODE_SESSION
           <input
             :id="`${fieldId}-session`"
@@ -154,7 +154,7 @@ onUnmounted(() => abort.abort())
             :placeholder="t('粘贴 Cookie 值')"
           />
         </label>
-        <label :for="`${fieldId}-csrf`"
+        <label class="form-field" :for="`${fieldId}-csrf`"
           >csrftoken
           <input
             :id="`${fieldId}-csrf`"
