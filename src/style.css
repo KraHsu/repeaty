@@ -2669,10 +2669,6 @@ textarea::placeholder {
 .connection-status strong.configured {
   color: #37634b;
 }
-.connection-variables code {
-  overflow-wrap: anywhere;
-  font-size: 0.875rem;
-}
 .connection-header .button {
   text-decoration: none;
 }
@@ -3003,5 +2999,42 @@ textarea::placeholder {
   margin-top: 24px;
 }
 .server-connection .button {
+  margin-top: 16px;
+}
+
+.connection-credentials {
+  min-width: 0;
+  margin: 20px 0 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.connection-credentials legend {
+  padding: 0 6px;
+  font-weight: 600;
+}
+.credential-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 16px;
+  margin: 16px 0;
+}
+.credential-fields label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.credential-fields input {
+  width: 100%;
+  min-width: 0;
+  font-size: 16px;
+}
+.connection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.credential-confirmation {
   margin-top: 16px;
 }

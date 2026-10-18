@@ -1,7 +1,7 @@
 import { apiJson, ServerError } from '../../backend/client'
 import type { Request } from './request'
 const errors: Record<string, string> = {
-  'leetcode-not-configured': '服务尚未配置该站点的 LeetCode 登录信息，请联系部署者。',
+  'leetcode-not-configured': '请先在插件页面填写该站点的 LeetCode 登录信息。',
   'login-required': 'LeetCode 登录已过期或需要验证，请部署者更新连接配置。',
   'rate-limit': '提交过于频繁，请稍后重试。',
   'submission-busy': '上一次提交尚未完成，请稍候。',

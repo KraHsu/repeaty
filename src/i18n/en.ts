@@ -1,5 +1,31 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  '可读取公开题目。提交判题前，请填写下方的登录信息。':
+    'Public problems can be loaded. Add your credentials below to submit code.',
+  更新登录信息: 'Update credentials',
+  配置登录信息: 'Configure credentials',
+  '填写 Cookie 的值。保存后立即生效，无需重启服务；已保存的值不会回填。':
+    'Paste the cookie values. Changes take effect immediately without restarting the service. Saved values are never shown.',
+  '粘贴 Cookie 值': 'Paste cookie value',
+  保存登录信息: 'Save credentials',
+  清除登录信息: 'Clear credentials',
+  确认清除: 'Confirm clear',
+  '清除后需重新填写登录信息才能提交判题。':
+    'After clearing, add credentials again before submitting code.',
+  '登录信息保存在此服务器，仅用于所选站点的判题，不包含在卡组导出中。':
+    'Credentials stay on this server for the selected site and are excluded from deck exports.',
+  '在哪里找到这两个值？': 'Where do I find these values?',
+  '在对应的力扣站点登录，打开浏览器开发者工具 → 应用（Application）或存储（Storage）→ Cookie，复制 LEETCODE_SESSION 和 csrftoken 的值，粘贴到上方。登录过期后重新填写。':
+    'Sign in to this LeetCode site, then open your browser’s developer tools → Application or Storage → Cookies. Copy the LEETCODE_SESSION and csrftoken values into the fields above. Replace them when your session expires.',
+  '请填写两个 Cookie 的值，不要包含名称、空格或分号。':
+    'Enter both cookie values without names, spaces, or semicolons.',
+  '登录信息已保存，后续提交立即使用新配置。':
+    'Credentials saved. New submissions will use this configuration.',
+  '登录信息已清除。': 'Credentials cleared.',
+  '操作未确认成功，请刷新状态后重试。':
+    'The operation could not be confirmed. Refresh the status before trying again.',
+
+  '正在保存…': 'Saving…',
   判题配置: 'Judge setup',
   状态读取失败: 'Could not read status',
   已配置登录信息: 'Credentials configured',
@@ -635,8 +661,8 @@ export const en = {
     'This edition requires a connection to read and save study data. For offline use, export a backup and import it into the static edition.',
   '使用 FSRS 安排复习，数据保存在服务中。': 'Reviews use FSRS. Data is stored on your service.',
   后端版需要连接服务: 'Server connection required',
-  '服务尚未配置该站点的 LeetCode 登录信息，请联系部署者。':
-    'LeetCode credentials for this site are not configured. Contact the deployer.',
+  '请先在插件页面填写该站点的 LeetCode 登录信息。':
+    'Add credentials for this LeetCode site on the Plugins page first.',
   'LeetCode 登录已过期或需要验证，请部署者更新连接配置。':
     'LeetCode sign-in expired or requires verification. Ask the deployer to update the connection.',
   '服务无法连接 LeetCode，请稍后重试。': 'The service cannot connect to LeetCode. Try again later.',

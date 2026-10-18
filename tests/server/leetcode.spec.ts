@@ -1,4 +1,4 @@
-import { test, expect } from './fixture'
+import { test, expect, headers } from './fixture'
 import type { BrowserContext, Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 
@@ -313,9 +313,9 @@ test('plugin settings distinguish website login from per-site judge credentials 
   await cn.getByRole('link', { name: '打开力扣网站', exact: false }).click()
   await (await popup).close()
   await expect(cn.getByRole('status')).toContainText('未配置登录信息')
-  await cn.getByText('如何配置判题账号', { exact: true }).click()
-  await expect(cn.locator('.connection-variables')).toContainText('LEETCODE_CN_SESSION')
-  await expect(cn.locator('.connection-variables')).not.toContainText('LEETCODE_COM_SESSION')
+  await cn.getByText('在哪里找到这两个值？', { exact: true }).click()
+  await expect(cn.getByLabel('LEETCODE_SESSION', { exact: true })).toBeVisible()
+  await expect(cn.getByLabel('csrftoken', { exact: true })).toBeVisible()
   configured = ['leetcode.cn']
   await cn.getByRole('button', { name: '刷新状态' }).click()
   await expect(cn.getByRole('status')).toContainText('已配置登录信息')
@@ -332,4 +332,99 @@ test('plugin settings distinguish website login from per-site judge credentials 
   await expect(
     page.getByRole('region', { name: 'China · leetcode.cn', exact: true }).getByRole('status'),
   ).toContainText('Credentials configured')
+})
+
+test('credentials can be saved, replaced and cleared per site without exposing stored values', async ({
+  page,
+  request,
+}) => {
+  await page.goto('./')
+  await page.getByRole('button', { name: '插件', exact: true }).click()
+  const cn = page.getByRole('region', { name: '中国站 · leetcode.cn', exact: true })
+  const com = page.getByRole('region', { name: '国际站 · leetcode.com', exact: true })
+  await expect(cn.getByRole('status')).toContainText('未配置登录信息')
+  await expect(cn.getByRole('button', { name: '保存登录信息', exact: true })).toBeDisabled()
+  await cn.getByLabel('LEETCODE_SESSION', { exact: true }).fill('browser-session-cn')
+  await cn.getByLabel('csrftoken', { exact: true }).fill('browser-csrf-cn')
+  await expect(cn.getByLabel('LEETCODE_SESSION', { exact: true })).toHaveAttribute(
+    'type',
+    'password',
+  )
+  const saving = page.waitForResponse('**/api/plugins/leetcode/credentials')
+  await cn.getByRole('button', { name: '保存登录信息', exact: true }).click()
+  expect(await (await saving).json()).toEqual({ configured: ['leetcode.cn'] })
+  await expect(cn.getByRole('status')).toContainText('已配置登录信息')
+  await expect(cn.getByLabel('LEETCODE_SESSION', { exact: true })).toHaveValue('')
+  await expect(cn.getByLabel('csrftoken', { exact: true })).toHaveValue('')
+  await expect(com.getByRole('status')).toContainText('未配置登录信息')
+  await com.getByLabel('LEETCODE_SESSION', { exact: true }).fill('browser-session-com')
+  await com.getByLabel('csrftoken', { exact: true }).fill('browser-csrf-com')
+  await com.getByRole('button', { name: '保存登录信息', exact: true }).click()
+  await expect(com.getByRole('status')).toContainText('已配置登录信息')
+  await page.reload()
+  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await expect(cn.getByRole('status')).toContainText('已配置登录信息')
+  await expect(com.getByRole('status')).toContainText('已配置登录信息')
+  await expect(cn.getByLabel('LEETCODE_SESSION', { exact: true })).toHaveValue('')
+  for (const path of ['api/status', 'api/library', 'api/backups']) {
+    const response = await request.get(path, { headers })
+    expect(response.ok()).toBe(true)
+    expect(await response.text()).not.toContain('browser-session-')
+  }
+  expect(await page.evaluate(() => JSON.stringify([localStorage, sessionStorage]))).not.toContain(
+    'browser-session-',
+  )
+  await cn.getByLabel('LEETCODE_SESSION', { exact: true }).fill('replacement-session')
+  await cn.getByLabel('csrftoken', { exact: true }).fill('replacement-csrf')
+  await cn.getByRole('button', { name: '保存登录信息', exact: true }).click()
+  await expect(cn.getByText('登录信息已保存，后续提交立即使用新配置。')).toBeVisible()
+  await page.screenshot({ path: 'test-results/credentials-desktop.png', fullPage: true })
+  await cn.getByRole('button', { name: '清除登录信息', exact: true }).click()
+  await cn.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(cn.getByRole('status')).toContainText('已配置登录信息')
+  await cn.getByRole('button', { name: '清除登录信息', exact: true }).click()
+  await cn.getByRole('button', { name: '确认清除', exact: true }).click()
+  await expect(cn.getByRole('status')).toContainText('未配置登录信息')
+  await expect(com.getByRole('status')).toContainText('已配置登录信息')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByLabel('界面语言').selectOption('en')
+  const english = page.getByRole('region', { name: 'China · leetcode.cn', exact: true })
+  await expect(english.getByRole('button', { name: 'Save credentials', exact: true })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.screenshot({ path: 'test-results/credentials-mobile-en.png', fullPage: true })
+})
+
+test('credential errors preserve drafts and changing the editor site clears sensitive inputs', async ({
+  page,
+}) => {
+  await page.goto('./')
+  await page.getByRole('button', { name: '创建卡组', exact: true }).last().click()
+  await page.getByLabel('卡组名称').fill('Credentials test')
+  await page.getByRole('button', { name: '保存卡组', exact: true }).click()
+  await page.getByRole('button', { name: '添加卡片', exact: true }).first().click()
+  await page.getByLabel('笔记类型').selectOption('plugin')
+  const cn = page.getByRole('region', { name: '中国站 · leetcode.cn', exact: true })
+  await cn.getByLabel('LEETCODE_SESSION', { exact: true }).fill('invalid;value')
+  await cn.getByLabel('csrftoken', { exact: true }).fill('test-csrf')
+  await cn.getByRole('button', { name: '保存登录信息', exact: true }).click()
+  await expect(cn.getByRole('alert')).toContainText('请填写两个 Cookie 的值')
+  await page.route('**/api/plugins/leetcode/credentials', (route) =>
+    route.fulfill({ status: 500, json: { error: 'storage-error' } }),
+  )
+  await cn.getByLabel('LEETCODE_SESSION', { exact: true }).fill('not-yet-saved')
+  await cn.getByLabel('csrftoken', { exact: true }).press('Enter')
+  await expect(cn.getByRole('alert')).toContainText('操作未确认成功')
+  await expect(cn.getByLabel('LEETCODE_SESSION', { exact: true })).toHaveValue('not-yet-saved')
+  await expect(cn.getByRole('status')).toContainText('未配置登录信息')
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await page.unroute('**/api/plugins/leetcode/credentials')
+  await cn.getByLabel('csrftoken', { exact: true }).press('Enter')
+  await expect(cn.getByRole('status')).toContainText('已配置登录信息')
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await cn.getByLabel('LEETCODE_SESSION', { exact: true }).fill('unsaved-private-value')
+  await page.getByLabel('LeetCode 站点').selectOption('leetcode.com')
+  const com = page.getByRole('region', { name: '国际站 · leetcode.com', exact: true })
+  await expect(com.getByRole('status')).toContainText('未配置登录信息')
+  await expect(com.getByLabel('LEETCODE_SESSION', { exact: true })).toHaveValue('')
+  await expect(com.getByLabel('csrftoken', { exact: true })).toHaveValue('')
 })

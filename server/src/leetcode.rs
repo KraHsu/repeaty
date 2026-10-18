@@ -1,12 +1,18 @@
 use crate::{
     api::AppState,
     error::{Error, Result},
+    leetcode_credentials::{CredentialStore, valid_cookie},
 };
 use axum::{Json, extract::State, http::StatusCode};
 use reqwest::{Client, redirect::Policy};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    path::Path,
+    sync::{Arc, Mutex as StoreMutex},
+    time::Duration,
+};
 use tokio::sync::Mutex;
 
 #[derive(Clone)]
@@ -16,7 +22,7 @@ pub struct Credentials {
 }
 pub struct LeetCode {
     client: Client,
-    credentials: HashMap<String, Credentials>,
+    credentials: StoreMutex<CredentialStore>,
     submit_lock: Arc<Mutex<()>>,
     #[cfg(test)]
     test_origin: Option<String>,
@@ -46,23 +52,32 @@ pub enum Request {
 impl LeetCode {
     pub fn new(
         credentials: HashMap<String, Credentials>,
-    ) -> std::result::Result<Self, reqwest::Error> {
+    ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        Self::with_store(CredentialStore::open(Path::new(":memory:"), credentials)?)
+    }
+    fn with_store(
+        credentials: CredentialStore,
+    ) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
             client: Client::builder()
                 .timeout(Duration::from_secs(20))
                 .redirect(Policy::none())
                 .user_agent("Mozilla/5.0 Repeaty/0.6")
                 .build()?,
-            credentials,
+            credentials: StoreMutex::new(credentials),
             submit_lock: Arc::new(Mutex::new(())),
             #[cfg(test)]
             test_origin: None,
         })
     }
-    pub fn configured(&self) -> Vec<String> {
-        self.credentials.keys().cloned().collect()
+    pub fn configured(&self) -> Result<Vec<String>> {
+        Ok(self
+            .credentials
+            .lock()
+            .map_err(|_| Error::internal())?
+            .configured())
     }
-    pub fn from_env() -> std::result::Result<Self, Box<dyn std::error::Error>> {
+    pub fn from_env(database_path: &Path) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let mut credentials = HashMap::new();
         for (site, prefix) in [
             ("leetcode.cn", "LEETCODE_CN"),
@@ -84,14 +99,29 @@ impl LeetCode {
                 }
             }
         }
-        Ok(Self::new(credentials)?)
+        let mut path = database_path.as_os_str().to_os_string();
+        path.push(".credentials.sqlite3");
+        Self::with_store(CredentialStore::open(Path::new(&path), credentials)?)
+    }
+    pub fn set_credentials(
+        &self,
+        site: &str,
+        credentials: Option<Credentials>,
+    ) -> Result<Vec<String>> {
+        let mut store = self.credentials.lock().map_err(|_| Error::internal())?;
+        store.set(site, credentials)?;
+        Ok(store.configured())
     }
     pub async fn request(&self, request: Request) -> Result<Value> {
         if matches!(request, Request::Ping) {
-            return Ok(json!({"version":1,"configured":self.configured()}));
+            return Ok(json!({"version":1,"configured":self.configured()?}));
         }
         let (site, path, body, submit) = request_parts(&request)?;
-        let credentials = self.credentials.get(site);
+        let credentials = self
+            .credentials
+            .lock()
+            .map_err(|_| Error::internal())?
+            .get(site);
         if submit && credentials.is_none() {
             return Err(Error(
                 StatusCode::PRECONDITION_FAILED,
@@ -198,9 +228,6 @@ impl LeetCode {
         Ok(value)
     }
 }
-fn valid_cookie(s: &str) -> bool {
-    !s.is_empty() && s.len() <= 8192 && s.bytes().all(|b| b.is_ascii_graphic() && b != b';')
-}
 fn slug(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= 160
@@ -273,6 +300,37 @@ pub async fn handle(
     Ok(Json(state.leetcode.request(request).await?))
 }
 
+#[derive(Deserialize)]
+#[serde(tag = "action", rename_all = "lowercase", deny_unknown_fields)]
+pub enum CredentialRequest {
+    Save {
+        site: String,
+        session: String,
+        csrf: String,
+    },
+    Clear {
+        site: String,
+    },
+}
+pub async fn configure(
+    State(state): State<AppState>,
+    Json(request): Json<CredentialRequest>,
+) -> Result<Json<Value>> {
+    let configured = tokio::task::spawn_blocking(move || match request {
+        CredentialRequest::Save {
+            site,
+            session,
+            csrf,
+        } => state
+            .leetcode
+            .set_credentials(&site, Some(Credentials { session, csrf })),
+        CredentialRequest::Clear { site } => state.leetcode.set_credentials(&site, None),
+    })
+    .await
+    .map_err(|_| Error::internal())??;
+    Ok(Json(json!({"configured":configured})))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -333,6 +391,46 @@ mod tests {
         assert!(!valid_cookie("value; injected=1"));
         assert!(!valid_cookie("value\r\nHeader: secret"));
         assert!(request_parts(&submission()).is_ok());
+    }
+    #[tokio::test]
+    async fn credential_updates_apply_to_the_next_submission_without_restarting() {
+        let received = Arc::new(StoreMutex::new(Vec::new()));
+        let capture = received.clone();
+        let (client, task) = mock(Router::new().route(
+            "/problems/two-sum/submit/",
+            post(move |headers: HeaderMap| {
+                capture
+                    .lock()
+                    .unwrap()
+                    .push(headers["cookie"].to_str().unwrap().to_string());
+                async { Json(json!({"submission_id":123})) }
+            }),
+        ))
+        .await;
+        client.request(submission()).await.unwrap();
+        client
+            .set_credentials(
+                "leetcode.cn",
+                Some(Credentials {
+                    session: "updated-session".into(),
+                    csrf: "updated-csrf".into(),
+                }),
+            )
+            .unwrap();
+        client.request(submission()).await.unwrap();
+        client.set_credentials("leetcode.cn", None).unwrap();
+        assert_eq!(
+            client.request(submission()).await.unwrap_err().1,
+            "leetcode-not-configured"
+        );
+        assert_eq!(
+            *received.lock().unwrap(),
+            vec![
+                "LEETCODE_SESSION=test-session; csrftoken=test-csrf",
+                "LEETCODE_SESSION=updated-session; csrftoken=updated-csrf"
+            ]
+        );
+        task.abort();
     }
     #[tokio::test]
     async fn forwards_only_fixed_operations_and_keeps_credentials_server_side() {

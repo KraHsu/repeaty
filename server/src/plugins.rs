@@ -1,5 +1,5 @@
 use crate::api::AppState;
-use axum::{Router, routing::post};
+use axum::{Router, extract::DefaultBodyLimit, routing::post};
 
 /// Backend modules are installed by the deployer and compiled into the service.
 /// Routes are relative to /api/plugins and share the service's authentication.
@@ -13,7 +13,12 @@ impl BackendPlugin for LeetCodePlugin {
         "leetcode"
     }
     fn routes(&self) -> Router<AppState> {
-        Router::new().route("/leetcode", post(crate::leetcode::handle))
+        Router::new()
+            .route("/leetcode", post(crate::leetcode::handle))
+            .route(
+                "/leetcode/credentials",
+                post(crate::leetcode::configure).layer(DefaultBodyLimit::max(20 * 1024)),
+            )
     }
 }
 pub fn installed() -> Vec<Box<dyn BackendPlugin>> {

@@ -16,6 +16,13 @@ export const test = base.extend<{ resetWorkspace: void }>({
         data: { expectedRevision: snapshot.revision, patches },
       })
       expect(result.ok()).toBe(true)
+      for (const site of ['leetcode.cn', 'leetcode.com']) {
+        const cleared = await request.post('api/plugins/leetcode/credentials', {
+          headers,
+          data: { action: 'clear', site },
+        })
+        expect(cleared.ok()).toBe(true)
+      }
       await use()
     },
     { auto: true },
