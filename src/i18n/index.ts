@@ -81,10 +81,13 @@ function updateDocument() {
       /manifest(?:\.en)?\.webmanifest$/,
       currentLocale.value === 'en' ? 'manifest.en.webmanifest' : 'manifest.webmanifest',
     )
-  document.title = `repeaty · ${t('每一次回想，都算数')}`
+  document.title = `Repeaty · ${t('卡片与间隔复习')}`
   document
     .querySelector('meta[name="description"]')
-    ?.setAttribute('content', t('Repeaty，专注卡片与间隔复习的个人学习空间。'))
+    ?.setAttribute(
+      'content',
+      t('使用 Repeaty 创建卡片，通过间隔复习学习。支持图片、音频和离线使用。'),
+    )
 }
 export function setLocale(value: Locale) {
   currentLocale.value = value

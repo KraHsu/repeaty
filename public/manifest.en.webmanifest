@@ -2,7 +2,7 @@
   "id": "./",
   "name": "Repeaty · Spaced repetition",
   "short_name": "Repeaty",
-  "description": "Flashcards, active recall, and spaced repetition. Your local study space.",
+  "description": "Create flashcards and study with spaced repetition. Supports images, audio, and offline use.",
   "lang": "en",
   "start_url": "./",
   "scope": "./",

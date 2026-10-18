@@ -90,7 +90,7 @@ async function fileChanged(event: Event) {
     <div v-if="preview.length" class="import-preview">
       <p>
         {{
-          t('校验通过：{p0} 条笔记，{p1} 张卡片；{p2} 条内容重复。', {
+          t('共 {p0} 条笔记，将生成 {p1} 张卡片；其中 {p2} 条重复。', {
             p0: preview.length,
             p1: preview.reduce((sum, note) => sum + variants(note).length, 0),
             p2: duplicates,
@@ -102,7 +102,7 @@ async function fileChanged(event: Event) {
       </ol>
       <label class="check-line"
         ><input v-model="skip" type="checkbox" />{{
-          t('跳过同卡组中题型、正面和背面均相同的笔记')
+          t('跳过同卡组中类型、格式、正面和背面均相同的笔记')
         }}</label
       >
     </div>
@@ -110,7 +110,7 @@ async function fileChanged(event: Event) {
       <button type="button" class="button secondary" :disabled="busy" @click="emit('close')">
         {{ t('取消') }}</button
       ><button v-if="!preview.length" class="button primary" :disabled="busy">
-        {{ t('校验并预览') }}</button
+        {{ t('检查并预览') }}</button
       ><button
         v-else
         type="button"

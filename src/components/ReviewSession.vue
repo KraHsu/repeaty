@@ -77,10 +77,10 @@ const nextCard = computed(
       .sort((a, b) => a.schedule.due.localeCompare(b.schedule.due))[0],
 )
 const grades = [
-  { value: 1, label: '重来', hint: '还没记住', class: 'again' },
-  { value: 2, label: '困难', hint: '想了很久', class: 'hard' },
-  { value: 3, label: '良好', hint: '顺利想起', class: 'good' },
-  { value: 4, label: '简单', hint: '轻松记住', class: 'easy' },
+  { value: 1, label: '重来', hint: '未能答对', class: 'again' },
+  { value: 2, label: '困难', hint: '答对，但有困难', class: 'hard' },
+  { value: 3, label: '良好', hint: '正确回答', class: 'good' },
+  { value: 4, label: '简单', hint: '轻松答对', class: 'easy' },
 ] as const
 
 function selectNext() {
@@ -169,10 +169,8 @@ onUnmounted(() => {
       {{
         t('{p0} 每张卡片本轮练习一次，已暂停或今日暂缓的卡片会跳过。', {
           p0: practice
-            ? t('只练习：评分仅用于本轮回顾，不改变学习进度、额度或复习统计。')
-            : t(
-                '更新进度：包含未到期卡片，评分会重排到期时间并计入今日学习；本轮不受每日额度限制。',
-              ),
+            ? t('只练习：不保存评分，也不改变复习进度。')
+            : t('更新进度：评分会更新复习时间并计入今日学习，不受每日上限限制。'),
         })
       }}
     </p>
@@ -203,12 +201,10 @@ onUnmounted(() => {
       <div class="review-context">
         <span class="pill">{{ deck?.name }}</span
         ><span>{{ current.schedule.state === 0 ? t('新卡片') : t('复习卡片') }}</span>
-        <span v-if="current.leech" class="status-chip leech">{{
-          t('顽固卡 · 建议改写问题或拆分知识点')
-        }}</span>
+        <span v-if="current.leech" class="status-chip leech">{{ t('顽固卡 · 多次遗忘') }}</span>
       </div>
       <article :key="current.id" class="flashcard" aria-live="polite">
-        <span class="eyebrow">{{ t('QUESTION · 问题') }}</span>
+        <span class="eyebrow">{{ t('问题') }}</span>
         <div
           class="card-question"
           :class="{ 'long-content': current.front.length > 300 }"
@@ -223,11 +219,10 @@ onUnmounted(() => {
           class="card-answer"
           :class="{ 'long-content': current.back.length > 300 }"
         >
-          <span class="eyebrow">{{ t('ANSWER · 答案') }}</span>
+          <span class="eyebrow">{{ t('答案') }}</span>
           <CardContent :text="current.back" :format="current.format" />
           <MediaList :ids="current.backMedia" :media="library.media" :get-media="getMedia" />
         </div>
-        <p v-else class="recall-hint">{{ t('先想一想，给记忆一点时间。') }}</p>
         <div v-if="current.tags.length" class="tag-list">
           <span v-for="tag in current.tags" :key="tag" class="tag">{{ tag }}</span>
         </div>
@@ -238,7 +233,7 @@ onUnmounted(() => {
         ><span class="muted">{{ t('或按空格键') }}</span>
       </div>
       <div v-else class="grade-area">
-        <p>{{ t('这次回想，感觉如何？') }}</p>
+        <p>{{ t('根据回答情况评分') }}</p>
         <div class="grade-buttons">
           <button
             v-for="item in grades"
@@ -262,21 +257,20 @@ onUnmounted(() => {
     </template>
     <div v-else class="review-done">
       <div class="done-icon"><Check :size="32" /></div>
-      <span class="eyebrow">A LITTLE BETTER, EVERY DAY</span>
       <h1>
         {{
           study
-            ? t('本轮专项练习已完成。')
+            ? t('本轮练习结束')
             : limited
-              ? t('今日额度已完成。')
+              ? t('已达到今日上限')
               : completed
-                ? t('这一轮，记得更牢了。')
-                : t('现在没有待复习的卡片。')
+                ? t('本轮复习结束')
+                : t('暂无待复习卡片')
         }}
       </h1>
       <p v-if="limited">
         {{
-          t('还有 {p0} 张卡片受每日额度限制。明天继续，或在卡组设置中调整额度。', { p0: limited })
+          t('还有 {p0} 张卡片因每日上限未加入队列。可明天继续，或调整卡组设置。', { p0: limited })
         }}
       </p>
       <p v-if="study">
@@ -284,7 +278,7 @@ onUnmounted(() => {
           t('已练习 {p0} 张，其中 {p1} 张选择了重来。{p2}', {
             p0: completed,
             p1: studied.filter((entry) => entry.grade === 1).length,
-            p2: practice ? t('学习进度保持不变。') : t('后续复习将按更新后的时间安排。'),
+            p2: practice ? t('学习进度保持不变。') : t('已更新复习时间。'),
           })
         }}
       </p>
@@ -296,12 +290,12 @@ onUnmounted(() => {
               ? t('下一张卡片将在约 {p0} 后到期。', {
                   p0: intervalLabel(new Date(nextCard.schedule.due), clock),
                 })
-              : t('添加一点新知识，或者稍作休息。'),
+              : '',
           })
         }}
       </p>
       <button class="button primary" @click="emit('close')">
-        {{ t('回到学习空间') }}<ArrowLeft :size="16" />
+        {{ t('返回') }}<ArrowLeft :size="16" />
       </button>
       <button v-if="!study" class="text-button" @click="selectNext">
         <RotateCcw :size="15" />{{ t('检查到期卡片') }}

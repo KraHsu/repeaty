@@ -166,7 +166,7 @@ async function save(continueAdding = false) {
 <template>
   <form ref="editor" class="editor-form" @submit.prevent="save(false)" @keydown="shortcut">
     <p v-if="savedCount" class="form-note" role="status">
-      {{ t('已连续保存 {p0} 条笔记，可以继续添加。', { p0: savedCount }) }}
+      {{ t('已保存 {p0} 条笔记。', { p0: savedCount }) }}
     </p>
     <fieldset class="editor-fields" :disabled="busy">
       <p v-if="error" class="import-warning" role="alert">{{ t(error) }}</p>
@@ -203,7 +203,7 @@ async function save(continueAdding = false) {
         rows="4"
         autofocus
         :placeholder="
-          form.type === 'cloze' ? t('法国的首都是 {{c1::巴黎::城市}}。') : t('你想问自己什么？')
+          form.type === 'cloze' ? t('法国的首都是 {{c1::巴黎::城市}}。') : t('输入问题')
         "
       />
       <button type="button" class="text-button" @mousedown.prevent @click="addCloze">
@@ -250,7 +250,7 @@ async function save(continueAdding = false) {
         :required="form.type !== 'cloze'"
         maxlength="10000"
         rows="3"
-        :placeholder="t('用自己的话，写下答案或补充解释。')"
+        :placeholder="t('输入答案或补充说明')"
       />
       <label class="file-label"
         >{{ t('背面图片 / 音频')
@@ -288,7 +288,7 @@ async function save(continueAdding = false) {
       <p class="form-note">
         {{
           t(
-            '同一笔记的卡片共享内容，各自记录学习进度。已有且仍然生成的卡片会保留原进度。媒体每个不超过 10 MB。',
+            '同一笔记生成的卡片共用内容，分别记录复习进度。编辑后保留的卡片会继续沿用原进度。每个附件最大 10 MB。',
           )
         }}
       </p>

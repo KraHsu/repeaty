@@ -44,7 +44,7 @@ describe('portable backups', () => {
   })
   it('refuses incomplete or corrupted media packages instead of silently dropping attachments', async () => {
     const { library, asset } = mediaFixture()
-    await expect(exportBackup(library, async () => undefined)).rejects.toThrow('未生成不完整')
+    await expect(exportBackup(library, async () => undefined)).rejects.toThrow('缺失或损坏')
     const raw = JSON.parse(await exportBackup(library, async () => asset.blob))
     const missing = { ...raw, assets: [] }
     expect(() => parseBackup(JSON.stringify(missing))).toThrow('媒体不完整')

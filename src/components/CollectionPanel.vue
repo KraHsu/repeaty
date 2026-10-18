@@ -266,7 +266,7 @@ async function editSelected() {
         </select></label
       >
       <label
-        >{{ t('本轮最多张数')
+        >{{ t('卡片数量上限')
         }}<input v-model.number="studyLimit" type="number" min="1" max="500" step="1" required
       /></label>
       <button
@@ -278,11 +278,11 @@ async function editSelected() {
     </form>
     <p class="form-note">
       {{
-        t('当前筛选有 {p0} 张可练习卡片（跳过暂停和今日暂缓）。{p1} 每张卡片本轮练习一次。', {
+        t('可练习 {p0} 张，已排除暂停和今日暂缓的卡片。每张卡片练习一次。{p1}', {
           p0: result.eligible,
           p1: reschedule
-            ? t('会提前复习未到期卡片并重排进度；本轮不受每日额度限制，评分计入今日学习。')
-            : t('只在本轮记录自评分，不改变到期时间、每日额度或学习统计。'),
+            ? t('包含未到期卡片，不受每日上限限制。评分会更新下次复习时间，并计入今日学习。')
+            : t('评分仅用于本轮练习，不改变到期时间、每日用量或统计。'),
         })
       }}
     </p>
@@ -431,12 +431,12 @@ async function editSelected() {
   </div>
   <div v-else class="empty-state">
     <Layers :size="36" />
-    <h2>{{ query || state !== 'all' ? t('还没有匹配的卡片') : t('第一张卡片，从这里开始') }}</h2>
+    <h2>{{ query || state !== 'all' ? t('没有匹配的卡片') : t('暂无卡片') }}</h2>
     <p>
       {{
         query || state !== 'all'
-          ? t('试试其他关键词，或调整筛选条件。')
-          : t('写下一条笔记，生成你的第一张卡片。')
+          ? t('更换关键词或调整筛选条件。')
+          : t('点击「添加卡片」，或从 CSV / TSV 文件导入。')
       }}
     </p>
     <button v-if="!query && state === 'all'" class="button primary" @click="emit('edit')">

@@ -3,7 +3,7 @@ import { MAX_MEDIA_BYTES, mediaSchema, type MediaUpload } from './model'
 
 export function prepareMedia(file: File): MediaUpload {
   if (!file.size || file.size > MAX_MEDIA_BYTES)
-    throw new LocalizedError(msg('每个图片或音频文件须为 1 字节至 10 MB。'))
+    throw new LocalizedError(msg('图片或音频文件不能为空，且不能超过 10 MB。'))
   const result = mediaSchema.safeParse({
     id: crypto.randomUUID(),
     name: file.name,
