@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 test.use({ locale: 'en-US' })
 
-for (const width of [320, 390, 1440]) {
+for (const width of [320, 390, 768, 1440]) {
   test(`language controls remain usable at ${width}px and survive reload`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     await page.goto('/')

@@ -483,4 +483,6 @@ export const en = {
   直接保存到文件: 'Save directly to file',
   '大备份可直接写入文件，减少内存占用。':
     'Save large backups directly to a file to reduce memory use.',
+  '复习记录已达到 50 万条上限，请先导出备份。':
+    'The limit of 500,000 reviews has been reached. Export a backup first.',
 } as const

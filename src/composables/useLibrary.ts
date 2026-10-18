@@ -99,8 +99,14 @@ export function useLibrary() {
     close() {
       return repository?.close()
     },
-    queryCards(filter: SearchFilter, page: number, now: Date, study: boolean) {
-      return repository.queryCards(filter, page, now, study)
+    queryCards(
+      filter: SearchFilter,
+      page: number,
+      now: Date,
+      study: boolean,
+      signal?: AbortSignal,
+    ) {
+      return repository.queryCards(filter, page, now, study, signal)
     },
     getMedia(id: string) {
       return repository.getMedia(id)

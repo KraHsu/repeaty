@@ -45,9 +45,13 @@ test('128 MiB of image/audio and long text survive archive restore, offline revi
   await page.reload()
   await page.getByRole('button', { name: '全部卡片' }).click()
   await expect(page.locator('tbody tr')).toHaveCount(2)
+  await page.setViewportSize({ width: 320, height: 844 })
   await page.locator('.card-row-title').first().click()
+  expect(await page.locator('dialog').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
   await expect(page.getByLabel('正面 · 问题')).toHaveValue(front)
   await expect(page.getByLabel('背面 · 答案')).toHaveValue(back)
+  await page.getByText('将生成 1 张卡片 · 预览', { exact: true }).click()
+  await expect(page.locator('.note-preview .card-content').first()).toHaveText(front)
   await page.getByRole('button', { name: '取消', exact: true }).click()
   await page.getByText('高级搜索、常用筛选与专项练习', { exact: true }).click()
   await page.getByRole('textbox', { name: '搜索卡片' }).fill('长文本')
@@ -68,8 +72,10 @@ test('128 MiB of image/audio and long text survive archive restore, offline revi
         .evaluate((el: HTMLAudioElement) => Number.isFinite(el.duration) && el.duration > 500),
     )
     .toBe(true)
-  await page.setViewportSize({ width: 390, height: 844 })
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  }
   await page.getByRole('button', { name: '显示答案' }).click()
   await expect(page.locator('.card-answer .card-content')).toHaveText(back)
   await expect(page.locator('audio')).toHaveCount(15)

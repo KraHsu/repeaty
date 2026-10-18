@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { version } from '../package.json'
 import { t, msg, locale, setLocale, type DisplayMessage } from './i18n'
 
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
@@ -432,7 +433,7 @@ async function restoreBackup() {
       <div class="sidebar-bottom">
         <div class="local-status"><span />{{ t('本地学习空间') }}</div>
         <p>{{ t('让知识留下来。') }}</p>
-        <span class="version">REPEATY CORE · 0.3.0</span>
+        <span class="version">REPEATY CORE · {{ version }}</span>
       </div>
     </aside>
 
@@ -903,7 +904,7 @@ async function restoreBackup() {
             <h3>Repeaty Core</h3>
             <p>{{ t('制作卡片，主动回忆，按时复习。让学习回到这几件简单的事。') }}</p>
           </div>
-          <span class="pill">v0.3.0</span>
+          <span class="pill">v{{ version }}</span>
         </div>
       </div>
     </main>

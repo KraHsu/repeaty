@@ -17,7 +17,13 @@ import { cardStatus } from '../core/search'
 import type { CardPage } from '../core/storage'
 import type { BatchEdit } from '../core/batch'
 const props = defineProps<{
-  queryCards: (filter: SearchFilter, page: number, now: Date, study: boolean) => Promise<CardPage>
+  queryCards: (
+    filter: SearchFilter,
+    page: number,
+    now: Date,
+    study: boolean,
+    signal?: AbortSignal,
+  ) => Promise<CardPage>
   library: Library
   now: Date
   busy: boolean
@@ -59,12 +65,20 @@ watch(
   [filter, page, expanded, () => props.library, () => props.now],
   async (_value, _old, onCleanup) => {
     let active = true
+    const controller = new AbortController()
     onCleanup(() => {
       active = false
+      controller.abort()
     })
     loading.value = true
     try {
-      const data = await props.queryCards(filter.value, page.value, props.now, expanded.value)
+      const data = await props.queryCards(
+        filter.value,
+        page.value,
+        props.now,
+        expanded.value,
+        controller.signal,
+      )
       if (active) {
         result.value = { ...data, error: '' }
         page.value = Math.min(page.value, Math.max(1, Math.ceil(data.total / 50)))

@@ -209,11 +209,20 @@ onUnmounted(() => {
       </div>
       <article :key="current.id" class="flashcard" aria-live="polite">
         <span class="eyebrow">{{ t('QUESTION · 问题') }}</span>
-        <div class="card-question" role="heading" aria-level="1">
+        <div
+          class="card-question"
+          :class="{ 'long-content': current.front.length > 300 }"
+          role="heading"
+          aria-level="1"
+        >
           <CardContent :text="current.front" :format="current.format" />
         </div>
         <MediaList :ids="current.frontMedia" :media="library.media" :get-media="getMedia" />
-        <div v-if="revealed" class="card-answer">
+        <div
+          v-if="revealed"
+          class="card-answer"
+          :class="{ 'long-content': current.back.length > 300 }"
+        >
           <span class="eyebrow">{{ t('ANSWER · 答案') }}</span>
           <CardContent :text="current.back" :format="current.format" />
           <MediaList :ids="current.backMedia" :media="library.media" :get-media="getMedia" />

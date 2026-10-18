@@ -317,7 +317,8 @@ export function createRepository(name = 'repeaty', onBlocked?: () => void) {
           return prior && prior.noteId === card.noteId && prior.variant === card.variant
         })
       if (!progressOnly) librarySchema.parse(library)
-      if (library.reviews.length > 500_000) throw new Error('reviews: maximum 500000 records')
+      if (library.reviews.length > 500_000)
+        throw new LocalizedError(msg('复习记录已达到 50 万条上限，请先导出备份。'))
       const patches: { store: RecordStore; id: string; row?: Row }[] = []
       const next = { ...library }
       const noteDecks = new Map(library.notes.map((note) => [note.id, note.deckId]))
@@ -497,7 +498,9 @@ export function createRepository(name = 'repeaty', onBlocked?: () => void) {
       page = 1,
       now = new Date(),
       includeStudy = true,
+      signal?: AbortSignal,
     ): Promise<CardPage> {
+      signal?.throwIfAborted()
       const db = await database
       const tx = db.transaction(['decks', 'notes', 'cards'], 'readonly')
       const decks = (await tx.objectStore('decks').getAll()).map(
@@ -524,7 +527,7 @@ export function createRepository(name = 'repeaty', onBlocked?: () => void) {
         )
         if (cursor && offset) cursor = await cursor.advance(offset)
       }
-      while (cursor) {
+      while (cursor && !signal?.aborted) {
         const card = cursor.value.value as Library['cards'][number]
         let note = notes.get(card.noteId)
         if (!note) {
@@ -545,6 +548,7 @@ export function createRepository(name = 'repeaty', onBlocked?: () => void) {
         cursor = await cursor.continue()
       }
       await tx.done
+      signal?.throwIfAborted()
       return result
     },
     async getMedia(id: string) {
