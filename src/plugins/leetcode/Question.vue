@@ -392,6 +392,7 @@ async function submitCode() {
         [
           'leetcode-not-configured',
           'login-required',
+          'verification-required',
           'rate-limit',
           'open-leetcode',
           'submission-busy',
