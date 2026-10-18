@@ -382,7 +382,11 @@ async function editSelected() {
                 {{
                   card.type === 'cloze'
                     ? t('挖空 {number}', { number: Number(card.variant.slice(6)) })
-                    : t(noteTypes[card.type])
+                    : card.type === 'plugin'
+                      ? card.plugin?.id === 'leetcode'
+                        ? 'LeetCode'
+                        : card.plugin?.id
+                      : t(noteTypes[card.type])
                 }}
                 <template v-if="card.type === 'reversed'">
                   · {{ t(card.variant === 'reverse' ? '背面 → 正面' : '正面 → 背面') }}

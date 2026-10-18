@@ -2516,3 +2516,112 @@ textarea::placeholder {
   color: #6b7865;
   opacity: 1;
 }
+
+.leetcode-question,
+.leetcode-editor {
+  min-width: 0;
+  text-align: left;
+}
+.leetcode-editor {
+  display: grid;
+  gap: 12px;
+}
+.leetcode-editor > .button {
+  justify-self: start;
+}
+.leetcode-meta,
+.leetcode-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin: 16px 0;
+  font-size: 1rem;
+}
+.leetcode-toolbar label {
+  display: grid;
+  gap: 6px;
+}
+.leetcode-statement {
+  font-size: 1.0625rem;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.leetcode-statement img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 16px 0;
+}
+.leetcode-statement pre,
+.judge-result pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 1rem;
+}
+.leetcode-statement table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.leetcode-workspace {
+  margin-top: 28px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.leetcode-workspace select,
+.leetcode-workspace textarea,
+.leetcode-editor select,
+.leetcode-editor input {
+  max-width: 100%;
+}
+.leetcode-workspace .code-editor {
+  width: 100%;
+  display: block;
+  resize: vertical;
+  margin: 8px 0 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8faf7;
+  color: var(--green);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 1rem;
+  line-height: 1.65;
+  tab-size: 4;
+  white-space: pre;
+  overflow-x: auto;
+}
+.leetcode-connection {
+  margin: 16px 0;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+.leetcode-connection ol {
+  padding-left: 24px;
+}
+.leetcode-connection li + li {
+  margin-top: 8px;
+}
+.judge-result {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  margin: 16px 0;
+  border-radius: 10px;
+  background: var(--sand);
+}
+.judge-result.accepted {
+  background: var(--sage);
+}
+.leetcode-question h1 {
+  text-align: left;
+}
+
+.leetcode-question {
+  width: 100%;
+}
+.plugin-card .card-answer {
+  width: 100%;
+  text-align: left;
+}

@@ -254,8 +254,14 @@ function startReview(deckId?: string) {
   notice.value = null
   review.value = { deckId }
 }
-async function submitReview(id: string, grade: Grade) {
-  return run(() => workspace.review(id, grade, Boolean(review.value?.study?.reschedule)))
+async function submitReview(
+  id: string,
+  grade: Grade,
+  assessment?: import('./plugins/data').Assessment,
+) {
+  return run(() =>
+    workspace.review(id, grade, Boolean(review.value?.study?.reschedule), assessment),
+  )
 }
 function deckDue(id: string) {
   return due.value.filter((card) => card.deckId === id).length

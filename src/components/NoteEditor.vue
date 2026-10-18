@@ -15,6 +15,7 @@ import {
 import { prepareMedia } from '../core/media'
 import MediaList from './MediaList.vue'
 const CardContent = defineAsyncComponent(() => import('./CardContent.vue'))
+import { questionPlugins } from '../plugins'
 import { insertCloze } from '../core/authoring'
 const props = defineProps<{
   library: Library
@@ -34,12 +35,18 @@ const form = reactive<NoteInput>({
   deckId: props.note?.deckId ?? props.deckId ?? props.library.decks[0]?.id ?? '',
   type: props.note?.type ?? 'basic',
   format: props.note?.format ?? 'markdown',
+  plugin: props.note?.plugin,
   front: props.note?.front ?? '',
   back: props.note?.back ?? '',
   tags: [...(props.note?.tags ?? [])],
   frontMedia: [...(props.note?.frontMedia ?? [])],
   backMedia: [...(props.note?.backMedia ?? [])],
 })
+const pluginChoices = questionPlugins.filter((plugin) => plugin.editor)
+const selectedPluginId = ref(props.note?.plugin?.id ?? pluginChoices[0]?.id)
+const selectedPlugin = computed(() =>
+  pluginChoices.find((plugin) => plugin.id === selectedPluginId.value),
+)
 const tagsText = ref(form.tags.join(', ')),
   uploads = ref<MediaUpload[]>([]),
   error = ref<DisplayMessage>(''),
@@ -148,8 +155,19 @@ async function save(continueAdding = false) {
     error.value = '请检查挖空格式，例如 {{c1::巴黎::城市}}。'
     return
   }
-  if (await props.submit({ ...form, tags }, uploads.value, allowRemove.value)) {
+  if (form.type === 'plugin' && !form.plugin) {
+    error.value = '读取题目后再保存。题面会保存在本地，提交判题需要联网。'
+    return
+  }
+  if (
+    await props.submit(
+      { ...form, plugin: form.type === 'plugin' ? form.plugin : undefined, tags },
+      uploads.value,
+      allowRemove.value,
+    )
+  ) {
     if (continueAdding && !props.note) {
+      form.plugin = undefined
       form.front = ''
       form.back = ''
       form.frontMedia = []
@@ -174,72 +192,92 @@ async function save(continueAdding = false) {
       <select id="note-type" v-model="form.type">
         <option v-for="(label, key) in noteTypes" :key="key" :value="key">{{ t(label) }}</option>
       </select>
-      <label for="note-format">{{ t('内容格式') }}</label>
-      <select id="note-format" v-model="form.format">
-        <option value="markdown">{{ t('Markdown / 数学公式') }}</option>
-        <option value="plain">{{ t('纯文本') }}</option>
-      </select>
-      <p class="form-note">
-        {{
-          t(
-            '支持 **加粗**、列表、代码和 $行内公式$ / $$独立公式$$。图片可直接粘贴到问题或答案输入框。',
-          )
-        }}
-      </p>
+      <template v-if="form.type !== 'plugin'">
+        <label for="note-format">{{ t('内容格式') }}</label>
+        <select id="note-format" v-model="form.format">
+          <option value="markdown">{{ t('Markdown / 数学公式') }}</option>
+          <option value="plain">{{ t('纯文本') }}</option>
+        </select>
+        <p class="form-note">
+          {{
+            t(
+              '支持 **加粗**、列表、代码和 $行内公式$ / $$独立公式$$。图片可直接粘贴到问题或答案输入框。',
+            )
+          }}
+        </p>
+      </template>
       <label for="card-deck">{{ t('所属卡组') }}</label>
       <select id="card-deck" v-model="form.deckId" required>
         <option v-for="deck in library.decks" :key="deck.id" :value="deck.id">
           {{ deck.name }}
         </option>
       </select>
-      <label for="card-front">{{ t('正面 · 问题') }}</label
-      ><textarea
-        id="card-front"
-        ref="frontInput"
-        v-model="form.front"
-        @paste="paste($event, 'frontMedia')"
-        required
-        maxlength="10000"
-        rows="4"
-        autofocus
-        :placeholder="
-          form.type === 'cloze' ? t('法国的首都是 {{c1::巴黎::城市}}。') : t('输入问题')
-        "
-      />
-      <button type="button" class="text-button" @mousedown.prevent @click="addCloze">
-        {{ t('选中文字挖空 · Ctrl / ⌘ + Shift + C') }}
-      </button>
-      <p
-        v-if="form.type === 'cloze'"
-        class="form-note"
-        v-text="
-          t(
-            '使用 {{ c1::答案 }} 或 {{ c1::答案::提示 }}。同编号一起隐藏，不同编号各生成一张卡片；暂不支持嵌套挖空。',
-          )
-        "
-      />
-      <label class="file-label"
-        >{{ t('正面图片 / 音频')
-        }}<input
-          type="file"
-          multiple
-          accept="image/png,image/jpeg,image/webp,image/gif,audio/*"
-          @change="attach($event, 'frontMedia')"
-      /></label>
-      <MediaList :ids="form.frontMedia" :media="media" :get-media="getMedia" />
-      <div class="attachment-actions">
-        <button
-          v-for="id in form.frontMedia"
-          :key="id"
-          type="button"
-          class="text-button danger-text"
-          @click="remove(id, 'frontMedia')"
-        >
-          {{ t('移除 {p0}', { p0: media.find((item) => item.id === id)?.name ?? id }) }}
+      <template v-if="form.type === 'plugin'">
+        <label for="question-plugin">{{ t('题目插件') }}</label>
+        <select id="question-plugin" v-model="selectedPluginId" @change="form.plugin = undefined">
+          <option v-if="!selectedPlugin" :value="selectedPluginId">{{ selectedPluginId }}</option>
+          <option v-for="plugin in pluginChoices" :key="plugin.id" :value="plugin.id">
+            {{ t(plugin.label) }}
+          </option>
+        </select>
+        <component
+          v-if="selectedPlugin?.editor"
+          :is="selectedPlugin.editor"
+          :key="savedCount"
+          :model-value="form"
+          @update:model-value="Object.assign(form, $event)"
+        />
+      </template>
+      <template v-else>
+        <label for="card-front">{{ t('正面 · 问题') }}</label
+        ><textarea
+          id="card-front"
+          ref="frontInput"
+          v-model="form.front"
+          @paste="paste($event, 'frontMedia')"
+          required
+          maxlength="10000"
+          rows="4"
+          autofocus
+          :placeholder="
+            form.type === 'cloze' ? t('法国的首都是 {{c1::巴黎::城市}}。') : t('输入问题')
+          "
+        />
+        <button type="button" class="text-button" @mousedown.prevent @click="addCloze">
+          {{ t('选中文字挖空 · Ctrl / ⌘ + Shift + C') }}
         </button>
-      </div>
+        <p
+          v-if="form.type === 'cloze'"
+          class="form-note"
+          v-text="
+            t(
+              '使用 {{ c1::答案 }} 或 {{ c1::答案::提示 }}。同编号一起隐藏，不同编号各生成一张卡片；暂不支持嵌套挖空。',
+            )
+          "
+        />
+        <label class="file-label"
+          >{{ t('正面图片 / 音频')
+          }}<input
+            type="file"
+            multiple
+            accept="image/png,image/jpeg,image/webp,image/gif,audio/*"
+            @change="attach($event, 'frontMedia')"
+        /></label>
+        <MediaList :ids="form.frontMedia" :media="media" :get-media="getMedia" />
+        <div class="attachment-actions">
+          <button
+            v-for="id in form.frontMedia"
+            :key="id"
+            type="button"
+            class="text-button danger-text"
+            @click="remove(id, 'frontMedia')"
+          >
+            {{ t('移除 {p0}', { p0: media.find((item) => item.id === id)?.name ?? id }) }}
+          </button>
+        </div>
+      </template>
       <label for="card-back"
-        >{{ t('背面 · 答案')
+        >{{ t(form.type === 'plugin' ? '解题笔记' : '背面 · 答案')
         }}<span v-if="form.type === 'cloze'" class="optional">{{
           t('可选，补充解释')
         }}</span></label
@@ -247,7 +285,7 @@ async function save(continueAdding = false) {
         id="card-back"
         v-model="form.back"
         @paste="paste($event, 'backMedia')"
-        :required="form.type !== 'cloze'"
+        :required="form.type !== 'cloze' && form.type !== 'plugin'"
         maxlength="10000"
         rows="3"
         :placeholder="t('输入答案或补充说明')"
@@ -275,7 +313,7 @@ async function save(continueAdding = false) {
       <label for="card-tags"
         >{{ t('标签') }}<span class="optional">{{ t('可选，用逗号分隔') }}</span></label
       ><input id="card-tags" v-model="tagsText" maxlength="820" :placeholder="t('英语, 常用词')" />
-      <details class="note-preview">
+      <details v-if="form.type !== 'plugin'" class="note-preview">
         <summary>{{ t('将生成 {p0} 张卡片 · 预览', { p0: generated.length }) }}</summary>
         <article v-for="card in previews" :key="card.variant">
           <CardContent :text="card.front" :format="card.format" />

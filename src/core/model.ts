@@ -2,6 +2,7 @@ import { msg, LocalizedError } from '../i18n'
 import { z } from 'zod'
 import { createEmptyCard, type Card as FsrsCard } from 'ts-fsrs'
 import { scheduleSchema, librarySchema as legacySchema } from './legacy'
+import { pluginDataSchema, assessmentSchema } from '../plugins/data'
 
 export { scheduleSchema } from './legacy'
 const date = z.iso.datetime()
@@ -33,7 +34,12 @@ export interface StudySession {
   reschedule: boolean
 }
 export const colors = ['sage', 'sand', 'lavender', 'blue', 'rose'] as const
-export const noteTypes = { basic: '正反面', reversed: '双向卡', cloze: '挖空卡' } as const
+export const noteTypes = {
+  basic: '正反面',
+  reversed: '双向卡',
+  cloze: '挖空卡',
+  plugin: '插件题目',
+} as const
 export const mediaTypes = [
   'image/png',
   'image/jpeg',
@@ -106,7 +112,8 @@ export const noteSchema = z
   .object({
     id,
     deckId: id,
-    type: z.enum(['basic', 'reversed', 'cloze']),
+    type: z.enum(['basic', 'reversed', 'cloze', 'plugin']),
+    plugin: pluginDataSchema.optional(),
     format: z.enum(['plain', 'markdown']).default('plain'),
     front: z.string().trim().min(1).max(10_000),
     back: z.string().trim().max(10_000),
@@ -117,8 +124,12 @@ export const noteSchema = z
     updatedAt: date,
   })
   .superRefine((note, ctx) => {
-    if (note.type !== 'cloze' && !note.back)
+    if (note.type !== 'cloze' && note.type !== 'plugin' && !note.back)
       ctx.addIssue({ code: 'custom', message: '答案不能为空' })
+    if (note.type === 'plugin' && !note.plugin)
+      ctx.addIssue({ code: 'custom', message: '请选择题目插件。' })
+    if (note.type !== 'plugin' && note.plugin)
+      ctx.addIssue({ code: 'custom', message: '普通卡片不能包含插件数据。' })
     if (note.type === 'cloze') {
       try {
         clozes(note.front)
@@ -162,6 +173,7 @@ export const reviewSchema = z.object({
   studyDay: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   kind: z.enum(['new', 'review', 'learning', 'legacy']),
   source: z.enum(['normal', 'filtered']).default('normal'),
+  assessment: assessmentSchema.optional(),
   effects: z
     .object({
       siblings: z.array(z.object({ cardId: id, previous: autoBurialSchema.optional() })).max(99),
@@ -190,17 +202,20 @@ export type DeckInput = Pick<
 >
 export type NoteInput = Pick<
   Note,
-  'deckId' | 'type' | 'front' | 'back' | 'tags' | 'frontMedia' | 'backMedia'
+  'deckId' | 'type' | 'front' | 'back' | 'tags' | 'frontMedia' | 'backMedia' | 'plugin'
 > & { format?: Note['format'] }
 export type CardView = Card &
-  Pick<Note, 'deckId' | 'front' | 'back' | 'tags' | 'type' | 'format' | 'frontMedia' | 'backMedia'>
+  Pick<
+    Note,
+    'deckId' | 'front' | 'back' | 'tags' | 'type' | 'format' | 'frontMedia' | 'backMedia' | 'plugin'
+  >
 export interface MediaUpload {
   meta: Media
   blob: Blob
 }
 
 export function variants(note: Pick<Note, 'type' | 'front'>): string[] {
-  if (note.type === 'basic') return ['forward']
+  if (note.type === 'basic' || note.type === 'plugin') return ['forward']
   if (note.type === 'reversed') return ['forward', 'reverse']
   return [...new Set(clozes(note.front).map((cloze) => cloze.number))]
     .sort((a, b) => a - b)
@@ -209,7 +224,7 @@ export function variants(note: Pick<Note, 'type' | 'front'>): string[] {
 
 export const librarySchema = z
   .object({
-    version: z.literal(3),
+    version: z.literal(4),
     savedSearches: z.array(savedSearchSchema).max(100).default([]),
     decks: z.array(deckSchema).max(1000),
     notes: z.array(noteSchema).max(100_000),
@@ -248,7 +263,7 @@ export const librarySchema = z
   })
 export type Library = z.infer<typeof librarySchema>
 export function emptyLibrary(): Library {
-  return { version: 3, decks: [], notes: [], cards: [], reviews: [], media: [], savedSearches: [] }
+  return { version: 4, decks: [], notes: [], cards: [], reviews: [], media: [], savedSearches: [] }
 }
 export function localDay(date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -297,6 +312,7 @@ export function renderCard(card: Card, note: Note): CardView {
     ...card,
     deckId: note.deckId,
     type: note.type,
+    plugin: note.plugin,
     format: note.format,
     tags: note.tags,
     front,
@@ -366,13 +382,13 @@ export function migrateLibrary(value: unknown): Library {
     typeof value === 'object' &&
     value !== null &&
     'version' in value &&
-    (value.version === 2 || value.version === 3)
+    (value.version === 2 || value.version === 3 || value.version === 4)
   )
-    return librarySchema.parse({ ...value, version: 3 })
+    return librarySchema.parse({ ...value, version: 4 })
   const old = legacySchema.parse(value)
   const seen = new Set<string>()
   return librarySchema.parse({
-    version: 3,
+    version: 4,
     decks: old.decks,
     media: [],
     notes: old.cards.map((card) => ({

@@ -102,10 +102,10 @@ describe('IndexedDB transactions and automatic snapshots', () => {
     const repo = createRepository(name)
     const loaded = await repo.load()
     expect(loaded.revision).toBe(6)
-    expect(loaded.library.version).toBe(3)
+    expect(loaded.library.version).toBe(4)
     expect(loaded.library.notes[0]!.format).toBe('plain')
     expect(await (await repo.getMedia(asset.meta.id))!.text()).toBe('png-data')
-    expect((await repo.getBackup('old-snapshot')).version).toBe(3)
+    expect((await repo.getBackup('old-snapshot')).version).toBe(4)
     await expect(openDB(name, 2)).rejects.toMatchObject({ name: 'VersionError' })
     expect((await repo.load()).revision).toBe(6)
     await repo.close()
@@ -226,7 +226,7 @@ it('writes only a graded card and new review, and reconstructs the earlier check
   const first = await repo.save(fixture(), 0)
   const graded = reviewCard(first.library, first.library.cards[0]!.id, 3, now)
   await repo.save(graded, 1, { now })
-  const db = await openDB(name, 4)
+  const db = await openDB(name, 5)
   expect(await db.get('workspace', 'main')).toBeUndefined()
   expect(await db.count('cards')).toBe(1)
   expect(await db.count('reviews')).toBe(1)
@@ -251,7 +251,7 @@ it('leaves legacy data intact if migration fails validation', async () => {
   db.close()
   const repo = createRepository(name)
   await expect(repo.load()).rejects.toThrow()
-  const inspect = await openDB(name, 4)
+  const inspect = await openDB(name, 5)
   expect(await inspect.get('workspace', 'main')).toEqual(corrupt)
   expect(await inspect.get('meta', 'main')).toBeUndefined()
   inspect.close()
@@ -289,5 +289,51 @@ it('queries bounded pages in stable order and retains advanced search semantics'
   queueMicrotask(() => controller.abort())
   await expect(canceled).rejects.toMatchObject({ name: 'AbortError' })
   expect((await repo.queryCards(filter, 1, now, false)).total).toBe(111)
+  await repo.close()
+})
+
+it('upgrades an existing normalized v4 database without recreating indexes or changing records', async () => {
+  const name = `repeaty-v4-${crypto.randomUUID()}`
+  const { library, asset } = mediaFixture()
+  const kinds = ['decks', 'notes', 'cards', 'reviews', 'media', 'savedSearches'] as const
+  const db = await openDB(name, 4, {
+    upgrade(db) {
+      for (const name of ['workspace', 'assets', 'backups', 'meta', 'checkpoints'])
+        db.createObjectStore(name)
+      for (const name of kinds) {
+        const store = db.createObjectStore(name)
+        store.createIndex('position', 'position')
+        store.createIndex('deckId', ['deckId', 'position'])
+      }
+      const history = db.createObjectStore('history')
+      history.createIndex('revision', 'revision')
+      history.createIndex('store', 'store')
+    },
+  })
+  const tx = db.transaction([...kinds, 'meta', 'assets'], 'readwrite')
+  for (const kind of kinds) {
+    for (const [position, value] of library[kind].entries()) {
+      await tx
+        .objectStore(kind)
+        .put(
+          { id: value.id, value, position, deckId: kind === 'cards' ? 'deck' : undefined },
+          value.id,
+        )
+    }
+  }
+  await tx.objectStore('meta').put(
+    {
+      revision: 7,
+      counts: Object.fromEntries(kinds.map((kind) => [kind, library[kind].length])),
+    },
+    'main',
+  )
+  await tx.objectStore('assets').put(asset.blob, asset.meta.id)
+  await tx.done
+  db.close()
+  const repo = createRepository(name)
+  expect(await repo.load()).toEqual({ revision: 7, library })
+  expect(await (await repo.getMedia(asset.meta.id))?.text()).toBe('png-data')
+  await expect(openDB(name, 4)).rejects.toMatchObject({ name: 'VersionError' })
   await repo.close()
 })

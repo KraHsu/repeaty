@@ -116,7 +116,7 @@ export interface CardPage {
 
 /** Domain updates are immutable: keep unchanged records by reference. Only changed rows are written. */
 export function createRepository(name = 'repeaty', onBlocked?: () => void) {
-  const database = openDB<RepeatyDB>(name, 4, {
+  const database = openDB<RepeatyDB>(name, 5, {
     upgrade(db, _oldVersion, _newVersion, tx) {
       for (const store of stores)
         if (!db.objectStoreNames.contains(store)) db.createObjectStore(store)
@@ -127,8 +127,8 @@ export function createRepository(name = 'repeaty', onBlocked?: () => void) {
           table.createIndex('deckId', ['deckId', 'position'])
       }
       const history = tx.objectStore('history')
-      history.createIndex('revision', 'revision')
-      history.createIndex('store', 'store')
+      if (!history.indexNames.contains('revision')) history.createIndex('revision', 'revision')
+      if (!history.indexNames.contains('store')) history.createIndex('store', 'store')
     },
     blocking() {
       void database.then((db) => db.close())
