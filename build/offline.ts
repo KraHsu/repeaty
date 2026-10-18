@@ -30,7 +30,9 @@ export function offlinePlugin(): Plugin {
         ]
         const assets = [
           ...new Set([
-            ...Object.keys(bundle).filter((name) => !name.endsWith('.map')),
+            ...Object.keys(bundle).filter(
+              (name) => !name.endsWith('.map') && !name.startsWith('.vite/'),
+            ),
             ...publicFiles,
           ]),
         ]
