@@ -11,4 +11,5 @@ export default {
   showAnswer: defineAsyncComponent(() => import('./Answer.vue')),
   editor: defineAsyncComponent(() => import('./Editor.vue')),
   settings: defineAsyncComponent(() => import('./Settings.vue')),
+  history: defineAsyncComponent(() => import('./History.vue')),
 } satisfies QuestionPlugin

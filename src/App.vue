@@ -2,7 +2,7 @@
 import { version } from '../package.json'
 import { t, msg, locale, setLocale, type DisplayMessage } from './i18n'
 
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -13,6 +13,7 @@ import {
   CircleHelp,
   Database,
   Ellipsis,
+  History,
   Layers,
   LayoutGrid,
   Leaf,
@@ -53,12 +54,19 @@ import {
   type StudySession,
 } from './core/model'
 import { blockedByLimit, dayKey, dueCards, weekActivity } from './core/scheduler'
+const PracticeHistoryPanel = defineAsyncComponent(
+  () => import('./components/PracticeHistoryPanel.vue'),
+)
 
 const workspace = useLibrary()
 const { library, ready, busy, loadError, backups, backupError } = workspace
 const offline = useOffline()
 const cards = computed(() => cardViews(library.value))
-const tab = ref<'overview' | 'cards' | 'plugins' | 'data'>('overview')
+const tab = ref<'overview' | 'cards' | 'history' | 'plugins' | 'data'>('overview')
+const historyCardId = ref('')
+watch(workspace.scope, () => {
+  historyCardId.value = ''
+})
 const selectedDeck = ref('')
 const searchQuery = ref('')
 const filterState = ref<SearchFilter['state']>('all')
@@ -106,6 +114,7 @@ const pageTitle = computed(
       cards: currentDeck.value?.name ?? t('全部卡片'),
       data: t('数据与备份'),
       plugins: t('插件'),
+      history: t('练习历史'),
     })[tab.value],
 )
 
@@ -135,6 +144,11 @@ function navigate(next: typeof tab.value) {
   selectedDeck.value = ''
   searchQuery.value = ''
   filterState.value = 'all'
+  historyCardId.value = ''
+}
+function openHistory(card?: CardView) {
+  navigate('history')
+  historyCardId.value = card?.id ?? ''
 }
 function openDeck(deck: Deck) {
   navigate('cards')
@@ -413,6 +427,14 @@ async function restoreBackup() {
         >
           <Layers :size="19" />{{ t('全部卡片')
           }}<span class="nav-count">{{ library.cards.length }}</span>
+        </button>
+        <button
+          v-if="desktopEdition || library.practices.length"
+          :class="{ active: tab === 'history' && !review }"
+          :aria-current="tab === 'history' && !review ? 'page' : undefined"
+          @click="openHistory()"
+        >
+          <History :size="19" />{{ t('练习历史') }}
         </button>
         <button
           :class="{ active: tab === 'plugins' && !review }"
@@ -787,8 +809,17 @@ async function restoreBackup() {
           @edit="editCard"
           @delete="confirmDeleteNotes"
           @review="startReview(selectedDeck || undefined)"
+          @history="openHistory"
         />
       </div>
+
+      <PracticeHistoryPanel
+        v-else-if="tab === 'history'"
+        :key="workspace.scope.value"
+        v-model:card-id="historyCardId"
+        :library="library"
+        @reveal="(id) => run(() => workspace.revealPracticeHistory(id, workspace.scope.value))"
+      />
 
       <PluginPanel v-else-if="tab === 'plugins'" />
 

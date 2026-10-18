@@ -23,7 +23,13 @@ export interface QuestionProps {
   attempts?: Attempt[]
   saveAttempt?: (practice: Practice, attempt: Attempt, scope: string) => Promise<void>
 }
-/** Each component receives QuestionProps. An optional editor uses a NoteInput v-model. */
+export interface PracticeHistoryProps {
+  practices: Practice[]
+  attempts: Attempt[]
+  activeId?: string
+  standalone?: boolean
+}
+/** Question/answer receive QuestionProps; an optional editor uses a NoteInput v-model. */
 export interface QuestionPlugin {
   id: string
   kind: 'frontend' | 'local'
@@ -34,6 +40,8 @@ export interface QuestionPlugin {
   editor?: Component
   description?: string
   settings?: Component
+  /** Read-only practice history. Receives PracticeHistoryProps. */
+  history?: Component
 }
 
 /** Installed by the deployment, then optionally enabled by each browser. */

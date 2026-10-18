@@ -21,7 +21,7 @@ import { saveSearch } from '../core/search'
 import type { TransferOptions } from '../core/archive'
 import { exportBackup, rekeyBackup, type BackupData } from '../core/backups'
 import { initializeWorkspace } from '../core/onboarding'
-import { recordAttempt, finishPractice } from '../core/practice'
+import { recordAttempt, finishPractice, revealPracticeHistory } from '../core/practice'
 import type { Practice, Attempt } from '../core/practice-data'
 import { remoteWorkspace } from '../edition'
 import type { createServerRepository } from '../backend/repository'
@@ -205,6 +205,13 @@ export function useLibrary() {
       if (expectedScope !== scope.value || !expectedScope)
         throw new LocalizedError(msg('练习记录已变化，请重新打开题目后重试。'))
       return commit((current) => recordAttempt(current, practice, attempt))
+    },
+    revealPracticeHistory(practiceId: string, expectedScope: string) {
+      if (expectedScope !== scope.value || !expectedScope)
+        return Promise.reject(new Error('练习记录已变化，请重新打开题目后重试。'))
+      if (revealPracticeHistory(library.value, practiceId) === library.value)
+        return Promise.resolve()
+      return commit((current) => revealPracticeHistory(current, practiceId))
     },
     finishPractice(id: string, cardId: string, assessment?: Assessment) {
       return commit((current) => finishPractice(current, id, cardId, assessment))

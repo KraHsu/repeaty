@@ -1,6 +1,7 @@
 import { test, expect, storedLibrary } from './fixture'
 import type { BrowserContext, Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
+import { practiceHistoryFixture } from '../fixtures/practice-history'
 
 const question = {
   questionId: '1',
@@ -72,6 +73,12 @@ async function connect(
     submissions: () => submissions,
     allowChecks: () => {
       checkFails = false
+    },
+    failChecks: () => {
+      checkFails = true
+    },
+    allowSubmissions: () => {
+      options.submitFails = false
     },
     allowRecovery: () => {
       recoveryError = undefined
@@ -303,6 +310,7 @@ test('an unknown submission recovers the original code once and re-enables autom
   expect(remote.recovered).toMatchObject([
     { code: original, lang: 'python3', questionId: '1', submissionId: '1001' },
   ])
+  await expect(page.getByLabel('代码', { exact: true })).toHaveValue(original)
   const after = await storedLibrary(page)
   expect(after.attempts).toMatchObject([
     { value: { status: 'completed', code: original, submissionId: '1001' } },
@@ -366,6 +374,101 @@ test('a recovered international submission survives another disconnect and resum
   expect(remote.recovered).toHaveLength(1)
 })
 
+test('recovering an earlier unknown attempt preserves a newer accepted attempt', async ({
+  context,
+  page,
+}) => {
+  const remote = await connect(context, { submitFails: true })
+  await create(page)
+  await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
+  await page.getByRole('button', { name: '提交到 LeetCode' }).click()
+  await expect(page.getByLabel('提交编号或详情链接')).toBeVisible()
+  remote.allowSubmissions()
+  const latest = 'def solve(value): return value + 0'
+  await page.getByLabel('代码', { exact: true }).fill(latest)
+  await page.getByRole('button', { name: '提交到 LeetCode' }).click()
+  await expect(page.locator('.judge-result')).toContainText('通过')
+  await page.getByLabel('提交编号或详情链接').fill('1001')
+  await page.getByRole('button', { name: '关联并查询' }).click()
+  await expect(page.getByLabel('提交编号或详情链接')).toHaveCount(0)
+  await expect(page.getByLabel('代码', { exact: true })).toHaveValue(latest)
+  await expect(page.getByText(/尝试 2 次/)).toBeVisible()
+  await expect(page.locator('.judge-result a')).toHaveAttribute('href', /1002/)
+  await expect(page.locator('#leetcode-rating option[value="automatic"]')).toBeEnabled()
+  expect(remote.submissions()).toBe(2)
+  const attempts = (await storedLibrary(page)).attempts as { value: { submissionId: string } }[]
+  expect(attempts).toHaveLength(2)
+  expect(
+    [...attempts].sort((a, b) => a.value.submissionId.localeCompare(b.value.submissionId)),
+  ).toMatchObject([
+    { value: { status: 'completed', submissionId: '1001' } },
+    { value: { status: 'completed', submissionId: '1002' } },
+  ])
+})
+
+test('independent history filters, paginates, opens from cards, and stays readable with the plugin disabled', async ({
+  context,
+  page,
+}) => {
+  const remote = await connect(context)
+  const library = practiceHistoryFixture()
+  await page.getByRole('button', { name: '数据与备份', exact: true }).click()
+  await page.getByLabel('导入备份文件').setInputFiles({
+    name: 'history.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(library)),
+  })
+  await page.getByRole('button', { name: '替换并恢复', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  const before = await storedLibrary(page)
+  await page.getByRole('button', { name: '练习历史', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '练习历史' })).toBeVisible()
+  await expect(page.locator('.practice-history')).toHaveCount(20)
+  await page.getByLabel('筛选卡组').selectOption(library.decks[0]!.id)
+  await expect(page.locator('.practice-history')).toHaveCount(20)
+  await page.getByLabel('筛选卡组').selectOption('')
+  await page.getByRole('button', { name: '下一页' }).click()
+  await expect(page.locator('.practice-history')).toHaveCount(5)
+  await page.getByLabel('判题结果', { exact: true }).selectOption('accepted')
+  await expect(page.locator('.practice-history')).toHaveCount(9)
+  await page.getByLabel('判题结果', { exact: true }).selectOption('unconfirmed')
+  await expect(page.locator('.practice-history')).toHaveCount(8)
+  await page.getByLabel('判题结果', { exact: true }).selectOption('all')
+  await page.getByLabel('搜索练习历史').fill('Second problem')
+  await expect(page.locator('.practice-history')).toHaveCount(12)
+  await page.getByLabel('搜索练习历史').fill('no matches')
+  await expect(page.getByText('没有符合筛选条件的练习。')).toBeVisible()
+  await page.getByRole('button', { name: '全部卡片' }).click()
+  await page.getByRole('button', { name: '查看 First problem 的练习历史' }).click()
+  await expect(page.getByLabel('筛选题目')).toHaveValue(library.cards[0]!.id)
+  await expect(page.locator('.practice-history')).toHaveCount(13)
+  await page.getByText('当时的题目', { exact: true }).first().click()
+  await expect(page.locator('.leetcode-statement')).toContainText('原始题面。')
+  await page.locator('.attempt-history > summary').first().click()
+  await expect(page.locator('.attempt-code code').first()).toContainText(
+    '<script>stored text</script>',
+  )
+  await expect(page.locator('.attempt-code script')).toHaveCount(0)
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.screenshot({ path: 'test-results/independent-history-mobile.png', fullPage: true })
+  await page.screenshot({ path: 'test-results/independent-history-viewport-zh.png' })
+  expect(await storedLibrary(page)).toEqual(before)
+  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await page.getByRole('switch', { name: '启用 LeetCode' }).click()
+  await page.getByRole('button', { name: '练习历史', exact: true }).click()
+  await expect(page.locator('.practice-history')).toHaveCount(20)
+  await expect(page.locator('.leetcode-history')).toHaveCount(0)
+  await page.locator('.attempt-history > summary').first().click()
+  await expect(page.locator('.attempt-code code').first()).toBeVisible()
+  expect(remote.submissions()).toBe(0)
+  await page.getByLabel('界面语言').selectOption('en')
+  await expect(page.getByRole('heading', { name: 'Practice history' })).toBeVisible()
+  await expect(page.getByLabel('Judge result')).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.screenshot({ path: 'test-results/independent-history-viewport-en.png' })
+})
+
 test('undoing a rating preserves submission history and reviewing old code reveals the answer', async ({
   page,
   context,
@@ -421,6 +524,42 @@ test('practice-only sessions keep code without changing review progress', async 
   expect(after.practices).toMatchObject([{ value: { completion: 'practice' } }])
   expect(after.attempts).toHaveLength(1)
   expect(remote.submissions()).toBe(1)
+})
+
+test('viewing past code on the history page marks a pending practice as having seen the answer', async ({
+  context,
+  page,
+}) => {
+  const remote = await connect(context)
+  await create(page)
+  await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
+  await page.getByRole('button', { name: '提交到 LeetCode' }).click()
+  await expect(page.locator('.judge-result')).toContainText('通过')
+  await page.getByRole('button', { name: '结束作答并查看答案' }).click()
+  await page.getByRole('button', { name: /^良好/ }).click()
+  await page.getByRole('button', { name: '撤销上次评分' }).click()
+  remote.failChecks()
+  await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
+  await page.getByRole('button', { name: '提交到 LeetCode' }).click()
+  await expect(page.getByRole('alert')).toContainText('无法连接 LeetCode')
+  await page.getByRole('button', { name: '练习历史', exact: true }).click()
+  await expect(page.locator('.practice-history')).toHaveCount(2)
+  await page.locator('.attempt-history > summary').last().click()
+  await expect
+    .poll(async () => {
+      const stored = await storedLibrary(page)
+      return (stored.practices as { value: { completedAt?: string; answerSeen?: boolean } }[]).find(
+        (row) => !row.value.completedAt,
+      )?.value.answerSeen
+    })
+    .toBe(true)
+  remote.allowChecks()
+  await page.getByRole('button', { name: '学习概览', exact: true }).click()
+  await page.getByRole('button', { name: '开始复习', exact: true }).click()
+  await expect(page.locator('.judge-result')).toContainText('通过')
+  await page.getByRole('button', { name: '结束作答并查看答案' }).click()
+  await expect(page.getByRole('button', { name: /^良好/ })).toBeDisabled()
+  expect(remote.submissions()).toBe(2)
 })
 
 test('failed history storage prevents submitting code and keeps the editor intact', async ({

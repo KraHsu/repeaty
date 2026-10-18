@@ -2,7 +2,7 @@
 import { t, locale } from '../i18n'
 
 import { computed, ref, shallowRef, watch } from 'vue'
-import { Layers, Pencil, Plus, Repeat2, Search, Trash2 } from '@lucide/vue'
+import { History, Layers, Pencil, Plus, Repeat2, Search, Trash2 } from '@lucide/vue'
 import {
   cardViews,
   filterStates,
@@ -38,6 +38,7 @@ const emit = defineEmits<{
   delete: [noteIds: string[]]
   review: []
   study: [session: StudySession]
+  history: [card: CardView]
 }>()
 const query = defineModel<string>('query', { default: '' })
 const state = defineModel<SearchFilter['state']>('state', { default: 'all' })
@@ -47,6 +48,7 @@ const targetDeck = ref(''),
   addTags = ref(''),
   removeTags = ref('')
 const cards = computed(() => cardViews(props.library))
+const historyCardIds = computed(() => new Set(props.library.practices.map((entry) => entry.cardId)))
 const filter = computed<SearchFilter>(() => ({
   query: query.value,
   state: state.value,
@@ -417,6 +419,14 @@ async function editSelected() {
           </td>
           <td>
             <div class="row-actions">
+              <button
+                v-if="historyCardIds.has(card.id)"
+                class="icon-button"
+                :aria-label="t('查看 {title} 的练习历史', { title: card.front })"
+                @click="emit('history', card)"
+              >
+                <History :size="16" />
+              </button>
               <button
                 class="icon-button"
                 :aria-label="t('编辑卡片 {p0}', { p0: card.front })"

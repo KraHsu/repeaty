@@ -771,6 +771,26 @@ export const en = {
   提交编号或详情链接: 'Submission ID or detail link',
   粘贴提交编号或链接: 'Paste a submission ID or link',
   关联并查询: 'Link and check',
+  练习历史: 'Practice history',
+  '按题目查看历次代码、判题结果和复习评分。':
+    'Browse code, judge results, and review ratings by problem.',
+  搜索练习历史: 'Search practice history',
+  搜索题目: 'Search problems',
+  筛选题目: 'Filter problems',
+  全部题目: 'All problems',
+  全部结果: 'All results',
+  尚未确认: 'Unconfirmed',
+  题目: 'Problem',
+  判题结果: 'Judge result',
+  '有未完成的同题练习时，查看往次代码会计为查看答案。':
+    'Viewing past code counts as revealing the answer for unfinished practices of the same problem.',
+  '{count} 次练习': '{count} practices',
+  '没有符合筛选条件的练习。': 'No practices match these filters.',
+  '还没有练习记录。提交题目后可在这里查看。':
+    'No practice history yet. Submit a problem to start a record.',
+  练习历史分页: 'Practice history pages',
+  '第 {page} / {pages} 页': 'Page {page} of {pages}',
+  '查看 {title} 的练习历史': 'View practice history for {title}',
   '有一次提交未取得编号，自动评分暂不可用。请先核对并关联 LeetCode 提交记录。':
     'One attempt has no confirmed submission ID, so automatic rating is unavailable. Check and link the attempt on LeetCode first.',
 } as const
