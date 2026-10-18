@@ -321,15 +321,13 @@ it('upgrades an existing normalized v4 database without recreating indexes or ch
         )
     }
   }
-  await tx
-    .objectStore('meta')
-    .put(
-      {
-        revision: 7,
-        counts: Object.fromEntries(kinds.map((kind) => [kind, library[kind].length])),
-      },
-      'main',
-    )
+  await tx.objectStore('meta').put(
+    {
+      revision: 7,
+      counts: Object.fromEntries(kinds.map((kind) => [kind, library[kind].length])),
+    },
+    'main',
+  )
   await tx.objectStore('assets').put(asset.blob, asset.meta.id)
   await tx.done
   db.close()
