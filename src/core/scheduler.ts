@@ -1,5 +1,6 @@
 import { msg, LocalizedError, duration, locale } from '../i18n'
 import { fsrs, State } from 'ts-fsrs'
+import { assessmentSchema, type Assessment } from '../plugins/data'
 import {
   cardViews,
   hydrateSchedule,
@@ -96,6 +97,7 @@ export function reviewCard(
   rating: Grade,
   now = new Date(),
   source: 'normal' | 'filtered' = 'normal',
+  assessment?: Assessment,
 ): Library {
   const card = library.cards.find((entry) => entry.id === id)
   if (!card) throw new LocalizedError(msg('卡片已不存在。'))
@@ -147,6 +149,7 @@ export function reviewCard(
         },
         cardId: id,
         rating,
+        assessment: assessment ? assessmentSchema.parse(assessment) : undefined,
         reviewedAt: now.toISOString(),
         nextDue: result.card.due.toISOString(),
         studyDay: localDay(now),

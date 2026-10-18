@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t, msg, type Message } from '../i18n'
 
-import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ArrowLeft, Check, CornerDownLeft, RotateCcw } from '@lucide/vue'
 import {
   available,
@@ -12,15 +12,16 @@ import {
 } from '../core/scheduler'
 import { cardViews, type Grade, type Library, type StudySession } from '../core/model'
 import { studyCards } from '../core/search'
-import MediaList from './MediaList.vue'
-const CardContent = defineAsyncComponent(() => import('./CardContent.vue'))
+import { questionPlugin } from '../plugins'
+import type { QuestionState } from '../plugins/types'
+import type { Assessment } from '../plugins/data'
 
 const props = defineProps<{
   library: Library
   deckId?: string
   study?: StudySession
   busy: boolean
-  submit: (id: string, grade: Grade) => Promise<boolean>
+  submit: (id: string, grade: Grade, assessment?: Assessment) => Promise<boolean>
   undo: () => Promise<boolean>
   change: (ids: string[], action: 'suspend' | 'bury') => Promise<boolean>
   getMedia: (id: string) => Promise<Blob | undefined>
@@ -47,6 +48,19 @@ const startedWith = queue.value.length
 const views = computed(() => cardViews(props.library))
 const current = computed(() =>
   views.value.find((card) => card.id === currentId.value && available(card, clock.value)),
+)
+const plugin = computed(() => current.value && questionPlugin(current.value))
+const questionState = reactive<QuestionState>({ allowedGrades: [], busy: false })
+watch(
+  currentId,
+  () => {
+    questionState.allowedGrades = []
+    questionState.suggestedGrade = undefined
+    questionState.assessment = undefined
+    questionState.complete = undefined
+    questionState.busy = false
+  },
+  { flush: 'sync' },
 )
 const limited = computed(() =>
   props.study ? 0 : blockedByLimit(props.library, clock.value, props.deckId),
@@ -95,9 +109,18 @@ watch(queue, (cards) => {
   }
 })
 async function grade(value: Grade) {
-  if (!current.value || !revealed.value || props.busy) return
+  if (
+    !current.value ||
+    !revealed.value ||
+    props.busy ||
+    questionState.busy ||
+    !questionState.allowedGrades.includes(value)
+  )
+    return
   const id = current.value.id
-  if (practice.value || (await props.submit(id, value))) {
+  const complete = questionState.complete
+  if (practice.value || (await props.submit(id, value, questionState.assessment))) {
+    await complete?.()
     const effects = practice.value ? undefined : props.library.reviews.at(-1)?.effects
     feedback.value = [
       effects?.siblings.length
@@ -197,7 +220,7 @@ onUnmounted(() => {
     <p v-if="feedback.length" class="study-banner" role="status">
       {{ feedback.map((entry) => t(entry)).join(' ') }}
     </p>
-    <template v-if="current">
+    <template v-if="current && plugin">
       <div class="review-context">
         <span class="pill">{{ deck?.name }}</span
         ><span>{{ current.schedule.state === 0 ? t('新卡片') : t('复习卡片') }}</span>
@@ -205,23 +228,29 @@ onUnmounted(() => {
       </div>
       <article :key="current.id" class="flashcard" aria-live="polite">
         <span class="eyebrow">{{ t('问题') }}</span>
-        <div
-          class="card-question"
-          :class="{ 'long-content': current.front.length > 300 }"
-          role="heading"
-          aria-level="1"
-        >
-          <CardContent :text="current.front" :format="current.format" />
-        </div>
-        <MediaList :ids="current.frontMedia" :media="library.media" :get-media="getMedia" />
+        <component
+          :is="plugin.showQuestion"
+          :key="current.id"
+          :card="current"
+          :media="library.media"
+          :get-media="getMedia"
+          :state="questionState"
+          :revealed="revealed"
+        />
         <div
           v-if="revealed"
           class="card-answer"
           :class="{ 'long-content': current.back.length > 300 }"
         >
           <span class="eyebrow">{{ t('答案') }}</span>
-          <CardContent :text="current.back" :format="current.format" />
-          <MediaList :ids="current.backMedia" :media="library.media" :get-media="getMedia" />
+          <component
+            :is="plugin.showAnswer"
+            :card="current"
+            :media="library.media"
+            :get-media="getMedia"
+            :state="questionState"
+            :revealed="revealed"
+          />
         </div>
         <div v-if="current.tags.length" class="tag-list">
           <span v-for="tag in current.tags" :key="tag" class="tag">{{ tag }}</span>
@@ -239,7 +268,9 @@ onUnmounted(() => {
             v-for="item in grades"
             :key="item.value"
             :class="['grade-button', item.class]"
-            :disabled="busy"
+            :disabled="
+              busy || questionState.busy || !questionState.allowedGrades.includes(item.value)
+            "
             @click="grade(item.value)"
           >
             <span class="grade-title"

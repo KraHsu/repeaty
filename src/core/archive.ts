@@ -20,7 +20,7 @@ const countSchema = z.object({
 const manifestSchema = z.object({
   format: z.literal('repeaty-archive'),
   version: z.literal(1),
-  libraryVersion: z.literal(3),
+  libraryVersion: z.union([z.literal(3), z.literal(4)]),
   counts: countSchema,
   parts: countSchema,
 })
@@ -104,7 +104,7 @@ export async function exportArchive(
     await add(
       'manifest.json',
       new Blob([
-        JSON.stringify({ format: 'repeaty-archive', version: 1, libraryVersion: 3, counts, parts }),
+        JSON.stringify({ format: 'repeaty-archive', version: 1, libraryVersion: 4, counts, parts }),
       ]),
       0,
     )

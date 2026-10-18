@@ -1,5 +1,6 @@
 import { msg, LocalizedError, validationMessage } from '../i18n'
 import { readonly, ref, shallowRef } from 'vue'
+import type { Assessment } from '../plugins/data'
 import { ZodError } from 'zod'
 import {
   deckSchema,
@@ -183,9 +184,9 @@ export function useLibrary() {
     changeCards(ids: Set<string>, action: CardAction) {
       return commit((current) => changeCards(current, ids, action))
     },
-    review(id: string, grade: Grade, filtered = false) {
+    review(id: string, grade: Grade, filtered = false, assessment?: Assessment) {
       return commit((current) =>
-        reviewCard(current, id, grade, new Date(), filtered ? 'filtered' : 'normal'),
+        reviewCard(current, id, grade, new Date(), filtered ? 'filtered' : 'normal', assessment),
       )
     },
     saveSearch(filter: SearchFilter, name: string, id?: string) {
