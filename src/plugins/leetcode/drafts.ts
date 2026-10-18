@@ -7,6 +7,8 @@ const draftSchema = z.object({
   attempts: z.number().int().nonnegative(),
   elapsedMs: z.number().finite().nonnegative(),
   answerSeen: z.boolean(),
+  awaitingSubmit: z.boolean().default(false),
+  uncertain: z.boolean().default(false),
   mode: z.enum(['manual', 'automatic']),
   pending: z
     .string()

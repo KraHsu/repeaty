@@ -36,7 +36,12 @@ const question = {
 }
 async function connect(
   context: BrowserContext,
-  options: { site?: string; rejectFirst?: boolean; checkFails?: boolean } = {},
+  options: {
+    site?: string
+    rejectFirst?: boolean
+    checkFails?: boolean
+    submitFails?: boolean
+  } = {},
 ) {
   const site = options.site ?? 'leetcode.cn'
   let submissions = 0
@@ -54,7 +59,8 @@ async function connect(
       submissions++
       sent.push(route.request().postDataJSON())
       expect(route.request().headers()['x-csrftoken']).toBe('test-csrf')
-      await route.fulfill({ json: { submission_id: 1000 + submissions } })
+      if (options.submitFails) await route.fulfill({ status: 503, body: 'Unavailable' })
+      else await route.fulfill({ json: { submission_id: 1000 + submissions } })
     } else if (path.endsWith('/check/')) {
       if (checkFails) await route.fulfill({ status: 503, body: 'Unavailable' })
       else
@@ -200,4 +206,57 @@ test('a missing connector is reported without creating a placeholder question', 
   await expect(page.getByRole('alert')).toContainText('未连接扩展')
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
+})
+
+test('active solving time affects automatic ratings and supports pausing', async ({
+  connector,
+}) => {
+  await connect(connector)
+  const page = await connector.newPage()
+  await page.clock.install()
+  await create(page)
+  await page.clock.fastForward(11 * 60000)
+  await expect(page.getByText(/用时 11:00/)).toBeVisible()
+  await page.getByRole('button', { name: '暂停计时' }).click()
+  await page.clock.fastForward(5 * 60000)
+  await expect(page.getByText(/用时 11:00/)).toBeVisible()
+  await page.getByRole('button', { name: '继续计时' }).click()
+  await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
+  await page.getByRole('button', { name: '提交到 LeetCode' }).click()
+  await expect(page.locator('.judge-result')).toContainText('通过')
+  await expect(page.getByText('自动评分：良好', { exact: true })).toBeVisible()
+})
+
+test('viewing the answer before acceptance prevents a passing review rating', async ({
+  connector,
+}) => {
+  await connect(connector)
+  const page = await connector.newPage()
+  await create(page)
+  await page.getByRole('button', { name: '结束作答并查看答案' }).click()
+  await expect(page.getByRole('button', { name: /^良好/ })).toBeDisabled()
+  await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
+  await page.getByRole('button', { name: '提交到 LeetCode' }).click()
+  await expect(page.locator('.judge-result')).toContainText('通过')
+  await expect(page.getByRole('button', { name: /^良好/ })).toBeDisabled()
+  await page.getByLabel('复习评分').selectOption('automatic')
+  await expect(page.getByRole('button', { name: '保存评分：重来' })).toBeEnabled()
+})
+
+test('a lost submission response disables automatic ratings and survives reload', async ({
+  connector,
+}) => {
+  const remote = await connect(connector, { submitFails: true })
+  const page = await connector.newPage()
+  await create(page)
+  await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
+  await page.getByRole('button', { name: '提交到 LeetCode' }).click()
+  await expect(page.getByText(/有一次提交未取得编号/)).toBeVisible()
+  await expect(page.getByText(/尝试 0 次/)).toBeVisible()
+  expect(remote.submissions()).toBe(1)
+  await page.reload()
+  await page.getByRole('button', { name: '开始复习', exact: true }).click()
+  await expect(page.getByText(/有一次提交未取得编号/)).toBeVisible()
+  await expect(page.locator('#leetcode-rating option[value="automatic"]')).toBeDisabled()
+  expect(remote.submissions()).toBe(1)
 })

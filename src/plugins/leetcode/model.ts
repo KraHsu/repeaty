@@ -106,17 +106,15 @@ export function parseJudgeResult(raw: unknown): JudgeResult | undefined {
     .object({
       state: z.string(),
       status_code: z.number().optional(),
-      status_msg: z.string().optional(),
-      compare_result: z.string().optional(),
-      status_runtime: z.string().optional(),
-      status_memory: z.string().optional(),
-      full_compile_error: z.string().optional(),
-      compile_error: z.string().optional(),
-      full_runtime_error: z.string().optional(),
-      runtime_error: z.string().optional(),
-      last_testcase: z.string().optional(),
-      code_output: z.string().optional(),
-      expected_output: z.string().optional(),
+      status_msg: z.string().nullish(),
+      compare_result: z.string().nullish(),
+      status_runtime: z.string().nullish(),
+      status_memory: z.string().nullish(),
+      full_compile_error: z.string().nullish(),
+      compile_error: z.string().nullish(),
+      full_runtime_error: z.string().nullish(),
+      runtime_error: z.string().nullish(),
+      last_testcase: z.string().nullish(),
     })
     .parse(raw)
   if (['PENDING', 'STARTED'].includes(result.state)) return undefined
@@ -154,7 +152,15 @@ export function automaticGrade(
   difficulty: LeetCodeProblem['difficulty'],
   revealed = false,
 ): Grade {
-  if (outcome !== 'accepted' || revealed) return 1
+  if (
+    outcome !== 'accepted' ||
+    revealed ||
+    !Number.isInteger(attempts) ||
+    attempts < 1 ||
+    !Number.isFinite(elapsedMs) ||
+    elapsedMs < 0
+  )
+    return 1
   const target = targetMinutes[difficulty] * 60_000
   if (attempts === 1 && elapsedMs <= target) return 4
   if (attempts <= 2 && elapsedMs <= target * 2) return 3

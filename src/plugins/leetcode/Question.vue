@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { t } from '../../i18n'
 import type { QuestionProps } from '../types'
 import { automaticGrade, parseJudgeResult, problemSchema, problemUrl, targetMinutes } from './model'
-import { bridgeRequest } from './bridge'
+import { bridgeRequest, BridgeError } from './bridge'
 import { readDraft, writeDraft, type Draft } from './drafts'
 import Connection from './Connection.vue'
 import Statement from './Statement.vue'
@@ -31,6 +31,8 @@ const draft = ref<Draft>({
   attempts: 0,
   elapsedMs: 0,
   answerSeen: false,
+  awaitingSubmit: false,
+  uncertain: false,
   mode: 'manual',
 })
 const code = computed({
@@ -44,7 +46,7 @@ const code = computed({
 })
 const accepted = computed(() => draft.value.result?.outcome === 'accepted')
 const suggestion = computed(() =>
-  problem && draft.value.result
+  problem && draft.value.result && !draft.value.uncertain
     ? automaticGrade(
         draft.value.result.outcome,
         draft.value.attempts,
@@ -186,6 +188,8 @@ async function submitCode() {
   error.value = ''
   try {
     await bridgeRequest({ action: 'ping' }, abort.signal)
+    draft.value.awaitingSubmit = true
+    await persist()
     const raw = await bridgeRequest(
       {
         action: 'submit',
@@ -203,11 +207,23 @@ async function submitCode() {
       })
       .parse(raw)
     draft.value.attempts++
+    draft.value.awaitingSubmit = false
     draft.value.pending = String(result.submission_id)
     draft.value.submissionId = draft.value.pending
     draft.value.result = undefined
     await persist()
   } catch (issue) {
+    if (draft.value.awaitingSubmit) {
+      const certainFailure =
+        issue instanceof BridgeError &&
+        ['login-required', 'rate-limit', 'open-leetcode', 'submission-busy'].includes(issue.code)
+      if (!certainFailure) {
+        draft.value.uncertain = true
+        draft.value.mode = 'manual'
+      }
+      draft.value.awaitingSubmit = false
+      await persist()
+    }
     if (!disposed)
       error.value =
         issue instanceof z.ZodError
@@ -235,6 +251,12 @@ onMounted(async () => {
     storageError.value = true
   }
   if (disposed) return
+  if (draft.value.awaitingSubmit) {
+    draft.value.awaitingSubmit = false
+    draft.value.uncertain = true
+    draft.value.mode = 'manual'
+    error.value = '未取得提交编号，请先在 LeetCode 检查提交记录，避免重复提交。'
+  }
   ready.value = true
   props.state.complete = complete
   lastTick = performance.now()
@@ -346,10 +368,17 @@ onUnmounted(() => {
         <label for="leetcode-rating">{{ t('复习评分') }}</label>
         <select id="leetcode-rating" v-model="draft.mode">
           <option value="manual">{{ t('手动评分') }}</option>
-          <option value="automatic">{{ t('自动评分') }}</option>
+          <option value="automatic" :disabled="draft.uncertain">{{ t('自动评分') }}</option>
         </select>
         <p v-if="suggestion" class="form-note">
           {{ t('自动评分：{grade}', { grade: t(gradeNames[suggestion]) }) }}
+        </p>
+        <p v-if="draft.uncertain" class="import-warning">
+          {{
+            t(
+              '有一次提交未取得编号，尝试次数可能不完整。本轮请手动评分，再次提交前请先检查 LeetCode 提交记录。',
+            )
+          }}
         </p>
         <details class="form-note">
           <summary>{{ t('评分规则') }}</summary>

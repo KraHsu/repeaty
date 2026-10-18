@@ -563,4 +563,6 @@ export const en = {
   '保存评分：{grade}': 'Save rating: {grade}',
   'type 支持 basic、reversed、cloze、plugin、leetcode。':
     'type supports basic, reversed, cloze, plugin, and leetcode.',
+  '有一次提交未取得编号，尝试次数可能不完整。本轮请手动评分，再次提交前请先检查 LeetCode 提交记录。':
+    'A submission ID was not received, so the attempt count may be incomplete. Use a manual rating this round and check your LeetCode history before resubmitting.',
 } as const

@@ -291,3 +291,51 @@ it('queries bounded pages in stable order and retains advanced search semantics'
   expect((await repo.queryCards(filter, 1, now, false)).total).toBe(111)
   await repo.close()
 })
+
+it('upgrades an existing normalized v4 database without recreating indexes or changing records', async () => {
+  const name = `repeaty-v4-${crypto.randomUUID()}`
+  const { library, asset } = mediaFixture()
+  const kinds = ['decks', 'notes', 'cards', 'reviews', 'media', 'savedSearches'] as const
+  const db = await openDB(name, 4, {
+    upgrade(db) {
+      for (const name of ['workspace', 'assets', 'backups', 'meta', 'checkpoints'])
+        db.createObjectStore(name)
+      for (const name of kinds) {
+        const store = db.createObjectStore(name)
+        store.createIndex('position', 'position')
+        store.createIndex('deckId', ['deckId', 'position'])
+      }
+      const history = db.createObjectStore('history')
+      history.createIndex('revision', 'revision')
+      history.createIndex('store', 'store')
+    },
+  })
+  const tx = db.transaction([...kinds, 'meta', 'assets'], 'readwrite')
+  for (const kind of kinds) {
+    for (const [position, value] of library[kind].entries()) {
+      await tx
+        .objectStore(kind)
+        .put(
+          { id: value.id, value, position, deckId: kind === 'cards' ? 'deck' : undefined },
+          value.id,
+        )
+    }
+  }
+  await tx
+    .objectStore('meta')
+    .put(
+      {
+        revision: 7,
+        counts: Object.fromEntries(kinds.map((kind) => [kind, library[kind].length])),
+      },
+      'main',
+    )
+  await tx.objectStore('assets').put(asset.blob, asset.meta.id)
+  await tx.done
+  db.close()
+  const repo = createRepository(name)
+  expect(await repo.load()).toEqual({ revision: 7, library })
+  expect(await (await repo.getMedia(asset.meta.id))?.text()).toBe('png-data')
+  await expect(openDB(name, 4)).rejects.toMatchObject({ name: 'VersionError' })
+  await repo.close()
+})

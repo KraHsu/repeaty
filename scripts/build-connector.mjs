@@ -14,6 +14,7 @@ for (const name of ['background', 'content', 'protocol', 'request']) {
   entries.set(`${name}.js`, result.outputText)
 }
 entries.set('manifest.json', await readFile('extension/leetcode/manifest.json', 'utf8'))
+entries.set('README.md', await readFile('extension/leetcode/README.md', 'utf8'))
 entries.set('LICENSE', await readFile('LICENSE', 'utf8'))
 for (const [name, source] of entries) {
   await writeFile(`dist-connector/${name}`, source)

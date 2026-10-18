@@ -9,6 +9,11 @@ const errors: Record<string, string> = {
   'submission-unknown': '未取得提交编号，请先在 LeetCode 检查提交记录，避免重复提交。',
   'request-failed': '无法连接 LeetCode，请检查网络及 LeetCode 标签页后重试。',
 }
+export class BridgeError extends Error {
+  constructor(readonly code: string) {
+    super(errors[code] ?? errors['request-failed'])
+  }
+}
 export function bridgeRequest(request: Request, signal?: AbortSignal): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const id = crypto.randomUUID()
@@ -32,20 +37,18 @@ export function bridgeRequest(request: Request, signal?: AbortSignal): Promise<u
       cleanup()
       const response = event.data.response
       if (response?.ok === true) resolve(response.data)
-      else reject(new Error(errors[response?.error] ?? errors['request-failed']))
+      else reject(new BridgeError(response?.error ?? 'request-failed'))
     }
     const timer = setTimeout(
       () => {
         cleanup()
         reject(
-          new Error(
-            errors[
-              request.action === 'ping'
-                ? 'extension-unavailable'
-                : request.action === 'submit'
-                  ? 'submission-unknown'
-                  : 'request-failed'
-            ],
+          new BridgeError(
+            request.action === 'ping'
+              ? 'extension-unavailable'
+              : request.action === 'submit'
+                ? 'submission-unknown'
+                : 'request-failed',
           ),
         )
       },

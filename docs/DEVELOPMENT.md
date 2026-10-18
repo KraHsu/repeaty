@@ -99,7 +99,7 @@ Fork 后需在自己的仓库启用 Pages 的 GitHub Actions 发布源，并单�
 
 ```text
 src/core/
-  model.ts           # v3 笔记 / 卡片 / 媒体模型与卡片生成
+  model.ts           # v4 笔记 / 卡片 / 媒体模型与卡片生成
   legacy.ts          # 冻结的 v1 校验模型
   scheduler.ts       # 按卡组 FSRS、额度、撤销、自动暂缓与顽固卡
   content.ts         # 安全 Markdown 与数学公式渲染
@@ -110,6 +110,8 @@ src/core/
   archive.ts         # 流式 ZIP / NDJSON 备份与原始媒体
   backups.ts         # 旧版 JSON 备份兼容
   media.ts           # 附件校验
+src/plugins/        # 题目 / 答案组件接口、LeetCode 题型与连接扩展源码
+extension/leetcode/ # 连接扩展清单与安装说明
 src/i18n/           # 双语词典、语言偏好、格式化与 DOM 回归测试
 src/composables/     # 工作空间状态与离线更新状态
 src/components/      # 笔记编辑、卡片列表、导入、复习和媒体展示
@@ -120,3 +122,17 @@ scripts/            # 真实 Chromium 大卡库性能基准
 .github/workflows/  # CI 检查与 GitHub Pages 部署
 docs/               # 使用指南、开发文档与 README 插图
 ```
+
+## 题目插件
+
+插件接口位于 [`src/plugins/types.ts`](../src/plugins/types.ts)，内置注册表位于 [`src/plugins/index.ts`](../src/plugins/index.ts)。每个插件提供 `id`、`version`、`label`，以及接收 `QuestionProps` 的两个 Vue 组件：`showQuestion` 和 `showAnswer`。需要制题表单时提供可选 `editor`，用 `NoteInput` 的 `v-model` 交换内容。
+
+所有基础卡片通过 `flashcard` 插件显示，双向 / 挖空变体仍由模型生成。新增插件在注册表加入组件即可；编辑器自动列出带 `editor` 的插件。`type: plugin` 每条笔记生成一张独立调度的卡片，数据为 `{ id, version, data }`，`data` 只接受有大小限制的 JSON。插件需校验自身数据；未知插件或不支持的版本保留数据并显示不可用，不允许评分。备份不加载或执行插件代码，暂不提供第三方脚本安装。
+
+题目组件通过 `QuestionState` 声明允许的评分、自动评分、忙碌状态和评分依据。宿主控制翻面、FSRS、保存和撤销；`complete` 只在评分保存成功后调用。LeetCode 的尝试次数、用时、判题结果、提交编号和评分方式随复习记录备份。
+
+`npm run build` 先编译扩展到 `dist-connector/`，生成 `public/leetcode-connector.zip`，再构建网页。两个生成位置均不提交 Git。`npm run check` 包含真实加载 MV3 扩展的 Chromium 测试，通过受控 LeetCode HTTP 响应覆盖读取、提交、结果查询、草稿、双语与评分；测试不会使用维护者账号或向 LeetCode 自动提交。
+
+连接器只接受固定的读取题目、提交代码和查询判题操作，通过已打开的 LeetCode 标签页发出同源请求，不提供通用网络代理，不读取或回传登录 Cookie。`scripting` 与两个 LeetCode 域名是扩展的权限范围；Repeaty 页面来源和参数会再次校验。自行部署到其他域名时，需要同时修改 `extension/leetcode/manifest.json` 的 `content_scripts.matches` 和 `src/plugins/leetcode/connector/protocol.ts` 的 `allowedPage`，重新构建并加载扩展。
+
+扩展使用 LeetCode 网页接口，接口可能变化；实现依据为当前站点请求和返回格式，而非稳定的官方 SDK。参考 [Chrome 扩展消息传递](https://developer.chrome.com/docs/extensions/develop/concepts/messaging)、[Playwright 扩展测试](https://playwright.dev/docs/chrome-extensions)及 [LeetCode 对正式提交的说明](https://support.leetcode.com/hc/en-us/articles/32442719377939-How-to-create-test-cases-on-LeetCode)。
