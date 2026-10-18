@@ -490,27 +490,11 @@ export const en = {
   未通过: 'Not accepted',
   '判题服务未返回有效结果，请稍后重新查询。':
     'The judge did not return a valid result. Check again later.',
-  '未连接扩展。请安装扩展后刷新 Repeaty。':
-    'Extension not connected. Install it and reload Repeaty.',
-  '请在另一个标签页打开所选 LeetCode 站点并登录，然后重试。':
-    'Open the selected LeetCode site in another tab, sign in, and try again.',
-  '请在 LeetCode 标签页登录或完成验证，然后重试。':
-    'Sign in or complete verification in the LeetCode tab, then try again.',
   '提交过于频繁，请稍后重试。': 'Too many submissions. Try again later.',
   '上一次提交尚未完成，请稍候。': 'The previous submission is still in progress.',
   '未取得提交编号，请先在 LeetCode 检查提交记录，避免重复提交。':
     'No submission ID was received. Check your LeetCode submissions before trying again to avoid submitting twice.',
-  '无法连接 LeetCode，请检查网络及 LeetCode 标签页后重试。':
-    'Cannot connect to LeetCode. Check your connection and the LeetCode tab, then try again.',
   '连接 LeetCode': 'Connect LeetCode',
-  下载浏览器扩展: 'Download browser extension',
-  '，解压后在 Chrome / Edge 的扩展页面开启开发者模式，选择“加载已解压的扩展程序”。':
-    '. Unzip it, enable Developer mode on the Chrome / Edge extensions page, and choose “Load unpacked.”',
-  '打开 LeetCode 并登录': 'Open LeetCode and sign in',
-  '，保留该标签页。': '. Keep that tab open.',
-  '刷新 Repeaty 后即可读取题目和提交代码。': 'Reload Repeaty to load problems and submit code.',
-  '提交代码会写入你的 LeetCode 提交记录。登录信息不会保存到 Repeaty 或备份中。':
-    'Code submissions appear in your LeetCode history. Login details are not saved in Repeaty or its backups.',
   'LeetCode 站点': 'LeetCode site',
   '中国站 · leetcode.cn': 'China · leetcode.cn',
   '国际站 · leetcode.com': 'International · leetcode.com',
@@ -572,15 +556,6 @@ export const en = {
   '添加卡片时点击「添加 LeetCode 题目」，或将笔记类型设为「插件题目」。':
     'In Add card, choose “Add LeetCode problem” or set the note type to “Plugin question.”',
   '添加 LeetCode 题目': 'Add LeetCode problem',
-  'LeetCode 连接扩展': 'LeetCode connector',
-  '读取题目和提交判题需要安装扩展，支持桌面 Chrome / Edge。':
-    'Install the extension to load problems and submit code. Requires desktop Chrome / Edge.',
-  安装说明: 'Installation instructions',
-  '下载并解压 ZIP 文件。': 'Download and unzip the ZIP file.',
-  '打开浏览器扩展管理页：Chrome 使用 chrome://extensions，Edge 使用 edge://extensions。':
-    'Open the extensions page: chrome://extensions in Chrome or edge://extensions in Edge.',
-  '开启「开发者模式」，点击「加载已解压的扩展程序」，选择包含 manifest.json 的文件夹。':
-    'Enable Developer mode, click “Load unpacked,” and select the folder containing manifest.json.',
   '支持 Markdown 和数学公式，图片可直接粘贴到输入框。':
     'Supports Markdown and math. Paste images directly into either field.',
   '图片可直接粘贴到输入框。': 'Paste images directly into either field.',
@@ -596,9 +571,6 @@ export const en = {
   已安装: 'Installed',
   已开启: 'Enabled',
   已关闭: 'Disabled',
-  自动判题连接: 'Judge connection',
-  'LeetCode 题型已内置。当前自动读取题目和提交判题使用单独的浏览器连接扩展；开启题型不会安装扩展。':
-    'The LeetCode question type is built in. Loading problems and submitting code currently use a separate browser connector; enabling the question type does not install it.',
   '此部署尚未安装题目插件。普通卡片可正常使用。':
     'No question plugins are installed. Standard flashcards are available.',
   '请先在插件页面启用对应插件，再编辑或保存题目。':
