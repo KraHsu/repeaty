@@ -32,6 +32,22 @@ describe('Markdown and math rendering', () => {
   })
 })
 describe('cloze authoring', () => {
+  it('extracts only the current deletion answers, separately from optional extra information', () => {
+    const views = cardViews(
+      fixture({
+        type: 'cloze',
+        front: '{{c1::Paris::city}} and {{c1::Lyon}} are in {{c2::France}}.',
+        back: '',
+      }),
+    )
+    expect(views[0]!.cloze).toEqual({
+      answers: ['Paris', 'Lyon'],
+      context: 'Paris and Lyon are in France.',
+      extra: '',
+    })
+    expect(views[1]!.cloze?.answers).toEqual(['France'])
+    expect(views[0]!.front).toBe('[city] and […] are in France.')
+  })
   it('preserves legacy trailing backslashes and literal replacement metacharacters', () => {
     expect(clozes('{{c1::C:\\}}')[0]!.answer).toBe('C:\\')
     const [view] = cardViews(fixture({ type: 'cloze', front: '{{c1::$&::$`}}' }))

@@ -169,6 +169,7 @@ test('cloze generation and daily new-card quotas work together', async ({ page }
   await page
     .getByLabel('正面 · 问题')
     .fill('法国的首都是 {{c1::巴黎::城市}}，日本的首都是 {{c2::东京}}。')
+  await page.getByLabel('补充说明').fill('')
   await page.getByRole('checkbox', { name: /确认移除/ }).check()
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   await expect(page.locator('tbody tr')).toHaveCount(2)
@@ -181,6 +182,9 @@ test('cloze generation and daily new-card quotas work together', async ({ page }
   await page.getByRole('button', { name: '复习', exact: true }).click()
   await expect(page.locator('.card-question')).toContainText(/\[(城市|…)\]/)
   await page.getByRole('button', { name: '显示答案' }).click()
+  await expect(page.getByLabel('挖空答案')).toContainText(/巴黎|东京/)
+  await expect(page.locator('.cloze-answer')).toHaveCount(1)
+  await expect(page.locator('.cloze-extra')).toHaveCount(0)
   await expect(page.locator('.card-answer')).toContainText('法国的首都是 巴黎，日本的首都是 东京。')
   await page.getByRole('button', { name: /简单/ }).click()
   await expect(page.getByRole('heading', { name: '已达到今日上限' })).toBeVisible()

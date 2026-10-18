@@ -208,7 +208,7 @@ export type CardView = Card &
   Pick<
     Note,
     'deckId' | 'front' | 'back' | 'tags' | 'type' | 'format' | 'frontMedia' | 'backMedia' | 'plugin'
-  >
+  > & { cloze?: { answers: string[]; context: string; extra: string } }
 export interface MediaUpload {
   meta: Media
   blob: Blob
@@ -297,6 +297,7 @@ export function renderCard(card: Card, note: Note): CardView {
     backMedia = note.backMedia
   if (card.variant === 'reverse')
     [front, back, frontMedia, backMedia] = [back, front, backMedia, frontMedia]
+  let cloze: CardView['cloze']
   if (note.type === 'cloze') {
     const target = Number(card.variant.split(':')[1])
     let answer = front
@@ -306,10 +307,18 @@ export function renderCard(card: Card, note: Note): CardView {
       )
       answer = answer.replace(item.raw, () => item.answer)
     }
+    cloze = {
+      answers: clozes(note.front)
+        .filter((item) => item.number === target)
+        .map((item) => item.answer),
+      context: answer,
+      extra: note.back,
+    }
     back = answer + (note.back ? `\n\n${note.back}` : '')
   }
   return {
     ...card,
+    cloze,
     deckId: note.deckId,
     type: note.type,
     plugin: note.plugin,

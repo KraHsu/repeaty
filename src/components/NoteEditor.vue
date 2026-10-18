@@ -304,7 +304,7 @@ async function save(continueAdding = false) {
               class="form-note"
               v-text="
                 t(
-                  '使用 {{ c1::答案 }} 或 {{ c1::答案::提示 }}。同编号一起隐藏，不同编号各生成一张卡片；暂不支持嵌套挖空。',
+                  '将要记住的内容写在 {{c1::答案}} 中，也可写成 {{c1::答案::提示}}。显示答案时会自动还原；同编号一起隐藏，不同编号各生成一张卡片。',
                 )
               "
             />
@@ -320,7 +320,14 @@ async function save(continueAdding = false) {
           <section class="note-side">
             <div class="note-side-heading">
               <label for="card-back"
-                >{{ t(form.type === 'plugin' ? '解题笔记' : '背面 · 答案')
+                >{{
+                  t(
+                    form.type === 'plugin'
+                      ? '解题笔记'
+                      : form.type === 'cloze'
+                        ? '补充说明'
+                        : '背面 · 答案',
+                  )
                 }}<span v-if="form.type === 'cloze' || form.type === 'plugin'" class="optional">{{
                   t('可选')
                 }}</span></label
@@ -333,7 +340,13 @@ async function save(continueAdding = false) {
               :required="form.type !== 'cloze' && form.type !== 'plugin'"
               maxlength="10000"
               rows="6"
-              :placeholder="t('输入答案或补充说明')"
+              :placeholder="
+                t(
+                  form.type === 'cloze'
+                    ? '答案来自正面的挖空内容，这里可留空。'
+                    : '输入答案或补充说明',
+                )
+              "
             />
             <MediaAttachments
               :label="t('背面图片 / 音频')"

@@ -1,5 +1,12 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  挖空答案: 'Missing text',
+  补充说明: 'Extra information',
+  '答案来自正面的挖空内容，这里可留空。':
+    'The answer comes from the cloze text. You can leave this empty.',
+  '将要记住的内容写在 {{c1::答案}} 中，也可写成 {{c1::答案::提示}}。显示答案时会自动还原；同编号一起隐藏，不同编号各生成一张卡片。':
+    'Wrap the text to remember in {{c1::answer}} or {{c1::answer::hint}}. Revealing restores it automatically. Matching numbers are hidden together; different numbers create separate cards.',
+
   '可读取公开题目。提交判题前，请填写下方的登录信息。':
     'Public problems can be loaded. Add your credentials below to submit code.',
   更新登录信息: 'Update credentials',
