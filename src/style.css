@@ -2268,6 +2268,9 @@ select {
 .markdown-content table {
   border-collapse: collapse;
   display: block;
+  width: max-content;
+  max-width: 100%;
+  margin-inline: auto;
   overflow-x: auto;
   font-size: 0.85em;
 }
@@ -2275,6 +2278,7 @@ select {
 .markdown-content td {
   border: 1px solid #dce2d8;
   padding: 8px;
+  text-align: center;
 }
 .markdown-content a {
   color: #436740;
