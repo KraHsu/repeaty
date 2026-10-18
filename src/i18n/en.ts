@@ -1,5 +1,27 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  判题配置: 'Judge setup',
+  状态读取失败: 'Could not read status',
+  已配置登录信息: 'Credentials configured',
+  未配置登录信息: 'Credentials not configured',
+  刷新状态: 'Refresh status',
+  '服务已保存该站点的登录信息，提交时会验证登录是否仍然有效。':
+    'The service has credentials for this site. Their validity is checked when you submit.',
+  '可读取公开题目。提交判题前，需要在 Repeaty 服务中配置该站点的登录信息。':
+    'Public problems can be loaded. To submit code, configure credentials for this site in the Repeaty service.',
+  '打开力扣网站并登录，不会自动连接 Repeaty。判题使用服务端配置的账号。':
+    'Signing in on the LeetCode website does not connect Repeaty. Submissions use the account configured on the server.',
+  打开力扣网站: 'Open LeetCode website',
+  如何配置判题账号: 'How to configure the judge account',
+  '在对应的力扣站点登录，在浏览器开发者工具的 Cookie 中找到 LEETCODE_SESSION 和 csrftoken。':
+    'Sign in to this LeetCode site. In your browser’s developer tools, find the LEETCODE_SESSION and csrftoken cookies.',
+  '在 Repeaty 服务的环境变量中设置：': 'Set these environment variables for the Repeaty service:',
+  '重启 Repeaty 服务，然后点击「刷新状态」。登录过期后需要更新这两个值。':
+    'Restart the Repeaty service, then select “Refresh status”. Update both values when the session expires.',
+  '登录信息只放在服务的私密配置中，不要提交到 Git 或发到聊天中。':
+    'Keep credentials in private server configuration. Do not commit them to Git or send them in chat.',
+  完整配置文档: 'Full setup guide',
+
   '创建自己的卡组，或添加入门卡组。': 'Create your own deck or add the starter deck.',
   添加入门卡组: 'Add starter deck',
   入门卡组已添加: 'Starter deck added',

@@ -283,3 +283,53 @@ test('plugin switches persist across tabs without changing questions or progress
   await page.getByRole('button', { name: '复习', exact: true }).click()
   await expect(page.getByLabel('代码', { exact: true })).toBeVisible()
 })
+
+test('plugin settings distinguish website login from per-site judge credentials and refresh failures', async ({
+  page,
+  context,
+}) => {
+  let configured: string[] = []
+  let fail = false
+  await context.route('**/api/status', async (route) => {
+    if (fail) return route.fulfill({ status: 503, json: { error: 'request-failed' } })
+    const response = await route.fetch()
+    const status = await response.json()
+    status.plugins = status.plugins.map((plugin: { id: string }) =>
+      plugin.id === 'leetcode' ? { ...plugin, configured } : plugin,
+    )
+    await route.fulfill({ response, json: status })
+  })
+  await context.route('https://leetcode.cn/**', (route) =>
+    route.fulfill({ contentType: 'text/html', body: '<title>LeetCode website</title>' }),
+  )
+  await page.goto('./')
+  await page.getByRole('button', { name: '插件', exact: true }).click()
+  const cn = page.getByRole('region', { name: '中国站 · leetcode.cn', exact: true })
+  const com = page.getByRole('region', { name: '国际站 · leetcode.com', exact: true })
+  await expect(cn.getByRole('status')).toContainText('未配置登录信息')
+  await expect(com.getByRole('status')).toContainText('未配置登录信息')
+  await expect(cn).toContainText('打开力扣网站并登录，不会自动连接 Repeaty')
+  const popup = page.waitForEvent('popup')
+  await cn.getByRole('link', { name: '打开力扣网站', exact: false }).click()
+  await (await popup).close()
+  await expect(cn.getByRole('status')).toContainText('未配置登录信息')
+  await cn.getByText('如何配置判题账号', { exact: true }).click()
+  await expect(cn.locator('.connection-variables')).toContainText('LEETCODE_CN_SESSION')
+  await expect(cn.locator('.connection-variables')).not.toContainText('LEETCODE_COM_SESSION')
+  configured = ['leetcode.cn']
+  await cn.getByRole('button', { name: '刷新状态' }).click()
+  await expect(cn.getByRole('status')).toContainText('已配置登录信息')
+  await expect(com.getByRole('status')).toContainText('未配置登录信息')
+  fail = true
+  await cn.getByRole('button', { name: '刷新状态' }).click()
+  await expect(cn.getByRole('status')).toContainText('状态读取失败')
+  await expect(cn.getByRole('alert')).toBeVisible()
+  fail = false
+  await cn.getByRole('button', { name: '刷新状态' }).click()
+  await expect(cn.getByRole('status')).toContainText('已配置登录信息')
+  await page.getByLabel('界面语言').selectOption('en')
+  await expect(cn.getByRole('status')).toHaveCount(0)
+  await expect(
+    page.getByRole('region', { name: 'China · leetcode.cn', exact: true }).getByRole('status'),
+  ).toContainText('Credentials configured')
+})
