@@ -268,11 +268,28 @@ async function readWorkspace(page: Page): Promise<{ revision: number; library: L
         request.onerror = () => reject(request.error)
         request.onsuccess = () => {
           const db = request.result
-          const tx = db.transaction('workspace')
-          const read = tx.objectStore('workspace').get('main')
-          read.onsuccess = () => resolve(read.result)
-          read.onerror = () => reject(read.error)
-          tx.oncomplete = () => db.close()
+          const stores = ['decks', 'notes', 'cards', 'reviews', 'media', 'savedSearches'] as const
+          const tx = db.transaction(['meta', ...stores])
+          const library = { version: 3 } as Library
+          let revision = 0
+          const metadata = tx.objectStore('meta').get('main')
+          metadata.onsuccess = () => {
+            revision = metadata.result.revision
+          }
+          for (const store of stores) {
+            const read = tx.objectStore(store).index('position').getAll()
+            read.onsuccess = () => {
+              library[store] = read.result.map((row) => row.value)
+            }
+          }
+          tx.onabort = () => {
+            db.close()
+            reject(tx.error)
+          }
+          tx.oncomplete = () => {
+            db.close()
+            resolve({ revision, library })
+          }
         }
       }),
   )

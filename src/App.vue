@@ -681,6 +681,7 @@ async function restoreBackup() {
           </div>
         </header>
         <CollectionPanel
+          :query-cards="workspace.queryCards"
           v-model:deck-id="selectedDeck"
           v-model:query="searchQuery"
           v-model:state="filterState"

@@ -100,7 +100,7 @@ it('keeps drafts and revealed answers while translating authoring, statuses, and
   expect(host.querySelector('dialog')!.textContent).toContain('保存卡片')
   setLocale('en')
   await submitForm()
-  expect(host.querySelector('tbody')!.textContent).toContain('学习空间')
+  await vi.waitFor(() => expect(host.querySelector('tbody')!.textContent).toContain('学习空间'))
   expect(host.querySelector('.status-chip')!.textContent).toBe('New')
   button('Review').click()
   await vi.waitFor(() =>
@@ -163,5 +163,5 @@ it('keeps persisted filter values and typed search terms unchanged across UI lan
   expect(state.value).toBe('新卡片')
   expect(state.selectedOptions[0]!.textContent!.trim()).toBe('新卡片')
   expect(host.querySelector<HTMLInputElement>('.search-field input')!.value).toBe('type:basic')
-  expect(host.querySelectorAll('tbody tr')).toHaveLength(5)
+  await vi.waitFor(() => expect(host.querySelectorAll('tbody tr')).toHaveLength(5))
 })

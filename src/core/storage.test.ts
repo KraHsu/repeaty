@@ -219,3 +219,70 @@ describe('IndexedDB transactions and automatic snapshots', () => {
     await repo.close()
   })
 })
+
+it('writes only a graded card and new review, and reconstructs the earlier checkpoint', async () => {
+  const name = `repeaty-delta-${crypto.randomUUID()}`
+  const repo = createRepository(name)
+  const first = await repo.save(fixture(), 0)
+  const graded = reviewCard(first.library, first.library.cards[0]!.id, 3, now)
+  await repo.save(graded, 1, { now })
+  const db = await openDB(name, 4)
+  expect(await db.get('workspace', 'main')).toBeUndefined()
+  expect(await db.count('cards')).toBe(1)
+  expect(await db.count('reviews')).toBe(1)
+  expect((await db.getAll('history')).map((row) => row.store).sort()).toEqual(['cards', 'reviews'])
+  const checkpoints = await db.getAll('checkpoints')
+  expect(checkpoints).toHaveLength(1)
+  expect(checkpoints[0]).not.toHaveProperty('library')
+  expect(await repo.getBackup(checkpoints[0].id)).toEqual(first.library)
+  db.close()
+  await repo.close()
+})
+
+it('leaves legacy data intact if migration fails validation', async () => {
+  const name = `repeaty-failed-migration-${crypto.randomUUID()}`
+  const db = await openDB(name, 3, {
+    upgrade(db) {
+      db.createObjectStore('workspace')
+    },
+  })
+  const corrupt = { revision: 8, library: { ...fixture(), decks: [] } }
+  await db.put('workspace', corrupt, 'main')
+  db.close()
+  const repo = createRepository(name)
+  await expect(repo.load()).rejects.toThrow()
+  const inspect = await openDB(name, 4)
+  expect(await inspect.get('workspace', 'main')).toEqual(corrupt)
+  expect(await inspect.get('meta', 'main')).toBeUndefined()
+  inspect.close()
+  await repo.close()
+})
+
+it('queries bounded pages in stable order and retains advanced search semantics', async () => {
+  const repo = repository()
+  let library = fixture()
+  for (let i = 0; i < 110; i++)
+    library = saveNote(
+      library,
+      { ...input, front: `Question ${i}`, tags: i % 2 ? ['odd'] : ['even'] },
+      undefined,
+      false,
+      now,
+    )
+  await repo.save(library, 0)
+  const filter = { query: '', state: 'all' as const, deckId: 'deck' }
+  const second = await repo.queryCards(filter, 2, now, false)
+  expect(second.total).toBe(111)
+  expect(second.cards.map((card) => card.id)).toEqual(
+    library.cards.slice(50, 100).map((card) => card.id),
+  )
+  const last = await repo.queryCards(filter, 3, now, false)
+  expect(last.cards).toHaveLength(11)
+  const odd = await repo.queryCards({ ...filter, query: 'tag:odd type:basic' }, 1, now)
+  expect(odd.total).toBe(55)
+  expect(odd.cards).toHaveLength(50)
+  expect(odd.eligible).toBe(55)
+  expect(odd.studyIds).toHaveLength(55)
+  await expect(repo.queryCards({ ...filter, query: 'is:unknown' })).rejects.toThrow('is 支持')
+  await repo.close()
+})

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t, locale } from '../i18n'
 
-import { computed, ref, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { Layers, Pencil, Plus, Repeat2, Search, Trash2 } from '@lucide/vue'
 import {
   cardViews,
@@ -12,10 +12,12 @@ import {
   type SearchFilter,
   type StudySession,
 } from '../core/model'
-import { available, type CardAction } from '../core/scheduler'
-import { cardStatus, searchCards } from '../core/search'
+import { type CardAction } from '../core/scheduler'
+import { cardStatus } from '../core/search'
+import type { CardPage } from '../core/storage'
 import type { BatchEdit } from '../core/batch'
 const props = defineProps<{
+  queryCards: (filter: SearchFilter, page: number, now: Date, study: boolean) => Promise<CardPage>
   library: Library
   now: Date
   busy: boolean
@@ -44,19 +46,42 @@ const filter = computed<SearchFilter>(() => ({
   state: state.value,
   deckId: deckId.value,
 }))
-const result = computed(() => {
-  try {
-    return { cards: searchCards(props.library, filter.value, props.now), error: '' }
-  } catch (error) {
-    return { cards: [] as CardView[], error: error as Error }
-  }
+const result = shallowRef<CardPage & { error: string | Error }>({
+  cards: [],
+  total: 0,
+  eligible: 0,
+  studyIds: [],
+  error: '',
 })
-const filtered = computed(() => result.value.cards)
+const loading = ref(false)
+const expanded = ref(false)
+watch(
+  [filter, page, expanded, () => props.library, () => props.now],
+  async (_value, _old, onCleanup) => {
+    let active = true
+    onCleanup(() => {
+      active = false
+    })
+    loading.value = true
+    try {
+      const data = await props.queryCards(filter.value, page.value, props.now, expanded.value)
+      if (active) {
+        result.value = { ...data, error: '' }
+        page.value = Math.min(page.value, Math.max(1, Math.ceil(data.total / 50)))
+      }
+    } catch (error) {
+      if (active)
+        result.value = { cards: [], total: 0, eligible: 0, studyIds: [], error: error as Error }
+    } finally {
+      if (active) loading.value = false
+    }
+  },
+  { immediate: true },
+)
 const savedId = ref(''),
   savedName = ref(''),
   reschedule = ref(false),
   studyLimit = ref(50)
-const eligible = computed(() => filtered.value.filter((card) => available(card, props.now)))
 function applySaved() {
   const saved = props.library.savedSearches.find((entry) => entry.id === savedId.value)
   if (!saved) return
@@ -79,17 +104,18 @@ async function removeFilter() {
 function startStudy() {
   if (
     props.busy ||
+    loading.value ||
     result.value.error ||
     !Number.isInteger(studyLimit.value) ||
     studyLimit.value < 1 ||
     studyLimit.value > 500
   )
     return
-  const ids = eligible.value.slice(0, studyLimit.value).map((card) => card.id)
+  const ids = result.value.studyIds.slice(0, studyLimit.value)
   if (ids.length) emit('study', { ids, reschedule: reschedule.value })
 }
-const pages = computed(() => Math.max(1, Math.ceil(filtered.value.length / 50)))
-const visible = computed(() => filtered.value.slice((page.value - 1) * 50, page.value * 50))
+const pages = computed(() => Math.max(1, Math.ceil(result.value.total / 50)))
+const visible = computed(() => result.value.cards)
 const selectedNotes = computed(() => [
   ...new Set(
     cards.value.filter((card) => selected.value.includes(card.id)).map((card) => card.noteId),
@@ -106,7 +132,6 @@ watch(
   () => props.library,
   () => {
     selected.value = selected.value.filter((id) => cards.value.some((card) => card.id === id))
-    page.value = Math.min(page.value, pages.value)
   },
 )
 function selectPage() {
@@ -172,7 +197,7 @@ async function editSelected() {
     </button>
   </div>
   <p v-if="result.error" class="import-warning" role="alert">{{ t(result.error) }}</p>
-  <details class="search-options">
+  <details class="search-options" @toggle="expanded = ($event.target as HTMLDetailsElement).open">
     <summary>{{ t('高级搜索、常用筛选与专项练习') }}</summary>
     <p class="form-note">
       {{ t('空格连接的条件需同时满足；双引号包围短语，减号排除条件。例如')
@@ -230,14 +255,17 @@ async function editSelected() {
         >{{ t('本轮最多张数')
         }}<input v-model.number="studyLimit" type="number" min="1" max="500" step="1" required
       /></label>
-      <button class="button primary" :disabled="busy || !!result.error || !eligible.length">
+      <button
+        class="button primary"
+        :disabled="busy || loading || !!result.error || !result.eligible"
+      >
         {{ t('开始专项练习') }}
       </button>
     </form>
     <p class="form-note">
       {{
         t('当前筛选有 {p0} 张可练习卡片（跳过暂停和今日暂缓）。{p1} 每张卡片本轮练习一次。', {
-          p0: eligible.length,
+          p0: result.eligible,
           p1: reschedule
             ? t('会提前复习未到期卡片并重排进度；本轮不受每日额度限制，评分计入今日学习。')
             : t('只在本轮记录自评分，不改变到期时间、每日额度或学习统计。'),
@@ -245,8 +273,8 @@ async function editSelected() {
       }}
     </p>
   </details>
-  <div class="library-count">
-    {{ t('{p0} 张卡片 · {p1} 条笔记', { p0: filtered.length, p1: library.notes.length }) }}
+  <div class="library-count" :aria-busy="loading">
+    {{ t('{p0} 张卡片 · {p1} 条笔记', { p0: result.total, p1: library.notes.length }) }}
   </div>
   <section v-if="selected.length" class="batch-panel">
     <strong>{{
@@ -302,7 +330,7 @@ async function editSelected() {
       </button>
     </details>
   </section>
-  <div v-if="filtered.length" class="card-table-wrap">
+  <div v-if="result.total" class="card-table-wrap">
     <table class="card-table expanded-table">
       <thead>
         <tr>

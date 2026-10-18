@@ -5,6 +5,7 @@ import {
   savedSearchSchema,
   type CardView,
   type Library,
+  type Deck,
   type SearchFilter,
 } from './model'
 import { available, isBuried } from './scheduler'
@@ -50,8 +51,8 @@ function numericCondition(expression: string, key: string): (n: number) => boole
 function calendarDay(date: Date) {
   return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000
 }
-export function searchCards(library: Library, filter: SearchFilter, now = new Date()): CardView[] {
-  const decks = new Map(library.decks.map((deck) => [deck.id, deck.name.toLocaleLowerCase()]))
+export function compileSearch(deckList: Deck[], filter: SearchFilter, now = new Date()) {
+  const decks = new Map(deckList.map((deck) => [deck.id, deck.name.toLocaleLowerCase()]))
   const predicates = terms(filter.query).map((raw) => {
     const negate = raw.startsWith('-')
     const term = (negate ? raw.slice(1) : raw).toLocaleLowerCase()
@@ -98,13 +99,14 @@ export function searchCards(library: Library, filter: SearchFilter, now = new Da
     return (card: CardView) => (negate ? !test(card) : test(card))
   })
   if (!filterStates.includes(filter.state)) throw new LocalizedError(msg('筛选状态不正确。'))
-  return cardViews(library).filter(
-    (card) =>
-      (!filter.deckId || card.deckId === filter.deckId) &&
-      (filter.state === 'all' ||
-        (filter.state === '顽固卡' ? card.leech : cardStatus(card, now) === filter.state)) &&
-      predicates.every((test) => test(card)),
-  )
+  return (card: CardView) =>
+    (!filter.deckId || card.deckId === filter.deckId) &&
+    (filter.state === 'all' ||
+      (filter.state === '顽固卡' ? card.leech : cardStatus(card, now) === filter.state)) &&
+    predicates.every((test) => test(card))
+}
+export function searchCards(library: Library, filter: SearchFilter, now = new Date()): CardView[] {
+  return cardViews(library).filter(compileSearch(library.decks, filter, now))
 }
 export function saveSearch(
   library: Library,
