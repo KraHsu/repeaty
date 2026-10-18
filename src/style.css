@@ -2655,6 +2655,24 @@ textarea::placeholder {
   color: var(--muted);
   font-size: var(--text-sm);
 }
+.connection-header .connection-status {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 1rem;
+  margin-top: 8px;
+}
+.connection-status strong {
+  color: #96602d;
+}
+.connection-status strong.configured {
+  color: #37634b;
+}
+.connection-variables code {
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+}
 .connection-header .button {
   text-decoration: none;
 }
