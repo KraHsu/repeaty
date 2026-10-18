@@ -14,7 +14,7 @@ npm run build:server
 cargo run --release --locked --manifest-path server/Cargo.toml
 ```
 
-打开 `http://127.0.0.1:8080`。默认仅监听本机，网页目录为 `dist-server/`，数据库自动创建在 `data/repeaty.sqlite3`。停止后再次启动会继续使用同一个数据库。初次访问是空库，不会自动读取另一个网址的 IndexedDB；迁移原数据请先在原页面导出 `.repeaty`，再在此处导入。
+打开 `http://127.0.0.1:8080`。默认仅监听本机，网页目录为 `dist-server/`，数据库自动创建在 `data/repeaty.sqlite3`。停止后再次启动会继续使用同一个数据库。首次访问空库时会添加 FSRS 入门卡组，不会自动读取另一个网址的 IndexedDB；迁移原数据请先在原页面导出 `.repeaty`，再在此处导入。
 
 生产部署也可以先执行 `cargo build --release --locked --manifest-path server/Cargo.toml`，随后直接运行 `server/target/release/repeaty-server`。运行目录会影响默认相对路径，长期运行建议设置绝对路径。
 
