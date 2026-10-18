@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|e| format!("Database initialization failed: {e:?}"))?;
     let state = AppState {
         db: Arc::new(Mutex::new(database)),
-        leetcode: Arc::new(LeetCode::from_env()?),
+        leetcode: Arc::new(LeetCode::from_env(Path::new(&path))?),
         token,
         origin: origin.clone(),
         host,

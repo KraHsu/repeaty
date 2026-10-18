@@ -117,10 +117,11 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
     );
     Ok(response)
 }
-async fn status(State(state): State<AppState>) -> Json<Value> {
-    Json(
-        json!({"edition":"server","version":env!("CARGO_PKG_VERSION"),"apiVersion":1,"authenticationRequired":state.token.is_some(),"plugins":state.enabled_plugins.iter().map(|id|json!({"id":id,"configured":if id=="leetcode" {state.leetcode.configured()} else {vec![]}})).collect::<Vec<_>>()}),
-    )
+async fn status(State(state): State<AppState>) -> Result<Json<Value>> {
+    let configured = state.leetcode.configured()?;
+    Ok(Json(
+        json!({"edition":"server","version":env!("CARGO_PKG_VERSION"),"apiVersion":1,"authenticationRequired":state.token.is_some(),"plugins":state.enabled_plugins.iter().map(|id|json!({"id":id,"configured":if id=="leetcode" {configured.clone()} else {vec![]}})).collect::<Vec<_>>()}),
+    ))
 }
 async fn load(State(state): State<AppState>) -> Result<Json<Value>> {
     Ok(Json(state.database(|db| db.load()).await?))
