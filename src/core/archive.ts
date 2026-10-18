@@ -4,7 +4,16 @@ import { msg, LocalizedError } from '../i18n'
 import { emptyLibrary, librarySchema, MAX_BACKUP_BYTES, type Library } from './model'
 import { parseBackup, type BackupData } from './backups'
 
-const kinds = ['decks', 'notes', 'cards', 'reviews', 'media', 'savedSearches'] as const
+const kinds = [
+  'decks',
+  'notes',
+  'cards',
+  'reviews',
+  'media',
+  'savedSearches',
+  'practices',
+  'attempts',
+] as const
 const MB = 1024 * 1024
 export const MAX_ARCHIVE_BYTES = 2 * 1024 * MB
 const PART_BYTES = MB
@@ -16,14 +25,26 @@ const countSchema = z.object({
   reviews: z.number().int().min(0).max(500_000),
   media: z.number().int().min(0).max(100_000),
   savedSearches: z.number().int().min(0).max(100),
+  practices: z.number().int().min(0).max(100_000).default(0),
+  attempts: z.number().int().min(0).max(500_000).default(0),
 })
-const manifestSchema = z.object({
-  format: z.literal('repeaty-archive'),
-  version: z.literal(1),
-  libraryVersion: z.union([z.literal(3), z.literal(4)]),
-  counts: countSchema,
-  parts: countSchema,
-})
+const manifestSchema = z
+  .object({
+    format: z.literal('repeaty-archive'),
+    version: z.union([z.literal(1), z.literal(2)]),
+    libraryVersion: z.union([z.literal(3), z.literal(4), z.literal(5)]),
+    counts: countSchema,
+    parts: countSchema,
+  })
+  .refine((manifest) =>
+    manifest.version === 2
+      ? manifest.libraryVersion === 5
+      : manifest.libraryVersion !== 5 &&
+        manifest.counts.practices === 0 &&
+        manifest.counts.attempts === 0 &&
+        manifest.parts.practices === 0 &&
+        manifest.parts.attempts === 0,
+  )
 export interface TransferOptions {
   signal?: AbortSignal
   progress?: (percent: number) => void
@@ -104,7 +125,7 @@ export async function exportArchive(
     await add(
       'manifest.json',
       new Blob([
-        JSON.stringify({ format: 'repeaty-archive', version: 1, libraryVersion: 4, counts, parts }),
+        JSON.stringify({ format: 'repeaty-archive', version: 2, libraryVersion: 5, counts, parts }),
       ]),
       0,
     )

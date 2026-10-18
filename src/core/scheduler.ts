@@ -1,6 +1,7 @@
 import { msg, LocalizedError, duration, locale } from '../i18n'
 import { fsrs, State } from 'ts-fsrs'
 import { assessmentSchema, type Assessment } from '../plugins/data'
+import { finishPractice } from './practice'
 import {
   cardViews,
   hydrateSchedule,
@@ -113,7 +114,12 @@ export function reviewCard(
   source: 'normal' | 'filtered' = 'normal',
   assessment?: Assessment,
   canReview: CardEligibility = allCards,
+  practiceId?: string,
 ): Library {
+  if (practiceId) {
+    const practice = library.practices.find((entry) => entry.id === practiceId)
+    if (practice?.reviewId && practice.cardId === id && practice.rating === rating) return library
+  }
   const card = library.cards.find((entry) => entry.id === id)
   if (!card) throw new LocalizedError(msg('卡片已不存在。'))
   if (
@@ -141,7 +147,7 @@ export function reviewCard(
     rating === 1 &&
     result.card.lapses > card.schedule.lapses &&
     result.card.lapses >= deck.leechThreshold
-  return {
+  const updated: Library = {
     ...library,
     cards: library.cards.map((entry) =>
       entry.id === id
@@ -167,6 +173,7 @@ export function reviewCard(
         cardId: id,
         rating,
         assessment: assessment ? assessmentSchema.parse(assessment) : undefined,
+        practiceId,
         reviewedAt: now.toISOString(),
         nextDue: result.card.due.toISOString(),
         studyDay: localDay(now),
@@ -180,6 +187,7 @@ export function reviewCard(
       },
     ],
   }
+  return practiceId ? finishPractice(updated, practiceId, id, assessment, reviewId, now) : updated
 }
 export function undoReview(library: Library): Library {
   const last = library.reviews.at(-1)
@@ -206,6 +214,16 @@ export function undoReview(library: Library): Library {
           : card,
     ),
     reviews: library.reviews.slice(0, -1),
+    practices: library.practices.map((entry) =>
+      entry.reviewId === last.id
+        ? {
+            ...entry,
+            rating: undefined,
+            reviewId: undefined,
+            ratingUndoneAt: new Date().toISOString(),
+          }
+        : entry,
+    ),
   }
 }
 export type CardAction = 'suspend' | 'resume' | 'bury' | 'unbury' | 'clearLeech'

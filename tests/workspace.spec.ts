@@ -285,9 +285,18 @@ async function readWorkspace(page: Page): Promise<{ revision: number; library: L
         request.onerror = () => reject(request.error)
         request.onsuccess = () => {
           const db = request.result
-          const stores = ['decks', 'notes', 'cards', 'reviews', 'media', 'savedSearches'] as const
+          const stores = [
+            'decks',
+            'notes',
+            'cards',
+            'reviews',
+            'media',
+            'savedSearches',
+            'practices',
+            'attempts',
+          ] as const
           const tx = db.transaction(['meta', ...stores])
-          const library = { version: 4 } as Library
+          const library = { version: 5 } as Library
           let revision = 0
           const metadata = tx.objectStore('meta').get('main')
           metadata.onsuccess = () => {

@@ -18,6 +18,7 @@ import {
 } from './model'
 import { compileSearch } from './search'
 import { available } from './scheduler'
+import { practiceSchema, attemptSchema } from './practice-data'
 
 export interface Snapshot {
   revision: number
@@ -38,6 +39,8 @@ export const recordStores = [
   'reviews',
   'media',
   'savedSearches',
+  'practices',
+  'attempts',
 ] as const
 export type RecordStore = (typeof recordStores)[number]
 type Entity = Library[RecordStore][number]
@@ -82,6 +85,8 @@ interface RepeatyDB extends DBSchema {
   reviews: RecordTable
   media: RecordTable
   savedSearches: RecordTable
+  practices: RecordTable
+  attempts: RecordTable
 }
 const stores = [
   'workspace',
@@ -100,6 +105,8 @@ const schemas = {
   reviews: reviewSchema,
   media: mediaSchema,
   savedSearches: savedSearchSchema,
+  practices: practiceSchema,
+  attempts: attemptSchema,
 }
 const BACKUP_INTERVAL = 30 * 60_000
 export const MAX_AUTO_BACKUPS = 10
@@ -116,7 +123,7 @@ export interface CardPage {
 
 /** Domain updates are immutable: keep unchanged records by reference. Only changed rows are written. */
 export function createRepository(name = 'repeaty', onBlocked?: () => void) {
-  const database = openDB<RepeatyDB>(name, 5, {
+  const database = openDB<RepeatyDB>(name, 6, {
     upgrade(db, _oldVersion, _newVersion, tx) {
       for (const store of stores)
         if (!db.objectStoreNames.contains(store)) db.createObjectStore(store)
@@ -237,7 +244,11 @@ export function createRepository(name = 'repeaty', onBlocked?: () => void) {
   }
   async function migrate(tx: Transaction): Promise<Metadata> {
     const meta = await tx.objectStore('meta').get('main')
-    if (meta) return meta
+    if (meta) {
+      meta.counts.practices ??= 0
+      meta.counts.attempts ??= 0
+      return meta
+    }
     const old = await tx.objectStore('workspace').get('main')
     const library = old ? migrateLibrary(old.library) : emptyLibrary()
     const next = { revision: old ? old.revision + 1 : 0, counts: counts(library) }
@@ -283,6 +294,7 @@ export function createRepository(name = 'repeaty', onBlocked?: () => void) {
     return next
   }
   return {
+    scope: () => `local:${name}`,
     async load(): Promise<Snapshot> {
       const db = await database
       const tx = db.transaction(stores, 'readwrite')
@@ -307,7 +319,7 @@ export function createRepository(name = 'repeaty', onBlocked?: () => void) {
       // The frequent grading path validates only changed cards/reviews. Structural edits and
       // external restores still receive complete cross-reference validation at the boundary.
       const progressOnly =
-        ['decks', 'notes', 'media', 'savedSearches'].every(
+        ['decks', 'notes', 'media', 'savedSearches', 'practices', 'attempts'].every(
           (key) => previous[key as RecordStore] === library[key as RecordStore],
         ) &&
         library.cards.length === previous.cards.length &&

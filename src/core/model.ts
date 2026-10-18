@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { createEmptyCard, type Card as FsrsCard } from 'ts-fsrs'
 import { scheduleSchema, librarySchema as legacySchema } from './legacy'
 import { pluginDataSchema, assessmentSchema } from '../plugins/data'
+import { practiceSchema, attemptSchema } from './practice-data'
 
 export { scheduleSchema } from './legacy'
 const date = z.iso.datetime()
@@ -174,6 +175,7 @@ export const reviewSchema = z.object({
   kind: z.enum(['new', 'review', 'learning', 'legacy']),
   source: z.enum(['normal', 'filtered']).default('normal'),
   assessment: assessmentSchema.optional(),
+  practiceId: id.optional(),
   effects: z
     .object({
       siblings: z.array(z.object({ cardId: id, previous: autoBurialSchema.optional() })).max(99),
@@ -224,7 +226,9 @@ export function variants(note: Pick<Note, 'type' | 'front'>): string[] {
 
 export const librarySchema = z
   .object({
-    version: z.literal(4),
+    version: z.literal(5),
+    practices: z.array(practiceSchema).max(100_000).default([]),
+    attempts: z.array(attemptSchema).max(500_000).default([]),
     savedSearches: z.array(savedSearchSchema).max(100).default([]),
     decks: z.array(deckSchema).max(1000),
     notes: z.array(noteSchema).max(100_000),
@@ -234,7 +238,16 @@ export const librarySchema = z
   })
   .superRefine((library, ctx) => {
     const problem = (message: string) => ctx.addIssue({ code: 'custom', message })
-    for (const key of ['decks', 'notes', 'cards', 'reviews', 'media', 'savedSearches'] as const) {
+    for (const key of [
+      'decks',
+      'notes',
+      'cards',
+      'reviews',
+      'media',
+      'savedSearches',
+      'practices',
+      'attempts',
+    ] as const) {
       if (new Set(library[key].map((entry) => entry.id)).size !== library[key].length)
         problem(`${key} 中存在重复 ID`)
     }
@@ -260,10 +273,41 @@ export const librarySchema = z
     }
     if (library.reviews.some((review) => !cards.has(review.cardId)))
       problem('复习记录对应的卡片不存在')
+    const practices = new Map(library.practices.map((entry) => [entry.id, entry]))
+    if (library.practices.some((entry) => !cards.has(entry.cardId))) problem('练习对应的卡片不存在')
+    if (library.attempts.some((entry) => !practices.has(entry.practiceId)))
+      problem('提交对应的练习不存在')
+    for (const review of library.reviews) {
+      if (review.practiceId && practices.get(review.practiceId)?.cardId !== review.cardId)
+        problem('评分与练习不匹配')
+    }
+    for (const practice of library.practices) {
+      if (
+        practice.reviewId &&
+        !library.reviews.some(
+          (entry) =>
+            entry.id === practice.reviewId &&
+            entry.practiceId === practice.id &&
+            entry.cardId === practice.cardId &&
+            entry.rating === practice.rating,
+        )
+      )
+        problem('练习关联的评分不存在')
+    }
   })
 export type Library = z.infer<typeof librarySchema>
 export function emptyLibrary(): Library {
-  return { version: 4, decks: [], notes: [], cards: [], reviews: [], media: [], savedSearches: [] }
+  return {
+    version: 5,
+    decks: [],
+    notes: [],
+    cards: [],
+    reviews: [],
+    media: [],
+    savedSearches: [],
+    practices: [],
+    attempts: [],
+  }
 }
 export function localDay(date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -372,6 +416,13 @@ export function saveNote(
       ),
     ],
     reviews: library.reviews.filter((review) => !removed.has(review.cardId)),
+    practices: library.practices.filter((entry) => !removed.has(entry.cardId)),
+    attempts: library.attempts.filter(
+      (entry) =>
+        !library.practices.some(
+          (practice) => removed.has(practice.cardId) && practice.id === entry.practiceId,
+        ),
+    ),
   })
 }
 export function removeNotes(library: Library, ids: Set<string>): Library {
@@ -383,6 +434,13 @@ export function removeNotes(library: Library, ids: Set<string>): Library {
     notes: library.notes.filter((note) => !ids.has(note.id)),
     cards: library.cards.filter((card) => !removed.has(card.id)),
     reviews: library.reviews.filter((review) => !removed.has(review.cardId)),
+    practices: library.practices.filter((entry) => !removed.has(entry.cardId)),
+    attempts: library.attempts.filter(
+      (entry) =>
+        !library.practices.some(
+          (practice) => removed.has(practice.cardId) && practice.id === entry.practiceId,
+        ),
+    ),
   })
 }
 
@@ -391,13 +449,13 @@ export function migrateLibrary(value: unknown): Library {
     typeof value === 'object' &&
     value !== null &&
     'version' in value &&
-    (value.version === 2 || value.version === 3 || value.version === 4)
+    (value.version === 2 || value.version === 3 || value.version === 4 || value.version === 5)
   )
-    return librarySchema.parse({ ...value, version: 4 })
+    return librarySchema.parse({ ...value, version: 5 })
   const old = legacySchema.parse(value)
   const seen = new Set<string>()
   return librarySchema.parse({
-    version: 4,
+    version: 5,
     decks: old.decks,
     media: [],
     notes: old.cards.map((card) => ({

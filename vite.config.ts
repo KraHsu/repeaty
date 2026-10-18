@@ -10,6 +10,7 @@ export default defineConfig(({ mode }) => {
   return {
     base: server || desktop ? '/' : process.env.VITE_BASE_PATH || '/',
     define: { __REPEATY_EDITION__: JSON.stringify(edition) },
+    server: { watch: { ignored: ['**/target/**'] } },
     resolve: {
       alias: {
         '@repeaty-platform': fileURLToPath(

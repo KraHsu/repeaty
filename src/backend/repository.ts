@@ -12,7 +12,7 @@ import { available } from '../core/scheduler'
 import { recordStores, type Snapshot, type BackupSummary, type CardPage } from '../core/storage'
 
 type Patch = { store: string; id: string; position?: number; value?: unknown }
-export function createServerRepository() {
+export function createServerRepository(source = location.origin) {
   let cached: Snapshot | undefined
   let userId = ''
   async function api(path: string, init: RequestInit = {}) {
@@ -34,9 +34,10 @@ export function createServerRepository() {
     return response.status === 204 ? (undefined as T) : (response.json() as Promise<T>)
   }
   return {
+    scope: () => `${source}:${userId}`,
     async load(): Promise<Snapshot> {
       const status = await requestJson<{ apiVersion: number }>('/status')
-      if (status.apiVersion !== 2) throw new ServerError('invalid-data')
+      if (status.apiVersion !== 3) throw new ServerError('invalid-data')
       if (!userId) userId = (await requestJson<{ user: { id: string } }>('/auth/session')).user.id
       const saved = await apiJson<Snapshot>('/library')
       if (!Number.isSafeInteger(saved.revision) || saved.revision < 0)
