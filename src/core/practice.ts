@@ -37,6 +37,19 @@ export function recordAttempt(
   )
     throw fail()
   const prior = library.attempts.find((entry) => entry.id === attempt.id)
+  const plugin = (existing ?? practice).question.plugin
+  if (
+    attempt.submissionId &&
+    library.attempts.some((entry) => {
+      if (entry.id === attempt.id || entry.submissionId !== attempt.submissionId) return false
+      const owner = library.practices.find((item) => item.id === entry.practiceId)
+      return (
+        owner?.question.plugin.id === plugin.id &&
+        owner.question.plugin.data.site === plugin.data.site
+      )
+    })
+  )
+    throw new LocalizedError(msg('该提交已关联其他记录，不能重复关联。'))
   if (prior) {
     if (
       prior.practiceId !== attempt.practiceId ||
@@ -60,7 +73,7 @@ export function recordAttempt(
     const transitions: Record<Attempt['status'], readonly string[]> = {
       submitting: ['pending', 'unknown', 'failed'],
       pending: ['completed'],
-      unknown: [],
+      unknown: ['pending'],
       failed: [],
       completed: [],
     }
@@ -130,4 +143,41 @@ export function finishPractice(
         : entry,
     ),
   }
+}
+
+/** Viewing past code also counts when history is opened outside the review screen. */
+export function revealPracticeHistory(library: Library, viewedId: string): Library {
+  const viewed = library.practices.find((entry) => entry.id === viewedId)
+  if (!viewed) return library
+  const candidates = new Set(
+    library.practices
+      .filter(
+        (entry) =>
+          entry.cardId === viewed.cardId &&
+          entry.id !== viewedId &&
+          !entry.completedAt &&
+          !entry.answerSeen,
+      )
+      .map((entry) => entry.id),
+  )
+  if (!candidates.size) return library
+  const latest = new Map<string, Attempt>()
+  for (const attempt of library.attempts) {
+    if (candidates.has(attempt.practiceId)) latest.set(attempt.practiceId, attempt)
+  }
+  let changed = false
+  const practices = library.practices.map((entry) => {
+    if (
+      entry.cardId === viewed.cardId &&
+      entry.id !== viewedId &&
+      !entry.completedAt &&
+      !entry.answerSeen &&
+      latest.get(entry.id)?.result?.outcome !== 'accepted'
+    ) {
+      changed = true
+      return { ...entry, answerSeen: true }
+    }
+    return entry
+  })
+  return changed ? { ...library, practices } : library
 }

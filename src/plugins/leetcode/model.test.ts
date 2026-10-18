@@ -1,5 +1,37 @@
 import { describe, expect, it } from 'vitest'
-import { automaticGrade, parseJudgeResult, parseProblemInput, parseProblemResponse } from './model'
+import {
+  automaticGrade,
+  parseJudgeResult,
+  parseProblemInput,
+  parseProblemResponse,
+  parseSubmissionInput,
+} from './model'
+
+it('accepts only submission IDs or detail links for the current site and problem', () => {
+  for (const site of ['leetcode.cn', 'leetcode.com'] as const) {
+    const problem = { site, slug: 'two-sum' }
+    for (const input of [
+      ' 123 ',
+      `https://${site}/submissions/detail/123/`,
+      `https://${site}/problems/two-sum/submissions/123/?tab=code`,
+      `https://${site}/problems/two-sum/submission-detail/123`,
+    ])
+      expect(parseSubmissionInput(input, problem)).toBe('123')
+    for (const input of [
+      '0',
+      '-1',
+      '1e3',
+      '123/../456',
+      `https://${site}.evil.test/submissions/detail/123/`,
+      `http://${site}/submissions/detail/123/`,
+      `https://user@${site}/submissions/detail/123/`,
+      `https://${site}:444/submissions/detail/123/`,
+      `https://${site}/problems/three-sum/submissions/123/`,
+      `https://${site === 'leetcode.cn' ? 'leetcode.com' : 'leetcode.cn'}/submissions/detail/123/`,
+    ])
+      expect(() => parseSubmissionInput(input, problem)).toThrow('请填写当前站点')
+  }
+})
 
 describe('LeetCode grading', () => {
   it.each([

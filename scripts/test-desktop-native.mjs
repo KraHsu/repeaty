@@ -372,8 +372,24 @@ try {
     () => execute("return document.body.textContent.includes('本轮复习结束')"),
     'native practice rating',
   )
+  await click('返回')
+  await click('练习历史')
+  await until(
+    () =>
+      execute(
+        "return document.querySelectorAll('.practice-history-page .practice-history').length===1",
+      ),
+    'native independent history',
+  )
+  await execute(
+    "document.querySelector('.practice-history-page .attempt-history > summary').click()",
+  )
+  assert.equal(
+    await execute("return document.querySelector('.attempt-code code').textContent"),
+    attempt.code,
+  )
   console.log(
-    'Native WebKit/Tauri: starter lifecycle, account registration, upstream switching, local credentials, native backup, LeetCode history recovery and rating passed.',
+    'Native WebKit/Tauri: starter lifecycle, account registration, upstream switching, local credentials, native backup, LeetCode history recovery, rating and independent history passed.',
   )
 } catch (error) {
   console.error(log.slice(-20).join(''))

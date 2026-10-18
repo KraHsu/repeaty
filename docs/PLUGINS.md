@@ -30,6 +30,7 @@ interface QuestionPlugin {
   editor?: Component
   description?: string
   settings?: Component
+  history?: Component
 }
 ```
 
@@ -39,8 +40,11 @@ interface QuestionPlugin {
 - `media`、`getMedia(id)`：媒体元数据与按需读取 Blob 的接口，兼容本地与服务端存储。
 - `revealed`：宿主是否已经翻面。
 - `state`：插件设置 `allowedGrades`、可选 `suggestedGrade`、`assessment` 与 `busy`。评分为 1 重来、2 困难、3 良好、4 简单；忙碌时宿主禁止评分。可提供 `complete()`，宿主仅在评分成功保存后调用。
+- `workspaceScope`、`practices`、`attempts`：当前学习库作用域、当前卡片的练习和库内的提交记录。使用 `saveAttempt(practice, attempt, workspaceScope)` 保存原始提交；宿主核对作用域、所属卡片和状态转换。通过 `state.practiceId` 将本轮练习交给宿主，在用户确认评分时关联复习记录。
 
 宿主负责复习队列、翻面、FSRS、持久化与撤销。`editor` 使用 `NoteInput` 的 `v-model`，写入 `front`、`back` 和 `plugin: { id, version, data }`。可复用宿主表单样式，校验自己的插件数据；组件卸载时清理计时器和网络请求。题目、答案应按文本或安全渲染器显示，不直接执行导入内容中的 HTML。
+
+可选的 `history` 组件接收 `PracticeHistoryProps`：`practices`、`attempts`、可选 `activeId` 和 `standalone`。它只显示已保存记录，不调用裁判或更新评分；展开历史代码时发送 `reveal(practiceId)`，由宿主记录未完成练习的答案查看状态。主导航提供独立「练习历史」，按题目、卡组和结果筛选、每页 20 次练习。没有对应组件或插件未启用时，宿主使用通用视图显示代码和结果，不加载插件专用界面。
 
 `data` 仅接受 JSON，最大 200,000 字符。每条插件笔记生成一张独立调度的卡片。插件 ID 唯一，采用小写字母、数字和连字符；`flashcard`、`unavailable` 为保留 ID。当前只加载与 `version` 完全匹配的数据，不自动迁移插件版本。
 

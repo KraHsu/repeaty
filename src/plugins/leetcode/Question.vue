@@ -3,12 +3,20 @@ import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { z } from 'zod'
 import { t } from '../../i18n'
 import type { QuestionProps } from '../types'
-import { automaticGrade, parseJudgeResult, problemSchema, problemUrl, targetMinutes } from './model'
+import {
+  automaticGrade,
+  parseJudgeResult,
+  parseSubmissionInput,
+  problemSchema,
+  problemUrl,
+  targetMinutes,
+} from './model'
 import { bridgeRequest, BridgeError } from './bridge'
 import { readDraft, writeDraft, type Draft } from './drafts'
 import type { Practice, Attempt } from '../../core/practice-data'
 import { practiceContentRevision } from '../../core/practice'
 import History from './History.vue'
+import RecoverSubmission from './RecoverSubmission.vue'
 import Connection from './Connection.vue'
 import Statement from './Statement.vue'
 
@@ -51,6 +59,21 @@ const code = computed({
   },
 })
 const accepted = computed(() => draft.value.result?.outcome === 'accepted')
+const practiceAttempts = computed(() =>
+  (props.attempts ?? []).filter((entry) => entry.practiceId === draft.value.practiceId),
+)
+const unknownAttempts = computed(() =>
+  practiceAttempts.value.filter((entry) => entry.status === 'unknown'),
+)
+const pendingAttempts = computed(() =>
+  practiceAttempts.value.filter((entry) => entry.status === 'pending'),
+)
+watch(practiceAttempts, (entries) => {
+  if (!activePractice) return
+  draft.value.attempts = entries.filter((entry) => entry.submissionId).length
+  draft.value.uncertain = entries.some((entry) => entry.status === 'unknown')
+  if (draft.value.uncertain) draft.value.mode = 'manual'
+})
 const suggestion = computed(() =>
   problem && draft.value.result && !draft.value.uncertain
     ? automaticGrade(
@@ -130,7 +153,7 @@ watch(
 watchEffect(() => {
   props.state.busy = working.value || !ready.value
   props.state.allowedGrades =
-    problem && ready.value && !draft.value.pending
+    problem && ready.value && !draft.value.pending && !pendingAttempts.value.length
       ? accepted.value && !draft.value.answerSeen
         ? [1, 2, 3, 4]
         : [1]
@@ -155,7 +178,7 @@ async function complete() {
   await saves
   await writeDraft(props.card.id, undefined, scope).catch(() => {})
 }
-async function saveAttempt(attempt: Attempt) {
+async function saveAttempt(attempt: Attempt, activate = true) {
   if (disposed || !props.saveAttempt || !activePractice)
     throw new Error('无法保存提交记录，请重试。')
   const practice = {
@@ -164,7 +187,7 @@ async function saveAttempt(attempt: Attempt) {
   }
   await props.saveAttempt(practice, attempt, scope)
   activePractice = practice
-  activeAttempt = attempt
+  if (activate) activeAttempt = attempt
 }
 function tick() {
   const now = performance.now()
@@ -173,6 +196,7 @@ function tick() {
     !paused.value &&
     !working.value &&
     !draft.value.pending &&
+    !pendingAttempts.value.length &&
     !accepted.value &&
     !props.revealed &&
     document.visibilityState === 'visible'
@@ -188,34 +212,48 @@ function visibilityChanged() {
   lastTick = performance.now()
   void persist()
 }
-async function check() {
-  if (!problem || !draft.value.pending || working.value) return
+async function check(target = activeAttempt) {
+  const submissionId = target?.submissionId ?? draft.value.pending
+  if (!problem || !submissionId || working.value || disposed) return
+  const current = !target || target.id === activeAttempt?.id
   working.value = true
   error.value = ''
   try {
-    if (activeAttempt?.status === 'submitting')
-      await saveAttempt({
-        ...activeAttempt,
+    if (target?.status === 'submitting') {
+      target = {
+        ...target,
         status: 'pending',
-        submissionId: draft.value.pending,
+        submissionId,
         updatedAt: new Date().toISOString(),
-      })
+      }
+      await saveAttempt(
+        {
+          ...target,
+        },
+        current,
+      )
+    }
     for (let attempt = 0; attempt < 30; attempt++) {
       const raw = await bridgeRequest(
-        { action: 'check', site: problem.site, submissionId: draft.value.pending },
+        { action: 'check', site: problem.site, submissionId },
         abort.signal,
       )
       const result = parseJudgeResult(raw)
       if (result) {
-        if (activeAttempt)
-          await saveAttempt({
-            ...activeAttempt,
-            status: 'completed',
-            result,
-            updatedAt: new Date().toISOString(),
-          })
-        draft.value.result = result
-        draft.value.pending = undefined
+        if (target)
+          await saveAttempt(
+            {
+              ...target,
+              status: 'completed',
+              result,
+              updatedAt: new Date().toISOString(),
+            },
+            current,
+          )
+        if (current) {
+          draft.value.result = result
+          draft.value.pending = undefined
+        }
         await persist()
         return
       }
@@ -229,12 +267,57 @@ async function check() {
     working.value = false
   }
 }
+async function recover(attempt: Attempt, input: string) {
+  if (!problem || working.value || !ready.value || disposed || !activePractice) return false
+  working.value = true
+  error.value = ''
+  let pending: Attempt
+  try {
+    const submissionId = parseSubmissionInput(input, problem)
+    const response = z.object({ submissionId: z.string() }).parse(
+      await bridgeRequest(
+        {
+          action: 'recover',
+          site: problem.site,
+          slug: problem.slug,
+          questionId: problem.questionId,
+          submissionId,
+          lang: attempt.language,
+          code: attempt.code,
+          submittedAt: Math.floor(Date.parse(attempt.submittedAt) / 1000),
+        },
+        abort.signal,
+      ),
+    )
+    if (response.submissionId !== submissionId)
+      throw new Error('无法读取该提交，请检查编号和当前 LeetCode 登录信息。')
+    pending = { ...attempt, status: 'pending', submissionId, updatedAt: new Date().toISOString() }
+    const current = attempt.id === activeAttempt?.id
+    await saveAttempt(pending, current)
+    if (current) {
+      draft.value.pending = submissionId
+      draft.value.submissionId = submissionId
+      draft.value.result = undefined
+      draft.value.lang = attempt.language
+      draft.value.code[attempt.language] = attempt.code
+    }
+    await persist()
+  } catch (issue) {
+    if (!disposed) error.value = issue as Error
+    return false
+  } finally {
+    working.value = false
+  }
+  await check(pending)
+  return true
+}
 async function submitCode() {
   if (
     !problem ||
     working.value ||
     !ready.value ||
     draft.value.pending ||
+    pendingAttempts.value.length ||
     !code.value.trim() ||
     accepted.value
   )
@@ -306,7 +389,13 @@ async function submitCode() {
     if (draft.value.awaitingSubmit) {
       const certainFailure =
         issue instanceof BridgeError &&
-        ['login-required', 'rate-limit', 'open-leetcode', 'submission-busy'].includes(issue.code)
+        [
+          'leetcode-not-configured',
+          'login-required',
+          'rate-limit',
+          'open-leetcode',
+          'submission-busy',
+        ].includes(issue.code)
       if (!certainFailure) {
         draft.value.uncertain = true
         draft.value.mode = 'manual'
@@ -437,7 +526,12 @@ onMounted(async () => {
   lastTick = performance.now()
   timer = setInterval(tick, 1000)
   document.addEventListener('visibilitychange', visibilityChanged)
-  if (draft.value.pending) void check()
+  if (pendingAttempts.value.length) {
+    for (const attempt of pendingAttempts.value) {
+      if (disposed) break
+      await check(attempt)
+    }
+  } else if (draft.value.pending) void check()
 })
 onUnmounted(() => {
   tick()
@@ -476,7 +570,9 @@ onUnmounted(() => {
             }}<select
               id="code-language"
               v-model="draft.lang"
-              :disabled="working || !ready || accepted || !!draft.pending"
+              :disabled="
+                working || !ready || accepted || !!draft.pending || !!pendingAttempts.length
+              "
             >
               <option
                 v-for="snippet in problem.snippets"
@@ -513,26 +609,61 @@ onUnmounted(() => {
           autocomplete="off"
           rows="16"
           maxlength="50000"
-          :disabled="working || !ready || accepted || !problem.snippets.length || !!draft.pending"
+          :disabled="
+            working ||
+            !ready ||
+            accepted ||
+            !problem.snippets.length ||
+            !!draft.pending ||
+            !!pendingAttempts.length
+          "
           @keydown="indent"
         />
         <div class="leetcode-toolbar">
           <button
             class="button primary"
             :disabled="
-              working || !ready || !code.trim() || !draft.lang || accepted || !!draft.pending
+              working ||
+              !ready ||
+              !code.trim() ||
+              !draft.lang ||
+              accepted ||
+              !!draft.pending ||
+              !!pendingAttempts.length
             "
             @click="submitCode"
           >
             {{ working ? t('判题中…') : t('提交到 LeetCode') }}
           </button>
-          <button v-if="draft.pending" class="button secondary" :disabled="working" @click="check">
+          <button
+            v-if="draft.pending"
+            class="button secondary"
+            :disabled="working"
+            @click="check()"
+          >
             {{ t('继续查询结果') }}
           </button>
         </div>
         <p v-if="draft.pending" class="form-note">
           {{ t('提交编号：{id}', { id: draft.pending }) }}
         </p>
+        <div
+          v-for="attempt in pendingAttempts.filter((entry) => entry.id !== draft.attemptId)"
+          :key="attempt.id"
+          class="leetcode-toolbar"
+        >
+          <span>{{ t('提交编号：{id}', { id: attempt.submissionId }) }}</span>
+          <button class="button secondary" :disabled="working" @click="check(attempt)">
+            {{ t('继续查询结果') }}
+          </button>
+        </div>
+        <RecoverSubmission
+          v-for="attempt in unknownAttempts"
+          :key="attempt.id"
+          :attempt="attempt"
+          :disabled="working || !ready"
+          :recover="recover"
+        />
         <div v-if="draft.result" class="judge-result" :class="{ accepted }" role="status">
           <strong>{{ t(draft.result.status) }}</strong>
           <span v-if="draft.result.runtime">{{
@@ -559,11 +690,7 @@ onUnmounted(() => {
           {{ t('自动评分：{grade}', { grade: t(gradeNames[suggestion]) }) }}
         </p>
         <p v-if="draft.uncertain" class="import-warning">
-          {{
-            t(
-              '有一次提交未取得编号，尝试次数可能不完整。本轮请手动评分，再次提交前请先检查 LeetCode 提交记录。',
-            )
-          }}
+          {{ t('有一次提交未取得编号，自动评分暂不可用。请先核对并关联 LeetCode 提交记录。') }}
         </p>
         <details class="form-note">
           <summary>{{ t('评分规则') }}</summary>

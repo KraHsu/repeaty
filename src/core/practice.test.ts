@@ -1,7 +1,12 @@
 import 'fake-indexeddb/auto'
 import { expect, it } from 'vitest'
 import { fixture, now } from './test-fixtures'
-import { recordAttempt, finishPractice, practiceContentRevision } from './practice'
+import {
+  recordAttempt,
+  finishPractice,
+  practiceContentRevision,
+  revealPracticeHistory,
+} from './practice'
 import { attemptSchema, practiceSchema } from './practice-data'
 import { dailyUsage, reviewCard, undoReview } from './scheduler'
 import { librarySchema, migrateLibrary, removeNotes } from './model'
@@ -117,6 +122,83 @@ it('practice-only completion preserves evidence and does not create a review', (
   expect(() => finishPractice(finished, practice.id, practice.cardId, undefined)).toThrow()
   expect(removeNotes(finished, new Set([library.notes[0]!.id])).attempts).toEqual([])
   expect(() => librarySchema.parse({ ...finished, practices: [] })).toThrow()
+})
+
+it('recovers an unknown attempt in place without changing code or counting a submission twice', () => {
+  const { library, practice, attempt, pending, completed } = example()
+  let saved = recordAttempt(library, practice, attempt)
+  saved = recordAttempt(saved, practice, { ...attempt, status: 'unknown' })
+  expect(() => recordAttempt(saved, practice, completed)).toThrow()
+  saved = recordAttempt(saved, practice, pending)
+  expect(saved.attempts).toEqual([pending])
+  expect(() => recordAttempt(saved, practice, { ...completed, submissionId: '124' })).toThrow()
+  const second = { ...attempt, id: 'second' }
+  saved = recordAttempt(saved, practice, second)
+  expect(() => recordAttempt(saved, practice, { ...pending, id: 'second' })).toThrow(
+    '该提交已关联其他记录',
+  )
+  expect(() =>
+    recordAttempt(
+      saved,
+      {
+        ...practice,
+        question: {
+          ...practice.question,
+          plugin: { ...practice.question.plugin, data: { site: 'another-site' } },
+        },
+      },
+      { ...pending, id: 'second' },
+    ),
+  ).toThrow('该提交已关联其他记录')
+  saved = recordAttempt(saved, practice, completed)
+  expect(saved.attempts[0]).toEqual(completed)
+  expect(saved.reviews).toHaveLength(0)
+  expect(saved.cards).toEqual(library.cards)
+})
+
+it('viewing past code marks only unfinished practices of the same card as revealed', () => {
+  const { library, practice, attempt } = example()
+  const first = recordAttempt(library, practice, attempt)
+  const past = finishPractice(
+    recordAttempt(first, practice, { ...attempt, status: 'unknown' }),
+    practice.id,
+    practice.cardId,
+    undefined,
+  )
+  const current = { ...practice, id: 'current', answerSeen: false }
+  const saved = recordAttempt(past, current, {
+    ...attempt,
+    id: 'current-attempt',
+    practiceId: current.id,
+  })
+  expect(revealPracticeHistory(saved, current.id)).toBe(saved)
+  const revealed = revealPracticeHistory(saved, practice.id)
+  expect(revealed.practices[0]).toEqual(past.practices[0])
+  expect(revealed.practices[1]!.answerSeen).toBe(true)
+  expect(revealed.cards).toBe(saved.cards)
+  expect(revealed.reviews).toBe(saved.reviews)
+  expect(revealed.attempts).toBe(saved.attempts)
+  expect(revealPracticeHistory(revealed, practice.id)).toBe(revealed)
+  const accepted = {
+    ...saved,
+    attempts: saved.attempts.map((entry) =>
+      entry.practiceId === current.id
+        ? {
+            ...entry,
+            status: 'completed' as const,
+            submissionId: '456',
+            result: {
+              outcome: 'accepted' as const,
+              status: '通过',
+              runtime: '',
+              memory: '',
+              detail: '',
+            },
+          }
+        : entry,
+    ),
+  }
+  expect(revealPracticeHistory(accepted, practice.id)).toBe(accepted)
 })
 
 it('stores and restores code and judge evidence through snapshots, archives and JSON', async () => {

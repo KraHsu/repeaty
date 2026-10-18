@@ -755,4 +755,42 @@ export const en = {
   '服务版本不兼容，请同时更新前端和后端。':
     'Incompatible service version. Update both the frontend and backend.',
   当时的题目: 'Problem at submission',
+  '无法读取该提交，请检查编号和当前 LeetCode 登录信息。':
+    'Cannot read this submission. Check its ID and your current LeetCode credentials.',
+  '该提交不属于当前登录的 LeetCode 账号。':
+    'This submission does not belong to the signed-in LeetCode account.',
+  '该提交的题目、语言、代码或时间与本次记录不符。':
+    'The problem, language, code, or time does not match this attempt.',
+  '该提交已关联其他记录，不能重复关联。': 'This submission is already linked to another attempt.',
+  '请填写当前站点的提交编号，或本题的提交详情链接。':
+    'Enter a submission ID from this site, or a submission detail link for this problem.',
+  恢复未确认的提交: 'Recover an unconfirmed submission',
+  '在 LeetCode 找到这次提交，粘贴编号或详情链接。恢复只查询结果，不会重新提交代码。':
+    'Find this attempt on LeetCode and paste its ID or detail link. Recovery only checks the result; it does not resubmit code.',
+  核对本次提交的代码: 'Check the submitted code',
+  提交编号或详情链接: 'Submission ID or detail link',
+  粘贴提交编号或链接: 'Paste a submission ID or link',
+  关联并查询: 'Link and check',
+  练习历史: 'Practice history',
+  '按题目查看历次代码、判题结果和复习评分。':
+    'Browse code, judge results, and review ratings by problem.',
+  搜索练习历史: 'Search practice history',
+  搜索题目: 'Search problems',
+  筛选题目: 'Filter problems',
+  全部题目: 'All problems',
+  全部结果: 'All results',
+  尚未确认: 'Unconfirmed',
+  题目: 'Problem',
+  判题结果: 'Judge result',
+  '有未完成的同题练习时，查看往次代码会计为查看答案。':
+    'Viewing past code counts as revealing the answer for unfinished practices of the same problem.',
+  '{count} 次练习': '{count} practices',
+  '没有符合筛选条件的练习。': 'No practices match these filters.',
+  '还没有练习记录。提交题目后可在这里查看。':
+    'No practice history yet. Submit a problem to start a record.',
+  练习历史分页: 'Practice history pages',
+  '第 {page} / {pages} 页': 'Page {page} of {pages}',
+  '查看 {title} 的练习历史': 'View practice history for {title}',
+  '有一次提交未取得编号，自动评分暂不可用。请先核对并关联 LeetCode 提交记录。':
+    'One attempt has no confirmed submission ID, so automatic rating is unavailable. Check and link the attempt on LeetCode first.',
 } as const

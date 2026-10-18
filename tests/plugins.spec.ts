@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { fixture } from '../src/core/test-fixtures'
 import { readFile } from 'node:fs/promises'
+import { practiceHistoryFixture } from './fixtures/practice-history'
 test('the static edition has no LeetCode plugin, backend calls, or connector download', async ({
   page,
 }) => {
@@ -48,4 +49,43 @@ test('backend plugin notes remain exportable in the static edition without becom
   const backup = JSON.parse(await readFile((await (await download).path())!, 'utf8'))
   expect(backup.library.notes).toEqual(library.notes)
   expect(backup.library.cards).toEqual(library.cards)
+})
+
+test('imported practice history is readable in the static edition without loading or contacting LeetCode', async ({
+  page,
+}) => {
+  const remoteRequests: string[] = []
+  page.on('request', (request) => {
+    const url = new URL(request.url())
+    if (
+      url.hostname.includes('leetcode') ||
+      url.pathname.includes('/__native/') ||
+      url.pathname.includes('/api/')
+    )
+      remoteRequests.push(request.url())
+  })
+  const library = practiceHistoryFixture(3)
+  await page.goto('./')
+  await page.getByRole('button', { name: '数据与备份', exact: true }).click()
+  await page.getByLabel('导入备份文件').setInputFiles({
+    name: 'history.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(library)),
+  })
+  await page.getByRole('button', { name: '替换并恢复', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await page.getByRole('button', { name: '练习历史', exact: true }).click()
+  await expect(page.locator('.practice-history')).toHaveCount(3)
+  await page.locator('.attempt-history > summary').first().click()
+  await expect(page.locator('.attempt-code code').first()).toContainText(
+    '<script>stored text</script>',
+  )
+  await expect(page.locator('.attempt-code script')).toHaveCount(0)
+  await page.getByRole('button', { name: '数据与备份', exact: true }).click()
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: '导出旧版 JSON', exact: true }).click()
+  const backup = JSON.parse(await readFile((await (await download).path())!, 'utf8'))
+  expect(backup.library.practices).toEqual(library.practices)
+  expect(backup.library.attempts).toEqual(library.attempts)
+  expect(remoteRequests).toEqual([])
 })
