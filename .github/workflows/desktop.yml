@@ -1,0 +1,91 @@
+name: Desktop
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Desktop (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            bundles: deb
+          - os: windows-latest
+            bundles: nsis
+          - os: macos-latest
+            bundles: dmg
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Install Rust
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt,clippy
+          rustup default 1.97.1
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb xdotool
+          cargo install tauri-driver --locked --version 2.1.0
+      - name: Check desktop frontend and local plugin
+        if: runner.os == 'Linux'
+        run: |
+          npx playwright install --with-deps chromium
+          npx vitest run --mode desktop src/plugins/plugins.test.ts src/plugins/frontend-example.test.ts
+          npm run test:e2e:desktop
+          cargo fmt --manifest-path src-tauri/Cargo.toml --check
+          cargo fmt --manifest-path crates/leetcode-local/Cargo.toml --check
+          cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
+          cargo test --manifest-path crates/leetcode-local/Cargo.toml --locked
+          cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - name: Build installer
+        run: npm run desktop:build -- --bundles ${{ matrix.bundles }}
+      - name: Exercise native WebKit and Rust IPC
+        if: runner.os == 'Linux'
+        env:
+          REPEATY_DESKTOP_BINARY: src-tauri/target/release/repeaty-desktop
+        run: |
+          npm run build:server
+          cargo build --locked --manifest-path server/Cargo.toml
+          xvfb-run -a node scripts/test-desktop-native.mjs
+      - name: Upload installer
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: repeaty-${{ matrix.os }}
+          path: |
+            src-tauri/target/release/bundle/**/*.deb
+            src-tauri/target/release/bundle/**/*.exe
+            src-tauri/target/release/bundle/**/*.dmg
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload test evidence
+        if: failure() && runner.os == 'Linux'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-test-report
+          path: |
+            playwright-report-desktop/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
