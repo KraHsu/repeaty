@@ -25,7 +25,7 @@ npm run check        # 格式检查 + 单元测试 + 构建 + 浏览器测试
 
 首次运行浏览器测试先执行 `npx playwright install chromium`。也可设置 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome` 使用已有 Chrome。浏览器测试启动 `127.0.0.1:4175`，覆盖制卡、复习、撤销、额度、批量管理、媒体恢复、快捷制卡、常用筛选、两种专项练习、自动暂缓和断网重载。
 
-GitHub Actions 在推送到 `main` 和提交 PR 时运行完整检查，包括 Chromium 浏览器测试。若本机沙箱拒绝监听 / 访问预览端口（`EPERM`），请在允许本机端口的终端或 CI 中运行。单元测试包含 Service Worker 生命周期、离线响应和失败更新回退，不能替代真实浏览器断网验证。
+完整检查包含 Chromium 浏览器测试。若本机沙箱拒绝监听 / 访问预览端口（`EPERM`），请在允许本机端口的终端运行。单元测试包含 Service Worker 生命周期、离线响应和失败更新回退，不能替代真实浏览器断网验证。
 
 ## 笔记与卡片
 
