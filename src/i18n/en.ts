@@ -464,4 +464,23 @@ export const en = {
   示例卡组已添加: 'Sample deck added',
   '快照已保存；未变化的数据不会重复备份': 'Snapshot saved; unchanged data is not backed up again',
   '[图片：{name} · 请使用附件]': '[Image: {name} · Use an attachment]',
+  '备份包损坏、内容不完整或版本不兼容。':
+    'The backup archive is damaged, incomplete, or incompatible.',
+  '备份包不能超过 2 GB。': 'The backup archive and its expanded contents must not exceed 2 GB.',
+  '导出 .repeaty': 'Export .repeaty',
+  '导出旧版 JSON': 'Export legacy JSON',
+  '将学习数据和原始图片、音频保存为 .repeaty 备份包，适合较大的学习库。':
+    'Save your study data and original images and audio in a .repeaty archive, suitable for larger collections.',
+  '支持 .repeaty 备份包和旧版 JSON。检查完成并确认后才会替换当前数据。':
+    'Supports .repeaty archives and legacy JSON. Your collection is replaced only after validation and confirmation.',
+  '.repeaty 最大 2 GB · 旧版 JSON 最大 100 MB': '.repeaty up to 2 GB · Legacy JSON up to 100 MB',
+  '正在导出备份…': 'Exporting backup…',
+  '正在检查备份…': 'Checking backup…',
+  取消传输: 'Cancel transfer',
+  已取消备份操作: 'Backup operation canceled',
+  '自动备份未能完成，请导出备份并检查存储空间。':
+    'Automatic backup failed. Export a backup and check storage space.',
+  直接保存到文件: 'Save directly to file',
+  '大备份可直接写入文件，减少内存占用。':
+    'Save large backups directly to a file to reduce memory use.',
 } as const

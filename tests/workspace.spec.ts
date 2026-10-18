@@ -70,7 +70,7 @@ test('backup export and confirmed restore retain cards, and malformed imports do
   await createCard(page)
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
   const downloadPromise = page.waitForEvent('download')
-  await page.getByRole('button', { name: '导出 JSON', exact: true }).click()
+  await page.getByRole('button', { name: '导出旧版 JSON', exact: true }).click()
   const download = await downloadPromise
   const backup = await readFile((await download.path())!, 'utf8')
   expect(JSON.parse(backup).library.cards).toHaveLength(1)
@@ -220,7 +220,7 @@ test('image/audio survive backup, deletion and automatic snapshot recovery', asy
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
   const downloadPromise = page.waitForEvent('download')
-  await page.getByRole('button', { name: '导出 JSON', exact: true }).click()
+  await page.getByRole('button', { name: '导出旧版 JSON', exact: true }).click()
   const backup = JSON.parse(await readFile((await (await downloadPromise).path())!, 'utf8'))
   expect(backup.library.media).toHaveLength(2)
   expect(backup.assets).toHaveLength(2)

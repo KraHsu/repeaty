@@ -2400,3 +2400,22 @@ html[lang='en'] .chart-column > span {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.backup-actions,
+.transfer-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.transfer-status {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+.transfer-status progress {
+  accent-color: var(--green);
+  flex: 1;
+  min-width: 140px;
+}

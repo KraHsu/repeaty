@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { t, msg, LocalizedError, locale, setLocale, type DisplayMessage } from './i18n'
+import { t, msg, locale, setLocale, type DisplayMessage } from './i18n'
 
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import {
@@ -28,7 +28,7 @@ import ReviewSession from './components/ReviewSession.vue'
 import NoteEditor from './components/NoteEditor.vue'
 import CollectionPanel from './components/CollectionPanel.vue'
 import ImportNotes from './components/ImportNotes.vue'
-import { parseBackup, type BackupData } from './core/backups'
+import type { BackupData } from './core/backups'
 import type { BatchEdit } from './core/batch'
 import type { CardAction } from './core/scheduler'
 import { useOffline } from './composables/useOffline'
@@ -39,7 +39,6 @@ import {
   type CardView,
   type NoteInput,
   type MediaUpload,
-  MAX_BACKUP_BYTES,
   type Deck,
   type DeckInput,
   type Grade,
@@ -263,16 +262,57 @@ function deckDue(id: string) {
 function deckCards(id: string) {
   return cards.value.filter((card) => card.deckId === id).length
 }
-async function exportData() {
-  await run(async () => {
-    const text = await workspace.exportData()
-    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `repeaty-backup-${now.value.toISOString().slice(0, 10)}.json`
-    link.click()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-  }, '包含媒体的完整备份已生成')
+const transfer = ref<{ label: string; percent: number }>()
+let transferController: AbortController | undefined
+const filePicker = (
+  window as Window & { showSaveFilePicker?: (options: unknown) => Promise<FileSystemFileHandle> }
+).showSaveFilePicker?.bind(window)
+function cancelTransfer() {
+  transferController?.abort(new DOMException('Canceled', 'AbortError'))
+}
+async function exportData(format: 'archive' | 'json' | 'file' = 'archive') {
+  if (transfer.value || busy.value) return
+  const filename = `repeaty-backup-${now.value.toISOString().slice(0, 10)}.${format === 'json' ? 'json' : 'repeaty'}`
+  let writable: FileSystemWritableFileStream | undefined
+  try {
+    if (format === 'file' && filePicker) {
+      const handle = await filePicker({
+        suggestedName: filename,
+        types: [{ description: 'Repeaty backup', accept: { 'application/zip': ['.repeaty'] } }],
+      })
+      writable = await handle.createWritable()
+    }
+    transferController = new AbortController()
+    transfer.value = { label: '正在导出备份…', percent: 0 }
+    const blob =
+      format === 'json'
+        ? new Blob([await workspace.exportData()], { type: 'application/json' })
+        : await workspace.exportArchive({
+            writable,
+            signal: transferController.signal,
+            progress: (percent) => {
+              if (transfer.value) transfer.value.percent = percent
+            },
+          })
+    if (blob) {
+      const url = URL.createObjectURL(blob),
+        link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    }
+    notice.value = { text: '包含媒体的完整备份已生成', error: false }
+  } catch (error) {
+    await writable?.abort().catch(() => {})
+    notice.value =
+      error instanceof DOMException && error.name === 'AbortError'
+        ? { text: '已取消备份操作', error: false }
+        : { text: error as Error, error: true }
+  } finally {
+    transfer.value = undefined
+    transferController = undefined
+  }
 }
 async function openSnapshot(id: string) {
   await run(async () => {
@@ -294,12 +334,24 @@ async function importData(event: Event) {
   if (!file) return
   notice.value = null
   try {
-    if (file.size > MAX_BACKUP_BYTES) throw new LocalizedError(msg('备份文件不能超过 100 MB。'))
-    pendingBackup.value = parseBackup(await file.text())
+    transferController = new AbortController()
+    transfer.value = { label: '正在检查备份…', percent: 0 }
+    const { parseBackupFile } = await import('./core/archive')
+    pendingBackup.value = await parseBackupFile(file, {
+      signal: transferController.signal,
+      progress: (percent) => {
+        if (transfer.value) transfer.value.percent = percent
+      },
+    })
     modal.value = 'import'
   } catch (error) {
-    notice.value = { text: error as Error, error: true }
+    notice.value =
+      error instanceof DOMException && error.name === 'AbortError'
+        ? { text: '已取消备份操作', error: false }
+        : { text: error as Error, error: true }
   } finally {
+    transfer.value = undefined
+    transferController = undefined
     input.value = ''
   }
 }
@@ -720,11 +772,16 @@ async function restoreBackup() {
             </p>
           </div>
         </section>
+        <div v-if="transfer" class="transfer-status" role="status">
+          <span>{{ t(transfer.label) }} {{ Math.floor(transfer.percent) }}%</span>
+          <progress :value="transfer.percent" max="100" :aria-label="t(transfer.label)" />
+          <button class="button secondary" @click="cancelTransfer">{{ t('取消传输') }}</button>
+        </div>
         <div class="backup-grid">
           <section class="backup-card">
             <span class="stat-icon sage"><ArrowDownToLine :size="22" /></span>
             <h2>{{ t('导出备份') }}</h2>
-            <p>{{ t('将卡组、笔记、卡片、复习进度和图片音频保存为一个完整 JSON 文件。') }}</p>
+            <p>{{ t('将学习数据和原始图片、音频保存为 .repeaty 备份包，适合较大的学习库。') }}</p>
             <div class="backup-meta">
               {{
                 t('{p0} 个卡组 · {p1} 张卡片 · {p2} 次复习', {
@@ -734,23 +791,47 @@ async function restoreBackup() {
                 })
               }}
             </div>
-            <button class="button primary" @click="exportData">
-              <ArrowDownToLine :size="16" />{{ t('导出 JSON') }}
-            </button>
+            <div class="backup-actions">
+              <button class="button primary" :disabled="busy || !!transfer" @click="exportData()">
+                <ArrowDownToLine :size="16" />{{ t('导出 .repeaty') }}
+              </button>
+              <button
+                v-if="filePicker"
+                class="button secondary"
+                :disabled="busy || !!transfer"
+                @click="exportData('file')"
+              >
+                {{ t('直接保存到文件') }}
+              </button>
+              <button
+                class="text-button"
+                :disabled="busy || !!transfer"
+                @click="exportData('json')"
+              >
+                {{ t('导出旧版 JSON') }}
+              </button>
+            </div>
+            <p v-if="filePicker" class="form-note">
+              {{ t('大备份可直接写入文件，减少内存占用。') }}
+            </p>
           </section>
           <section class="backup-card">
             <span class="stat-icon lavender"><ArrowUpFromLine :size="22" /></span>
             <h2>{{ t('恢复备份') }}</h2>
-            <p>{{ t('从 Repeaty 导出的 JSON 文件恢复学习空间，确认后会替换当前数据。') }}</p>
-            <div class="backup-meta">{{ t('JSON 格式 · 最大 100 MB · 兼容旧版备份') }}</div>
+            <p>{{ t('支持 .repeaty 备份包和旧版 JSON。检查完成并确认后才会替换当前数据。') }}</p>
+            <div class="backup-meta">{{ t('.repeaty 最大 2 GB · 旧版 JSON 最大 100 MB') }}</div>
             <input
               ref="upload"
               class="sr-only"
               type="file"
-              accept=".json,application/json"
+              accept=".repeaty,.zip,.json,application/zip,application/json"
               :aria-label="t('导入备份文件')"
               @change="importData"
-            /><button class="button secondary" @click="upload?.click()">
+            /><button
+              class="button secondary"
+              :disabled="busy || !!transfer"
+              @click="upload?.click()"
+            >
               <ArrowUpFromLine :size="16" />{{ t('选择备份文件') }}
             </button>
           </section>

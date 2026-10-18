@@ -16,6 +16,7 @@ import {
 import { changeCards, reviewCard, undoReview, type CardAction } from '../core/scheduler'
 import { editNotes, importNotes, type BatchEdit } from '../core/batch'
 import { saveSearch } from '../core/search'
+import type { TransferOptions } from '../core/archive'
 import { exportBackup, rekeyBackup, type BackupData } from '../core/backups'
 import { sampleLibrary } from '../core/sample'
 import { createRepository, type BackupSummary } from '../core/storage'
@@ -91,7 +92,7 @@ export function useLibrary() {
         await refreshBackups()
         backupError.value = ''
       } catch (error) {
-        backupError.value = '自动备份未能完成，请导出 JSON 并检查存储空间。'
+        backupError.value = '自动备份未能完成，请导出备份并检查存储空间。'
         if (force) throw error
       }
     },
@@ -103,6 +104,18 @@ export function useLibrary() {
     },
     getMedia(id: string) {
       return repository.getMedia(id)
+    },
+    async exportArchive(options: TransferOptions & { writable?: WritableStream<Uint8Array> }) {
+      if (busy.value) throw new LocalizedError(msg('正在保存，请稍候。'))
+      busy.value = true
+      try {
+        await repository.backupNow(true)
+        const { exportArchive } = await import('../core/archive')
+        return await exportArchive(library.value, (id) => repository.getMedia(id), options)
+      } finally {
+        busy.value = false
+        await refreshBackups()
+      }
     },
     exportData() {
       return exportBackup(library.value, (id) => repository.getMedia(id))
