@@ -6,7 +6,7 @@
 
 <div align="center">
 
-# 每一次回想，都算数。
+# 卡片与间隔复习
 
 [在线使用](https://krahsu.github.io/repeaty/) · [使用指南](docs/USAGE.md) · [开发文档](docs/DEVELOPMENT.md)
 
