@@ -214,11 +214,13 @@ async function editSelected() {
   <details class="search-options" @toggle="expanded = ($event.target as HTMLDetailsElement).open">
     <summary>{{ t('高级搜索、常用筛选与专项练习') }}</summary>
     <p class="form-note">
-      {{ t('空格连接的条件需同时满足；双引号包围短语，减号排除条件。例如')
-      }}<code>{{ t('tag:英语 -is:suspended lapses:>=3') }}</code
-      >{{
+      {{ t('空格连接的条件需同时满足；双引号包围短语，减号排除条件。例如') }}
+      <code>{{ t('tag:英语 -is:suspended lapses:>=3') }}</code>
+    </p>
+    <p class="form-note">
+      {{
         t(
-          '。支持 deck:"卡组名称"、type:cloze、is:leech、due:<=7（距今天的日历天数，负数表示逾期）。is:due 包含所有已到期卡片，不考虑额度。',
+          '还支持 deck:"卡组名称"、type:cloze、is:leech、due:<=7（距今天的日历天数，负数表示逾期）。is:due 包含所有已到期卡片，不考虑额度。',
         )
       }}
     </p>
@@ -376,7 +378,15 @@ async function editSelected() {
             <button class="card-row-title" @click="emit('edit', card)">{{ card.front }}</button>
             <p>{{ card.back }}</p>
             <div class="tag-list">
-              <span class="tag">{{ t(noteTypes[card.type]) }} · {{ card.variant }}</span
+              <span class="tag">
+                {{
+                  card.type === 'cloze'
+                    ? t('挖空 {number}', { number: Number(card.variant.slice(6)) })
+                    : t(noteTypes[card.type])
+                }}
+                <template v-if="card.type === 'reversed'">
+                  · {{ t(card.variant === 'reverse' ? '背面 → 正面' : '正面 → 背面') }}
+                </template></span
               ><span v-if="card.frontMedia.length + card.backMedia.length" class="tag">{{
                 t('{p0} 个媒体', { p0: card.frontMedia.length + card.backMedia.length })
               }}</span

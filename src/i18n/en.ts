@@ -124,7 +124,7 @@ export const en = {
   '空格连接的条件需同时满足；双引号包围短语，减号排除条件。例如':
     'All space-separated conditions must match. Use quotes for phrases and a minus to exclude. Example:',
   'tag:英语 -is:suspended lapses:>=3': 'tag:English -is:suspended lapses:>=3',
-  '。支持 deck:"卡组名称"、type:cloze、is:leech、due:<=7（距今天的日历天数，负数表示逾期）。is:due 包含所有已到期卡片，不考虑额度。':
+  '还支持 deck:"卡组名称"、type:cloze、is:leech、due:<=7（距今天的日历天数，负数表示逾期）。is:due 包含所有已到期卡片，不考虑额度。':
     'Also supports deck:"Deck name", type:cloze, is:leech, and due:<=7 (calendar days from today; negative means overdue). is:due includes all due cards regardless of daily limits.',
   常用筛选: 'Saved filters',
   选择已保存筛选: 'Choose a saved filter',
@@ -465,4 +465,7 @@ export const en = {
   '可添加新卡片，或稍后查看复习安排。': 'Add new cards or check the review schedule later.',
   '选择「重来」，这张卡片会在较短时间内再次出现。':
     'Choose Again. The card will appear again after a short interval.',
+  '挖空 {number}': 'Cloze {number}',
+  '正面 → 背面': 'Front → Back',
+  '背面 → 正面': 'Back → Front',
 } as const
