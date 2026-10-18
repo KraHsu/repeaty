@@ -44,7 +44,7 @@ async function change() {
 </script>
 <template>
   <div v-if="account" class="account-controls">
-    <span>{{ account.username }}</span>
+    <span :title="account.username">{{ account.username }}</span>
     <button class="text-button" @click="editing = true">{{ t('修改密码') }}</button>
     <button class="text-button" :disabled="busy" @click="logout">{{ t('退出登录') }}</button>
     <p v-if="error && !editing" role="alert">{{ t(error) }}</p>

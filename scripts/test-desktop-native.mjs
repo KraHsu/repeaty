@@ -1,3 +1,4 @@
+import { ZipReader, Uint8ArrayReader, TextWriter, Uint8ArrayWriter } from '@zip.js/zip.js'
 import { promisify } from 'node:util'
 import { spawn, execFile } from 'node:child_process'
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promises'
@@ -22,6 +23,9 @@ const env = {
   XDG_DATA_HOME: join(directory, 'data'),
   XDG_CONFIG_HOME: join(directory, 'config'),
   WEBKIT_DISABLE_DMABUF_RENDERER: '1',
+  GDK_BACKEND: 'x11',
+  GTK_IM_MODULE: 'gtk-im-context-simple',
+  XMODIFIERS: '@im=none',
 }
 const serverEnv = {
   ...env,
@@ -62,6 +66,7 @@ let session
 async function command(path, body, method = body === undefined ? 'GET' : 'POST') {
   const response = await fetch(`${origin}${path}`, {
     method,
+    signal: AbortSignal.timeout(20000),
     ...(body === undefined
       ? {}
       : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
@@ -107,6 +112,7 @@ try {
     },
   })
   session = created.sessionId
+  console.log('Native window created')
   await until(
     () => execute("return document.querySelectorAll('.deck-title').length===1"),
     'starter deck',
@@ -114,6 +120,7 @@ try {
   await execute(
     "const select=document.querySelector('.language-picker select');select.value='zh-CN';select.dispatchEvent(new Event('change',{bubbles:true}));",
   )
+  console.log('Starter deck loaded')
   assert.deepEqual(await invoke('desktop_config'), { endpoint: '' })
   assert.equal(await execute("return document.body.textContent.includes('桌面版')"), true)
   // Real Rust IPC writes a fake local credential. No LeetCode network call is made.
@@ -142,16 +149,21 @@ try {
     'test-results/native-desktop.png',
     Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
   )
+  console.log('Local credentials verified')
   await click('数据与备份')
-  await click('导出 .repeaty')
+  const exporting = click('导出 .repeaty')
+  console.log('Opening save dialog')
   const chooser = await until(async () => {
     const { stdout } = await exec(xdotool, ['search', '--onlyvisible', '--name', 'Save'])
     return stdout.trim().split('\n').at(-1)
   }, 'system save dialog')
   await exec(xdotool, ['windowfocus', chooser])
-  await exec(xdotool, ['key', '--clearmodifiers', 'ctrl+l'])
+  await exec(xdotool, ['key', '--clearmodifiers', 'ctrl+l', 'ctrl+a'])
   await exec(xdotool, ['type', '--clearmodifiers', join(directory, 'downloads', 'native.repeaty')])
   await exec(xdotool, ['key', '--clearmodifiers', 'Return'])
+  await sleep(300)
+  await exec(xdotool, ['key', '--clearmodifiers', 'alt+s'])
+  await exporting
   const backup = await until(
     async () =>
       (await readdir(join(directory, 'downloads'))).find((name) => name.endsWith('.repeaty')),
@@ -159,7 +171,22 @@ try {
   )
   const bytes = await readFile(join(directory, 'downloads', backup))
   assert.equal(bytes.subarray(0, 2).toString(), 'PK')
-  assert.ok(bytes.length > 1000)
+  const archive = new ZipReader(new Uint8ArrayReader(bytes), { useWebWorkers: false })
+  const entries = await archive.getEntries()
+  const manifest = JSON.parse(
+    await entries.find((entry) => entry.filename === 'manifest.json').getData(new TextWriter()),
+  )
+  assert.equal(manifest.counts.cards, 27)
+  assert.equal(manifest.counts.media, 2)
+  const media = entries.filter((entry) => entry.filename.startsWith('media/'))
+  assert.equal(media.length, 2)
+  const contents = await Promise.all(
+    media.map((entry) => entry.getData(new Uint8ArrayWriter(), { checkSignature: true })),
+  )
+  assert.ok(contents.some((data) => Buffer.from(data.subarray(0, 4)).toString() === 'RIFF'))
+  assert.ok(contents.some((data) => data[0] === 137 && data[1] === 80))
+  await archive.close()
+  console.log('Native archive contains 27 cards, PNG and audio')
   await click('学习概览')
   await execute("document.querySelector('.deck-title').click()")
   await until(
@@ -235,7 +262,7 @@ try {
     [],
   )
   console.log(
-    'Native WebKit/Tauri: starter lifecycle, account registration, upstream switching, local credential persistence and clearing passed.',
+    'Native WebKit/Tauri: starter lifecycle, account registration, upstream switching, local credential persistence, native backup export and clearing passed.',
   )
 } catch (error) {
   console.error(log.slice(-20).join(''))

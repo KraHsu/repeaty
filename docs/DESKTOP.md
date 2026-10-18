@@ -2,7 +2,7 @@
 
 [返回首页](../README.md) · [后端部署](SELF_HOSTING.md) · [LeetCode](LEETCODE.md)
 
-桌面版使用 Tauri 2，默认无需账户，学习数据保存在本机 WebView 的 IndexedDB。第一次打开自动添加入门卡组，删除后不会再次自动添加。界面、制卡、复习和备份格式与网页一致。
+桌面版使用 Tauri 2，默认无需账户，学习数据保存在本机 WebView 的 IndexedDB。第一次打开自动添加入门卡组，删除后不会再次自动添加。界面、制卡、复习和备份格式与网页一致。导出使用系统保存对话框，按块写入临时文件，完成后再替换目标；取消不会破坏已有备份。
 
 ## 安装与构建
 
@@ -41,7 +41,9 @@ npm run test:e2e:desktop                    # Chromium，模拟 IPC，验证界�
 cargo test --locked --manifest-path src-tauri/Cargo.toml
 cargo test --locked --manifest-path crates/leetcode-local/Cargo.toml
 npm run desktop:build -- --debug --bundles deb
-# Linux：需 WebKitWebDriver、tauri-driver 和 Xvfb
+# Linux：需 WebKitWebDriver、tauri-driver、Xvfb 和 xdotool
+npm run build:server
+cargo build --locked --manifest-path server/Cargo.toml
 xvfb-run -a node scripts/test-desktop-native.mjs
 ```
 
