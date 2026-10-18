@@ -48,6 +48,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb xdotool
           cargo install tauri-driver --locked --version 2.1.0
+          # Headless runners register a desktop portal that cannot start. WebKit and
+          # tao otherwise wait about 30 seconds for its D-Bus activation to time out.
+          # Match Tauri's own CI setup; this affects only the disposable runner.
+          repeaty_portal=/usr/share/dbus-1/services/org.freedesktop.portal.Desktop.service
+          if [ -f "$repeaty_portal" ]; then sudo mv "$repeaty_portal" "$repeaty_portal.disabled"; fi
       - name: Check desktop frontend and local plugin
         if: runner.os == 'Linux'
         run: |

@@ -66,7 +66,7 @@ let session
 async function command(path, body, method = body === undefined ? 'GET' : 'POST') {
   const response = await fetch(`${origin}${path}`, {
     method,
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(path === '/session' ? 60000 : 20000),
     ...(body === undefined
       ? {}
       : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
@@ -100,6 +100,7 @@ try {
     await command('/status')
     return true
   }, 'driver ready')
+  console.log('Starting native browser session')
   const created = await command('/session', {
     capabilities: {
       alwaysMatch: {
