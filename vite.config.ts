@@ -10,6 +10,12 @@ export default defineConfig(({ mode }) => {
     define: { __REPEATY_EDITION__: JSON.stringify(server ? 'server' : 'static') },
     resolve: {
       alias: {
+        '@repeaty-platform': fileURLToPath(
+          new URL(
+            server ? './src/platform/server.ts' : './src/platform/static.ts',
+            import.meta.url,
+          ),
+        ),
         '@repeaty-plugins': fileURLToPath(
           new URL(
             server ? './repeaty.plugins.server.ts' : './repeaty.plugins.static.ts',

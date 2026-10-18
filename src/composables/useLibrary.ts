@@ -1,4 +1,4 @@
-import { msg, LocalizedError, validationMessage } from '../i18n'
+import { msg, LocalizedError, validationMessage, type DisplayMessage } from '../i18n'
 import { readonly, ref, shallowRef } from 'vue'
 import type { Assessment } from '../plugins/data'
 import { canReviewCard } from '../plugins'
@@ -21,23 +21,28 @@ import { saveSearch } from '../core/search'
 import type { TransferOptions } from '../core/archive'
 import { exportBackup, rekeyBackup, type BackupData } from '../core/backups'
 import { sampleLibrary } from '../core/sample'
-import { createRepository, type BackupSummary } from '../core/storage'
+import { serverEdition } from '../edition'
+import type { createServerRepository } from '../backend/repository'
+import type { createRepository, BackupSummary } from '../core/storage'
+import { createWorkspaceRepository } from '@repeaty-platform'
 
 export function useLibrary() {
   const library = shallowRef(emptyLibrary())
   const ready = ref(false),
     busy = ref(false),
-    loadError = ref(''),
+    loadError = ref<DisplayMessage>(''),
     backupError = ref('')
   const backups = shallowRef<BackupSummary[]>([])
   let revision = 0
-  let repository: ReturnType<typeof createRepository>
+  let repository: ReturnType<typeof createRepository> | ReturnType<typeof createServerRepository>
   async function refreshBackups() {
     backups.value = await repository.listBackups()
   }
   async function init() {
+    if (busy.value) return
+    busy.value = true
     try {
-      repository = createRepository('repeaty', () => {
+      repository = await createWorkspaceRepository(() => {
         loadError.value =
           '数据库升级正在等待旧版本标签页关闭。请关闭其他 Repeaty 页面，完成后会自动继续。'
       })
@@ -47,9 +52,12 @@ export function useLibrary() {
       ready.value = true
       loadError.value = ''
       await refreshBackups()
-    } catch {
-      loadError.value =
-        '无法读取本地数据库。请确认浏览器允许本站使用存储，再刷新页面。已有数据不会被自动覆盖。'
+    } catch (error) {
+      loadError.value = serverEdition
+        ? (error as Error)
+        : '无法读取本地数据库。请确认浏览器允许本站使用存储，再刷新页面。已有数据不会被自动覆盖。'
+    } finally {
+      busy.value = false
     }
   }
   async function commit(

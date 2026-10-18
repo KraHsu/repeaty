@@ -29,6 +29,18 @@ export const installedPlugins = validateInstallations(installations).filter(
 )
 export const PLUGIN_PREFERENCES_KEY = 'repeaty.plugins.v1'
 const preferences = ref<Record<string, boolean>>({})
+const backendPlugins = ref<string[]>()
+export function setAvailableBackendPlugins(ids: string[]) {
+  backendPlugins.value = ids
+}
+export function pluginAvailable(id: string) {
+  const plugin = installedPlugins.find((entry) => entry.plugin.id === id)?.plugin
+  return Boolean(
+    plugin &&
+    (plugin.kind === 'frontend' ||
+      (serverEdition && (!backendPlugins.value || backendPlugins.value.includes(id)))),
+  )
+}
 export const pluginPreferenceError = ref('')
 export function restorePluginPreferences() {
   try {
@@ -52,6 +64,7 @@ export function pluginEnabled(id: string): boolean {
   const installed = installedPlugins.find(({ plugin }) => plugin.id === id)
   return Boolean(
     installed &&
+    pluginAvailable(id) &&
     ((Object.hasOwn(preferences.value, id) ? preferences.value[id] : installed.enabledByDefault) ??
       true),
   )

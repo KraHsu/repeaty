@@ -5,6 +5,7 @@ import {
   pluginEnabled,
   setPluginEnabled,
   pluginPreferenceError,
+  pluginAvailable,
 } from '../plugins'
 </script>
 
@@ -35,6 +36,7 @@ import {
           <input
             type="checkbox"
             role="switch"
+            :disabled="!pluginAvailable(plugin.id)"
             :aria-label="t('启用 {name}', { name: t(plugin.label) })"
             :checked="pluginEnabled(plugin.id)"
             @change="setPluginEnabled(plugin.id, ($event.target as HTMLInputElement).checked)"
@@ -43,6 +45,9 @@ import {
           <span>{{ t(pluginEnabled(plugin.id) ? '已开启' : '已关闭') }}</span>
         </label>
       </div>
+      <p v-if="!pluginAvailable(plugin.id)" class="form-note">
+        {{ t('后端未安装或未开启此插件。') }}
+      </p>
       <p v-if="plugin.description">{{ t(plugin.description) }}</p>
       <component v-if="pluginEnabled(plugin.id) && plugin.settings" :is="plugin.settings" />
     </article>

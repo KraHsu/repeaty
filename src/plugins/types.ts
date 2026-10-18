@@ -36,3 +36,9 @@ export interface PluginInstallation {
   enabledByDefault?: boolean
   builtin?: boolean
 }
+
+/** The static manifest cannot install a plugin that requires a server. */
+export type FrontendPlugin = QuestionPlugin & { kind: 'frontend' }
+export type FrontendPluginInstallation = Omit<PluginInstallation, 'plugin'> & {
+  plugin: FrontendPlugin
+}

@@ -1,21 +1,7 @@
-import { test as base, expect, chromium, type BrowserContext, type Page } from '@playwright/test'
-import { resolve } from 'node:path'
+import { test, expect } from './fixture'
+import type { BrowserContext, Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 
-const test = base.extend<{ connector: BrowserContext }>({
-  connector: async ({ baseURL }, use) => {
-    const extension = resolve('dist-connector')
-    const context = await chromium.launchPersistentContext('', {
-      channel: 'chromium',
-      headless: true,
-      locale: 'zh-CN',
-      baseURL,
-      args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
-    })
-    await use(context)
-    await context.close()
-  },
-})
 const question = {
   questionId: '1',
   questionFrontendId: '1',
@@ -47,22 +33,21 @@ async function connect(
   let submissions = 0
   let checkFails = options.checkFails ?? false
   const sent: unknown[] = []
-  await context.addCookies([
-    { name: 'csrftoken', value: 'test-csrf', domain: site, path: '/', secure: true },
-  ])
-  await context.route(`https://${site}/**`, async (route) => {
-    const path = new URL(route.request().url()).pathname
-    if (path === '/graphql/') {
-      expect(route.request().postDataJSON().variables.slug).toBe('test-problem')
+  await context.route('**/api/plugins/leetcode', async (route) => {
+    const request = route.request().postDataJSON()
+    if (request.action !== 'ping') expect(request.site).toBe(site)
+    if (request.action === 'ping') await route.fulfill({ json: { version: 1 } })
+    else if (request.action === 'question') {
+      expect(request.slug).toBe('test-problem')
       await route.fulfill({ json: { data: { question } } })
-    } else if (path.endsWith('/submit/')) {
+    } else if (request.action === 'submit') {
       submissions++
-      sent.push(route.request().postDataJSON())
-      expect(route.request().headers()['x-csrftoken']).toBe('test-csrf')
-      if (options.submitFails) await route.fulfill({ status: 503, body: 'Unavailable' })
+      sent.push(request)
+      if (options.submitFails)
+        await route.fulfill({ status: 502, json: { error: 'submission-unknown' } })
       else await route.fulfill({ json: { submission_id: 1000 + submissions } })
-    } else if (path.endsWith('/check/')) {
-      if (checkFails) await route.fulfill({ status: 503, body: 'Unavailable' })
+    } else if (request.action === 'check') {
+      if (checkFails) await route.fulfill({ status: 502, json: { error: 'request-failed' } })
       else
         await route.fulfill({
           json: {
@@ -72,14 +57,8 @@ async function connect(
             status_memory: '10 MB',
           },
         })
-    } else
-      await route.fulfill({
-        contentType: 'text/html',
-        body: '<!doctype html><html><title>LeetCode fixture</title><body>Signed in test fixture</body></html>',
-      })
+    } else throw new Error('Unexpected LeetCode operation')
   })
-  const leetcode = await context.newPage()
-  await leetcode.goto(`https://${site}/problems/test-problem/`)
   return {
     sent,
     submissions: () => submissions,
@@ -107,11 +86,11 @@ async function create(page: Page, site = 'leetcode.cn') {
   await expect(page.getByLabel('代码', { exact: true })).toBeEnabled()
 }
 
-test('real extension transport loads, judges, restores drafts, and saves an automatic rating', async ({
-  connector,
+test('backend transport loads, judges, restores drafts, and saves an automatic rating', async ({
+  context,
 }) => {
-  const remote = await connect(connector, { rejectFirst: true })
-  const page = await connector.newPage()
+  const remote = await connect(context, { rejectFirst: true })
+  const page = await context.newPage()
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await create(page)
@@ -156,26 +135,28 @@ test('real extension transport loads, judges, restores drafts, and saves an auto
   expect(backup.library.notes[0].plugin.data.site).toBe('leetcode.cn')
   expect(JSON.stringify(backup)).not.toContain('test-csrf')
   expect(remote.submissions()).toBe(2)
-  expect(remote.sent[1]).toEqual({
+  expect(remote.sent[1]).toMatchObject({
+    action: 'submit',
+    site: 'leetcode.cn',
     lang: 'python3',
-    question_id: '1',
-    typed_code: 'def solve(value):\n    return value',
+    questionId: '1',
+    code: 'def solve(value):\n    return value',
   })
   expect(errors).toEqual([])
 })
 
 test('international site, English, manual rating, and pending judge recovery do not resubmit', async ({
-  connector,
+  context,
 }) => {
-  const remote = await connect(connector, { site: 'leetcode.com', checkFails: true })
-  const page = await connector.newPage()
+  const remote = await connect(context, { site: 'leetcode.com', checkFails: true })
+  const page = await context.newPage()
   await create(page, 'leetcode.com')
   await page.getByLabel('界面语言').selectOption('en')
   await expect(page.getByRole('heading', { name: '1. Test problem' })).toBeVisible()
   await page.getByLabel('Programming language').selectOption('javascript')
   await page.getByLabel('Code', { exact: true }).fill('function solve(value) { return value; }')
   await page.getByRole('button', { name: 'Submit to LeetCode' }).click()
-  await expect(page.getByRole('alert')).toContainText('Cannot connect to LeetCode')
+  await expect(page.getByRole('alert')).toContainText('The service cannot connect to LeetCode')
   await expect(page.getByRole('button', { name: 'Submit to LeetCode' })).toBeDisabled()
   await page.reload()
   remote.allowChecks()
@@ -192,9 +173,12 @@ test('international site, English, manual rating, and pending judge recovery do 
   )
 })
 
-test('a missing connector is reported without creating a placeholder question', async ({
+test('an unavailable judge service is reported without creating a placeholder question', async ({
   page,
 }) => {
+  await page.route('**/api/plugins/leetcode', (route) =>
+    route.fulfill({ status: 502, json: { error: 'request-failed' } }),
+  )
   await page.goto('./')
   await page.getByRole('button', { name: '创建卡组', exact: true }).last().click()
   await page.getByLabel('卡组名称').fill('Algorithms')
@@ -203,16 +187,14 @@ test('a missing connector is reported without creating a placeholder question', 
   await page.getByLabel('笔记类型').selectOption('plugin')
   await page.getByLabel('题目链接或英文标识').fill('test-problem')
   await page.getByRole('button', { name: '读取题目', exact: true }).click()
-  await expect(page.getByRole('alert')).toContainText('未连接扩展')
+  await expect(page.getByRole('alert')).toContainText('服务无法连接 LeetCode')
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
 })
 
-test('active solving time affects automatic ratings and supports pausing', async ({
-  connector,
-}) => {
-  await connect(connector)
-  const page = await connector.newPage()
+test('active solving time affects automatic ratings and supports pausing', async ({ context }) => {
+  await connect(context)
+  const page = await context.newPage()
   await page.clock.install()
   await create(page)
   await page.clock.fastForward(11 * 60000)
@@ -228,10 +210,10 @@ test('active solving time affects automatic ratings and supports pausing', async
 })
 
 test('viewing the answer before acceptance prevents a passing review rating', async ({
-  connector,
+  context,
 }) => {
-  await connect(connector)
-  const page = await connector.newPage()
+  await connect(context)
+  const page = await context.newPage()
   await create(page)
   await page.getByRole('button', { name: '结束作答并查看答案' }).click()
   await expect(page.getByRole('button', { name: /^良好/ })).toBeDisabled()
@@ -244,10 +226,10 @@ test('viewing the answer before acceptance prevents a passing review rating', as
 })
 
 test('a lost submission response disables automatic ratings and survives reload', async ({
-  connector,
+  context,
 }) => {
-  const remote = await connect(connector, { submitFails: true })
-  const page = await connector.newPage()
+  const remote = await connect(context, { submitFails: true })
+  const page = await context.newPage()
   await create(page)
   await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
   await page.getByRole('button', { name: '提交到 LeetCode' }).click()
@@ -259,4 +241,34 @@ test('a lost submission response disables automatic ratings and survives reload'
   await expect(page.getByText(/有一次提交未取得编号/)).toBeVisible()
   await expect(page.locator('#leetcode-rating option[value="automatic"]')).toBeDisabled()
   expect(remote.submissions()).toBe(1)
+})
+
+test('plugin switches persist across tabs without changing questions or progress', async ({
+  page,
+  context,
+  request,
+}) => {
+  await connect(context)
+  await create(page)
+  const { headers } = await import('./fixture')
+  const before = await (await request.get('api/library', { headers })).json()
+  await page.getByRole('button', { name: '插件', exact: true }).click()
+  const other = await context.newPage()
+  await other.goto('./')
+  await other.getByRole('button', { name: '插件', exact: true }).click()
+  await expect(other.getByRole('switch', { name: '启用 LeetCode' })).toBeChecked()
+  await page.getByRole('switch', { name: '启用 LeetCode' }).click()
+  await expect(other.getByRole('switch', { name: '启用 LeetCode' })).not.toBeChecked()
+  await page.reload()
+  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await expect(page.getByRole('switch', { name: '启用 LeetCode' })).not.toBeChecked()
+  await page.getByRole('button', { name: '全部卡片' }).click()
+  await page.getByRole('button', { name: '复习', exact: true }).click()
+  await expect(page.getByLabel('代码', { exact: true })).toHaveCount(0)
+  expect(await (await request.get('api/library', { headers })).json()).toEqual(before)
+  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await page.getByRole('switch', { name: '启用 LeetCode' }).click()
+  await page.getByRole('button', { name: '全部卡片' }).click()
+  await page.getByRole('button', { name: '复习', exact: true }).click()
+  await expect(page.getByLabel('代码', { exact: true })).toBeVisible()
 })

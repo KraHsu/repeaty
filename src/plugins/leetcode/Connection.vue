@@ -1,48 +1,48 @@
 <script setup lang="ts">
+import { onMounted, ref } from 'vue'
 import { t } from '../../i18n'
-import { Download } from '@lucide/vue'
+import { apiJson } from '../../backend/client'
 import type { LeetCodeSite } from './model'
 defineProps<{ site: LeetCodeSite }>()
-const download = `${import.meta.env.BASE_URL}leetcode-connector.zip`
+const configured = ref<string[]>()
+const error = ref('')
+onMounted(async () => {
+  try {
+    const status = await apiJson<{ plugins: { id: string; configured?: string[] }[] }>('/status')
+    configured.value = status.plugins.find((plugin) => plugin.id === 'leetcode')?.configured ?? []
+  } catch {
+    error.value = '无法读取连接状态，请检查服务。'
+  }
+})
 </script>
 <template>
   <section class="leetcode-connection" :aria-label="t('连接 LeetCode')">
     <div class="connection-header">
       <div>
-        <h3>{{ t('LeetCode 连接扩展') }}</h3>
-        <p>{{ t('读取题目和提交判题需要安装扩展，支持桌面 Chrome / Edge。') }}</p>
-      </div>
-      <a class="button secondary" :href="download" download>
-        <Download :size="18" aria-hidden="true" />{{ t('下载浏览器扩展') }}
-      </a>
-    </div>
-    <details>
-      <summary>{{ t('安装说明') }}</summary>
-      <ol>
-        <li>{{ t('下载并解压 ZIP 文件。') }}</li>
-        <li>
+        <h3>{{ t('LeetCode 判题服务') }}</h3>
+        <p v-if="configured">
           {{
             t(
-              '打开浏览器扩展管理页：Chrome 使用 chrome://extensions，Edge 使用 edge://extensions。',
+              configured.includes(site)
+                ? '该站点已配置判题连接。'
+                : '该站点尚未配置登录信息。可读取公开题目，提交判题需要部署者完成配置。',
             )
           }}
-        </li>
-        <li>
-          {{
-            t('开启「开发者模式」，点击「加载已解压的扩展程序」，选择包含 manifest.json 的文件夹。')
-          }}
-        </li>
-        <li>
-          <a :href="`https://${site}/`" target="_blank" rel="noopener noreferrer">{{
-            t('打开 LeetCode 并登录')
-          }}</a
-          >{{ t('，保留该标签页。') }}
-        </li>
-        <li>{{ t('刷新 Repeaty 后即可读取题目和提交代码。') }}</li>
-      </ol>
-      <p class="form-note">
-        {{ t('提交代码会写入你的 LeetCode 提交记录。登录信息不会保存到 Repeaty 或备份中。') }}
-      </p>
-    </details>
+        </p>
+        <p v-else>{{ t(error || '正在读取连接状态…') }}</p>
+      </div>
+      <a
+        class="button secondary"
+        :href="`https://${site}/`"
+        target="_blank"
+        rel="noopener noreferrer"
+        >{{ t('在 LeetCode 打开') }}</a
+      >
+    </div>
+    <p class="form-note">
+      {{
+        t('提交使用部署者配置的 LeetCode 账号，并写入该账号的提交记录。登录信息只保留在服务端。')
+      }}
+    </p>
   </section>
 </template>
