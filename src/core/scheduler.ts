@@ -37,7 +37,14 @@ export function dailyUsage(library: Library, now = new Date()) {
   }
   return usage
 }
-export function dueCards(library: Library, now = new Date(), deckId?: string): CardView[] {
+export type CardEligibility = (card: CardView) => boolean
+const allCards: CardEligibility = () => true
+export function dueCards(
+  library: Library,
+  now = new Date(),
+  deckId?: string,
+  eligible: CardEligibility = allCards,
+): CardView[] {
   const usage = dailyUsage(library, now)
   const budgets = new Map(
     library.decks.map((deck) => [
@@ -52,6 +59,7 @@ export function dueCards(library: Library, now = new Date(), deckId?: string): C
     .filter(
       (card) =>
         (!deckId || card.deckId === deckId) &&
+        eligible(card) &&
         available(card, now) &&
         new Date(card.schedule.due) <= now,
     )
@@ -79,14 +87,20 @@ export function dueCards(library: Library, now = new Date(), deckId?: string): C
       return true
     })
 }
-export function blockedByLimit(library: Library, now = new Date(), deckId?: string): number {
+export function blockedByLimit(
+  library: Library,
+  now = new Date(),
+  deckId?: string,
+  canReview: CardEligibility = allCards,
+): number {
   const eligible = cardViews(library).filter(
     (card) =>
       (!deckId || card.deckId === deckId) &&
+      canReview(card) &&
       available(card, now) &&
       new Date(card.schedule.due) <= now,
   )
-  return eligible.length - dueCards(library, now, deckId).length
+  return eligible.length - dueCards(library, now, deckId, canReview).length
 }
 export function previewReview(card: Card, now = new Date(), deck?: Pick<Deck, 'desiredRetention'>) {
   return scheduler(deck?.desiredRetention).repeat(hydrateSchedule(card.schedule), now)
@@ -98,12 +112,15 @@ export function reviewCard(
   now = new Date(),
   source: 'normal' | 'filtered' = 'normal',
   assessment?: Assessment,
+  canReview: CardEligibility = allCards,
 ): Library {
   const card = library.cards.find((entry) => entry.id === id)
   if (!card) throw new LocalizedError(msg('卡片已不存在。'))
   if (
     !available(card, now) ||
-    (source === 'normal' && !dueCards(library, now).some((entry) => entry.id === id))
+    !canReview(cardViews(library).find((entry) => entry.id === id)!) ||
+    (source === 'normal' &&
+      !dueCards(library, now, undefined, canReview).some((entry) => entry.id === id))
   )
     throw new LocalizedError(msg('这张卡片尚未到期、已暂停或已达到今日额度。'))
   if (card.schedule.last_review && new Date(card.schedule.last_review) > now)

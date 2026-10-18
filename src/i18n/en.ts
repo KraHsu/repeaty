@@ -587,4 +587,22 @@ export const en = {
   '添加图片 / 音频': 'Add image / audio',
   '每面最多 8 个附件，每个不超过 10 MB。': 'Up to 8 attachments per side, 10 MB each.',
   挖空: 'Cloze',
+  '开启或关闭此部署已安装的题目插件。': 'Enable or disable installed question plugins.',
+  '关闭插件后，相关题目暂停出现在复习队列中，内容和进度保留。开关仅影响当前浏览器。':
+    'Disabled plugins are excluded from review. Their content and progress are kept. These preferences apply to this browser.',
+  '插件开关已生效，但未能保存；下次打开时可能恢复默认设置。':
+    'The setting is active but could not be saved. It may reset next time.',
+  '启用 {name}': 'Enable {name}',
+  已安装: 'Installed',
+  已开启: 'Enabled',
+  已关闭: 'Disabled',
+  自动判题连接: 'Judge connection',
+  'LeetCode 题型已内置。当前自动读取题目和提交判题使用单独的浏览器连接扩展；开启题型不会安装扩展。':
+    'The LeetCode question type is built in. Loading problems and submitting code currently use a separate browser connector; enabling the question type does not install it.',
+  '此部署尚未安装题目插件。普通卡片可正常使用。':
+    'No question plugins are installed. Standard flashcards are available.',
+  '请先在插件页面启用对应插件，再编辑或保存题目。':
+    'Enable the matching plugin on the Plugins page before editing or saving this question.',
+  纯前端插件: 'Frontend plugin',
+  需要后端: 'Requires backend',
 } as const

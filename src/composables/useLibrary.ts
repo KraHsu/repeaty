@@ -1,6 +1,7 @@
 import { msg, LocalizedError, validationMessage } from '../i18n'
 import { readonly, ref, shallowRef } from 'vue'
 import type { Assessment } from '../plugins/data'
+import { canReviewCard } from '../plugins'
 import { ZodError } from 'zod'
 import {
   deckSchema,
@@ -186,7 +187,15 @@ export function useLibrary() {
     },
     review(id: string, grade: Grade, filtered = false, assessment?: Assessment) {
       return commit((current) =>
-        reviewCard(current, id, grade, new Date(), filtered ? 'filtered' : 'normal', assessment),
+        reviewCard(
+          current,
+          id,
+          grade,
+          new Date(),
+          filtered ? 'filtered' : 'normal',
+          assessment,
+          canReviewCard,
+        ),
       )
     },
     saveSearch(filter: SearchFilter, name: string, id?: string) {

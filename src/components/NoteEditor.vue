@@ -16,7 +16,7 @@ import { prepareMedia } from '../core/media'
 import MediaList from './MediaList.vue'
 import MediaAttachments from './MediaAttachments.vue'
 const CardContent = defineAsyncComponent(() => import('./CardContent.vue'))
-import { questionPlugins } from '../plugins'
+import { enabledEditorPlugins, canReviewCard } from '../plugins'
 import { insertCloze } from '../core/authoring'
 const props = defineProps<{
   library: Library
@@ -43,10 +43,10 @@ const form = reactive<NoteInput>({
   frontMedia: [...(props.note?.frontMedia ?? [])],
   backMedia: [...(props.note?.backMedia ?? [])],
 })
-const pluginChoices = questionPlugins.filter((plugin) => plugin.editor)
-const selectedPluginId = ref(props.note?.plugin?.id ?? pluginChoices[0]?.id)
+const pluginChoices = enabledEditorPlugins
+const selectedPluginId = ref(props.note?.plugin?.id ?? pluginChoices.value[0]?.id)
 const selectedPlugin = computed(() =>
-  pluginChoices.find((plugin) => plugin.id === selectedPluginId.value),
+  pluginChoices.value.find((plugin) => plugin.id === selectedPluginId.value),
 )
 const tagsText = ref(form.tags.join(', ')),
   uploads = ref<MediaUpload[]>([]),
@@ -119,6 +119,7 @@ async function addCloze() {
   }
 }
 function selectLeetCode() {
+  if (!pluginChoices.value.some((plugin) => plugin.id === 'leetcode')) return
   form.type = 'plugin'
   selectedPluginId.value = 'leetcode'
 }
@@ -139,6 +140,10 @@ function remove(id: string, side: 'frontMedia' | 'backMedia') {
 async function save(continueAdding = false) {
   if (props.busy || !editor.value?.reportValidity()) return
   error.value = ''
+  if (form.type === 'plugin' && (!selectedPlugin.value || (form.plugin && !canReviewCard(form)))) {
+    error.value = '请先在插件页面启用对应插件，再编辑或保存题目。'
+    return
+  }
   const tags = [
     ...new Set(
       tagsText.value
@@ -198,7 +203,12 @@ async function save(continueAdding = false) {
           <div class="form-field">
             <label for="note-type">{{ t('笔记类型') }}</label>
             <select id="note-type" v-model="form.type">
-              <option v-for="(label, key) in noteTypes" :key="key" :value="key">
+              <option
+                v-for="(label, key) in noteTypes"
+                :key="key"
+                :value="key"
+                :disabled="key === 'plugin' && !pluginChoices.length"
+              >
                 {{ t(label) }}
               </option>
             </select>
@@ -242,7 +252,12 @@ async function save(continueAdding = false) {
                 : t('图片可直接粘贴到输入框。')
             }}
           </p>
-          <button type="button" class="text-button plugin-shortcut" @click="selectLeetCode">
+          <button
+            v-if="pluginChoices.some((plugin) => plugin.id === 'leetcode')"
+            type="button"
+            class="text-button plugin-shortcut"
+            @click="selectLeetCode"
+          >
             {{ t('添加 LeetCode 题目') }}
           </button>
         </div>
@@ -253,6 +268,9 @@ async function save(continueAdding = false) {
           :model-value="form"
           @update:model-value="Object.assign(form, $event)"
         />
+        <p v-if="form.type === 'plugin' && !selectedPlugin" class="import-warning" role="status">
+          {{ t('请先在插件页面启用对应插件，再编辑或保存题目。') }}
+        </p>
         <div class="note-sides" :class="{ 'single-side': form.type === 'plugin' }">
           <section v-if="form.type !== 'plugin'" class="note-side">
             <div class="note-side-heading">

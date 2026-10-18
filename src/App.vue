@@ -31,6 +31,7 @@ import NoteEditor from './components/NoteEditor.vue'
 import CollectionPanel from './components/CollectionPanel.vue'
 import ImportNotes from './components/ImportNotes.vue'
 import PluginPanel from './components/PluginPanel.vue'
+import { canReviewCard, listenPluginPreferences } from './plugins'
 import type { BackupData } from './core/backups'
 import type { BatchEdit } from './core/batch'
 import type { CardAction } from './core/scheduler'
@@ -85,8 +86,8 @@ const pendingBackup = ref<BackupData>()
 const pendingSnapshot = ref<Library>()
 const confirmation = ref<{ title: string; message: DisplayMessage; action: () => Promise<void> }>()
 const upload = ref<HTMLInputElement>()
-const due = computed(() => dueCards(library.value, now.value))
-const limited = computed(() => blockedByLimit(library.value, now.value))
+const due = computed(() => dueCards(library.value, now.value, undefined, canReviewCard))
+const limited = computed(() => blockedByLimit(library.value, now.value, undefined, canReviewCard))
 const newCount = computed(() => due.value.filter((card) => card.schedule.state === 0).length)
 const todayReviews = computed(() =>
   library.value.reviews.filter((entry) => entry.studyDay === dayKey(now.value)),
@@ -106,9 +107,11 @@ const pageTitle = computed(
     })[tab.value],
 )
 
+let stopPluginPreferences: (() => void) | undefined
 let ticker: ReturnType<typeof setInterval>
 let backupTicker: ReturnType<typeof setInterval>
 onMounted(() => {
+  stopPluginPreferences = listenPluginPreferences()
   void workspace.init()
   backupTicker = setInterval(() => {
     void workspace.backupNow()
@@ -118,6 +121,7 @@ onMounted(() => {
   }, 10_000)
 })
 onUnmounted(() => {
+  stopPluginPreferences?.()
   clearInterval(ticker)
   clearInterval(backupTicker)
   void workspace.close()
