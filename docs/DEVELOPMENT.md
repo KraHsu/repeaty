@@ -1,10 +1,10 @@
 # 开发文档
 
-[返回首页](../README.md) · [使用指南](USAGE.md)
+[返回首页](../README.md) · [使用指南](USAGE.md) · [后端部署](SELF_HOSTING.md) · [插件接口](PLUGINS.md)
 
 ## 开发与验证
 
-需要 Node.js 24.12+（建议 Node.js 24 LTS）。
+需要 Node.js 24.12+（24.x）。运行后端及对应测试还需 Rust，CI 固定使用 1.97.1。
 
 ```bash
 npm ci
@@ -17,13 +17,16 @@ npm run dev
 npm run format:check # 格式检查；npm run format 自动整理
 npm run typecheck    # Vue / TypeScript 类型检查
 npm test             # 核心逻辑、离线缓存、语言偏好与 DOM 交互测试
-npm run build        # 类型检查与生产构建，输出到 dist/
+npm run build        # 纯前端构建到 dist/，检查不包含后端 / LeetCode 模块
+npm run build:server # 后端版网页到 dist-server/，不生成离线缓存
 npm run preview      # 本地预览生产构建
 npm run test:e2e     # 构建后执行 Playwright，使用生产站点而非开发服务器
-npm run check        # 格式检查 + 单元测试 + 构建 + 浏览器测试
+npm run check        # 格式检查 + 单元测试 + 静态构建 + 浏览器测试
+npm run check:server # Schema 一致性、插件测试、Rust fmt/clippy/test、后端浏览器测试
+npm run schema:server # 修改实体模型后重新生成 Rust 使用的 JSON Schema
 ```
 
-首次运行浏览器测试先执行 `npx playwright install chromium`。也可设置 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome` 使用已有 Chrome。浏览器测试启动 `127.0.0.1:4175`，覆盖制卡、复习、撤销、额度、批量管理、媒体恢复、快捷制卡、常用筛选、两种专项练习、自动暂缓、双语切换与偏好持久化、移动端布局和断网重载。另有合计 128 MiB 的原始音频与图片、接近 10000 字长文本的归档恢复／离线复习／再次导出测试，对所有媒体比较 SHA-256。
+首次运行浏览器测试先执行 `npx playwright install chromium`。静态版测试也可设置 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome` 使用已有 Chrome。浏览器测试启动 `127.0.0.1:4175`，覆盖制卡、复习、撤销、额度、批量管理、媒体恢复、快捷制卡、常用筛选、两种专项练习、自动暂缓、双语切换与偏好持久化、移动端布局和断网重载。另有合计 128 MiB 的原始音频与图片、接近 10000 字长文本的归档恢复／离线复习／再次导出测试，对所有媒体比较 SHA-256。
 
 浏览器测试默认访问根路径。用与 Pages 一致的子路径运行完整检查：
 
@@ -41,13 +44,17 @@ CI 使用两个 Chromium worker，禁止提交 `test.only`，失败时保留浏�
 
 ## 大数据量存储
 
-IndexedDB v4 将卡组、笔记、卡片、复习记录、媒体元数据和常用筛选分别存储，图片音频继续保存为独立 Blob。评分只校验并更新变化的卡片、追加复习记录；修订号检查和写入处于同一事务，旧标签页不能覆盖新数据。首次打开自动迁移旧数据库，迁移校验失败时保留原记录。
+纯前端版的 IndexedDB v5 将卡组、笔记、卡片、复习记录、媒体元数据和常用筛选分别存储，图片音频继续保存为独立 Blob。评分只校验并更新变化的卡片、追加复习记录；修订号检查和写入处于同一事务，旧标签页不能覆盖新数据。首次打开自动迁移旧数据库，迁移校验失败时保留原记录。
 
 新快照保存修订号和数量摘要，后续只记录变更前的数据；恢复时从当前记录逆向重建。保留最近 10 个快照，随过期快照清理不再需要的变更及媒体。快照列表只读取摘要，旧版完整快照仍可恢复。
 
 卡片列表通过数据库读取每页 50 张，普通列表和卡组列表使用顺序／卡组索引；复杂搜索逐条匹配，专项练习最多读取 500 个候选 ID。当前调度、编辑和首页仍保留结构化学习数据的内存视图，启动成本随记录数量增长；媒体不会随启动整体加载。当前校验上限为 10 万条笔记、20 万张卡片、50 万条复习记录，并不代表所有设备上的性能保证。
 
 执行 `npm run benchmark` 在真实 Chromium 中测量 1 万张卡片、10 万条历史记录的首次保存、重新加载、快照、分页、搜索和评分耗时；结果写入 `test-results/storage-benchmark.json`。该命令使用独立临时数据库，结束后删除，不触碰日常学习库。
+
+带后端版使用 SQLite：六个实体表按记录保存 JSON 字段，附件放入独立 BLOB 表，引用使用外键与索引。请求只发送变更记录；服务在一个事务中检查修订号、记录格式和引用，写入增量历史与新记录。SQLite 数据库版本使用 `PRAGMA user_version`，当前为 1，学习数据版本仍为 4。实体 JSON Schema 从前端 Zod 模型生成并由 CI 检查一致性，Rust 另行检查跨记录引用和附件大小。它不是把整个学习库保存成一份 JSON 文件。
+
+媒体先上传，之后与学习记录的引用一起提交；同一 ID 的内容不可改写，防止破坏旧快照。上传失败不提交学习记录，未引用上传保留一天再清理。客户端失去写入响应时不会自动重试覆盖，修订冲突要求刷新。当前后端加载完整结构化学习库到前端，搜索仍在内存中执行，单次结构化提交上限 64 MiB；媒体独立上传。详情见[后端部署](SELF_HOSTING.md)。
 
 ## 离线启动与部署
 
@@ -74,8 +81,9 @@ VITE_BASE_PATH=/repeaty/ npm run preview
 [CI 工作流](../.github/workflows/ci.yml)在提交到 `main`、向 `main` 提交 PR，以及手动运行时执行：
 
 1. 按 `.nvmrc` 安装 Node.js，使用 `npm ci` 安装锁定依赖，另行安装 Playwright Chromium 及系统依赖。
-2. 运行格式检查、单元 / DOM 测试、类型检查、生产构建和浏览器测试。构建与测试均使用 `/repeaty/` 子路径。
-3. 仅在 `main` 的检查通过后上传已经测试的 `dist/`，通过 `github-pages` 环境部署到 [GitHub Pages](https://krahsu.github.io/repeaty/)。PR 只检查，不部署。
+2. 运行格式检查、单元 / DOM 测试、类型检查、纯前端生产构建和浏览器测试，使用 `/repeaty/` 子路径。
+3. 安装 Rust 1.97.1，检查生成 Schema、插件开关、Rust 格式、Clippy 与测试，再构建后端版、启动临时 SQLite 服务执行浏览器测试。后端测试使用根路径和独立临时数据库，禁用真实 LeetCode 登录信息；覆盖受控判题、访问密钥、写入冲突、128 MiB 媒体 / 长文本与静态版备份互通。
+4. 仅在 `main` 的检查通过后上传已经测试的 `dist/`，通过 `github-pages` 环境部署到 [GitHub Pages](https://krahsu.github.io/repeaty/)。`dist-server/` 与 Rust 二进制不上传 Pages；PR 只检查，不部署。
 
 工作流使用固定提交版本的官方 GitHub Actions。检查任务仅授予仓库读取权限；部署任务单独授予 `pages: write` 和 `id-token: write`，不需要配置个人访问令牌。失败报告保留 7 天。
 
@@ -93,7 +101,7 @@ Fork 后需在自己的仓库启用 Pages 的 GitHub Actions 发布源，并单�
 
 ## 技术边界与结构
 
-当前全部功能在浏览器运行，**无需后端**；如果以后需要服务端，技术约定为 **Rust**。范围不包含账号、订阅、支付、商业化、云同步或团队协作。
+纯前端版独立运行于浏览器；带后端版使用 Rust + Axum + SQLite，由同一服务托管网页与 API。范围不包含账号、订阅、支付、商业化、云同步或团队协作。
 
 尚未实现 Anki `.apkg` 导入、自定义字段 / HTML 模板、所见即所得富文本编辑器、图片遮挡、嵌套挖空、FSRS 参数训练。
 
@@ -110,8 +118,12 @@ src/core/
   archive.ts         # 流式 ZIP / NDJSON 备份与原始媒体
   backups.ts         # 旧版 JSON 备份兼容
   media.ts           # 附件校验
-src/plugins/        # 题目 / 答案组件接口、LeetCode 题型与连接扩展源码
-extension/leetcode/ # 连接扩展清单与安装说明
+src/plugins/        # 题目 / 答案接口、应用插件开关、LeetCode 题型
+src/backend/        # HTTP 客户端、SQLite 服务的增量存储适配
+src/platform/       # 构建时选择 IndexedDB 或后端适配器
+repeaty.plugins.*.ts # 静态 / 后端版部署插件清单
+examples/plugins/   # 可安装的纯前端插件示例
+server/             # Rust 服务、SQLite、LeetCode API、Schema 与测试
 src/i18n/           # 双语词典、语言偏好、格式化与 DOM 回归测试
 src/composables/     # 工作空间状态与离线更新状态
 src/components/      # 笔记编辑、卡片列表、导入、复习和媒体展示
@@ -125,14 +137,6 @@ docs/               # 使用指南、开发文档与 README 插图
 
 ## 题目插件
 
-插件接口位于 [`src/plugins/types.ts`](../src/plugins/types.ts)，内置注册表位于 [`src/plugins/index.ts`](../src/plugins/index.ts)。每个插件提供 `id`、`version`、`label`，以及接收 `QuestionProps` 的两个 Vue 组件：`showQuestion` 和 `showAnswer`。需要制题表单时提供可选 `editor`，用 `NoteInput` 的 `v-model` 交换内容。
+插件按部署安装，前端接口统一为 `showQuestion` / `showAnswer`，可选编辑器和设置页。`kind: 'frontend'` 可在两版使用，`kind: 'backend'` 需要 Rust 服务和对应路由。纯前端清单的类型仅接受前端插件；Vite 通过构建别名隔离模块，而不是在运行时隐藏菜单。
 
-所有基础卡片通过 `flashcard` 插件显示，双向 / 挖空变体仍由模型生成。新增插件在注册表加入组件即可；编辑器自动列出带 `editor` 的插件。`type: plugin` 每条笔记生成一张独立调度的卡片，数据为 `{ id, version, data }`，`data` 只接受有大小限制的 JSON。插件需校验自身数据；未知插件或不支持的版本保留数据并显示不可用，不允许评分。备份不加载或执行插件代码，暂不提供第三方脚本安装。
-
-题目组件通过 `QuestionState` 声明允许的评分、自动评分、忙碌状态和评分依据。宿主控制翻面、FSRS、保存和撤销；`complete` 只在评分保存成功后调用。LeetCode 的尝试次数、用时、判题结果、提交编号和评分方式随复习记录备份。
-
-`npm run build` 先编译扩展到 `dist-connector/`，生成 `public/leetcode-connector.zip`，再构建网页。两个生成位置均不提交 Git。`npm run check` 包含真实加载 MV3 扩展的 Chromium 测试，通过受控 LeetCode HTTP 响应覆盖读取、提交、结果查询、草稿、双语与评分；测试不会使用维护者账号或向 LeetCode 自动提交。
-
-连接器只接受固定的读取题目、提交代码和查询判题操作，通过已打开的 LeetCode 标签页发出同源请求，不提供通用网络代理，不读取或回传登录 Cookie。`scripting` 与两个 LeetCode 域名是扩展的权限范围；Repeaty 页面来源和参数会再次校验。自行部署到其他域名时，需要同时修改 `extension/leetcode/manifest.json` 的 `content_scripts.matches` 和 `src/plugins/leetcode/connector/protocol.ts` 的 `allowedPage`，重新构建并加载扩展。
-
-扩展使用 LeetCode 网页接口，接口可能变化；实现依据为当前站点请求和返回格式，而非稳定的官方 SDK。参考 [Chrome 扩展消息传递](https://developer.chrome.com/docs/extensions/develop/concepts/messaging)、[Playwright 扩展测试](https://playwright.dev/docs/chrome-extensions)及 [LeetCode 对正式提交的说明](https://support.leetcode.com/hc/en-us/articles/32442719377939-How-to-create-test-cases-on-LeetCode)。
+接口、完整示例、后端注册方式及版本兼容规则见[插件开发](PLUGINS.md)。内置 LeetCode 的登录配置、判题规则和限制见[LeetCode 插件](LEETCODE.md)。

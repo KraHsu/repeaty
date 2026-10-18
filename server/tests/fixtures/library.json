@@ -1,0 +1,57 @@
+{
+  "version": 4,
+  "decks": [
+    {
+      "id": "deck",
+      "name": "Test",
+      "description": "",
+      "color": "sage",
+      "createdAt": "2026-10-17T18:00:00.000Z",
+      "newLimit": 20,
+      "burySiblings": true,
+      "leechThreshold": 8,
+      "desiredRetention": 0.9,
+      "reviewLimit": 200
+    }
+  ],
+  "notes": [
+    {
+      "id": "212d93f8-d641-47d8-9bd9-3b2edbff971e",
+      "deckId": "deck",
+      "type": "basic",
+      "format": "plain",
+      "front": "Question",
+      "back": "Answer",
+      "tags": ["test"],
+      "frontMedia": [],
+      "backMedia": [],
+      "createdAt": "2026-10-17T18:00:00.000Z",
+      "updatedAt": "2026-10-17T18:00:00.000Z"
+    }
+  ],
+  "cards": [
+    {
+      "id": "d09897b5-5c54-489e-8de5-44673f76669b",
+      "noteId": "212d93f8-d641-47d8-9bd9-3b2edbff971e",
+      "variant": "forward",
+      "schedule": {
+        "due": "2026-10-17T18:00:00.000Z",
+        "stability": 0,
+        "difficulty": 0,
+        "elapsed_days": 0,
+        "scheduled_days": 0,
+        "reps": 0,
+        "lapses": 0,
+        "learning_steps": 0,
+        "state": 0
+      },
+      "createdAt": "2026-10-17T18:00:00.000Z",
+      "updatedAt": "2026-10-17T18:00:00.000Z",
+      "suspended": false,
+      "leech": false
+    }
+  ],
+  "reviews": [],
+  "media": [],
+  "savedSearches": []
+}

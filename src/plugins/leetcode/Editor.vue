@@ -95,7 +95,7 @@ async function load() {
       </details>
     </template>
     <p v-else class="form-note">
-      {{ t('读取题目后再保存。题面会保存在本地，提交判题需要联网。') }}
+      {{ t('读取题目后再保存。题面保存在服务数据库中，提交判题需要联网。') }}
     </p>
   </section>
 </template>

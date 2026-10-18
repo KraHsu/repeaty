@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { automaticGrade, parseJudgeResult, parseProblemInput, parseProblemResponse } from './model'
-import { allowedPage, validRequest } from './connector/protocol'
 
 describe('LeetCode grading', () => {
   it.each([
@@ -79,39 +78,4 @@ it('loads translated content for China and rejects missing or mismatched problem
   })
   expect(() => parseProblemResponse({ data: { question } }, 'leetcode.cn', 'different')).toThrow()
   expect(() => parseProblemResponse({ data: { question: null } }, 'leetcode.cn', 'test')).toThrow()
-})
-
-it('limits extension callers and requests to the shipped app and fixed LeetCode operations', () => {
-  for (const url of [
-    'https://www.krahsu.top/repeaty/',
-    'https://krahsu.github.io/repeaty/',
-    'http://127.0.0.1:4175/repeaty/',
-  ])
-    expect(allowedPage(url)).toBe(true)
-  for (const url of [
-    'https://www.krahsu.top/',
-    'https://evil.test/repeaty/',
-    'https://www.krahsu.top/repeaty-evil/',
-    'https://www.krahsu.top.evil.test/repeaty/',
-    'http://www.krahsu.top/repeaty/',
-  ])
-    expect(allowedPage(url)).toBe(false)
-  const request = {
-    action: 'submit',
-    site: 'leetcode.cn',
-    slug: 'two-sum',
-    questionId: '1',
-    lang: 'python3',
-    code: 'pass',
-  }
-  expect(validRequest(request)).toBe(true)
-  for (const changed of [
-    { site: 'evil.test' },
-    { slug: '../account' },
-    { code: 'x'.repeat(50001) },
-    { questionId: '../' },
-    { action: 'fetch' },
-  ])
-    expect(validRequest({ ...request, ...changed })).toBe(false)
-  expect(validRequest({ action: 'check', site: 'leetcode.com', submissionId: '123' })).toBe(true)
 })

@@ -1,11 +1,19 @@
 import 'fake-indexeddb/auto'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
+import { serverEdition } from '../edition'
 import { fixture, now } from '../core/test-fixtures'
 import { cardViews, migrateLibrary, saveNote } from '../core/model'
-import { reviewCard, undoReview } from '../core/scheduler'
+import { dueCards, reviewCard, undoReview } from '../core/scheduler'
 import { exportArchive, parseArchive } from '../core/archive'
 import { createRepository } from '../core/storage'
-import { questionPlugin } from '.'
+import {
+  questionPlugin,
+  canReviewCard,
+  setPluginEnabled,
+  pluginEnabled,
+  restorePluginPreferences,
+  enabledEditorPlugins,
+} from '.'
 import type { Assessment } from './data'
 
 it('preserves unknown plugin data in storage and backups without enabling grading', async () => {
@@ -42,3 +50,65 @@ it('keeps assessment evidence with the rating and removes it when undoing', () =
   expect(reviewed.reviews.at(-1)?.assessment).toEqual(assessment)
   expect(undoReview(reviewed).reviews).toEqual(library.reviews)
 })
+
+it('excludes unavailable plugins before applying daily quotas', () => {
+  let library = fixture({ type: 'plugin', plugin: { id: 'unavailable', version: 1, data: {} } })
+  library = saveNote(
+    library,
+    {
+      ...library.notes[0]!,
+      type: 'basic',
+      plugin: undefined,
+      front: 'Available card',
+      back: 'Answer',
+    },
+    undefined,
+    false,
+    new Date(now.getTime() + 1),
+  )
+  library.decks[0]!.newLimit = 1
+  const queue = dueCards(library, new Date(now.getTime() + 2), undefined, canReviewCard)
+  expect(queue.map((card) => card.front)).toEqual(['Available card'])
+  expect(
+    reviewCard(
+      library,
+      queue[0]!.id,
+      3,
+      new Date(now.getTime() + 2),
+      'normal',
+      undefined,
+      canReviewCard,
+    ).reviews,
+  ).toHaveLength(1)
+  expect(library.cards[0]!.schedule.reps).toBe(0)
+})
+
+it.runIf(serverEdition)(
+  'persists plugin switches without changing stored notes or review progress',
+  () => {
+    const storage = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+    })
+    try {
+      restorePluginPreferences()
+      const library = fixture({ type: 'plugin', plugin: { id: 'leetcode', version: 1, data: {} } })
+      const before = JSON.stringify(library)
+      expect(canReviewCard(cardViews(library)[0]!)).toBe(true)
+      setPluginEnabled('leetcode', false)
+      expect(enabledEditorPlugins.value).toHaveLength(0)
+      expect(canReviewCard(cardViews(library)[0]!)).toBe(false)
+      restorePluginPreferences()
+      expect(pluginEnabled('leetcode')).toBe(false)
+      setPluginEnabled('leetcode', true)
+      expect(canReviewCard(cardViews(library)[0]!)).toBe(true)
+      expect(JSON.stringify(library)).toBe(before)
+      setPluginEnabled('flashcard', false)
+      expect(pluginEnabled('flashcard')).toBe(true)
+    } finally {
+      vi.unstubAllGlobals()
+      restorePluginPreferences()
+    }
+  },
+)

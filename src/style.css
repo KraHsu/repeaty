@@ -2920,3 +2920,70 @@ textarea::placeholder {
     margin-right: 0;
   }
 }
+
+.plugin-management-note {
+  max-width: 920px;
+  margin-bottom: 24px;
+  color: var(--muted);
+}
+.plugin-settings + .plugin-settings {
+  margin-top: 20px;
+}
+.plugin-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  min-height: 44px;
+  cursor: pointer;
+  position: relative;
+}
+.plugin-toggle input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+.toggle-track {
+  width: 44px;
+  height: 26px;
+  background: #a5b29e;
+  border-radius: 20px;
+  padding: 3px;
+}
+.toggle-track::after {
+  content: '';
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+}
+.plugin-toggle input:checked + .toggle-track {
+  background: var(--green);
+}
+.plugin-toggle input:checked + .toggle-track::after {
+  transform: translateX(18px);
+}
+.plugin-toggle input:focus-visible + .toggle-track {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
+}
+.plugin-connection-settings {
+  margin-top: 18px;
+}
+.plugin-connection-settings summary {
+  cursor: pointer;
+}
+.server-connection {
+  width: min(100%, 440px);
+  text-align: left;
+  margin-top: 24px;
+}
+.server-connection .button {
+  margin-top: 16px;
+}

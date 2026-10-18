@@ -31,6 +31,9 @@ import NoteEditor from './components/NoteEditor.vue'
 import CollectionPanel from './components/CollectionPanel.vue'
 import ImportNotes from './components/ImportNotes.vue'
 import PluginPanel from './components/PluginPanel.vue'
+import { serverEdition } from './edition'
+import { ServerConnection } from '@repeaty-platform'
+import { canReviewCard, listenPluginPreferences } from './plugins'
 import type { BackupData } from './core/backups'
 import type { BatchEdit } from './core/batch'
 import type { CardAction } from './core/scheduler'
@@ -85,8 +88,8 @@ const pendingBackup = ref<BackupData>()
 const pendingSnapshot = ref<Library>()
 const confirmation = ref<{ title: string; message: DisplayMessage; action: () => Promise<void> }>()
 const upload = ref<HTMLInputElement>()
-const due = computed(() => dueCards(library.value, now.value))
-const limited = computed(() => blockedByLimit(library.value, now.value))
+const due = computed(() => dueCards(library.value, now.value, undefined, canReviewCard))
+const limited = computed(() => blockedByLimit(library.value, now.value, undefined, canReviewCard))
 const newCount = computed(() => due.value.filter((card) => card.schedule.state === 0).length)
 const todayReviews = computed(() =>
   library.value.reviews.filter((entry) => entry.studyDay === dayKey(now.value)),
@@ -106,9 +109,11 @@ const pageTitle = computed(
     })[tab.value],
 )
 
+let stopPluginPreferences: (() => void) | undefined
 let ticker: ReturnType<typeof setInterval>
 let backupTicker: ReturnType<typeof setInterval>
 onMounted(() => {
+  stopPluginPreferences = listenPluginPreferences()
   void workspace.init()
   backupTicker = setInterval(() => {
     void workspace.backupNow()
@@ -118,6 +123,7 @@ onMounted(() => {
   }, 10_000)
 })
 onUnmounted(() => {
+  stopPluginPreferences?.()
   clearInterval(ticker)
   clearInterval(backupTicker)
   void workspace.close()
@@ -447,8 +453,8 @@ async function restoreBackup() {
         </p>
       </div>
       <div class="sidebar-bottom">
-        <div class="local-status"><span />{{ t('本地存储') }}</div>
-        <p>{{ t('仅限当前浏览器') }}</p>
+        <div class="local-status"><span />{{ t(serverEdition ? 'SQLite 存储' : '本地存储') }}</div>
+        <p>{{ t(serverEdition ? '后端版' : '仅限当前浏览器') }}</p>
         <span class="version">Repeaty {{ version }}</span>
       </div>
     </aside>
@@ -492,8 +498,9 @@ async function restoreBackup() {
 
       <section v-if="loadError" class="empty-state">
         <Database :size="36" />
-        <h1>{{ t('本地存储暂不可用') }}</h1>
+        <h1>{{ t(serverEdition ? '无法连接服务' : '本地存储暂不可用') }}</h1>
         <p role="alert">{{ t(loadError) }}</p>
+        <ServerConnection v-if="serverEdition" :busy="busy" @connect="workspace.init()" />
       </section>
       <section v-else-if="!ready" class="empty-state" role="status">
         <Repeat2 :size="32" />
@@ -768,17 +775,27 @@ async function restoreBackup() {
         <header class="page-heading">
           <div>
             <h1>{{ t('数据与备份') }}</h1>
-            <p>{{ t('导出、恢复备份，管理本地数据。') }}</p>
+            <p>
+              {{
+                t(
+                  serverEdition
+                    ? '导出、恢复备份，管理服务中的数据。'
+                    : '导出、恢复备份，管理本地数据。',
+                )
+              }}
+            </p>
           </div>
         </header>
         <section class="storage-banner">
           <ShieldCheck :size="29" />
           <div>
-            <h2>{{ t('保存在当前浏览器') }}</h2>
+            <h2>{{ t(serverEdition ? '保存在服务的 SQLite 数据库中' : '保存在当前浏览器') }}</h2>
             <p>
               {{
                 t(
-                  '数据仅保存在当前浏览器，不会自动同步。清除网站数据会删除卡片和复习记录。更换浏览器或网址前，请先导出备份。',
+                  serverEdition
+                    ? '卡组、卡片、复习记录和附件保存在部署的服务中。定期导出备份，或备份服务器上的 SQLite 数据库。'
+                    : '数据仅保存在当前浏览器，不会自动同步。清除网站数据会删除卡片和复习记录。更换浏览器或网址前，请先导出备份。',
                 )
               }}
             </p>
@@ -862,7 +879,9 @@ async function restoreBackup() {
           <p class="form-note">
             {{
               t(
-                '有数据变化时，在打开应用及使用期间每 30 分钟保存快照；编辑、删除、批量操作和恢复前也会保存。保留最近 10 份及其图片和音频。清除网站数据也会删除快照。',
+                serverEdition
+                  ? '有数据变化时每 30 分钟保存快照；编辑、删除和恢复前也会保存。服务保留最近 10 份快照及其附件。'
+                  : '有数据变化时，在打开应用及使用期间每 30 分钟保存快照；编辑、删除、批量操作和恢复前也会保存。保留最近 10 份及其图片和音频。清除网站数据也会删除快照。',
               )
             }}
           </p>
@@ -894,7 +913,11 @@ async function restoreBackup() {
             <h2>{{ t(offline.status.value) }}</h2>
             <p>
               {{
-                t('首次联网加载完成后，可离线打开、制卡和复习。已保存的图片和音频也可离线使用。')
+                t(
+                  serverEdition
+                    ? '此版本需要连接服务才能读取和保存学习数据。需要离线使用时，可导出备份并导入静态版。'
+                    : '首次联网加载完成后，可离线打开、制卡和复习。已保存的图片和音频也可离线使用。',
+                )
               }}
             </p>
             <button
@@ -911,7 +934,15 @@ async function restoreBackup() {
           <Repeat2 :size="21" />
           <div>
             <h3>Repeaty</h3>
-            <p>{{ t('使用 FSRS 安排复习，数据保存在当前浏览器。') }}</p>
+            <p>
+              {{
+                t(
+                  serverEdition
+                    ? '使用 FSRS 安排复习，数据保存在服务中。'
+                    : '使用 FSRS 安排复习，数据保存在当前浏览器。',
+                )
+              }}
+            </p>
           </div>
           <span class="pill">v{{ version }}</span>
         </div>

@@ -20,9 +20,25 @@ export interface QuestionProps {
 /** Each component receives QuestionProps. An optional editor uses a NoteInput v-model. */
 export interface QuestionPlugin {
   id: string
+  kind: 'frontend' | 'backend'
   label: string
   version: number
   showQuestion: Component
   showAnswer: Component
   editor?: Component
+  description?: string
+  settings?: Component
+}
+
+/** Installed by the deployment, then optionally enabled by each browser. */
+export interface PluginInstallation {
+  plugin: QuestionPlugin
+  enabledByDefault?: boolean
+  builtin?: boolean
+}
+
+/** The static manifest cannot install a plugin that requires a server. */
+export type FrontendPlugin = QuestionPlugin & { kind: 'frontend' }
+export type FrontendPluginInstallation = Omit<PluginInstallation, 'plugin'> & {
+  plugin: FrontendPlugin
 }

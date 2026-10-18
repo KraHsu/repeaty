@@ -490,27 +490,11 @@ export const en = {
   未通过: 'Not accepted',
   '判题服务未返回有效结果，请稍后重新查询。':
     'The judge did not return a valid result. Check again later.',
-  '未连接扩展。请安装扩展后刷新 Repeaty。':
-    'Extension not connected. Install it and reload Repeaty.',
-  '请在另一个标签页打开所选 LeetCode 站点并登录，然后重试。':
-    'Open the selected LeetCode site in another tab, sign in, and try again.',
-  '请在 LeetCode 标签页登录或完成验证，然后重试。':
-    'Sign in or complete verification in the LeetCode tab, then try again.',
   '提交过于频繁，请稍后重试。': 'Too many submissions. Try again later.',
   '上一次提交尚未完成，请稍候。': 'The previous submission is still in progress.',
   '未取得提交编号，请先在 LeetCode 检查提交记录，避免重复提交。':
     'No submission ID was received. Check your LeetCode submissions before trying again to avoid submitting twice.',
-  '无法连接 LeetCode，请检查网络及 LeetCode 标签页后重试。':
-    'Cannot connect to LeetCode. Check your connection and the LeetCode tab, then try again.',
   '连接 LeetCode': 'Connect LeetCode',
-  下载浏览器扩展: 'Download browser extension',
-  '，解压后在 Chrome / Edge 的扩展页面开启开发者模式，选择“加载已解压的扩展程序”。':
-    '. Unzip it, enable Developer mode on the Chrome / Edge extensions page, and choose “Load unpacked.”',
-  '打开 LeetCode 并登录': 'Open LeetCode and sign in',
-  '，保留该标签页。': '. Keep that tab open.',
-  '刷新 Repeaty 后即可读取题目和提交代码。': 'Reload Repeaty to load problems and submit code.',
-  '提交代码会写入你的 LeetCode 提交记录。登录信息不会保存到 Repeaty 或备份中。':
-    'Code submissions appear in your LeetCode history. Login details are not saved in Repeaty or its backups.',
   'LeetCode 站点': 'LeetCode site',
   '中国站 · leetcode.cn': 'China · leetcode.cn',
   '国际站 · leetcode.com': 'International · leetcode.com',
@@ -519,8 +503,8 @@ export const en = {
   读取题目: 'Load problem',
   '已读取：{title}': 'Loaded: {title}',
   题目预览: 'Problem preview',
-  '读取题目后再保存。题面会保存在本地，提交判题需要联网。':
-    'Load a problem before saving. The statement is saved locally; judging requires an internet connection.',
+  '读取题目后再保存。题面保存在服务数据库中，提交判题需要联网。':
+    'Load a problem before saving. The statement is saved in the server database; judging requires an internet connection.',
   解题笔记: 'Solution notes',
   '题目数据不完整，请编辑卡片并重新读取题目。':
     'Problem data is incomplete. Edit the card and load the problem again.',
@@ -572,19 +556,68 @@ export const en = {
   '添加卡片时点击「添加 LeetCode 题目」，或将笔记类型设为「插件题目」。':
     'In Add card, choose “Add LeetCode problem” or set the note type to “Plugin question.”',
   '添加 LeetCode 题目': 'Add LeetCode problem',
-  'LeetCode 连接扩展': 'LeetCode connector',
-  '读取题目和提交判题需要安装扩展，支持桌面 Chrome / Edge。':
-    'Install the extension to load problems and submit code. Requires desktop Chrome / Edge.',
-  安装说明: 'Installation instructions',
-  '下载并解压 ZIP 文件。': 'Download and unzip the ZIP file.',
-  '打开浏览器扩展管理页：Chrome 使用 chrome://extensions，Edge 使用 edge://extensions。':
-    'Open the extensions page: chrome://extensions in Chrome or edge://extensions in Edge.',
-  '开启「开发者模式」，点击「加载已解压的扩展程序」，选择包含 manifest.json 的文件夹。':
-    'Enable Developer mode, click “Load unpacked,” and select the folder containing manifest.json.',
   '支持 Markdown 和数学公式，图片可直接粘贴到输入框。':
     'Supports Markdown and math. Paste images directly into either field.',
   '图片可直接粘贴到输入框。': 'Paste images directly into either field.',
   '添加图片 / 音频': 'Add image / audio',
   '每面最多 8 个附件，每个不超过 10 MB。': 'Up to 8 attachments per side, 10 MB each.',
   挖空: 'Cloze',
+  '开启或关闭此部署已安装的题目插件。': 'Enable or disable installed question plugins.',
+  '关闭插件后，相关题目暂停出现在复习队列中，内容和进度保留。开关仅影响当前浏览器。':
+    'Disabled plugins are excluded from review. Their content and progress are kept. These preferences apply to this browser.',
+  '插件开关已生效，但未能保存；下次打开时可能恢复默认设置。':
+    'The setting is active but could not be saved. It may reset next time.',
+  '启用 {name}': 'Enable {name}',
+  已安装: 'Installed',
+  已开启: 'Enabled',
+  已关闭: 'Disabled',
+  '此部署尚未安装题目插件。普通卡片可正常使用。':
+    'No question plugins are installed. Standard flashcards are available.',
+  '请先在插件页面启用对应插件，再编辑或保存题目。':
+    'Enable the matching plugin on the Plugins page before editing or saving this question.',
+  纯前端插件: 'Frontend plugin',
+  需要后端: 'Requires backend',
+  '服务返回了无法读取的数据，请刷新后重试。':
+    'The service returned unreadable data. Reload and try again.',
+  '请输入正确的服务访问密钥。': 'Enter a valid service access key.',
+  '服务地址与后端配置不一致，请检查 REPEATY_ORIGIN。':
+    'The service URL does not match its configuration. Check REPEATY_ORIGIN.',
+  '数据已在另一个页面更新，请刷新页面后重试。':
+    'Data changed in another page. Reload before trying again.',
+  '服务拒绝了无效数据，本次修改未保存。':
+    'The service rejected invalid data. Your changes were not saved.',
+  '服务数据库操作失败，请检查后端日志。': 'The database operation failed. Check the server logs.',
+  '请求的数据已不存在，请刷新页面。': 'The requested data no longer exists. Reload the page.',
+  '无法连接服务，请检查后端是否正在运行。': 'Cannot connect. Check that the service is running.',
+  服务访问密钥: 'Service access key',
+  连接服务: 'Connect',
+  '填写部署时设置的访问密钥。密钥仅保存在当前标签页会话中。':
+    'Enter the access key configured for this deployment. It is kept only for this tab session.',
+  'SQLite 存储': 'SQLite storage',
+  后端版: 'Server edition',
+  无法连接服务: 'Service unavailable',
+  '导出、恢复备份，管理服务中的数据。': 'Export and restore backups of the data on your service.',
+  '保存在服务的 SQLite 数据库中': 'Stored in SQLite on your service',
+  '卡组、卡片、复习记录和附件保存在部署的服务中。定期导出备份，或备份服务器上的 SQLite 数据库。':
+    'Decks, cards, review history, and attachments are stored on your service. Export backups regularly or back up its SQLite database.',
+  '有数据变化时每 30 分钟保存快照；编辑、删除和恢复前也会保存。服务保留最近 10 份快照及其附件。':
+    'Snapshots are saved every 30 minutes when data changes, and before edits, deletion, or restoration. The service keeps the latest 10 snapshots and their attachments.',
+  '此版本需要连接服务才能读取和保存学习数据。需要离线使用时，可导出备份并导入静态版。':
+    'This edition requires a connection to read and save study data. For offline use, export a backup and import it into the static edition.',
+  '使用 FSRS 安排复习，数据保存在服务中。': 'Reviews use FSRS. Data is stored on your service.',
+  后端版需要连接服务: 'Server connection required',
+  '服务尚未配置该站点的 LeetCode 登录信息，请联系部署者。':
+    'LeetCode credentials for this site are not configured. Contact the deployer.',
+  'LeetCode 登录已过期或需要验证，请部署者更新连接配置。':
+    'LeetCode sign-in expired or requires verification. Ask the deployer to update the connection.',
+  '服务无法连接 LeetCode，请稍后重试。': 'The service cannot connect to LeetCode. Try again later.',
+  'LeetCode 判题服务': 'LeetCode judge service',
+  '该站点已配置判题连接。': 'Judging is configured for this site.',
+  '该站点尚未配置登录信息。可读取公开题目，提交判题需要部署者完成配置。':
+    'Credentials are not configured for this site. Public problems can be loaded; submissions require configuration by the deployer.',
+  '无法读取连接状态，请检查服务。': 'Cannot read connection status. Check the service.',
+  '正在读取连接状态…': 'Checking connection\u2026',
+  '提交使用部署者配置的 LeetCode 账号，并写入该账号的提交记录。登录信息只保留在服务端。':
+    'Code is submitted using the LeetCode account configured by the deployer and appears in that account\u2019s history. Credentials stay on the server.',
+  '后端未安装或未开启此插件。': 'This plugin is not installed or enabled on the service.',
 } as const

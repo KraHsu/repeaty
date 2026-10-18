@@ -12,7 +12,7 @@ import {
 } from '../core/scheduler'
 import { cardViews, type Grade, type Library, type StudySession } from '../core/model'
 import { studyCards } from '../core/search'
-import { questionPlugin } from '../plugins'
+import { questionPlugin, canReviewCard } from '../plugins'
 import type { QuestionState } from '../plugins/types'
 import type { Assessment } from '../plugins/data'
 
@@ -45,13 +45,15 @@ const queue = computed(() =>
         props.study.ids,
         studied.value.map((entry) => entry.id),
         clock.value,
-      )
-    : dueCards(props.library, clock.value, props.deckId),
+      ).filter(canReviewCard)
+    : dueCards(props.library, clock.value, props.deckId, canReviewCard),
 )
 const startedWith = queue.value.length
 const views = computed(() => cardViews(props.library))
 const current = computed(() =>
-  views.value.find((card) => card.id === currentId.value && available(card, clock.value)),
+  views.value.find(
+    (card) => card.id === currentId.value && available(card, clock.value) && canReviewCard(card),
+  ),
 )
 const plugin = computed(() => current.value && questionPlugin(current.value))
 const questionState = reactive<QuestionState>({ allowedGrades: [], busy: false })
@@ -67,7 +69,7 @@ watch(
   { flush: 'sync' },
 )
 const limited = computed(() =>
-  props.study ? 0 : blockedByLimit(props.library, clock.value, props.deckId),
+  props.study ? 0 : blockedByLimit(props.library, clock.value, props.deckId, canReviewCard),
 )
 const canUndo = computed(() =>
   practice.value
@@ -88,6 +90,7 @@ const nextCard = computed(
     views.value
       .filter(
         (card) =>
+          canReviewCard(card) &&
           available(card, clock.value) &&
           (!props.deckId || card.deckId === props.deckId) &&
           new Date(card.schedule.due) > clock.value,
