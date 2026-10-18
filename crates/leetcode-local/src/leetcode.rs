@@ -1,9 +1,8 @@
 use crate::{
-    api::AppState,
     error::{Error, Result},
-    leetcode_credentials::{CredentialStore, valid_cookie},
+    leetcode_credentials::CredentialStore,
 };
-use axum::{Json, extract::State, http::StatusCode};
+use reqwest::StatusCode;
 use reqwest::{Client, redirect::Policy};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -77,31 +76,8 @@ impl LeetCode {
             .map_err(|_| Error::internal())?
             .configured())
     }
-    pub fn from_env(database_path: &Path) -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        let mut credentials = HashMap::new();
-        for (site, prefix) in [
-            ("leetcode.cn", "LEETCODE_CN"),
-            ("leetcode.com", "LEETCODE_COM"),
-        ] {
-            match (
-                std::env::var(format!("{prefix}_SESSION")).ok(),
-                std::env::var(format!("{prefix}_CSRF")).ok(),
-            ) {
-                (Some(session), Some(csrf)) if valid_cookie(&session) && valid_cookie(&csrf) => {
-                    credentials.insert(site.to_string(), Credentials { session, csrf });
-                }
-                (None, None) => {}
-                _ => {
-                    return Err(format!(
-                        "Set both {prefix}_SESSION and {prefix}_CSRF to valid cookie values"
-                    )
-                    .into());
-                }
-            }
-        }
-        let mut path = database_path.as_os_str().to_os_string();
-        path.push(".credentials.sqlite3");
-        Self::with_store(CredentialStore::open(Path::new(&path), credentials)?)
+    pub fn open(path: &Path) -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        Self::with_store(CredentialStore::open(path, HashMap::new())?)
     }
     pub fn set_credentials(
         &self,
@@ -293,13 +269,6 @@ fn request_parts(request: &Request) -> Result<(&str, String, Option<Value>, bool
         _ => Err(Error::invalid()),
     }
 }
-pub async fn handle(
-    State(state): State<AppState>,
-    Json(request): Json<Request>,
-) -> Result<Json<Value>> {
-    Ok(Json(state.leetcode.request(request).await?))
-}
-
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "lowercase", deny_unknown_fields)]
 pub enum CredentialRequest {
@@ -312,30 +281,26 @@ pub enum CredentialRequest {
         site: String,
     },
 }
-pub async fn configure(
-    State(state): State<AppState>,
-    Json(request): Json<CredentialRequest>,
-) -> Result<Json<Value>> {
-    let configured = tokio::task::spawn_blocking(move || match request {
-        CredentialRequest::Save {
-            site,
-            session,
-            csrf,
-        } => state
-            .leetcode
-            .set_credentials(&site, Some(Credentials { session, csrf })),
-        CredentialRequest::Clear { site } => state.leetcode.set_credentials(&site, None),
-    })
-    .await
-    .map_err(|_| Error::internal())??;
-    Ok(Json(json!({"configured":configured})))
+impl LeetCode {
+    pub fn configure(&self, request: CredentialRequest) -> Result<Value> {
+        let configured = match request {
+            CredentialRequest::Save {
+                site,
+                session,
+                csrf,
+            } => self.set_credentials(&site, Some(Credentials { session, csrf }))?,
+            CredentialRequest::Clear { site } => self.set_credentials(&site, None)?,
+        };
+        Ok(json!({"configured":configured}))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::leetcode_credentials::valid_cookie;
     use axum::{
-        Router,
+        Json, Router,
         http::HeaderMap,
         routing::{get, post},
     };
