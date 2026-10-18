@@ -565,4 +565,20 @@ export const en = {
     'type supports basic, reversed, cloze, plugin, and leetcode.',
   '有一次提交未取得编号，尝试次数可能不完整。本轮请手动评分，再次提交前请先检查 LeetCode 提交记录。':
     'A submission ID was not received, so the attempt count may be incomplete. Use a manual rating this round and check your LeetCode history before resubmitting.',
+  插件: 'Plugins',
+  内置: 'Built in',
+  '将 LeetCode 题目加入卡组，编写代码并提交判题，按结果安排复习。':
+    'Add LeetCode problems to a deck, submit code for judging, and schedule reviews from the results.',
+  '添加卡片时点击「添加 LeetCode 题目」，或将笔记类型设为「插件题目」。':
+    'In Add card, choose “Add LeetCode problem” or set the note type to “Plugin question.”',
+  '添加 LeetCode 题目': 'Add LeetCode problem',
+  'LeetCode 连接扩展': 'LeetCode connector',
+  '读取题目和提交判题需要安装扩展，支持桌面 Chrome / Edge。':
+    'Install the extension to load problems and submit code. Requires desktop Chrome / Edge.',
+  安装说明: 'Installation instructions',
+  '下载并解压 ZIP 文件。': 'Download and unzip the ZIP file.',
+  '打开浏览器扩展管理页：Chrome 使用 chrome://extensions，Edge 使用 edge://extensions。':
+    'Open the extensions page: chrome://extensions in Chrome or edge://extensions in Edge.',
+  '开启「开发者模式」，点击「加载已解压的扩展程序」，选择包含 manifest.json 的文件夹。':
+    'Enable Developer mode, click “Load unpacked,” and select the folder containing manifest.json.',
 } as const

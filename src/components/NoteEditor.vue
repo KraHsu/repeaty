@@ -122,6 +122,10 @@ async function addCloze() {
     error.value = issue as Error
   }
 }
+function selectLeetCode() {
+  form.type = 'plugin'
+  selectedPluginId.value = 'leetcode'
+}
 function shortcut(event: KeyboardEvent) {
   if (!(event.ctrlKey || event.metaKey) || event.repeat) return
   if (event.shiftKey && event.key.toLowerCase() === 'c' && event.target === frontInput.value) {
@@ -212,6 +216,14 @@ async function save(continueAdding = false) {
           {{ deck.name }}
         </option>
       </select>
+      <button
+        v-if="form.type !== 'plugin'"
+        type="button"
+        class="text-button plugin-shortcut"
+        @click="selectLeetCode"
+      >
+        {{ t('添加 LeetCode 题目') }}
+      </button>
       <template v-if="form.type === 'plugin'">
         <label for="question-plugin">{{ t('题目插件') }}</label>
         <select id="question-plugin" v-model="selectedPluginId" @change="form.plugin = undefined">

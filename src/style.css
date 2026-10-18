@@ -2625,3 +2625,74 @@ textarea::placeholder {
   width: 100%;
   text-align: left;
 }
+
+/* Plugin downloads are available without opening a card or installation details. */
+.plugin-settings {
+  max-width: 920px;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+}
+.plugin-heading,
+.connection-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.plugin-heading {
+  justify-content: flex-start;
+  margin-bottom: 12px;
+}
+.plugin-heading h2 {
+  font-size: 1.375rem;
+}
+.leetcode-connection {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f7f9f4;
+}
+.connection-header > div {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.connection-header h3 {
+  font-size: 1rem;
+  margin-bottom: 4px;
+}
+.connection-header p {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.connection-header .button {
+  text-decoration: none;
+}
+.leetcode-connection details {
+  margin-top: 16px;
+}
+.leetcode-connection summary {
+  cursor: pointer;
+}
+.leetcode-connection ol {
+  margin-top: 12px;
+  overflow-wrap: anywhere;
+}
+.plugin-shortcut {
+  align-self: flex-start;
+  text-align: left;
+}
+@media (max-width: 720px) {
+  .main-nav button {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .plugin-settings {
+    padding: 18px;
+  }
+  .leetcode-connection {
+    padding: 16px;
+  }
+}
