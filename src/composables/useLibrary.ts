@@ -20,7 +20,7 @@ import { editNotes, importNotes, type BatchEdit } from '../core/batch'
 import { saveSearch } from '../core/search'
 import type { TransferOptions } from '../core/archive'
 import { exportBackup, rekeyBackup, type BackupData } from '../core/backups'
-import { sampleLibrary } from '../core/sample'
+import { initializeWorkspace } from '../core/onboarding'
 import { serverEdition } from '../edition'
 import type { createServerRepository } from '../backend/repository'
 import type { createRepository, BackupSummary } from '../core/storage'
@@ -46,7 +46,7 @@ export function useLibrary() {
         loadError.value =
           '数据库升级正在等待旧版本标签页关闭。请关闭其他 Repeaty 页面，完成后会自动继续。'
       })
-      const saved = await repository.load()
+      const saved = await initializeWorkspace(repository)
       library.value = saved.library
       revision = saved.revision
       ready.value = true
@@ -225,16 +225,19 @@ export function useLibrary() {
     restoreSnapshot(data: Library) {
       return commit(() => data, { reason: '恢复快照前' })
     },
-    addSample() {
-      return commit((current) => {
-        const sample = sampleLibrary()
-        return {
+    async addSample() {
+      const { createStarterDeck } = await import('../core/sample')
+      const { library: sample, assets } = createStarterDeck()
+      return commit(
+        (current) => ({
           ...current,
           decks: [...current.decks, ...sample.decks],
           notes: [...current.notes, ...sample.notes],
           cards: [...current.cards, ...sample.cards],
-        }
-      })
+          media: [...current.media, ...sample.media],
+        }),
+        { assets },
+      )
     },
   }
 }

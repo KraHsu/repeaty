@@ -699,15 +699,15 @@ async function restoreBackup() {
             <div class="welcome-icon"><Layers :size="27" /></div>
             <div>
               <h3>{{ t('还没有卡组') }}</h3>
-              <p>{{ t('创建卡组后添加卡片，或加载 5 张示例卡片。') }}</p>
+              <p>{{ t('创建自己的卡组，或添加入门卡组。') }}</p>
             </div>
             <div class="welcome-actions">
               <button
                 class="button secondary"
                 :disabled="busy"
-                @click="run(workspace.addSample, '示例卡组已添加')"
+                @click="run(workspace.addSample, '入门卡组已添加')"
               >
-                {{ t('加载示例') }}</button
+                {{ t('添加入门卡组') }}</button
               ><button class="button primary" @click="editDeck()">
                 <Plus :size="16" />{{ t('创建卡组') }}
               </button>
@@ -865,6 +865,26 @@ async function restoreBackup() {
             </button>
           </section>
         </div>
+        <section class="storage-banner">
+          <BookOpen :size="24" />
+          <div>
+            <h2>{{ t('FSRS 与 Repeaty 入门') }}</h2>
+            <p>
+              {{
+                t(
+                  '通过 24 条笔记学习评分、复习和制卡。按当前界面语言添加一份，已有卡片和进度会保留。',
+                )
+              }}
+            </p>
+            <button
+              class="button secondary"
+              :disabled="busy || !!transfer"
+              @click="run(workspace.addSample, '入门卡组已添加')"
+            >
+              {{ t('添加入门卡组') }}
+            </button>
+          </div>
+        </section>
         <section class="snapshot-section">
           <div class="section-heading">
             <h2>{{ t('自动快照') }}</h2>

@@ -3,6 +3,8 @@ import 'fake-indexeddb/auto'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createApp, nextTick, type App as VueApp } from 'vue'
 import App from '../App.vue'
+import { createRepository } from '../core/storage'
+import { emptyLibrary } from '../core/model'
 import { initI18n, LOCALE_STORAGE_KEY, setLocale } from '.'
 
 let app: VueApp | undefined
@@ -55,6 +57,10 @@ beforeEach(async () => {
     request.onsuccess = () => resolve()
     request.onerror = () => reject(request.error)
   })
+  const repository = createRepository()
+  await repository.load()
+  await repository.save(emptyLibrary(), 0)
+  await repository.close()
 })
 afterEach(async () => {
   app?.unmount()
@@ -121,9 +127,11 @@ it('keeps drafts and revealed answers while translating authoring, statuses, and
 
 it('translates an already visible backup error and legacy snapshot labels without changing data', async () => {
   await start()
-  button('Load sample cards').click()
+  button('Add starter deck').click()
   await vi.waitFor(() =>
-    expect(host.querySelector('.sidebar-deck')!.textContent).toContain('Learning how to learn'),
+    expect(host.querySelector('.sidebar-deck')!.textContent).toContain(
+      'Start here: FSRS & Repeaty',
+    ),
   )
   button('Data & backups').click()
   await nextTick()
@@ -137,19 +145,19 @@ it('translates an already visible backup error and legacy snapshot labels withou
   )
   await language('zh-CN')
   expect(host.querySelector('[role="alert"]')!.textContent).toContain('不是有效的 JSON')
-  expect(host.querySelector('.sidebar-deck')!.textContent).toContain('Learning how to learn')
+  expect(host.querySelector('.sidebar-deck')!.textContent).toContain('Start here: FSRS & Repeaty')
   button('立即创建快照').click()
   await vi.waitFor(() =>
     expect(host.querySelector('.snapshot-list')!.textContent).toContain('手动快照'),
   )
   await language('en')
   expect(host.querySelector('.snapshot-list')!.textContent).toContain('Manual snapshot')
-  expect(host.querySelector('.backup-meta')!.textContent).toContain('Cards: 5')
+  expect(host.querySelector('.backup-meta')!.textContent).toContain('Cards: 27')
 })
 
 it('keeps persisted filter values and typed search terms unchanged across UI languages', async () => {
   await start()
-  button('Load sample cards').click()
+  button('Add starter deck').click()
   await vi.waitFor(() => expect(host.querySelector('.sidebar-deck')).not.toBeNull())
   const cardsNav = host.querySelectorAll<HTMLButtonElement>('.main-nav button')[1]!
   cardsNav.click()
@@ -163,5 +171,5 @@ it('keeps persisted filter values and typed search terms unchanged across UI lan
   expect(state.value).toBe('新卡片')
   expect(state.selectedOptions[0]!.textContent!.trim()).toBe('新卡片')
   expect(host.querySelector<HTMLInputElement>('.search-field input')!.value).toBe('type:basic')
-  await vi.waitFor(() => expect(host.querySelectorAll('tbody tr')).toHaveLength(5))
+  await vi.waitFor(() => expect(host.querySelectorAll('tbody tr')).toHaveLength(20))
 })

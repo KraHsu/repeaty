@@ -73,6 +73,7 @@ test('128 MiB media and long text round trip through SQLite, snapshots, and the 
   await staticPage.getByRole('button', { name: '开始专项练习' }).click()
   await expect(staticPage.locator('.card-question')).toHaveText(front)
   const image = staticPage.getByRole('img', { name: 'pixel.png' })
+  await image.scrollIntoViewIfNeeded()
   await expect
     .poll(() => image.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0))
     .toBe(true)
@@ -124,3 +125,32 @@ isolatedTest(
     expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain(token)
   },
 )
+
+test('an existing empty SQLite library stays empty until the starter deck is requested', async ({
+  page,
+  request,
+}) => {
+  await page.goto('./')
+  await expect(page.getByRole('heading', { name: '还没有卡组' })).toBeVisible()
+  await page.getByRole('button', { name: '添加入门卡组', exact: true }).click()
+  await expect(page.locator('.deck-title')).toHaveCount(1)
+  await page.reload()
+  await expect(page.locator('.deck-title')).toHaveCount(1)
+  const snapshot = await (await request.get('api/library', { headers })).json()
+  expect(snapshot.library.notes).toHaveLength(24)
+  expect(snapshot.library.cards).toHaveLength(27)
+  expect(snapshot.library.reviews).toHaveLength(0)
+  expect(snapshot.library.media).toHaveLength(2)
+  for (const meta of snapshot.library.media) {
+    const response = await request.get(`api/media/${meta.id}`, { headers })
+    expect(response.ok()).toBe(true)
+    const bytes = await response.body()
+    expect(bytes.byteLength).toBe(meta.size)
+    if (meta.type === 'image/png')
+      expect([...bytes.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10])
+    else expect(bytes.subarray(0, 4).toString()).toBe('RIFF')
+  }
+  expect(
+    await page.evaluate(async () => (await indexedDB.databases()).map((db) => db.name)),
+  ).not.toContain('repeaty')
+})
