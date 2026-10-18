@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onUnmounted, ref, useId, watch } from 'vue'
 import { t } from '../../i18n'
 import { apiJson } from '../../backend/client'
 import type { LeetCodeSite } from './model'
@@ -8,12 +8,66 @@ const configured = ref<string[]>()
 const loading = ref(true)
 const error = ref('')
 const abort = new AbortController()
+const fieldId = useId()
+const session = ref('')
+const csrf = ref('')
+const saving = ref(false)
+const confirmation = ref(false)
+const message = ref('')
+const saveError = ref('')
+let refreshId = 0
+function clearDraft() {
+  session.value = ''
+  csrf.value = ''
+  confirmation.value = false
+  message.value = ''
+  saveError.value = ''
+}
+async function configure(action: 'save' | 'clear') {
+  if (saving.value || loading.value) return
+  const site = props.site
+  const values = { session: session.value.trim(), csrf: csrf.value.trim() }
+  if (
+    action === 'save' &&
+    Object.values(values).some(
+      (value) => !value || value.length > 8192 || /[^\x21-\x7e]|;/.test(value),
+    )
+  ) {
+    saveError.value = '请填写两个 Cookie 的值，不要包含名称、空格或分号。'
+    return
+  }
+  saving.value = true
+  saveError.value = ''
+  message.value = ''
+  ++refreshId
+  try {
+    const status = await apiJson<{ configured: string[] }>(
+      '/plugins/leetcode/credentials',
+      { action, site, ...(action === 'save' ? values : {}) },
+      abort.signal,
+    )
+    if (props.site === site && !abort.signal.aborted) {
+      clearDraft()
+      configured.value = status.configured
+      loading.value = false
+      error.value = ''
+      message.value =
+        action === 'save' ? '登录信息已保存，后续提交立即使用新配置。' : '登录信息已清除。'
+    }
+  } catch {
+    if (props.site === site && !abort.signal.aborted) {
+      saveError.value = '操作未确认成功，请刷新状态后重试。'
+    }
+  } finally {
+    saving.value = false
+  }
+}
 const siteName = computed(() =>
   props.site === 'leetcode.cn' ? '中国站 · leetcode.cn' : '国际站 · leetcode.com',
 )
-const prefix = computed(() => (props.site === 'leetcode.cn' ? 'LEETCODE_CN' : 'LEETCODE_COM'))
 const hasCredentials = computed(() => configured.value?.includes(props.site) === true)
 async function refresh() {
+  const id = ++refreshId
   loading.value = true
   error.value = ''
   try {
@@ -22,17 +76,25 @@ async function refresh() {
       undefined,
       abort.signal,
     )
+    if (id !== refreshId || abort.signal.aborted) return
     configured.value = status.plugins.find((plugin) => plugin.id === 'leetcode')?.configured ?? []
   } catch {
-    if (!abort.signal.aborted) {
+    if (id === refreshId && !abort.signal.aborted) {
       configured.value = undefined
       error.value = '无法读取连接状态，请检查服务。'
     }
   } finally {
-    loading.value = false
+    if (id === refreshId) loading.value = false
   }
 }
-onMounted(refresh)
+watch(
+  () => props.site,
+  () => {
+    clearDraft()
+    void refresh()
+  },
+  { immediate: true },
+)
 onUnmounted(() => abort.abort())
 </script>
 <template>
@@ -55,7 +117,7 @@ onUnmounted(() => abort.abort())
           }}</strong>
         </p>
       </div>
-      <button type="button" class="button secondary" :disabled="loading" @click="refresh">
+      <button type="button" class="button secondary" :disabled="loading || saving" @click="refresh">
         {{ t('刷新状态') }}
       </button>
     </div>
@@ -65,7 +127,7 @@ onUnmounted(() => abort.abort())
         t(
           hasCredentials
             ? '服务已保存该站点的登录信息，提交时会验证登录是否仍然有效。'
-            : '可读取公开题目。提交判题前，需要在 Repeaty 服务中配置该站点的登录信息。',
+            : '可读取公开题目。提交判题前，请填写下方的登录信息。',
         )
       }}
     </p>
@@ -73,31 +135,82 @@ onUnmounted(() => abort.abort())
     <a class="text-button" :href="`https://${site}/`" target="_blank" rel="noopener noreferrer"
       >{{ t('打开力扣网站') }} ↗</a
     >
-    <details>
-      <summary>{{ t('如何配置判题账号') }}</summary>
-      <ol>
-        <li>
-          {{
-            t(
-              '在对应的力扣站点登录，在浏览器开发者工具的 Cookie 中找到 LEETCODE_SESSION 和 csrftoken。',
-            )
-          }}
-        </li>
-        <li>
-          {{ t('在 Repeaty 服务的环境变量中设置：') }}
-          <ul class="connection-variables">
-            <li>
-              <code>{{ prefix }}_SESSION</code> ← <code>LEETCODE_SESSION</code>
-            </li>
-            <li>
-              <code>{{ prefix }}_CSRF</code> ← <code>csrftoken</code>
-            </li>
-          </ul>
-        </li>
-        <li>{{ t('重启 Repeaty 服务，然后点击「刷新状态」。登录过期后需要更新这两个值。') }}</li>
-      </ol>
+    <fieldset class="connection-credentials" :disabled="saving || loading">
+      <legend>{{ t(hasCredentials ? '更新登录信息' : '配置登录信息') }}</legend>
       <p class="form-note">
-        {{ t('登录信息只放在服务的私密配置中，不要提交到 Git 或发到聊天中。') }}
+        {{ t('填写 Cookie 的值。保存后立即生效，无需重启服务；已保存的值不会回填。') }}
+      </p>
+      <div class="credential-fields" @keydown.enter.stop.prevent="configure('save')">
+        <label :for="`${fieldId}-session`"
+          >LEETCODE_SESSION
+          <input
+            :id="`${fieldId}-session`"
+            v-model="session"
+            type="password"
+            autocomplete="new-password"
+            :spellcheck="false"
+            autocapitalize="off"
+            :maxlength="8192"
+            :placeholder="t('粘贴 Cookie 值')"
+          />
+        </label>
+        <label :for="`${fieldId}-csrf`"
+          >csrftoken
+          <input
+            :id="`${fieldId}-csrf`"
+            v-model="csrf"
+            type="password"
+            autocomplete="new-password"
+            :spellcheck="false"
+            autocapitalize="off"
+            :maxlength="8192"
+            :placeholder="t('粘贴 Cookie 值')"
+          />
+        </label>
+      </div>
+      <p v-if="saveError" class="import-warning" role="alert">{{ t(saveError) }}</p>
+      <p v-if="message" class="form-note" aria-live="polite">{{ t(message) }}</p>
+      <div class="connection-actions">
+        <button
+          type="button"
+          class="button primary"
+          :disabled="saving || !session.trim() || !csrf.trim()"
+          @click="configure('save')"
+        >
+          {{ t(saving ? '正在保存…' : '保存登录信息') }}
+        </button>
+        <button
+          v-if="hasCredentials && !confirmation"
+          type="button"
+          class="button secondary"
+          @click="confirmation = true"
+        >
+          {{ t('清除登录信息') }}
+        </button>
+      </div>
+      <div v-if="confirmation" class="credential-confirmation">
+        <p>{{ t('清除后需重新填写登录信息才能提交判题。') }}</p>
+        <div class="connection-actions">
+          <button type="button" class="button danger" @click="configure('clear')">
+            {{ t('确认清除') }}
+          </button>
+          <button type="button" class="button secondary" @click="confirmation = false">
+            {{ t('取消') }}
+          </button>
+        </div>
+      </div>
+      <p class="form-note">
+        {{ t('登录信息保存在此服务器，仅用于所选站点的判题，不包含在卡组导出中。') }}
+      </p>
+    </fieldset>
+    <details>
+      <summary>{{ t('在哪里找到这两个值？') }}</summary>
+      <p>
+        {{
+          t(
+            '在对应的力扣站点登录，打开浏览器开发者工具 → 应用（Application）或存储（Storage）→ Cookie，复制 LEETCODE_SESSION 和 csrftoken 的值，粘贴到上方。登录过期后重新填写。',
+          )
+        }}
       </p>
       <a
         href="https://github.com/KraHsu/repeaty/blob/main/docs/LEETCODE.md#配置与启用"

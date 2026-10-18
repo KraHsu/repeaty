@@ -30,8 +30,8 @@ cargo run --release --locked --manifest-path server/Cargo.toml
 | `REPEATY_WEB_DIR`                            | `dist-server`          | 后端版网页产物目录                                         |
 | `REPEATY_API_TOKEN`                          | 未设置                 | 访问密钥，设置时至少 24 字符；非本机监听或公开域名必须设置 |
 | `REPEATY_PLUGINS`                            | `leetcode`             | 启用的后端插件 ID，逗号分隔；空字符串关闭所有后端插件      |
-| `LEETCODE_CN_SESSION` / `LEETCODE_CN_CSRF`   | 未设置                 | 中国站登录会话与 CSRF 值，需成对设置                       |
-| `LEETCODE_COM_SESSION` / `LEETCODE_COM_CSRF` | 未设置                 | 国际站登录会话与 CSRF 值，需成对设置                       |
+| `LEETCODE_CN_SESSION` / `LEETCODE_CN_CSRF`   | 未设置                 | 中国站初始登录信息，可在插件页面配置或覆盖                 |
+| `LEETCODE_COM_SESSION` / `LEETCODE_COM_CSRF` | 未设置                 | 国际站初始登录信息，可在插件页面配置或覆盖                 |
 
 访问密钥可以用 `openssl rand -hex 32` 生成，再保存到部署环境的私密配置中。网页首次连接时输入该值，仅保存在当前标签页的 `sessionStorage`，不写入学习备份。
 
@@ -63,3 +63,9 @@ REPEATY_PLUGINS='' cargo run --release --locked --manifest-path server/Cargo.tom
 带后端版不启用 Service Worker，不支持断开服务后继续编辑。服务不可达时显示连接错误，不会切换到另一份浏览器学习库。界面语言、插件开关和 LeetCode 作答草稿仍按浏览器保存。
 
 服务不是云同步系统：多个页面可读取同一个库，但不会实时刷新彼此内容，过期写入返回冲突。SQLite 负责持久化；当前启动仍将完整结构化学习记录读入前端内存，搜索也在前端执行。一次结构化提交上限 64 MiB，超出时会拒绝且不更改学习库；媒体单独上传，不计入该请求。SQLite 不意味着可以无限扩大浏览器内存中的学习库。
+
+### LeetCode 登录信息
+
+在「插件 → LeetCode」中填写 `LEETCODE_SESSION` 和 `csrftoken`，保存后立即生效。无需改环境变量或重启；环境变量保留为可选的初始配置。详见[配置步骤](LEETCODE.md#配置与启用)。
+
+后端在学习数据库旁创建独立的凭据文件：例如 `data/repeaty.sqlite3.credentials.sqlite3`。服务需有该目录的写权限，Unix 下该文件权限为 `0600`。文件包含明文登录凭据，不应公开下载或提交到 Git；学习库导出和内置快照不会包含它。迁移时可私下复制此文件，也可在新服务的插件页面重新填写。
