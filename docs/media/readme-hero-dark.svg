@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="520" viewBox="0 0 1600 520" role="img" aria-labelledby="title desc">
+  <title id="title">Repeaty — every recall counts</title>
+  <desc id="desc">Repeaty wordmark and illustrated question and answer cards. A brand illustration of creating, recalling, and reviewing; not an application screenshot.</desc>
+  <defs>
+    <linearGradient id="wash" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#16221c"/><stop offset="1" stop-color="#253b2c"/></linearGradient>
+  </defs>
+  <rect width="1600" height="520" rx="28" fill="url(#wash)"/>
+  <g fill="none" stroke="#354d3b"><circle cx="1370" cy="90" r="310"/><circle cx="1370" cy="90" r="240"/><path d="M800 520V0M0 440H800"/></g>
+  <g font-family="Inter,Noto Sans,Arial,sans-serif">
+    <text x="80" y="83" font-size="16" letter-spacing="4" fill="#b2c4ac">OPEN SOURCE · SPACED REPETITION</text>
+    <text x="72" y="240" font-size="156" font-weight="750" letter-spacing="-8" fill="#eef5eb">repeaty<tspan fill="#a7cea2">.</tspan></text>
+    <text x="81" y="314" font-size="32" font-weight="500" fill="#eef5eb">Every recall counts.</text>
+    <text x="82" y="391" font-size="18" fill="#b2c4ac">CREATE</text><path d="M177 384h42m-8-6 8 6-8 6" stroke="#a7cea2" fill="none" stroke-width="2"/>
+    <text x="243" y="391" font-size="18" fill="#b2c4ac">RECALL</text><path d="M339 384h42m-8-6 8 6-8 6" stroke="#a7cea2" fill="none" stroke-width="2"/>
+    <text x="405" y="391" font-size="18" fill="#b2c4ac">REPEAT</text>
+    <text x="82" y="483" font-size="15" fill="#b2c4ac">YOUR CARDS. YOUR PACE.</text>
+    <g transform="translate(873 63) rotate(-3 290 110)">
+      <rect width="590" height="210" rx="24" fill="#223329" stroke="#354d3b" stroke-width="2"/>
+      <circle cx="39" cy="39" r="6" fill="#a7cea2"/><text x="57" y="45" font-size="15" letter-spacing="2" fill="#b2c4ac">ONE QUESTION</text>
+      <text x="32" y="108" font-size="32" font-weight="600" fill="#eef5eb">What is active recall?</text>
+      <text x="33" y="161" font-size="22" fill="#b2c4ac">Pause. Try to remember.</text>
+    </g>
+    <g transform="translate(958 267) rotate(2 260 100)">
+      <rect width="540" height="181" rx="23" fill="#223329" stroke="#354d3b" stroke-width="2"/>
+      <text x="30" y="42" font-size="14" letter-spacing="2" fill="#a7cea2">A LITTLE BETTER REMEMBERED</text>
+      <text x="30" y="90" font-size="26" font-weight="600" fill="#eef5eb">Bring it back from memory.</text>
+      <text x="31" y="132" font-size="21" fill="#b2c4ac">Then check. Review when it is due.</text>
+    </g>
+  </g>
+</svg>
