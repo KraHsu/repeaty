@@ -3064,3 +3064,17 @@ textarea::placeholder {
   padding-top: 20px;
   border-top: 1px solid #e1e6dc;
 }
+
+.account-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.account-modal {
+  width: min(560px, calc(100vw - 32px));
+  padding: 28px;
+}
+.account-modal .form-field {
+  margin: 20px 0;
+}

@@ -73,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if std::env::var_os("REPEATY_DATABASE").is_some()
         || std::env::var_os("REPEATY_API_TOKEN").is_some()
     {
-        return Err("Legacy shared-library configuration detected. Follow docs/server.md to migrate to accounts; set REPEATY_DATA_DIR and remove REPEATY_DATABASE / REPEATY_API_TOKEN.".into());
+        return Err("Legacy shared-library configuration detected. Follow docs/SELF_HOSTING.md to migrate to accounts; set REPEATY_DATA_DIR and remove REPEATY_DATABASE / REPEATY_API_TOKEN.".into());
     }
     let address: SocketAddr = std::env::var("REPEATY_BIND")
         .unwrap_or_else(|_| "127.0.0.1:8080".into())

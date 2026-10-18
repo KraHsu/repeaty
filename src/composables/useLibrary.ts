@@ -21,7 +21,7 @@ import { saveSearch } from '../core/search'
 import type { TransferOptions } from '../core/archive'
 import { exportBackup, rekeyBackup, type BackupData } from '../core/backups'
 import { initializeWorkspace } from '../core/onboarding'
-import { serverEdition } from '../edition'
+import { remoteWorkspace } from '../edition'
 import type { createServerRepository } from '../backend/repository'
 import type { createRepository, BackupSummary } from '../core/storage'
 import { createWorkspaceRepository } from '@repeaty-platform'
@@ -41,7 +41,9 @@ export function useLibrary() {
   async function init() {
     if (busy.value) return
     busy.value = true
+    ready.value = false
     try {
+      await repository?.close()
       repository = await createWorkspaceRepository(() => {
         loadError.value =
           '数据库升级正在等待旧版本标签页关闭。请关闭其他 Repeaty 页面，完成后会自动继续。'
@@ -53,7 +55,7 @@ export function useLibrary() {
       loadError.value = ''
       await refreshBackups()
     } catch (error) {
-      loadError.value = serverEdition
+      loadError.value = remoteWorkspace.value
         ? (error as Error)
         : '无法读取本地数据库。请确认浏览器允许本站使用存储，再刷新页面。已有数据不会被自动覆盖。'
     } finally {

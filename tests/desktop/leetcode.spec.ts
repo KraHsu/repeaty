@@ -1,4 +1,4 @@
-import { test, expect, headers } from './fixture'
+import { test, expect, storedLibrary } from './fixture'
 import type { BrowserContext, Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 
@@ -33,7 +33,7 @@ async function connect(
   let submissions = 0
   let checkFails = options.checkFails ?? false
   const sent: unknown[] = []
-  await context.route('**/api/plugins/leetcode', async (route) => {
+  await context.route('**/__native/leetcode', async (route) => {
     const request = route.request().postDataJSON()
     if (request.action !== 'ping') expect(request.site).toBe(site)
     if (request.action === 'ping') await route.fulfill({ json: { version: 1 } })
@@ -86,16 +86,11 @@ async function create(page: Page, site = 'leetcode.cn') {
   await expect(page.getByLabel('代码', { exact: true })).toBeEnabled()
 }
 
-test('backend transport loads, judges, restores drafts, and saves an automatic rating', async ({
+test('local transport loads, judges, restores drafts, and saves an automatic rating', async ({
   context,
 }) => {
   const remote = await connect(context, { rejectFirst: true })
   const page = await context.newPage()
-  const commits: { patches: { store: string }[] }[] = []
-  page.on('request', (request) => {
-    if (new URL(request.url()).pathname === '/api/library/commit')
-      commits.push(request.postDataJSON())
-  })
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await create(page)
@@ -121,12 +116,6 @@ test('backend transport loads, judges, restores drafts, and saves an automatic r
   await page.screenshot({ path: 'test-results/leetcode-mobile.png', fullPage: true })
   await page.getByRole('button', { name: '保存评分：良好' }).click()
   await expect(page.getByRole('heading', { name: '本轮复习结束' })).toBeVisible()
-  expect(
-    commits
-      .at(-1)
-      ?.patches.map((patch) => patch.store)
-      .sort(),
-  ).toEqual(['cards', 'reviews'])
   await page.getByRole('button', { name: '返回', exact: true }).click()
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
   const downloading = page.waitForEvent('download')
@@ -167,7 +156,7 @@ test('international site, English, manual rating, and pending judge recovery do 
   await page.getByLabel('Programming language').selectOption('javascript')
   await page.getByLabel('Code', { exact: true }).fill('function solve(value) { return value; }')
   await page.getByRole('button', { name: 'Submit to LeetCode' }).click()
-  await expect(page.getByRole('alert')).toContainText('The service cannot connect to LeetCode')
+  await expect(page.getByRole('alert')).toContainText('Cannot connect to LeetCode')
   await expect(page.getByRole('button', { name: 'Submit to LeetCode' })).toBeDisabled()
   await page.reload()
   remote.allowChecks()
@@ -187,7 +176,7 @@ test('international site, English, manual rating, and pending judge recovery do 
 test('an unavailable judge service is reported without creating a placeholder question', async ({
   page,
 }) => {
-  await page.route('**/api/plugins/leetcode', (route) =>
+  await page.route('**/__native/leetcode', (route) =>
     route.fulfill({ status: 502, json: { error: 'request-failed' } }),
   )
   await page.goto('./')
@@ -198,7 +187,7 @@ test('an unavailable judge service is reported without creating a placeholder qu
   await page.getByLabel('笔记类型').selectOption('plugin')
   await page.getByLabel('题目链接或英文标识').fill('test-problem')
   await page.getByRole('button', { name: '读取题目', exact: true }).click()
-  await expect(page.getByRole('alert')).toContainText('服务无法连接 LeetCode')
+  await expect(page.getByRole('alert').filter({ hasText: '无法连接 LeetCode' })).toBeVisible()
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
 })
@@ -257,12 +246,10 @@ test('a lost submission response disables automatic ratings and survives reload'
 test('plugin switches persist across tabs without changing questions or progress', async ({
   page,
   context,
-  request,
 }) => {
   await connect(context)
   await create(page)
-  const { headers } = await import('./fixture')
-  const before = await (await request.get('api/library', { headers })).json()
+  const before = await storedLibrary(page)
   await page.getByRole('button', { name: '插件', exact: true }).click()
   const other = await context.newPage()
   await other.goto('./')
@@ -276,7 +263,7 @@ test('plugin switches persist across tabs without changing questions or progress
   await page.getByRole('button', { name: '全部卡片' }).click()
   await page.getByRole('button', { name: '复习', exact: true }).click()
   await expect(page.getByLabel('代码', { exact: true })).toHaveCount(0)
-  expect(await (await request.get('api/library', { headers })).json()).toEqual(before)
+  expect(await storedLibrary(page)).toEqual(before)
   await page.getByRole('button', { name: '插件', exact: true }).click()
   await page.getByRole('switch', { name: '启用 LeetCode' }).click()
   await page.getByRole('button', { name: '全部卡片' }).click()
@@ -290,15 +277,11 @@ test('plugin settings distinguish website login from per-site judge credentials 
 }) => {
   let configured: string[] = []
   let fail = false
-  await context.route('**/api/status', async (route) => {
-    if (fail) return route.fulfill({ status: 503, json: { error: 'request-failed' } })
-    const response = await route.fetch()
-    const status = await response.json()
-    status.plugins = status.plugins.map((plugin: { id: string }) =>
-      plugin.id === 'leetcode' ? { ...plugin, configured } : plugin,
-    )
-    await route.fulfill({ response, json: status })
-  })
+  await context.route('**/__native/leetcode', (route) =>
+    fail
+      ? route.fulfill({ status: 503, json: { error: 'request-failed' } })
+      : route.fulfill({ json: { version: 1, configured } }),
+  )
   await context.route('https://leetcode.cn/**', (route) =>
     route.fulfill({ contentType: 'text/html', body: '<title>LeetCode website</title>' }),
   )
@@ -336,7 +319,6 @@ test('plugin settings distinguish website login from per-site judge credentials 
 
 test('credentials can be saved, replaced and cleared per site without exposing stored values', async ({
   page,
-  request,
 }) => {
   await page.goto('./')
   await page.getByRole('button', { name: '插件', exact: true }).click()
@@ -350,7 +332,7 @@ test('credentials can be saved, replaced and cleared per site without exposing s
     'type',
     'password',
   )
-  const saving = page.waitForResponse('**/api/plugins/leetcode/credentials')
+  const saving = page.waitForResponse('**/__native/leetcode/credentials')
   await cn.getByRole('button', { name: '保存登录信息', exact: true }).click()
   expect(await (await saving).json()).toEqual({ configured: ['leetcode.cn'] })
   await expect(cn.getByRole('status')).toContainText('已配置登录信息')
@@ -366,11 +348,7 @@ test('credentials can be saved, replaced and cleared per site without exposing s
   await expect(cn.getByRole('status')).toContainText('已配置登录信息')
   await expect(com.getByRole('status')).toContainText('已配置登录信息')
   await expect(cn.getByLabel('LEETCODE_SESSION', { exact: true })).toHaveValue('')
-  for (const path of ['api/status', 'api/library', 'api/backups']) {
-    const response = await request.get(path, { headers })
-    expect(response.ok()).toBe(true)
-    expect(await response.text()).not.toContain('browser-session-')
-  }
+  expect(JSON.stringify(await storedLibrary(page))).not.toContain('browser-session-')
   expect(await page.evaluate(() => JSON.stringify([localStorage, sessionStorage]))).not.toContain(
     'browser-session-',
   )
@@ -408,7 +386,7 @@ test('credential errors preserve drafts and changing the editor site clears sens
   await cn.getByLabel('csrftoken', { exact: true }).fill('test-csrf')
   await cn.getByRole('button', { name: '保存登录信息', exact: true }).click()
   await expect(cn.getByRole('alert')).toContainText('请填写两个 Cookie 的值')
-  await page.route('**/api/plugins/leetcode/credentials', (route) =>
+  await page.route('**/__native/leetcode/credentials', (route) =>
     route.fulfill({ status: 500, json: { error: 'storage-error' } }),
   )
   await cn.getByLabel('LEETCODE_SESSION', { exact: true }).fill('not-yet-saved')
@@ -417,7 +395,7 @@ test('credential errors preserve drafts and changing the editor site clears sens
   await expect(cn.getByLabel('LEETCODE_SESSION', { exact: true })).toHaveValue('not-yet-saved')
   await expect(cn.getByRole('status')).toContainText('未配置登录信息')
   await expect(page.getByRole('dialog')).toBeVisible()
-  await page.unroute('**/api/plugins/leetcode/credentials')
+  await page.unroute('**/__native/leetcode/credentials')
   await cn.getByLabel('csrftoken', { exact: true }).press('Enter')
   await expect(cn.getByRole('status')).toContainText('已配置登录信息')
   await expect(page.getByRole('dialog')).toBeVisible()

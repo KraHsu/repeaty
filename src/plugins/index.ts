@@ -1,6 +1,6 @@
 import { computed, defineAsyncComponent, ref } from 'vue'
 import installations from '@repeaty-plugins'
-import { serverEdition } from '../edition'
+import { desktopEdition } from '../edition'
 import type { CardView } from '../core/model'
 import type { PluginInstallation, QuestionPlugin } from './types'
 
@@ -25,20 +25,13 @@ export function validateInstallations(entries: readonly PluginInstallation[]) {
   return entries
 }
 export const installedPlugins = validateInstallations(installations).filter(
-  ({ plugin }) => plugin.kind === 'frontend' || serverEdition,
+  ({ plugin }) => plugin.kind === 'frontend' || desktopEdition,
 )
 export const PLUGIN_PREFERENCES_KEY = 'repeaty.plugins.v1'
 const preferences = ref<Record<string, boolean>>({})
-const backendPlugins = ref<string[]>()
-export function setAvailableBackendPlugins(ids: string[]) {
-  backendPlugins.value = ids
-}
 export function pluginAvailable(id: string) {
-  const plugin = installedPlugins.find((entry) => entry.plugin.id === id)?.plugin
-  return Boolean(
-    plugin &&
-    (plugin.kind === 'frontend' ||
-      (serverEdition && (!backendPlugins.value || backendPlugins.value.includes(id)))),
+  return installedPlugins.some(
+    ({ plugin }) => plugin.id === id && (plugin.kind === 'frontend' || desktopEdition),
   )
 }
 export const pluginPreferenceError = ref('')

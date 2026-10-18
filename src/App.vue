@@ -31,8 +31,8 @@ import NoteEditor from './components/NoteEditor.vue'
 import CollectionPanel from './components/CollectionPanel.vue'
 import ImportNotes from './components/ImportNotes.vue'
 import PluginPanel from './components/PluginPanel.vue'
-import { serverEdition } from './edition'
-import { ServerConnection } from '@repeaty-platform'
+import { remoteWorkspace, desktopEdition } from './edition'
+import { ServerConnection, AccountControls, createExportFile } from '@repeaty-platform'
 import { canReviewCard, listenPluginPreferences } from './plugins'
 import type { BackupData } from './core/backups'
 import type { BatchEdit } from './core/batch'
@@ -289,9 +289,10 @@ function cancelTransfer() {
 async function exportData(format: 'archive' | 'json' | 'file' = 'archive') {
   if (transfer.value || busy.value) return
   const filename = `repeaty-backup-${now.value.toISOString().slice(0, 10)}.${format === 'json' ? 'json' : 'repeaty'}`
-  let writable: FileSystemWritableFileStream | undefined
+  let writable: WritableStream<Uint8Array> | undefined
   try {
-    if (format === 'file' && filePicker) {
+    if (createExportFile) writable = await createExportFile(filename)
+    else if (format === 'file' && filePicker) {
       const handle = await filePicker({
         suggestedName: filename,
         types: [{ description: 'Repeaty backup', accept: { 'application/zip': ['.repeaty'] } }],
@@ -310,7 +311,8 @@ async function exportData(format: 'archive' | 'json' | 'file' = 'archive') {
               if (transfer.value) transfer.value.percent = percent
             },
           })
-    if (blob) {
+    if (blob && writable) await blob.stream().pipeTo(writable)
+    else if (blob) {
       const url = URL.createObjectURL(blob),
         link = document.createElement('a')
       link.href = url
@@ -453,8 +455,20 @@ async function restoreBackup() {
         </p>
       </div>
       <div class="sidebar-bottom">
-        <div class="local-status"><span />{{ t(serverEdition ? 'SQLite 存储' : '本地存储') }}</div>
-        <p>{{ t(serverEdition ? '后端版' : '仅限当前浏览器') }}</p>
+        <div class="local-status">
+          <span />{{ t(remoteWorkspace ? 'SQLite 存储' : '本地存储') }}
+        </div>
+        <p>
+          {{
+            t(
+              remoteWorkspace
+                ? '后端版'
+                : desktopEdition
+                  ? '桌面版 · 本地学习库'
+                  : '仅限当前浏览器',
+            )
+          }}
+        </p>
         <span class="version">Repeaty {{ version }}</span>
       </div>
     </aside>
@@ -465,6 +479,7 @@ async function restoreBackup() {
           Repeaty<ChevronRight :size="14" /><strong>{{ review ? t('复习') : pageTitle }}</strong>
         </div>
         <div class="topbar-tools">
+          <component v-if="AccountControls" :is="AccountControls" />
           <label class="language-picker"
             ><span class="sr-only">{{ t('界面语言') }}</span
             ><select
@@ -498,9 +513,9 @@ async function restoreBackup() {
 
       <section v-if="loadError" class="empty-state">
         <Database :size="36" />
-        <h1>{{ t(serverEdition ? '无法连接服务' : '本地存储暂不可用') }}</h1>
+        <h1>{{ t(remoteWorkspace ? '无法连接服务' : '本地存储暂不可用') }}</h1>
         <p role="alert">{{ t(loadError) }}</p>
-        <ServerConnection v-if="serverEdition" :busy="busy" @connect="workspace.init()" />
+        <ServerConnection v-if="remoteWorkspace" :busy="busy" @connect="workspace.init()" />
       </section>
       <section v-else-if="!ready" class="empty-state" role="status">
         <Repeat2 :size="32" />
@@ -778,7 +793,7 @@ async function restoreBackup() {
             <p>
               {{
                 t(
-                  serverEdition
+                  remoteWorkspace
                     ? '导出、恢复备份，管理服务中的数据。'
                     : '导出、恢复备份，管理本地数据。',
                 )
@@ -789,13 +804,25 @@ async function restoreBackup() {
         <section class="storage-banner">
           <ShieldCheck :size="29" />
           <div>
-            <h2>{{ t(serverEdition ? '保存在服务的 SQLite 数据库中' : '保存在当前浏览器') }}</h2>
+            <h2>
+              {{
+                t(
+                  remoteWorkspace
+                    ? '保存在服务的 SQLite 数据库中'
+                    : desktopEdition
+                      ? '保存在本机应用中'
+                      : '保存在当前浏览器',
+                )
+              }}
+            </h2>
             <p>
               {{
                 t(
-                  serverEdition
+                  remoteWorkspace
                     ? '卡组、卡片、复习记录和附件保存在部署的服务中。定期导出备份，或备份服务器上的 SQLite 数据库。'
-                    : '数据仅保存在当前浏览器，不会自动同步。清除网站数据会删除卡片和复习记录。更换浏览器或网址前，请先导出备份。',
+                    : desktopEdition
+                      ? '本地学习库保存在此设备。更换设备或卸载前，请先导出备份。'
+                      : '数据仅保存在当前浏览器，不会自动同步。清除网站数据会删除卡片和复习记录。更换浏览器或网址前，请先导出备份。',
                 )
               }}
             </p>
@@ -899,7 +926,7 @@ async function restoreBackup() {
           <p class="form-note">
             {{
               t(
-                serverEdition
+                remoteWorkspace
                   ? '有数据变化时每 30 分钟保存快照；编辑、删除和恢复前也会保存。服务保留最近 10 份快照及其附件。'
                   : '有数据变化时，在打开应用及使用期间每 30 分钟保存快照；编辑、删除、批量操作和恢复前也会保存。保留最近 10 份及其图片和音频。清除网站数据也会删除快照。',
               )
@@ -934,7 +961,7 @@ async function restoreBackup() {
             <p>
               {{
                 t(
-                  serverEdition
+                  remoteWorkspace
                     ? '此版本需要连接服务才能读取和保存学习数据。需要离线使用时，可导出备份并导入静态版。'
                     : '首次联网加载完成后，可离线打开、制卡和复习。已保存的图片和音频也可离线使用。',
                 )
@@ -957,7 +984,7 @@ async function restoreBackup() {
             <p>
               {{
                 t(
-                  serverEdition
+                  remoteWorkspace
                     ? '使用 FSRS 安排复习，数据保存在服务中。'
                     : '使用 FSRS 安排复习，数据保存在当前浏览器。',
                 )

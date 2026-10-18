@@ -1,35 +1,28 @@
 import { test as base, expect } from '@playwright/test'
-import type { Library } from '../../src/core/model'
-export const token = 'repeaty-test-access-key-123456789'
-export const headers = { 'X-Repeaty-Client': '1', Authorization: `Bearer ${token}` }
+export const headers: Record<string, string> = { 'X-Repeaty-Client': '1' }
 export const test = base.extend<{ resetWorkspace: void }>({
   resetWorkspace: [
-    async ({ request }, use) => {
-      const response = await request.get('api/library', { headers })
-      expect(response.ok()).toBe(true)
-      const snapshot: { revision: number; library: Library } = await response.json()
-      const patches = (
-        ['decks', 'notes', 'cards', 'reviews', 'media', 'savedSearches'] as const
-      ).flatMap((store) => snapshot.library[store].map((value) => ({ store, id: value.id })))
-      const result = await request.post('api/library/commit', {
-        headers,
-        data: { expectedRevision: snapshot.revision, patches },
+    async ({ context, request }, use) => {
+      const response = await request.post('api/auth/register', {
+        headers: { 'X-Repeaty-Client': '1' },
+        data: {
+          username: `test-${crypto.randomUUID().slice(0, 20)}`,
+          password: 'test-account-password',
+        },
       })
-      expect(result.ok()).toBe(true)
-      for (const site of ['leetcode.cn', 'leetcode.com']) {
-        const cleared = await request.post('api/plugins/leetcode/credentials', {
-          headers,
-          data: { action: 'clear', site },
-        })
-        expect(cleared.ok()).toBe(true)
-      }
+      expect(response.ok()).toBe(true)
+      const { user } = await response.json()
+      headers['X-Repeaty-User'] = user.id
+      await context.addCookies((await request.storageState()).cookies)
+      // Existing-library scenarios explicitly start after removing all cards.
+      const saved = await request.post('api/library/commit', {
+        headers,
+        data: { expectedRevision: 0, patches: [] },
+      })
+      expect(saved.ok()).toBe(true)
       await use()
     },
     { auto: true },
   ],
-  context: async ({ context }, use) => {
-    await context.addInitScript((key) => sessionStorage.setItem('repeaty.server.token', key), token)
-    await use(context)
-  },
 })
 export { expect }

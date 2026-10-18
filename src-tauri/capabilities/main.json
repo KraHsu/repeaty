@@ -1,0 +1,18 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "Only the bundled main window may use Repeaty's native commands.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "allow-desktop-config",
+    "allow-set-endpoint",
+    "allow-upstream-request",
+    "allow-local-plugin",
+    "allow-open-external",
+    "allow-export-begin",
+    "allow-export-write",
+    "allow-export-finish",
+    "allow-export-cancel"
+  ]
+}

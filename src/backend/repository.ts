@@ -1,5 +1,4 @@
-import { setAvailableBackendPlugins } from '../plugins'
-import { api, apiJson, ServerError } from './client'
+import { api as request, apiJson as requestJson, ServerError } from './client'
 import {
   cardViews,
   librarySchema,
@@ -15,11 +14,30 @@ import { recordStores, type Snapshot, type BackupSummary, type CardPage } from '
 type Patch = { store: string; id: string; position?: number; value?: unknown }
 export function createServerRepository() {
   let cached: Snapshot | undefined
+  let userId = ''
+  async function api(path: string, init: RequestInit = {}) {
+    const headers = new Headers(init.headers)
+    headers.set('X-Repeaty-User', userId)
+    return request(path, { ...init, headers })
+  }
+  async function apiJson<T>(path: string, body?: unknown): Promise<T> {
+    const response = await api(
+      path,
+      body === undefined
+        ? {}
+        : {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          },
+    )
+    return response.status === 204 ? (undefined as T) : (response.json() as Promise<T>)
+  }
   return {
     async load(): Promise<Snapshot> {
-      const status = await apiJson<{ apiVersion: number; plugins: { id: string }[] }>('/status')
-      if (status.apiVersion !== 1) throw new ServerError('invalid-data')
-      setAvailableBackendPlugins(status.plugins.map((plugin) => plugin.id))
+      const status = await requestJson<{ apiVersion: number }>('/status')
+      if (status.apiVersion !== 2) throw new ServerError('invalid-data')
+      if (!userId) userId = (await requestJson<{ user: { id: string } }>('/auth/session')).user.id
       const saved = await apiJson<Snapshot>('/library')
       if (!Number.isSafeInteger(saved.revision) || saved.revision < 0)
         throw new ServerError('invalid-data')

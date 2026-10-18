@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto'
 import { expect, it, vi } from 'vitest'
-import { serverEdition } from '../edition'
+import { desktopEdition } from '../edition'
 import { fixture, now } from '../core/test-fixtures'
 import { cardViews, migrateLibrary, saveNote } from '../core/model'
 import { dueCards, reviewCard, undoReview } from '../core/scheduler'
@@ -83,7 +83,7 @@ it('excludes unavailable plugins before applying daily quotas', () => {
   expect(library.cards[0]!.schedule.reps).toBe(0)
 })
 
-it.runIf(serverEdition)(
+it.runIf(desktopEdition)(
   'persists plugin switches without changing stored notes or review progress',
   () => {
     const storage = new Map<string, string>()

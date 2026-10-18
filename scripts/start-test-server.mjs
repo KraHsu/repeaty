@@ -7,13 +7,14 @@ const env = {
   ...process.env,
   REPEATY_BIND: '127.0.0.1:4176',
   REPEATY_ORIGIN: 'http://127.0.0.1:4176',
-  REPEATY_DATABASE: join(directory, 'test.sqlite3'),
+  REPEATY_DATA_DIR: directory,
+  REPEATY_REGISTRATION: 'open',
   REPEATY_WEB_DIR: resolve('dist-server'),
-  REPEATY_API_TOKEN: 'repeaty-test-access-key-123456789',
-  REPEATY_PLUGINS: 'leetcode',
 }
 // Browser tests must never inherit a developer's real LeetCode account.
 for (const key of [
+  'REPEATY_DATABASE',
+  'REPEATY_API_TOKEN',
   'LEETCODE_CN_SESSION',
   'LEETCODE_CN_CSRF',
   'LEETCODE_COM_SESSION',

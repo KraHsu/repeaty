@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, useId, watch } from 'vue'
 import { t } from '../../i18n'
-import { apiJson } from '../../backend/client'
+import { localPlugin } from '../../desktop/native'
 import type { LeetCodeSite } from './model'
 const props = defineProps<{ site: LeetCodeSite }>()
 const configured = ref<string[]>()
@@ -41,11 +41,11 @@ async function configure(action: 'save' | 'clear') {
   message.value = ''
   ++refreshId
   try {
-    const status = await apiJson<{ configured: string[] }>(
-      '/plugins/leetcode/credentials',
-      { action, site, ...(action === 'save' ? values : {}) },
-      abort.signal,
-    )
+    const status = await localPlugin<{ configured: string[] }>('leetcode', 'credentials', {
+      action,
+      site,
+      ...(action === 'save' ? values : {}),
+    })
     if (props.site === site && !abort.signal.aborted) {
       clearDraft()
       configured.value = status.configured
@@ -71,17 +71,15 @@ async function refresh() {
   loading.value = true
   error.value = ''
   try {
-    const status = await apiJson<{ plugins: { id: string; configured?: string[] }[] }>(
-      '/status',
-      undefined,
-      abort.signal,
-    )
+    const status = await localPlugin<{ configured: string[] }>('leetcode', 'request', {
+      action: 'ping',
+    })
     if (id !== refreshId || abort.signal.aborted) return
-    configured.value = status.plugins.find((plugin) => plugin.id === 'leetcode')?.configured ?? []
+    configured.value = status.configured
   } catch {
     if (id === refreshId && !abort.signal.aborted) {
       configured.value = undefined
-      error.value = '无法读取连接状态，请检查服务。'
+      error.value = '无法读取本机插件状态，请重试。'
     }
   } finally {
     if (id === refreshId) loading.value = false
@@ -126,19 +124,19 @@ onUnmounted(() => abort.abort())
       {{
         t(
           hasCredentials
-            ? '服务已保存该站点的登录信息，提交时会验证登录是否仍然有效。'
+            ? '本机已保存该站点的登录信息，提交时会验证登录是否仍然有效。'
             : '可读取公开题目。提交判题前，请填写下方的登录信息。',
         )
       }}
     </p>
-    <p>{{ t('打开力扣网站并登录，不会自动连接 Repeaty。判题使用服务端配置的账号。') }}</p>
+    <p>{{ t('打开力扣网站并登录，不会自动连接 Repeaty。请将登录信息填入下方。') }}</p>
     <a class="text-button" :href="`https://${site}/`" target="_blank" rel="noopener noreferrer"
       >{{ t('打开力扣网站') }} ↗</a
     >
     <fieldset class="connection-credentials" :disabled="saving || loading">
       <legend>{{ t(hasCredentials ? '更新登录信息' : '配置登录信息') }}</legend>
       <p class="form-note">
-        {{ t('填写 Cookie 的值。保存后立即生效，无需重启服务；已保存的值不会回填。') }}
+        {{ t('填写 Cookie 的值。保存后立即生效；已保存的值不会回填。') }}
       </p>
       <div class="credential-fields" @keydown.enter.stop.prevent="configure('save')">
         <label class="form-field" :for="`${fieldId}-session`"
@@ -200,7 +198,9 @@ onUnmounted(() => abort.abort())
         </div>
       </div>
       <p class="form-note">
-        {{ t('登录信息保存在此服务器，仅用于所选站点的判题，不包含在卡组导出中。') }}
+        {{
+          t('登录信息仅保存在本机，由桌面版直接连接力扣，不会发送给上游服务或包含在卡组导出中。')
+        }}
       </p>
     </fieldset>
     <details>

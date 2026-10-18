@@ -5,27 +5,27 @@ import { fileURLToPath } from 'node:url'
 
 export default defineConfig(({ mode }) => {
   const server = mode === 'server'
+  const desktop = mode === 'desktop'
+  const edition = desktop ? 'desktop' : server ? 'server' : 'static'
   return {
-    base: server ? '/' : process.env.VITE_BASE_PATH || '/',
-    define: { __REPEATY_EDITION__: JSON.stringify(server ? 'server' : 'static') },
+    base: server || desktop ? '/' : process.env.VITE_BASE_PATH || '/',
+    define: { __REPEATY_EDITION__: JSON.stringify(edition) },
     resolve: {
       alias: {
         '@repeaty-platform': fileURLToPath(
-          new URL(
-            server ? './src/platform/server.ts' : './src/platform/static.ts',
-            import.meta.url,
-          ),
+          new URL(`./src/platform/${edition}.ts`, import.meta.url),
         ),
         '@repeaty-plugins': fileURLToPath(
-          new URL(
-            server ? './repeaty.plugins.server.ts' : './repeaty.plugins.static.ts',
-            import.meta.url,
-          ),
+          new URL(`./repeaty.plugins.${edition}.ts`, import.meta.url),
         ),
       },
     },
-    build: { outDir: server ? 'dist-server' : 'dist', manifest: true },
-    plugins: [vue(), ...(server ? [] : [offlinePlugin()])],
+    build: {
+      outDir: desktop ? 'dist-desktop' : server ? 'dist-server' : 'dist',
+      target: 'esnext',
+      manifest: true,
+    },
+    plugins: [vue(), ...(server || desktop ? [] : [offlinePlugin()])],
     test: { include: ['src/**/*.test.ts'], environment: 'node' },
   }
 })
