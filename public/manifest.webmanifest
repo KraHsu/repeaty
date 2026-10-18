@@ -1,0 +1,16 @@
+{
+  "id": "./",
+  "name": "Repeaty · 间隔复习",
+  "short_name": "Repeaty",
+  "description": "卡片、主动回忆与间隔复习。你的本地学习空间。",
+  "lang": "zh-CN",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f8f9f6",
+  "theme_color": "#37634b",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

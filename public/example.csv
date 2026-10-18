@@ -1,0 +1,4 @@
+type,front,back,tags
+basic,hello,你好,英语|问候
+reversed,apple,苹果,英语|名词
+cloze,法国的首都是 {{c1::巴黎::城市}}。,位于塞纳河畔。,地理
