@@ -71,9 +71,10 @@ export function compileSearch(deckList: Deck[], filter: SearchFilter, now = new 
       test = (card) => card.tags.some((tag) => tag.toLocaleLowerCase() === value)
     else if (key === 'deck') test = (card) => decks.get(card.deckId) === value
     else if (key === 'type') {
-      if (!['basic', 'reversed', 'cloze'].includes(value))
-        throw new LocalizedError(msg('type 支持 basic、reversed、cloze。'))
-      test = (card) => card.type === value
+      if (!['basic', 'reversed', 'cloze', 'plugin', 'leetcode'].includes(value))
+        throw new LocalizedError(msg('type 支持 basic、reversed、cloze、plugin、leetcode。'))
+      test = (card) =>
+        card.type === value || (value === 'leetcode' && card.plugin?.id === 'leetcode')
     } else if (key === 'is') {
       const states: Record<string, (card: CardView) => boolean> = {
         new: (card) => card.schedule.state === 0,

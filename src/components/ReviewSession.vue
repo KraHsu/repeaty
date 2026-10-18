@@ -32,6 +32,10 @@ const revealed = ref(false)
 const completed = ref(0)
 const feedback = ref<Message[]>([])
 const currentId = ref<string>()
+const automatic = computed(() => questionState.assessment?.mode === 'automatic')
+const suggestedName = computed(
+  () => grades.find((grade) => grade.value === questionState.suggestedGrade)?.label ?? '',
+)
 const practice = computed(() => Boolean(props.study && !props.study.reschedule))
 const studied = ref<{ id: string; grade: Grade; reviewId?: string }[]>([])
 const queue = computed(() =>
@@ -139,7 +143,7 @@ async function grade(value: Grade) {
   }
 }
 async function undoLast() {
-  if (!canUndo.value || props.busy) return
+  if (!canUndo.value || props.busy || questionState.busy) return
   const id = practice.value ? studied.value.at(-1)?.id : props.library.reviews.at(-1)?.cardId
   if (practice.value || (await props.undo())) {
     feedback.value = []
@@ -150,18 +154,27 @@ async function undoLast() {
   }
 }
 async function changeCurrent(action: 'suspend' | 'bury') {
-  if (current.value && (await props.change([current.value.id], action))) selectNext()
+  if (!questionState.busy && current.value && (await props.change([current.value.id], action)))
+    selectNext()
 }
 function keydown(event: KeyboardEvent) {
-  if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || props.busy) return
+  if (
+    event.repeat ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.altKey ||
+    props.busy ||
+    questionState.busy
+  )
+    return
   if ((event.target as HTMLElement)?.closest('input, textarea, select, button, [contenteditable]'))
     return
-  if (event.code === 'Space' && current.value) {
+  if (event.code === 'Space' && current.value && !questionState.busy) {
     event.preventDefault()
     revealed.value = true
   }
   const value = Number(event.key)
-  if ([1, 2, 3, 4].includes(value) && revealed.value) void grade(value as Grade)
+  if (!automatic.value && [1, 2, 3, 4].includes(value) && revealed.value) void grade(value as Grade)
   if (event.key === 'Escape') emit('close')
 }
 let timer: ReturnType<typeof setInterval>
@@ -181,7 +194,7 @@ onUnmounted(() => {
 <template>
   <section class="review-space">
     <header class="review-header">
-      <button class="text-button" :disabled="busy" @click="emit('close')">
+      <button class="text-button" :disabled="busy || questionState.busy" @click="emit('close')">
         <ArrowLeft :size="17" /> {{ study ? t('结束专项练习') : t('结束复习') }}
       </button>
       <span class="muted">{{
@@ -206,13 +219,25 @@ onUnmounted(() => {
     </div>
 
     <div class="review-tools">
-      <button class="text-button" :disabled="busy || !canUndo" @click="undoLast">
+      <button
+        class="text-button"
+        :disabled="busy || questionState.busy || !canUndo"
+        @click="undoLast"
+      >
         {{ t('撤销上次评分') }}
       </button>
       <template v-if="current && !practice"
-        ><button class="text-button" :disabled="busy" @click="changeCurrent('bury')">
+        ><button
+          class="text-button"
+          :disabled="busy || questionState.busy"
+          @click="changeCurrent('bury')"
+        >
           {{ t('今天暂缓') }}</button
-        ><button class="text-button" :disabled="busy" @click="changeCurrent('suspend')">
+        ><button
+          class="text-button"
+          :disabled="busy || questionState.busy"
+          @click="changeCurrent('suspend')"
+        >
           {{ t('暂停此卡') }}
         </button></template
       >
@@ -226,7 +251,12 @@ onUnmounted(() => {
         ><span>{{ current.schedule.state === 0 ? t('新卡片') : t('复习卡片') }}</span>
         <span v-if="current.leech" class="status-chip leech">{{ t('顽固卡 · 多次遗忘') }}</span>
       </div>
-      <article :key="current.id" class="flashcard" aria-live="polite">
+      <article
+        :key="current.id"
+        class="flashcard"
+        :class="{ 'plugin-card': current.type === 'plugin' }"
+        aria-live="polite"
+      >
         <span class="eyebrow">{{ t('问题') }}</span>
         <component
           :is="plugin.showQuestion"
@@ -257,13 +287,30 @@ onUnmounted(() => {
         </div>
       </article>
       <div v-if="!revealed" class="reveal-action">
-        <button class="button primary" @click="revealed = true">
-          {{ t('显示答案') }}<CornerDownLeft :size="17" /></button
+        <button class="button primary" :disabled="questionState.busy" @click="revealed = true">
+          {{ t(current.type === 'plugin' ? '结束作答并查看答案' : '显示答案')
+          }}<CornerDownLeft :size="17" /></button
         ><span class="muted">{{ t('或按空格键') }}</span>
       </div>
       <div v-else class="grade-area">
         <p>{{ t('根据回答情况评分') }}</p>
-        <div class="grade-buttons">
+        <template v-if="automatic">
+          <p v-if="!questionState.suggestedGrade">
+            {{ t('尚无判题结果。可以继续作答，或将本次记为“重来”。') }}
+          </p>
+          <button
+            class="button primary"
+            :disabled="
+              busy ||
+              questionState.busy ||
+              !questionState.allowedGrades.includes(questionState.suggestedGrade ?? 1)
+            "
+            @click="grade(questionState.suggestedGrade ?? 1)"
+          >
+            {{ t('保存评分：{grade}', { grade: t(suggestedName || '重来') }) }}
+          </button>
+        </template>
+        <div v-else class="grade-buttons">
           <button
             v-for="item in grades"
             :key="item.value"

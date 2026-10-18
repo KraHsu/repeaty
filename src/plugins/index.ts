@@ -10,7 +10,17 @@ const flashcard: QuestionPlugin = {
   showAnswer: defineAsyncComponent(() => import('./flashcard/Answer.vue')),
 }
 // Plugins are bundled with the app. Backups contain data, never executable plugin code.
-export const questionPlugins: QuestionPlugin[] = [flashcard]
+export const questionPlugins: QuestionPlugin[] = [
+  flashcard,
+  {
+    id: 'leetcode',
+    label: 'LeetCode',
+    version: 1,
+    showQuestion: defineAsyncComponent(() => import('./leetcode/Question.vue')),
+    showAnswer: defineAsyncComponent(() => import('./leetcode/Answer.vue')),
+    editor: defineAsyncComponent(() => import('./leetcode/Editor.vue')),
+  },
+]
 const unavailable: QuestionPlugin = {
   id: 'unavailable',
   label: '插件题目',

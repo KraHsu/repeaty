@@ -1,5 +1,7 @@
 node_modules/
 dist/
+dist-connector/
+public/leetcode-connector.zip
 coverage/
 playwright-report/
 test-results/

@@ -468,4 +468,99 @@ export const en = {
   '挖空 {number}': 'Cloze {number}',
   '正面 → 背面': 'Front → Back',
   '背面 → 正面': 'Back → Front',
+  插件题目: 'Plugin question',
+  题目插件: 'Question plugin',
+  '请选择题目插件。': 'Choose a question plugin.',
+  '普通卡片不能包含插件数据。': 'Standard cards cannot contain plugin data.',
+  '插件数据不能超过 200,000 字符。': 'Plugin data cannot exceed 200,000 characters.',
+  '题目插件不可用：{id}。请更新 Repeaty 后重试，题目数据仍会保留。':
+    'Question plugin unavailable: {id}. Update Repeaty and try again. The question data is preserved.',
+  '请填写 LeetCode 题目链接或英文标识。': 'Enter a LeetCode problem URL or slug.',
+  '未找到题目，请检查链接。': 'Problem not found. Check the URL.',
+  '无法读取题面，请在 LeetCode 检查该题的访问权限。':
+    'The problem statement is unavailable. Check your access on LeetCode.',
+  通过: 'Accepted',
+  答案错误: 'Wrong answer',
+  内存超限: 'Memory limit exceeded',
+  输出超限: 'Output limit exceeded',
+  运行超时: 'Time limit exceeded',
+  运行错误: 'Runtime error',
+  内部错误: 'Internal error',
+  编译错误: 'Compile error',
+  未通过: 'Not accepted',
+  '判题服务未返回有效结果，请稍后重新查询。':
+    'The judge did not return a valid result. Check again later.',
+  '未连接扩展。请安装扩展后刷新 Repeaty。':
+    'Extension not connected. Install it and reload Repeaty.',
+  '请在另一个标签页打开所选 LeetCode 站点并登录，然后重试。':
+    'Open the selected LeetCode site in another tab, sign in, and try again.',
+  '请在 LeetCode 标签页登录或完成验证，然后重试。':
+    'Sign in or complete verification in the LeetCode tab, then try again.',
+  '提交过于频繁，请稍后重试。': 'Too many submissions. Try again later.',
+  '上一次提交尚未完成，请稍候。': 'The previous submission is still in progress.',
+  '未取得提交编号，请先在 LeetCode 检查提交记录，避免重复提交。':
+    'No submission ID was received. Check your LeetCode submissions before trying again to avoid submitting twice.',
+  '无法连接 LeetCode，请检查网络及 LeetCode 标签页后重试。':
+    'Cannot connect to LeetCode. Check your connection and the LeetCode tab, then try again.',
+  '连接 LeetCode': 'Connect LeetCode',
+  下载浏览器扩展: 'Download browser extension',
+  '，解压后在 Chrome / Edge 的扩展页面开启开发者模式，选择“加载已解压的扩展程序”。':
+    '. Unzip it, enable Developer mode on the Chrome / Edge extensions page, and choose “Load unpacked.”',
+  '打开 LeetCode 并登录': 'Open LeetCode and sign in',
+  '，保留该标签页。': '. Keep that tab open.',
+  '刷新 Repeaty 后即可读取题目和提交代码。': 'Reload Repeaty to load problems and submit code.',
+  '提交代码会写入你的 LeetCode 提交记录。登录信息不会保存到 Repeaty 或备份中。':
+    'Code submissions appear in your LeetCode history. Login details are not saved in Repeaty or its backups.',
+  'LeetCode 站点': 'LeetCode site',
+  '中国站 · leetcode.cn': 'China · leetcode.cn',
+  '国际站 · leetcode.com': 'International · leetcode.com',
+  题目链接或英文标识: 'Problem URL or slug',
+  '读取中…': 'Loading…',
+  读取题目: 'Load problem',
+  '已读取：{title}': 'Loaded: {title}',
+  题目预览: 'Problem preview',
+  '读取题目后再保存。题面会保存在本地，提交判题需要联网。':
+    'Load a problem before saving. The statement is saved locally; judging requires an internet connection.',
+  解题笔记: 'Solution notes',
+  '题目数据不完整，请编辑卡片并重新读取题目。':
+    'Problem data is incomplete. Edit the card and load the problem again.',
+  '判题尚未结束，可稍后继续查询，无需重新提交。':
+    'Judging has not finished. Check again later without resubmitting.',
+  '在 LeetCode 打开': 'Open in LeetCode',
+  编程语言: 'Programming language',
+  '尝试 {count} 次 · 用时 {time}': 'Attempts: {count} · Time: {time}',
+  继续计时: 'Resume timer',
+  暂停计时: 'Pause timer',
+  '该题没有可用的代码模板，请在 LeetCode 作答。':
+    'No code templates are available for this problem. Solve it on LeetCode.',
+  代码: 'Code',
+  '判题中…': 'Judging…',
+  '提交到 LeetCode': 'Submit to LeetCode',
+  继续查询结果: 'Check result again',
+  '提交编号：{id}': 'Submission ID: {id}',
+  '运行时间：{value}': 'Runtime: {value}',
+  '内存：{value}': 'Memory: {value}',
+  查看提交记录: 'View submission',
+  复习评分: 'Review rating',
+  手动评分: 'Manual rating',
+  自动评分: 'Automatic rating',
+  '自动评分：{grade}': 'Automatic rating: {grade}',
+  评分规则: 'Rating rules',
+  '通过且一次完成、用时不超过 {minutes} 分钟：简单；通过且不超过两次、用时不超过 {double} 分钟：良好；其余通过：困难。未通过或提前查看答案：重来。':
+    'Accepted on the first attempt within {minutes} minutes: Easy. Accepted within two attempts and {double} minutes: Good. Other accepted solutions: Hard. Not accepted, or answer viewed first: Again.',
+  '只统计取得提交编号的正式提交。计时可暂停，切换到其他标签页时自动暂停。':
+    'Only submissions with a confirmed ID count as attempts. You can pause the timer; it pauses automatically when you switch tabs.',
+  '草稿未能保存，请复制代码后再离开页面。':
+    'The draft could not be saved. Copy your code before leaving this page.',
+  '代码已通过 LeetCode 判题。': 'Your code was accepted by LeetCode.',
+  '尚未通过 LeetCode 判题，本次可记为“重来”。':
+    'Your code has not been accepted by LeetCode. You can rate this attempt Again.',
+  '尚未添加解题笔记。可在编辑卡片时补充思路或参考代码。':
+    'No solution notes yet. Edit the card to add an explanation or reference code.',
+  结束作答并查看答案: 'Finish attempt and show answer',
+  '尚无判题结果。可以继续作答，或将本次记为“重来”。':
+    'No judge result yet. Continue solving or rate this attempt Again.',
+  '保存评分：{grade}': 'Save rating: {grade}',
+  'type 支持 basic、reversed、cloze、plugin、leetcode。':
+    'type supports basic, reversed, cloze, plugin, and leetcode.',
 } as const

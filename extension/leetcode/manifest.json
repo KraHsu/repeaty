@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Repeaty LeetCode Connector",
+  "version": "1.0.0",
+  "description": "Load LeetCode questions and submit code from Repeaty using an open LeetCode tab.",
+  "permissions": ["scripting"],
+  "host_permissions": ["https://leetcode.cn/*", "https://leetcode.com/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.krahsu.top/repeaty/*",
+        "https://krahsu.top/repeaty/*",
+        "https://krahsu.github.io/repeaty/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ]
+}
