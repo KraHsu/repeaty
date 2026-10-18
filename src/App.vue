@@ -18,6 +18,7 @@ import {
   Leaf,
   Pencil,
   Plus,
+  Puzzle,
   Repeat2,
   ShieldCheck,
   Sparkles,
@@ -29,6 +30,7 @@ import ReviewSession from './components/ReviewSession.vue'
 import NoteEditor from './components/NoteEditor.vue'
 import CollectionPanel from './components/CollectionPanel.vue'
 import ImportNotes from './components/ImportNotes.vue'
+import PluginPanel from './components/PluginPanel.vue'
 import type { BackupData } from './core/backups'
 import type { BatchEdit } from './core/batch'
 import type { CardAction } from './core/scheduler'
@@ -53,7 +55,7 @@ const workspace = useLibrary()
 const { library, ready, busy, loadError, backups, backupError } = workspace
 const offline = useOffline()
 const cards = computed(() => cardViews(library.value))
-const tab = ref<'overview' | 'cards' | 'data'>('overview')
+const tab = ref<'overview' | 'cards' | 'plugins' | 'data'>('overview')
 const selectedDeck = ref('')
 const searchQuery = ref('')
 const filterState = ref<SearchFilter['state']>('all')
@@ -100,6 +102,7 @@ const pageTitle = computed(
       overview: t('学习概览'),
       cards: currentDeck.value?.name ?? t('全部卡片'),
       data: t('数据与备份'),
+      plugins: t('插件'),
     })[tab.value],
 )
 
@@ -401,6 +404,13 @@ async function restoreBackup() {
         >
           <Layers :size="19" />{{ t('全部卡片')
           }}<span class="nav-count">{{ library.cards.length }}</span>
+        </button>
+        <button
+          :class="{ active: tab === 'plugins' && !review }"
+          :aria-current="tab === 'plugins' && !review ? 'page' : undefined"
+          @click="navigate('plugins')"
+        >
+          <Puzzle :size="19" />{{ t('插件') }}
         </button>
         <button
           :class="{ active: tab === 'data' && !review }"
@@ -752,6 +762,8 @@ async function restoreBackup() {
         />
       </div>
 
+      <PluginPanel v-else-if="tab === 'plugins'" />
+
       <div v-else class="page data-page">
         <header class="page-heading">
           <div>
@@ -1023,6 +1035,7 @@ async function restoreBackup() {
     <AppModal
       :error="notice?.error ? t(notice.text) : undefined"
       v-if="modal === 'card'"
+      wide
       :title="editingId ? t('编辑卡片') : t('添加卡片')"
       :busy="busy"
       @close="modal = null"

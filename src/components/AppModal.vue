@@ -4,7 +4,7 @@ import { t } from '../i18n'
 import { onMounted, ref } from 'vue'
 import { X } from '@lucide/vue'
 
-defineProps<{ title: string; busy?: boolean; error?: string }>()
+defineProps<{ title: string; busy?: boolean; error?: string; wide?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 const dialog = ref<HTMLDialogElement>()
 onMounted(() => dialog.value?.showModal())
@@ -14,6 +14,7 @@ onMounted(() => dialog.value?.showModal())
   <dialog
     ref="dialog"
     class="modal"
+    :class="{ 'modal-wide': wide }"
     aria-labelledby="modal-title"
     @cancel.prevent="!busy && emit('close')"
     @click="$event.target === dialog && !busy && emit('close')"
