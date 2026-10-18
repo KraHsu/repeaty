@@ -37,7 +37,7 @@ export function createServerRepository(source = location.origin) {
     scope: () => `${source}:${userId}`,
     async load(): Promise<Snapshot> {
       const status = await requestJson<{ apiVersion: number }>('/status')
-      if (status.apiVersion !== 3) throw new ServerError('invalid-data')
+      if (status.apiVersion !== 3) throw new ServerError('incompatible-version')
       if (!userId) userId = (await requestJson<{ user: { id: string } }>('/auth/session')).user.id
       const saved = await apiJson<Snapshot>('/library')
       if (!Number.isSafeInteger(saved.revision) || saved.revision < 0)

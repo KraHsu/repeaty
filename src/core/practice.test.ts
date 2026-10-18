@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { expect, it } from 'vitest'
 import { fixture, now } from './test-fixtures'
-import { recordAttempt, finishPractice } from './practice'
+import { recordAttempt, finishPractice, practiceContentRevision } from './practice'
 import { attemptSchema, practiceSchema } from './practice-data'
 import { dailyUsage, reviewCard, undoReview } from './scheduler'
 import { librarySchema, migrateLibrary, removeNotes } from './model'
@@ -44,10 +44,26 @@ function example() {
   return { library, practice, attempt, pending, completed }
 }
 
+it('keeps content identity stable when SQLite or backups reorder JSON object keys', async () => {
+  const plugin = { id: 'leetcode', version: 1, data: { site: 'leetcode.cn', slug: 'problem' } }
+  const card = { front: 'Problem', back: '', plugin }
+  const reordered = {
+    ...card,
+    plugin: { data: { slug: 'problem', site: 'leetcode.cn' }, version: 1, id: 'leetcode' },
+  }
+  expect(await practiceContentRevision(card)).toBe(await practiceContentRevision(reordered))
+  expect(await practiceContentRevision(card)).not.toBe(
+    await practiceContentRevision({ ...card, front: 'Changed' }),
+  )
+})
+
 it('keeps multiple submissions, rejects mutated retries and cannot rate pending code', () => {
   const { library, practice, attempt, pending, completed } = example()
   let next = recordAttempt(library, practice, attempt)
   expect(recordAttempt(next, practice, attempt)).toBe(next)
+  const revealed = recordAttempt(next, { ...practice, answerSeen: true }, attempt)
+  expect(revealed.practices[0]!.answerSeen).toBe(true)
+  expect(recordAttempt(revealed, practice, pending).practices[0]!.answerSeen).toBe(true)
   expect(() => recordAttempt(next, practice, { ...pending, code: 'different' })).toThrow()
   next = recordAttempt(next, practice, pending)
   expect(() =>
@@ -123,4 +139,5 @@ it('stores and restores code and judge evidence through snapshots, archives and 
   repo.close()
   const { practices: _practices, attempts: _attempts, ...old } = library
   expect(migrateLibrary({ ...old, version: 4 })).toEqual(library)
+  expect(() => migrateLibrary({ ...old, version: 5 })).toThrow()
 })

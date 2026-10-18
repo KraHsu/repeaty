@@ -1,11 +1,13 @@
 import type { Component } from 'vue'
 import type { CardView, Grade, Media } from '../core/model'
 import type { Assessment } from './data'
+import type { Practice, Attempt } from '../core/practice-data'
 
 export interface QuestionState {
   allowedGrades: Grade[]
   suggestedGrade?: Grade
   assessment?: Assessment
+  practiceId?: string
   busy: boolean
   /** Called only after a rating has been saved successfully. */
   complete?: () => Promise<void>
@@ -16,6 +18,10 @@ export interface QuestionProps {
   getMedia: (id: string) => Promise<Blob | undefined>
   state: QuestionState
   revealed: boolean
+  workspaceScope?: string
+  practices?: Practice[]
+  attempts?: Attempt[]
+  saveAttempt?: (practice: Practice, attempt: Attempt, scope: string) => Promise<void>
 }
 /** Each component receives QuestionProps. An optional editor uses a NoteInput v-model. */
 export interface QuestionPlugin {

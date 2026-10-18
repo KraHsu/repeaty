@@ -1,6 +1,16 @@
 import { msg, LocalizedError } from '../i18n'
 import { practiceSchema, attemptSchema, type Practice, type Attempt } from './practice-data'
-import type { Library } from './model'
+import type { Library, CardView } from './model'
+
+export async function practiceContentRevision(card: Pick<CardView, 'front' | 'back' | 'plugin'>) {
+  const snapshot = JSON.stringify([card.front, card.back, card.plugin], (_key, value) =>
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : value,
+  )
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(snapshot))
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
 
 const fail = () => new LocalizedError(msg('练习记录已变化，请重新打开题目后重试。'))
 export function recordAttempt(
@@ -37,7 +47,16 @@ export function recordAttempt(
       (prior.submissionId && prior.submissionId !== attempt.submissionId)
     )
       throw fail()
-    if (JSON.stringify(prior) === JSON.stringify(attempt)) return library
+    if (JSON.stringify(prior) === JSON.stringify(attempt)) {
+      return practice.answerSeen && !existing?.answerSeen
+        ? {
+            ...library,
+            practices: library.practices.map((entry) =>
+              entry.id === practice.id ? { ...entry, answerSeen: true } : entry,
+            ),
+          }
+        : library
+    }
     const transitions: Record<Attempt['status'], readonly string[]> = {
       submitting: ['pending', 'unknown', 'failed'],
       pending: ['completed'],
@@ -62,7 +81,13 @@ export function recordAttempt(
   }
   return {
     ...library,
-    practices: existing ? library.practices : [...library.practices, kept],
+    practices: existing
+      ? library.practices.map((entry) =>
+          entry.id === practice.id
+            ? { ...entry, answerSeen: entry.answerSeen || practice.answerSeen }
+            : entry,
+        )
+      : [...library.practices, kept],
     attempts: prior
       ? library.attempts.map((entry) => (entry.id === attempt.id ? attempt : entry))
       : [...library.attempts, attempt],
@@ -87,6 +112,8 @@ export function finishPractice(
   )
     throw fail()
   const review = reviewId ? library.reviews.find((entry) => entry.id === reviewId) : undefined
+  if (reviewId && (!review || review.cardId !== cardId || review.practiceId !== practiceId))
+    throw fail()
   return {
     ...library,
     practices: library.practices.map((entry) =>

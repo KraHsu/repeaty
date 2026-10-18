@@ -5,6 +5,7 @@ import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { resolve, join } from 'node:path'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 const exec = promisify(execFile)
 const xdotool = process.env.REPEATY_XDOTOOL || 'xdotool'
 const directory = await mkdtemp(join(tmpdir(), 'repeaty-native-test-'))
@@ -186,6 +187,13 @@ try {
   )
   assert.ok(contents.some((data) => Buffer.from(data.subarray(0, 4)).toString() === 'RIFF'))
   assert.ok(contents.some((data) => data[0] === 137 && data[1] === 80))
+  const template = {}
+  for (const kind of ['decks', 'notes', 'cards']) {
+    const text = await entries
+      .find((entry) => entry.filename === `data/${kind}/0.ndjson`)
+      .getData(new TextWriter())
+    template[kind] = JSON.parse(text.trim().split('\n')[0])
+  }
   await archive.close()
   console.log('Native archive contains 27 cards, PNG and audio')
   await click('学习概览')
@@ -262,8 +270,110 @@ try {
     ).configured,
     [],
   )
+  // Seed a controlled completed result: this exercises native WebKit recovery and
+  // history without sending code or credentials to the real LeetCode website.
+  const problem = {
+    site: 'leetcode.cn',
+    slug: 'native-history',
+    questionId: '1',
+    frontendId: '1',
+    title: 'Native history',
+    difficulty: 'Easy',
+    content: '<p>Return the input.</p>',
+    snippets: [{ lang: 'Python3', langSlug: 'python3', code: 'def solve(value): pass' }],
+  }
+  const note = {
+    ...template.notes,
+    type: 'plugin',
+    front: 'Native history',
+    back: '',
+    frontMedia: [],
+    backMedia: [],
+    format: 'plain',
+    plugin: { id: 'leetcode', version: 1, data: problem },
+  }
+  const card = { ...template.cards, noteId: note.id, variant: 'forward' }
+  const practice = {
+    id: 'native-practice',
+    cardId: card.id,
+    contentRevision: createHash('sha256')
+      .update(
+        JSON.stringify([note.front, note.back, note.plugin], (_key, value) =>
+          value && typeof value === 'object' && !Array.isArray(value)
+            ? Object.fromEntries(
+                Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+              )
+            : value,
+        ),
+      )
+      .digest('hex'),
+    question: { front: note.front, back: note.back, format: note.format, plugin: note.plugin },
+    startedAt: new Date().toISOString(),
+  }
+  const attempt = {
+    id: 'native-attempt',
+    practiceId: practice.id,
+    language: 'python3',
+    code: 'def solve(value): return value',
+    elapsedMs: 1000,
+    status: 'completed',
+    submittedAt: practice.startedAt,
+    updatedAt: practice.startedAt,
+    submissionId: '123',
+    result: { outcome: 'accepted', status: '通过', runtime: '1 ms', memory: '10 MB', detail: '' },
+  }
+  await execute(
+    `return (async () => {
+    const values = arguments[0];
+    const db = await new Promise((resolve, reject) => { const r = indexedDB.open('repeaty'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+    const tx = db.transaction(['meta', ...Object.keys(values)], 'readwrite');
+    const read = tx.objectStore('meta').get('main');
+    read.onsuccess = () => { const meta = read.result; meta.revision++; for (const [kind, rows] of Object.entries(values)) {
+      meta.counts[kind] = rows.length;
+      rows.forEach((value, position) => tx.objectStore(kind).put({ id: value.id, value, position, deckId: kind === 'cards' ? values.decks[0].id : undefined }, value.id));
+    } tx.objectStore('meta').put(meta, 'main'); };
+    await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onabort = () => reject(tx.error); });
+    db.close();
+  })();`,
+    {
+      decks: [template.decks],
+      notes: [note],
+      cards: [card],
+      practices: [practice],
+      attempts: [attempt],
+    },
+  )
+  await command(`/session/${session}/refresh`, {})
+  await until(
+    () => execute("return document.querySelectorAll('.deck-title').length===1"),
+    'history library',
+  )
+  await click('开始复习')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('#leetcode-code')?.value==='def solve(value): return value'",
+      ),
+    'native attempt recovery',
+  )
+  await until(
+    () => execute("return document.querySelector('.judge-result')?.textContent.includes('通过')"),
+    'native recovered judge result',
+  )
+  await execute("document.querySelector('.leetcode-history > summary').click()")
+  await execute("document.querySelector('.attempt-history > summary').click()")
+  assert.equal(
+    await execute("return document.querySelector('.attempt-code code').textContent"),
+    attempt.code,
+  )
+  await click('结束作答并查看答案')
+  await execute("document.querySelector('.grade-button.good').click()")
+  await until(
+    () => execute("return document.body.textContent.includes('本轮复习结束')"),
+    'native practice rating',
+  )
   console.log(
-    'Native WebKit/Tauri: starter lifecycle, account registration, upstream switching, local credential persistence, native backup export and clearing passed.',
+    'Native WebKit/Tauri: starter lifecycle, account registration, upstream switching, local credentials, native backup, LeetCode history recovery and rating passed.',
   )
 } catch (error) {
   console.error(log.slice(-20).join(''))

@@ -21,6 +21,8 @@ import { saveSearch } from '../core/search'
 import type { TransferOptions } from '../core/archive'
 import { exportBackup, rekeyBackup, type BackupData } from '../core/backups'
 import { initializeWorkspace } from '../core/onboarding'
+import { recordAttempt, finishPractice } from '../core/practice'
+import type { Practice, Attempt } from '../core/practice-data'
 import { remoteWorkspace } from '../edition'
 import type { createServerRepository } from '../backend/repository'
 import type { createRepository, BackupSummary } from '../core/storage'
@@ -28,6 +30,7 @@ import { createWorkspaceRepository } from '@repeaty-platform'
 
 export function useLibrary() {
   const library = shallowRef(emptyLibrary())
+  const scope = ref('')
   const ready = ref(false),
     busy = ref(false),
     loadError = ref<DisplayMessage>(''),
@@ -42,6 +45,7 @@ export function useLibrary() {
     if (busy.value) return
     busy.value = true
     ready.value = false
+    scope.value = ''
     try {
       await repository?.close()
       repository = await createWorkspaceRepository(() => {
@@ -50,6 +54,7 @@ export function useLibrary() {
       })
       const saved = await initializeWorkspace(repository)
       library.value = saved.library
+      scope.value = repository.scope()
       revision = saved.revision
       ready.value = true
       loadError.value = ''
@@ -91,6 +96,7 @@ export function useLibrary() {
   }
   return {
     library,
+    scope: readonly(scope),
     ready: readonly(ready),
     busy: readonly(busy),
     loadError: readonly(loadError),
@@ -195,7 +201,21 @@ export function useLibrary() {
     changeCards(ids: Set<string>, action: CardAction) {
       return commit((current) => changeCards(current, ids, action))
     },
-    review(id: string, grade: Grade, filtered = false, assessment?: Assessment) {
+    recordAttempt(practice: Practice, attempt: Attempt, expectedScope: string) {
+      if (expectedScope !== scope.value || !expectedScope)
+        throw new LocalizedError(msg('练习记录已变化，请重新打开题目后重试。'))
+      return commit((current) => recordAttempt(current, practice, attempt))
+    },
+    finishPractice(id: string, cardId: string, assessment?: Assessment) {
+      return commit((current) => finishPractice(current, id, cardId, assessment))
+    },
+    review(
+      id: string,
+      grade: Grade,
+      filtered = false,
+      assessment?: Assessment,
+      practiceId?: string,
+    ) {
       return commit((current) =>
         reviewCard(
           current,
@@ -205,6 +225,7 @@ export function useLibrary() {
           filtered ? 'filtered' : 'normal',
           assessment,
           canReviewCard,
+          practiceId,
         ),
       )
     },

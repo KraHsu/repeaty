@@ -22,9 +22,7 @@
       "format": "plain",
       "front": "Question",
       "back": "Answer",
-      "tags": [
-        "test"
-      ],
+      "tags": ["test"],
       "frontMedia": [],
       "backMedia": [],
       "createdAt": "2026-10-17T18:00:00.000Z",

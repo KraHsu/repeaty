@@ -133,6 +133,27 @@ test('local transport loads, judges, restores drafts, and saves an automatic rat
     },
   })
   expect(backup.library.notes[0].plugin.data.site).toBe('leetcode.cn')
+  expect(backup.library.practices).toHaveLength(1)
+  expect(backup.library.practices[0]).toMatchObject({
+    completion: 'review',
+    rating: 3,
+    reviewId: backup.library.reviews[0].id,
+  })
+  expect(backup.library.reviews[0].practiceId).toBe(backup.library.practices[0].id)
+  expect(backup.library.attempts).toMatchObject([
+    {
+      code: 'def solve(value):\n    return 0',
+      submissionId: '1001',
+      status: 'completed',
+      result: { outcome: 'rejected' },
+    },
+    {
+      code: 'def solve(value):\n    return value',
+      submissionId: '1002',
+      status: 'completed',
+      result: { outcome: 'accepted' },
+    },
+  ])
   expect(JSON.stringify(backup)).not.toContain('test-csrf')
   expect(remote.submissions()).toBe(2)
   expect(remote.sent[1]).toMatchObject({
@@ -240,6 +261,150 @@ test('a lost submission response disables automatic ratings and survives reload'
   await page.getByRole('button', { name: '开始复习', exact: true }).click()
   await expect(page.getByText(/有一次提交未取得编号/)).toBeVisible()
   await expect(page.locator('#leetcode-rating option[value="automatic"]')).toBeDisabled()
+  expect(remote.submissions()).toBe(1)
+  expect((await storedLibrary(page)).attempts).toMatchObject([
+    { value: { status: 'unknown', code: 'def solve(value): return value' } },
+  ])
+})
+
+test('undoing a rating preserves submission history and reviewing old code reveals the answer', async ({
+  page,
+  context,
+}) => {
+  await connect(context)
+  await create(page)
+  await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
+  await page.getByRole('button', { name: '提交到 LeetCode' }).click()
+  await expect(page.locator('.judge-result')).toContainText('通过')
+  await page.getByRole('button', { name: '结束作答并查看答案' }).click()
+  await page.getByRole('button', { name: /^良好/ }).click()
+  await expect(page.getByRole('heading', { name: '本轮复习结束' })).toBeVisible()
+  await page.getByRole('button', { name: '撤销上次评分' }).click()
+  await expect(page.getByLabel('代码', { exact: true })).toBeEnabled()
+  const saved = await storedLibrary(page)
+  expect(saved.reviews).toHaveLength(0)
+  expect(saved.attempts).toHaveLength(1)
+  expect(saved.practices).toMatchObject([{ value: { ratingUndoneAt: expect.any(String) } }])
+  await page.locator('.leetcode-history > summary').click()
+  await expect(page.getByText('评分已撤销', { exact: true })).toBeVisible()
+  await page.locator('.attempt-history > summary').click()
+  await expect(page.locator('.attempt-code code')).toHaveText('def solve(value): return value')
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.screenshot({ path: 'test-results/leetcode-history-mobile.png', fullPage: true })
+  await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
+  await page.getByRole('button', { name: '提交到 LeetCode' }).click()
+  await expect(page.locator('.judge-result')).toContainText('通过')
+  await page.getByRole('button', { name: '结束作答并查看答案' }).click()
+  await expect(page.getByRole('button', { name: /^良好/ })).toBeDisabled()
+})
+
+test('practice-only sessions keep code without changing review progress', async ({
+  page,
+  context,
+}) => {
+  const remote = await connect(context)
+  await create(page)
+  await page.getByRole('button', { name: '结束复习' }).click()
+  await page.getByRole('button', { name: '全部卡片' }).click()
+  const before = await storedLibrary(page)
+  await page.getByText('高级搜索、常用筛选与专项练习', { exact: true }).click()
+  await page.getByRole('button', { name: '开始专项练习' }).click()
+  await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
+  await page.getByRole('button', { name: '提交到 LeetCode' }).click()
+  await expect(page.locator('.judge-result')).toContainText('通过')
+  await page.getByRole('button', { name: '结束作答并查看答案' }).click()
+  await page.getByRole('button', { name: /^良好/ }).click()
+  await expect(page.getByRole('heading', { name: '本轮练习结束' })).toBeVisible()
+  const after = await storedLibrary(page)
+  expect(after.cards).toEqual(before.cards)
+  expect(after.reviews).toEqual(before.reviews)
+  expect(after.practices).toMatchObject([{ value: { completion: 'practice' } }])
+  expect(after.attempts).toHaveLength(1)
+  expect(remote.submissions()).toBe(1)
+})
+
+test('failed history storage prevents submitting code and keeps the editor intact', async ({
+  page,
+  context,
+}) => {
+  const remote = await connect(context)
+  await create(page)
+  const other = await context.newPage()
+  await other.goto('./')
+  await other.getByRole('button', { name: '创建卡组', exact: true }).last().click()
+  await other.getByLabel('卡组名称').fill('Another tab changed the library')
+  await other.getByRole('button', { name: '保存卡组', exact: true }).click()
+  await expect(other.getByRole('dialog')).toHaveCount(0)
+  await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
+  await page.getByRole('button', { name: '提交到 LeetCode' }).click()
+  await expect(page.getByRole('alert')).toContainText('数据已在另一个标签页更新')
+  expect(remote.submissions()).toBe(0)
+  expect((await storedLibrary(page)).attempts).toHaveLength(0)
+  await expect(page.getByLabel('代码', { exact: true })).toHaveValue(
+    'def solve(value): return value',
+  )
+})
+
+test('pending official submissions recover from library records when the temporary draft is lost', async ({
+  page,
+  context,
+}) => {
+  const remote = await connect(context, { checkFails: true })
+  await create(page)
+  await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
+  await page.getByRole('button', { name: '提交到 LeetCode' }).click()
+  await expect(page.getByRole('alert')).toContainText('无法连接 LeetCode')
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const request = indexedDB.deleteDatabase('repeaty-leetcode-drafts')
+        request.onsuccess = () => resolve()
+        request.onerror = () => reject(request.error)
+      }),
+  )
+  remote.allowChecks()
+  await page.reload()
+  await page.getByRole('button', { name: '开始复习', exact: true }).click()
+  await expect(page.locator('.judge-result')).toContainText('通过')
+  await expect(page.getByLabel('代码', { exact: true })).toHaveValue(
+    'def solve(value): return value',
+  )
+  expect(remote.submissions()).toBe(1)
+  expect((await storedLibrary(page)).attempts).toMatchObject([{ value: { status: 'completed' } }])
+})
+
+test('revealing an answer remains recorded when the temporary draft is lost', async ({
+  page,
+  context,
+}) => {
+  const remote = await connect(context, { checkFails: true })
+  await create(page)
+  await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
+  await page.getByRole('button', { name: '提交到 LeetCode' }).click()
+  await expect(page.getByRole('alert')).toContainText('无法连接 LeetCode')
+  await page.getByRole('button', { name: '结束作答并查看答案' }).click()
+  await expect
+    .poll(
+      async () =>
+        ((await storedLibrary(page)).practices as { value: { answerSeen: boolean } }[])[0]!.value
+          .answerSeen,
+    )
+    .toBe(true)
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const request = indexedDB.deleteDatabase('repeaty-leetcode-drafts')
+        request.onsuccess = () => resolve()
+        request.onerror = () => reject(request.error)
+      }),
+  )
+  remote.allowChecks()
+  await page.reload()
+  await page.getByRole('button', { name: '开始复习', exact: true }).click()
+  await expect(page.locator('.judge-result')).toContainText('通过')
+  await page.getByRole('button', { name: '结束作答并查看答案' }).click()
+  await expect(page.getByRole('button', { name: /^良好/ })).toBeDisabled()
   expect(remote.submissions()).toBe(1)
 })
 

@@ -227,8 +227,8 @@ export function variants(note: Pick<Note, 'type' | 'front'>): string[] {
 export const librarySchema = z
   .object({
     version: z.literal(5),
-    practices: z.array(practiceSchema).max(100_000).default([]),
-    attempts: z.array(attemptSchema).max(500_000).default([]),
+    practices: z.array(practiceSchema).max(100_000),
+    attempts: z.array(attemptSchema).max(500_000),
     savedSearches: z.array(savedSearchSchema).max(100).default([]),
     decks: z.array(deckSchema).max(1000),
     notes: z.array(noteSchema).max(100_000),
@@ -281,16 +281,15 @@ export const librarySchema = z
       if (review.practiceId && practices.get(review.practiceId)?.cardId !== review.cardId)
         problem('评分与练习不匹配')
     }
+    const reviews = new Map(library.reviews.map((entry) => [entry.id, entry]))
     for (const practice of library.practices) {
+      const review = practice.reviewId ? reviews.get(practice.reviewId) : undefined
       if (
         practice.reviewId &&
-        !library.reviews.some(
-          (entry) =>
-            entry.id === practice.reviewId &&
-            entry.practiceId === practice.id &&
-            entry.cardId === practice.cardId &&
-            entry.rating === practice.rating,
-        )
+        (!review ||
+          review.practiceId !== practice.id ||
+          review.cardId !== practice.cardId ||
+          review.rating !== practice.rating)
       )
         problem('练习关联的评分不存在')
     }
@@ -404,6 +403,9 @@ export function saveNote(
   )
   if (removed.size && !allowRemove)
     throw new LocalizedError(msg('修改后部分卡片将不再生成，请确认移除这些卡片及其复习记录。'))
+  const removedPractices = new Set(
+    library.practices.filter((entry) => removed.has(entry.cardId)).map((entry) => entry.id),
+  )
   return pruneMedia({
     ...library,
     notes: previous
@@ -417,17 +419,15 @@ export function saveNote(
     ],
     reviews: library.reviews.filter((review) => !removed.has(review.cardId)),
     practices: library.practices.filter((entry) => !removed.has(entry.cardId)),
-    attempts: library.attempts.filter(
-      (entry) =>
-        !library.practices.some(
-          (practice) => removed.has(practice.cardId) && practice.id === entry.practiceId,
-        ),
-    ),
+    attempts: library.attempts.filter((entry) => !removedPractices.has(entry.practiceId)),
   })
 }
 export function removeNotes(library: Library, ids: Set<string>): Library {
   const removed = new Set(
     library.cards.filter((card) => ids.has(card.noteId)).map((card) => card.id),
+  )
+  const removedPractices = new Set(
+    library.practices.filter((entry) => removed.has(entry.cardId)).map((entry) => entry.id),
   )
   return pruneMedia({
     ...library,
@@ -435,12 +435,7 @@ export function removeNotes(library: Library, ids: Set<string>): Library {
     cards: library.cards.filter((card) => !removed.has(card.id)),
     reviews: library.reviews.filter((review) => !removed.has(review.cardId)),
     practices: library.practices.filter((entry) => !removed.has(entry.cardId)),
-    attempts: library.attempts.filter(
-      (entry) =>
-        !library.practices.some(
-          (practice) => removed.has(practice.cardId) && practice.id === entry.practiceId,
-        ),
-    ),
+    attempts: library.attempts.filter((entry) => !removedPractices.has(entry.practiceId)),
   })
 }
 
@@ -451,11 +446,22 @@ export function migrateLibrary(value: unknown): Library {
     'version' in value &&
     (value.version === 2 || value.version === 3 || value.version === 4 || value.version === 5)
   )
-    return librarySchema.parse({ ...value, version: 5 })
+    return librarySchema.parse(
+      value.version === 5
+        ? value
+        : {
+            practices: [],
+            attempts: [],
+            ...value,
+            version: 5,
+          },
+    )
   const old = legacySchema.parse(value)
   const seen = new Set<string>()
   return librarySchema.parse({
     version: 5,
+    practices: [],
+    attempts: [],
     decks: old.decks,
     media: [],
     notes: old.cards.map((card) => ({

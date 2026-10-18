@@ -752,4 +752,7 @@ export const en = {
   尚未评分: 'Not rated',
   '暂无提交记录。': 'No submissions yet.',
   '第 {count} 次提交': 'Submission {count}',
+  '服务版本不兼容，请同时更新前端和后端。':
+    'Incompatible service version. Update both the frontend and backend.',
+  当时的题目: 'Problem at submission',
 } as const

@@ -22,6 +22,7 @@ export const practiceSchema = z.object({
     plugin: pluginDataSchema,
   }),
   startedAt: date,
+  answerSeen: z.boolean().optional(),
   completedAt: date.optional(),
   completion: z.enum(['review', 'practice']).optional(),
   assessment: assessmentSchema.optional(),
