@@ -504,7 +504,7 @@ export const en = {
   '已读取：{title}': 'Loaded: {title}',
   题目预览: 'Problem preview',
   '读取题目后再保存。题面保存在服务数据库中，提交判题需要联网。':
-    'Load a problem before saving. The statement is saved locally; judging requires an internet connection.',
+    'Load a problem before saving. The statement is saved in the server database; judging requires an internet connection.',
   解题笔记: 'Solution notes',
   '题目数据不完整，请编辑卡片并重新读取题目。':
     'Problem data is incomplete. Edit the card and load the problem again.',

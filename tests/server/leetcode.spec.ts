@@ -91,6 +91,11 @@ test('backend transport loads, judges, restores drafts, and saves an automatic r
 }) => {
   const remote = await connect(context, { rejectFirst: true })
   const page = await context.newPage()
+  const commits: { patches: { store: string }[] }[] = []
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/library/commit')
+      commits.push(request.postDataJSON())
+  })
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await create(page)
@@ -116,6 +121,12 @@ test('backend transport loads, judges, restores drafts, and saves an automatic r
   await page.screenshot({ path: 'test-results/leetcode-mobile.png', fullPage: true })
   await page.getByRole('button', { name: '保存评分：良好' }).click()
   await expect(page.getByRole('heading', { name: '本轮复习结束' })).toBeVisible()
+  expect(
+    commits
+      .at(-1)
+      ?.patches.map((patch) => patch.store)
+      .sort(),
+  ).toEqual(['cards', 'reviews'])
   await page.getByRole('button', { name: '返回', exact: true }).click()
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
   const downloading = page.waitForEvent('download')
