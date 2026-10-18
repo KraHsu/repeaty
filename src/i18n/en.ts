@@ -581,4 +581,10 @@ export const en = {
     'Open the extensions page: chrome://extensions in Chrome or edge://extensions in Edge.',
   '开启「开发者模式」，点击「加载已解压的扩展程序」，选择包含 manifest.json 的文件夹。':
     'Enable Developer mode, click “Load unpacked,” and select the folder containing manifest.json.',
+  '支持 Markdown 和数学公式，图片可直接粘贴到输入框。':
+    'Supports Markdown and math. Paste images directly into either field.',
+  '图片可直接粘贴到输入框。': 'Paste images directly into either field.',
+  '添加图片 / 音频': 'Add image / audio',
+  '每面最多 8 个附件，每个不超过 10 MB。': 'Up to 8 attachments per side, 10 MB each.',
+  挖空: 'Cloze',
 } as const

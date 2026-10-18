@@ -54,28 +54,34 @@ async function load() {
 </script>
 <template>
   <section class="leetcode-editor">
-    <label for="leetcode-site">{{ t('LeetCode 站点') }}</label>
-    <select id="leetcode-site" v-model="site" :disabled="loading" @change="rememberSite(site)">
-      <option value="leetcode.cn">{{ t('中国站 · leetcode.cn') }}</option>
-      <option value="leetcode.com">{{ t('国际站 · leetcode.com') }}</option>
-    </select>
-    <label for="leetcode-link">{{ t('题目链接或英文标识') }}</label>
-    <input
-      id="leetcode-link"
-      v-model="input"
-      :disabled="loading"
-      placeholder="https://leetcode.cn/problems/two-sum/"
-      maxlength="500"
-      @keydown.enter.prevent="load"
-    />
-    <button
-      class="button secondary"
-      type="button"
-      :disabled="loading || !input.trim()"
-      @click="load"
-    >
-      {{ loading ? t('读取中…') : t('读取题目') }}
-    </button>
+    <div class="leetcode-source">
+      <div class="form-field">
+        <label for="leetcode-site">{{ t('LeetCode 站点') }}</label>
+        <select id="leetcode-site" v-model="site" :disabled="loading" @change="rememberSite(site)">
+          <option value="leetcode.cn">{{ t('中国站 · leetcode.cn') }}</option>
+          <option value="leetcode.com">{{ t('国际站 · leetcode.com') }}</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label for="leetcode-link">{{ t('题目链接或英文标识') }}</label>
+        <input
+          id="leetcode-link"
+          v-model="input"
+          :disabled="loading"
+          placeholder="https://leetcode.cn/problems/two-sum/"
+          maxlength="500"
+          @keydown.enter.prevent="load"
+        />
+      </div>
+      <button
+        class="button secondary"
+        type="button"
+        :disabled="loading || !input.trim()"
+        @click="load"
+      >
+        {{ loading ? t('读取中…') : t('读取题目') }}
+      </button>
+    </div>
     <p v-if="error" role="alert" class="import-warning">{{ t(error) }}</p>
     <Connection :site="site" />
     <template v-if="problem">

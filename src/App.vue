@@ -1035,6 +1035,7 @@ async function restoreBackup() {
     <AppModal
       :error="notice?.error ? t(notice.text) : undefined"
       v-if="modal === 'card'"
+      wide
       :title="editingId ? t('编辑卡片') : t('添加卡片')"
       :busy="busy"
       @close="modal = null"
