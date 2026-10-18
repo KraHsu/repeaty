@@ -9,7 +9,7 @@ import { renderMarkdown } from '../core/content'
 import { fixture, now } from '../core/test-fixtures'
 import { cardStatus, saveSearch, searchCards } from '../core/search'
 import { intervalLabel, reviewCard, weekActivity } from '../core/scheduler'
-import { sampleLibrary } from '../core/sample'
+import { createStarterDeck } from '../core/sample'
 import { cardViews } from '../core/model'
 
 // Default core fixtures use Chinese; explicit switches exercise English independently.
@@ -146,12 +146,12 @@ describe('messages and data isolation', () => {
   })
   it('creates samples in the chosen language without translating an existing sample', () => {
     setLocale('en')
-    const sample = sampleLibrary()
-    expect(sample.decks[0]!.name).toBe('Learning how to learn')
-    expect(sample.notes[0]!.front).toBe('What is active recall?')
+    const sample = createStarterDeck().library
+    expect(sample.decks[0]!.name).toBe('Start here: FSRS & Repeaty')
+    expect(sample.notes[0]!.front).toBe('What should you do before turning a card over?')
     setLocale('zh-CN')
-    expect(sample.decks[0]!.name).toBe('Learning how to learn')
-    expect(sampleLibrary().decks[0]!.name).toBe('学习如何学习')
+    expect(sample.decks[0]!.name).toBe('Start here: FSRS & Repeaty')
+    expect(createStarterDeck().library.decks[0]!.name).toBe('从这里开始：FSRS 与 Repeaty')
   })
   it('localizes media placeholders while escaping inserted content', () => {
     setLocale('en')

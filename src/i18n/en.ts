@@ -1,5 +1,12 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  '创建自己的卡组，或添加入门卡组。': 'Create your own deck or add the starter deck.',
+  添加入门卡组: 'Add starter deck',
+  入门卡组已添加: 'Starter deck added',
+  'FSRS 与 Repeaty 入门': 'Getting started with FSRS & Repeaty',
+  '通过 24 条笔记学习评分、复习和制卡。按当前界面语言添加一份，已有卡片和进度会保留。':
+    'Learn ratings, reviews and making cards with 24 notes. Add a copy in the current interface language. Existing cards and progress are kept.',
+
   'Repeaty 首页': 'Repeaty home',
   间隔复习: 'Spaced repetition',
   主导航: 'Main navigation',

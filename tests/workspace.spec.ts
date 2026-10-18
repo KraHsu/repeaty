@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from './fixtures/empty-workspace'
+import type { Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import type { Library } from '../src/core/model'
 
@@ -102,8 +103,10 @@ test('backup export and confirmed restore retain cards, and malformed imports do
 test('mobile workspace and sample deck fit without page overflow', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('./')
-  await page.getByRole('button', { name: '加载示例', exact: true }).click()
-  await expect(page.getByRole('button', { name: '学习如何学习', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '添加入门卡组', exact: true }).click()
+  await expect(
+    page.getByRole('button', { name: '从这里开始：FSRS 与 Repeaty', exact: true }),
+  ).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   )
@@ -119,8 +122,10 @@ test('mobile workspace and sample deck fit without page overflow', async ({ page
 test('desktop sample dashboard renders cleanly', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1050 })
   await page.goto('./')
-  await page.getByRole('button', { name: '加载示例', exact: true }).click()
-  await expect(page.getByRole('button', { name: '学习如何学习', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '添加入门卡组', exact: true }).click()
+  await expect(
+    page.getByRole('button', { name: '从这里开始：FSRS 与 Repeaty', exact: true }),
+  ).toBeVisible()
   await page.screenshot({ path: 'test-results/desktop-dashboard.png', fullPage: true })
 })
 
