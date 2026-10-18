@@ -79,14 +79,15 @@ export const content: Record<Locale, { name: string; description: string; entrie
         topic: 'fsrs',
         front: '一张卡片的稳定性 S = 10 天，意味着什么？',
         back:
-          '模型估计，经过 10 天后，回想概率降到 90%。\n\n$$S = 10\\text{ 天} \\quad \\Rightarrow \\quad R(10) = 0.9$$\n\n这展示了数学公式：编辑时用 `$...$` 写行内公式、`$$...$$` 写独立公式。实际到期时间还受目标保留率和学习步骤等设置影响。[稳定性定义](' +
+          '模型估计，经过 10 天后，回想概率降到 90%。\n\n$$S = 10 \\;\\Rightarrow\\; R(10) = 0.9$$\n\n这展示了数学公式：编辑时用 `$...$` 写行内公式、`$$...$$` 写独立公式。实际到期时间还受目标保留率和学习步骤等设置影响。[稳定性定义](' +
           fsrs +
           ')',
       },
       {
         topic: 'fsrs',
         media: 'curve',
-        front: '图中 A、B 两条曲线，哪一条对应更稳定的记忆？',
+        front:
+          '图中 A、B 两条曲线，哪一条对应更稳定的记忆？\n\n横轴 t 是时间，纵轴 R 是想起答案的概率。',
         back: '**B。** 它下降得更慢，也更晚到达 90% 的虚线。\n\n图中曲线仅用于解释稳定性，不是实际 FSRS 公式，也不是你的个人预测。可以在卡片正面、背面添加图片，或直接粘贴图片。',
       },
       {
@@ -244,14 +245,15 @@ export const content: Record<Locale, { name: string; description: string; entrie
         topic: 'fsrs',
         front: 'What does a stability of S = 10 days mean?',
         back:
-          'The model estimates that recall probability reaches 90% after 10 days.\n\n$$S = 10\\text{ days} \\quad \\Rightarrow \\quad R(10) = 0.9$$\n\nThis card also demonstrates math: use `$...$` inline or `$$...$$` for a separate formula. Actual due dates also depend on settings such as desired retention and learning steps. [Stability](' +
+          'The model estimates that recall probability reaches 90% after 10 days.\n\n$$S = 10 \\;\\Rightarrow\\; R(10) = 0.9$$\n\nThis card also demonstrates math: use `$...$` inline or `$$...$$` for a separate formula. Actual due dates also depend on settings such as desired retention and learning steps. [Stability](' +
           fsrs +
           ')',
       },
       {
         topic: 'fsrs',
         media: 'curve',
-        front: 'Which curve, A or B, represents a more stable memory?',
+        front:
+          'Which curve, A or B, represents a more stable memory?\n\nTime (t) runs left to right; recall probability (R) runs bottom to top.',
         back: '**B.** It declines more slowly and reaches the 90% line later.\n\nThese curves illustrate stability. They are not the FSRS formula or a personal prediction. Attach or paste an image on either side of a card to make your own visual questions.',
       },
       {
