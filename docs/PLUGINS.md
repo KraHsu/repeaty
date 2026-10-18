@@ -6,12 +6,14 @@
 
 ## 两类插件
 
-| 类型       | 声明               | 安装位置                                   | 可用版本           |
-| ---------- | ------------------ | ------------------------------------------ | ------------------ |
-| 纯前端插件 | `kind: 'frontend'` | `repeaty.plugins.static.ts`                | 纯前端版、带后端版 |
-| 带后端插件 | `kind: 'backend'`  | `repeaty.plugins.server.ts` 和 Rust 注册表 | 带后端版           |
+| 类型       | 声明               | 安装位置                                        | 可用版本 |
+| ---------- | ------------------ | ----------------------------------------------- | -------- |
+| 纯前端插件 | `kind: 'frontend'` | `repeaty.plugins.static.ts`                     | 所有版本 |
+| 本地插件   | `kind: 'local'`    | `repeaty.plugins.desktop.ts` 和桌面 Rust 注册表 | 仅桌面版 |
 
-后端版会继承纯前端清单。默认纯前端清单为空，后端清单内置 LeetCode。构建通过别名选择清单与存储适配器，`dist/` 不包含 LeetCode 代码、后端客户端或浏览器扩展下载包。关闭插件开关不会删除已打包代码；要从部署中移除，需移出清单并重新构建。
+后端版和桌面版继承纯前端清单。默认前端清单为空，桌面清单内置 LeetCode。开源服务没有插件路由。构建选择清单与存储适配器，静态产物不包含账户客户端、Tauri 或 LeetCode 模块。
+
+关闭插件保留题目与进度。要从安装包移除插件代码，需移出清单并重新构建。
 
 ## 前端接口
 
@@ -20,7 +22,7 @@
 ```ts
 interface QuestionPlugin {
   id: string
-  kind: 'frontend' | 'backend'
+  kind: 'frontend' | 'local'
   label: string
   version: number
   showQuestion: Component
@@ -34,7 +36,7 @@ interface QuestionPlugin {
 `showQuestion` 与 `showAnswer` 接收 `QuestionProps`：
 
 - `card`：当前题面、答案、调度状态与 `card.plugin.data`。
-- `media`、`getMedia(id)`：媒体元数据与按需读取 Blob 的接口，兼容两种存储。
+- `media`、`getMedia(id)`：媒体元数据与按需读取 Blob 的接口，兼容本地与服务端存储。
 - `revealed`：宿主是否已经翻面。
 - `state`：插件设置 `allowedGrades`、可选 `suggestedGrade`、`assessment` 与 `busy`。评分为 1 重来、2 困难、3 良好、4 简单；忙碌时宿主禁止评分。可提供 `complete()`，宿主仅在评分成功保存后调用。
 
@@ -59,23 +61,23 @@ export default [
 ] satisfies FrontendPluginInstallation[]
 ```
 
-运行 `npm run dev`，添加卡片时选择「插件题目 → Typed answer」。`npm run build` 将示例打包到静态站点；`npm run build:server` 也会包含它。示例默认不部署到本仓库的 GitHub Pages。
+运行 `npm run dev`，添加卡片时选择「插件题目 → Typed answer」。`npm run build` 将示例打包到静态站点；`npm run build:server` 与 `npm run build:desktop` 也会包含它。示例默认不部署到本仓库的 GitHub Pages。
 
 插件与应用在同一 JavaScript 环境执行，不是隔离沙箱。只安装信任的本地或 npm 模块；备份只携带数据，不安装或执行插件代码。
 
-## 后端接口
+## 本地接口
 
-带后端插件的 Vue 模块仍使用相同接口，额外声明 `kind: 'backend'`。在 `repeaty.plugins.server.ts` 注册它，并在 [`server/src/plugins.rs`](../server/src/plugins.rs) 实现与注册：
+本地插件的 Vue 模块仍实现上述接口，声明 `kind: 'local'`，注册到 `repeaty.plugins.desktop.ts`。原生部分实现 [`src-tauri/src/plugins.rs`](../src-tauri/src/plugins.rs) 的接口：
 
 ```rust
-pub trait BackendPlugin: Send + Sync {
+pub trait LocalPlugin: Send + Sync {
     fn id(&self) -> &'static str;
-    fn routes(&self) -> axum::Router<AppState>;
+    fn call(&self, operation: String, payload: Value) -> PluginFuture<'_>;
 }
 ```
 
-路由相对于 `/api/plugins`，例如 LeetCode 提供 `/api/plugins/leetcode`。共享访问密钥、来源校验与请求体限制；前端可复用 `src/backend/client.ts` 的 `api` / `apiJson` 发送请求。插件 ID 与前端一致，部署时加入 `REPEATY_PLUGINS`；未启用的后端模块不注册路由。
+在桌面启动时加入 `Plugins::new` 清单。前端通过 `localPlugin(id, operation, payload)` 调用；宿主使用 Tauri IPC，不借道上游 HTTP 服务。未知插件或操作返回错误，插件负责参数、目标域名和响应校验。新增原生模块需要重新编译桌面应用，不动态加载下载的库。
 
-`GET /api/status` 返回 API 版本及已启用的后端插件 ID。前端据此禁用缺少后端支持的插件；服务端配置始终决定 API 是否可用。新增模块需要重新编译 Rust，不在运行时加载动态库。
+LeetCode 实现位于 `crates/leetcode-local`，只连接固定的中国站与国际站。Cookie 存于本机独立文件；学习库在上游时，判题仍由本机执行。凭据不放入 `card.plugin.data`。
 
-后端插件负责外部请求的目标限制、认证与响应校验。内置 LeetCode 只支持固定的读取题目、提交和查询操作，固定访问 `leetcode.cn` / `leetcode.com`，不提供通用代理。登录信息只留在服务环境。
+原生命令只授权安装包内的主窗口，不授权远程网址；上游只提供学习数据，不提供执行代码。前端和本地插件均属于可信应用代码，不是安全沙箱。安装桌面插件意味着信任它访问本机所授权的资源。

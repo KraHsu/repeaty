@@ -1,4 +1,4 @@
-import { test, expect, headers, token } from './fixture'
+import { test, expect, headers } from './fixture'
 import { test as isolatedTest } from '@playwright/test'
 import { openAsBlob } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
@@ -110,19 +110,40 @@ test('stale pages cannot overwrite SQLite and an unavailable service never falls
 })
 
 isolatedTest(
-  'the access key form unlocks the service without storing credentials in localStorage',
-  async ({ page }) => {
+  'new accounts receive the starter deck and cookies stay HttpOnly',
+  async ({ page, context }) => {
     await page.goto('./')
-    await expect(page.getByLabel('服务访问密钥')).toBeVisible()
-    await page.getByLabel('服务访问密钥').fill('wrong-key')
-    await page.getByRole('button', { name: '连接服务', exact: true }).click()
-    await expect(page.getByText('请输入正确的服务访问密钥。', { exact: true })).toBeVisible()
-    await page.getByLabel('服务访问密钥').fill(token)
-    await page.getByRole('button', { name: '连接服务', exact: true }).click()
-    await expect(page.getByLabel('服务访问密钥')).toHaveCount(0)
+    await page.getByRole('button', { name: '创建账户', exact: true }).click()
+    await page
+      .getByLabel('用户名', { exact: true })
+      .fill(`browser-${crypto.randomUUID().slice(0, 24)}`)
+    await page.getByLabel('密码', { exact: true }).fill('browser-test-password')
+    await page.getByRole('button', { name: '创建账户', exact: true }).click()
+    await expect(page.locator('.deck-title')).toHaveCount(1)
     await page.reload()
-    await expect(page.getByLabel('服务访问密钥')).toHaveCount(0)
-    expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain(token)
+    await expect(page.locator('.deck-title')).toHaveCount(1)
+    await page.setViewportSize({ width: 390, height: 844 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    const cookie = (await context.cookies()).find((c) => c.name === 'repeaty_session')!
+    expect(cookie.httpOnly).toBe(true)
+    expect(cookie.sameSite).toBe('Strict')
+    expect(
+      await page.evaluate(() => JSON.stringify([localStorage, sessionStorage, document.cookie])),
+    ).not.toContain(cookie.value)
+    await page.getByRole('button', { name: '插件', exact: true }).click()
+    await expect(page.getByRole('switch', { name: '启用 LeetCode' })).toHaveCount(0)
+    const cookieUsername = await page.locator('.account-controls > span').innerText()
+    await page.getByRole('button', { name: '修改密码', exact: true }).click()
+    await page.getByLabel('当前密码', { exact: true }).fill('browser-test-password')
+    await page.getByLabel('新密码', { exact: true }).fill('changed-browser-password')
+    await page.getByRole('dialog').getByRole('button', { name: '保存', exact: true }).click()
+    await expect(page.getByLabel('用户名', { exact: true })).toBeVisible()
+    await page.getByLabel('用户名', { exact: true }).fill(cookieUsername)
+    await page.getByLabel('密码', { exact: true }).fill('changed-browser-password')
+    await page.getByRole('button', { name: '登录', exact: true }).click()
+    await expect(page.locator('.deck-title')).toHaveCount(1)
+    await page.getByRole('button', { name: '退出登录', exact: true }).click()
+    await expect(page.getByLabel('用户名', { exact: true })).toBeVisible()
   },
 )
 

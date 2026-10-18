@@ -5,7 +5,10 @@ for (const key of Object.keys(manifest)) {
   if (
     key.includes('plugins/leetcode') ||
     key.includes('backend/') ||
-    key.includes('ServerConnection')
+    key.includes('ServerConnection') ||
+    key.includes('AccountControls') ||
+    key.includes('desktop/') ||
+    key.includes('@tauri-apps')
   )
     throw new Error(`Backend module leaked into the static build: ${key}`)
 }

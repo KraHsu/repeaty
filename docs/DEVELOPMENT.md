@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-默认开发地址为 `http://127.0.0.1:5173`。首次使用为空空间，可创建卡组或加载入门示例。
+默认开发地址为 `http://127.0.0.1:5173`。首次使用自动添加入门卡组，删除后不会自动补回。
 
 ```bash
 npm run format:check # 格式检查；npm run format 自动整理
@@ -82,7 +82,7 @@ VITE_BASE_PATH=/repeaty/ npm run preview
 
 1. 按 `.nvmrc` 安装 Node.js，使用 `npm ci` 安装锁定依赖，另行安装 Playwright Chromium 及系统依赖。
 2. 运行格式检查、单元 / DOM 测试、类型检查、纯前端生产构建和浏览器测试，使用 `/repeaty/` 子路径。
-3. 安装 Rust 1.97.1，检查生成 Schema、插件开关、Rust 格式、Clippy 与测试，再构建后端版、启动临时 SQLite 服务执行浏览器测试。后端测试使用根路径和独立临时数据库，禁用真实 LeetCode 登录信息；覆盖受控判题、访问密钥、写入冲突、128 MiB 媒体 / 长文本与静态版备份互通。
+3. 安装 Rust 1.97.1，检查生成 Schema、插件开关、Rust 格式、Clippy 与测试，再构建后端版、启动临时 SQLite 服务执行浏览器测试。后端测试使用根路径和独立临时数据库，覆盖账户隔离、登录会话、写入冲突、128 MiB 媒体 / 长文本与静态版备份互通。
 4. 仅在 `main` 的检查通过后上传已经测试的 `dist/`，通过 `github-pages` 环境部署到 [GitHub Pages](https://krahsu.github.io/repeaty/)。`dist-server/` 与 Rust 二进制不上传 Pages；PR 只检查，不部署。
 
 工作流使用固定提交版本的官方 GitHub Actions。检查任务仅授予仓库读取权限；部署任务单独授予 `pages: write` 和 `id-token: write`，不需要配置个人访问令牌。失败报告保留 7 天。
@@ -123,7 +123,9 @@ src/backend/        # HTTP 客户端、SQLite 服务的增量存储适配
 src/platform/       # 构建时选择 IndexedDB 或后端适配器
 repeaty.plugins.*.ts # 静态 / 后端版部署插件清单
 examples/plugins/   # 可安装的纯前端插件示例
-server/             # Rust 服务、SQLite、LeetCode API、Schema 与测试
+server/             # Rust 账户服务、每账户 SQLite、Schema 与测试
+src-tauri/          # Tauri 桌面入口、上游客户端与本地插件接口
+crates/leetcode-local/ # 本机 LeetCode 请求和凭据存储
 src/i18n/           # 双语词典、语言偏好、格式化与 DOM 回归测试
 src/composables/     # 工作空间状态与离线更新状态
 src/components/      # 笔记编辑、卡片列表、导入、复习和媒体展示
@@ -137,6 +139,8 @@ docs/               # 使用指南、开发文档与 README 插图
 
 ## 题目插件
 
-插件按部署安装，前端接口统一为 `showQuestion` / `showAnswer`，可选编辑器和设置页。`kind: 'frontend'` 可在两版使用，`kind: 'backend'` 需要 Rust 服务和对应路由。纯前端清单的类型仅接受前端插件；Vite 通过构建别名隔离模块，而不是在运行时隐藏菜单。
+插件按部署安装，前端接口统一为 `showQuestion` / `showAnswer`，可选编辑器和设置页。`kind: 'frontend'` 可在所有版本使用，`kind: 'local'` 只在桌面版使用。服务端不加载插件。纯前端清单的类型仅接受前端插件；Vite 通过构建别名隔离模块，而不是在运行时隐藏菜单。
 
-接口、完整示例、后端注册方式及版本兼容规则见[插件开发](PLUGINS.md)。内置 LeetCode 的登录配置、判题规则和限制见[LeetCode 插件](LEETCODE.md)。
+接口、完整示例、本地注册方式及版本兼容规则见[插件开发](PLUGINS.md)。内置 LeetCode 的登录配置、判题规则和限制见[LeetCode 插件](LEETCODE.md)。
+
+桌面构建与原生 WebKit 测试见[桌面版开发说明](DESKTOP.md#测试)。桌面 CI 为 Linux、Windows、macOS 分别构建安装包；LeetCode UI 测试模拟 IPC，Rust 测试使用受控上游服务，均不提交到真实账号。

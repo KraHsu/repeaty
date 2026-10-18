@@ -1,12 +1,12 @@
 # 部署带后端版
 
-[返回首页](../README.md) · [插件开发](PLUGINS.md) · [LeetCode 配置](LEETCODE.md)
+[返回首页](../README.md) · [桌面版](DESKTOP.md) · [插件开发](PLUGINS.md)
 
-带后端版由一个 Rust 进程提供网页与 API，SQLite 保存学习数据和附件。适合个人自用，一个服务对应一个学习库；访问密钥不是用户账号，不区分多人数据。GitHub Pages 只发布纯前端版，不会启动或部署这个服务。
+Rust 服务提供网页、账户和学习数据 API。每个账户有独立的 SQLite 学习库，网页与桌面版可登录同一个账户。服务端不加载插件，也不接收 LeetCode 登录信息。GitHub Pages 仍只发布无需账户的纯前端版。
 
-## 本机启动
+## 启动
 
-需要 Node.js 24.12+（24.x）、Rust（CI 使用 1.97.1）及系统 C 编译工具。SQLite 随 Rust 依赖编译，无需另装数据库服务。在仓库根目录执行：
+需要 Node.js 24.12+、Rust 1.97.1 和 C 编译工具。SQLite 随程序编译。
 
 ```bash
 npm ci
@@ -14,58 +14,69 @@ npm run build:server
 cargo run --release --locked --manifest-path server/Cargo.toml
 ```
 
-打开 `http://127.0.0.1:8080`。默认仅监听本机，网页目录为 `dist-server/`，数据库自动创建在 `data/repeaty.sqlite3`。停止后再次启动会继续使用同一个数据库。首次访问空库时会添加 FSRS 入门卡组，不会自动读取另一个网址的 IndexedDB；迁移原数据请先在原页面导出 `.repeaty`，再在此处导入。
+打开 `http://127.0.0.1:8080`，创建账户。新账户首次进入时自动添加入门卡组；删除后不会再自动添加。纯前端版或旧服务的数据可以通过 `.repeaty` 导入。
 
-生产部署也可以先执行 `cargo build --release --locked --manifest-path server/Cargo.toml`，随后直接运行 `server/target/release/repeaty-server`。运行目录会影响默认相对路径，长期运行建议设置绝对路径。
+生产环境可运行 `server/target/release/repeaty-server`，用 systemd 等进程管理器启动。配置使用进程环境变量，程序不自动读取 `.env`。
 
-## 配置
+| 变量                   | 默认值               | 用途                                         |
+| ---------------------- | -------------------- | -------------------------------------------- |
+| `REPEATY_BIND`         | `127.0.0.1:8080`     | 监听地址                                     |
+| `REPEATY_ORIGIN`       | `http://` 加监听地址 | 实际访问来源，含端口，不含路径               |
+| `REPEATY_DATA_DIR`     | `data`               | 账户和学习数据库目录                         |
+| `REPEATY_WEB_DIR`      | `dist-server`        | 网页产物目录                                 |
+| `REPEATY_REGISTRATION` | `open`               | `open` 允许注册；`closed` 仅允许已有账户登录 |
 
-通过进程环境变量配置；程序不会自动读取 `.env`。可由 shell、systemd 或容器注入。不要给敏感配置添加 `VITE_` 前缀，它会将值暴露给网页构建。
+公网来源必须使用 HTTPS。反向代理同时转发网页与 `/api/`，保留 `Host`；将 `REPEATY_ORIGIN` 设为实际网址，例如 `https://repeaty.example.com`。服务部署于独立来源的根路径，不支持子目录。代理应允许 64 MiB 请求体；单个媒体限制仍为 10 MiB。
 
-| 变量                                         | 默认值                 | 说明                                                       |
-| -------------------------------------------- | ---------------------- | ---------------------------------------------------------- |
-| `REPEATY_BIND`                               | `127.0.0.1:8080`       | Rust 监听的 IP 与端口                                      |
-| `REPEATY_ORIGIN`                             | `http://` 加监听地址   | 浏览器访问的完整来源，含必要端口，不含路径                 |
-| `REPEATY_DATABASE`                           | `data/repeaty.sqlite3` | SQLite 文件路径                                            |
-| `REPEATY_WEB_DIR`                            | `dist-server`          | 后端版网页产物目录                                         |
-| `REPEATY_API_TOKEN`                          | 未设置                 | 访问密钥，设置时至少 24 字符；非本机监听或公开域名必须设置 |
-| `REPEATY_PLUGINS`                            | `leetcode`             | 启用的后端插件 ID，逗号分隔；空字符串关闭所有后端插件      |
-| `LEETCODE_CN_SESSION` / `LEETCODE_CN_CSRF`   | 未设置                 | 中国站初始登录信息，可在插件页面配置或覆盖                 |
-| `LEETCODE_COM_SESSION` / `LEETCODE_COM_CSRF` | 未设置                 | 国际站初始登录信息，可在插件页面配置或覆盖                 |
+服务校验 Host、Origin 和专用请求头，不提供浏览器跨域 API。桌面版通过原生 HTTP 客户端连接上游，无需开启 CORS。上游不可达时显示错误，不会悄悄切到本地库。
 
-访问密钥可以用 `openssl rand -hex 32` 生成，再保存到部署环境的私密配置中。网页首次连接时输入该值，仅保存在当前标签页的 `sessionStorage`，不写入学习备份。
+## 账户管理
 
-例如，仅关闭 LeetCode 并保持本机使用：
+用户名为 3–32 位英文字母、数字、下划线或连字符，不区分大小写。密码为 12–128 UTF-8 字节。密码使用带随机盐的 Argon2id 哈希；登录有频率限制。当前提供注册、登录、退出和改密，没有邮箱验证、找回邮件或管理后台。
+
+浏览器使用 HttpOnly、SameSite=Strict Cookie，HTTPS 下附加 Secure；桌面会话只保存在 Rust 内存中，退出应用后需重新登录。会话有效期为 7 天，修改密码会撤销所有会话。学习请求绑定加载时的账户，其他标签页换号后，旧页面的读写会被拒绝。
+
+关闭注册后，可在服务器离线创建账户或重置密码。先停止服务，再通过标准输入传入密码；不要把密码放进命令行或 shell 历史。
 
 ```bash
-REPEATY_PLUGINS='' cargo run --release --locked --manifest-path server/Cargo.toml
+# 以下命令从标准输入读取密码；建议由密码管理器或交互式 read -s 提供。
+REPEATY_DATA_DIR=/var/lib/repeaty ./repeaty-server create-user alice
+REPEATY_DATA_DIR=/var/lib/repeaty ./repeaty-server reset-password alice
 ```
 
-若通过反向代理公开访问，使用 HTTPS，将 `REPEATY_ORIGIN` 设为实际网址（如 `https://repeaty.example.com`），设置访问密钥，代理同时转发网页与 `/api/`，并保留对应的 `Host`。可保持 Rust 监听 `127.0.0.1:8080`。后端版目前部署在独立来源的根路径，不支持 `/repeaty/` 子目录。代理需允许至少 64 MiB 请求体；单个媒体仍限 10 MiB。
+直接在终端运行时，输入完成后按 Ctrl+D；终端可能回显，推荐用 `read -s` 读取后经管道传入。账户创建后首次进入仍会初始化入门卡组。
 
-服务只接受与配置匹配的 Host / Origin 和客户端请求头，不提供跨域 API。修改域名或端口后需同步修改 `REPEATY_ORIGIN`；提示地址不匹配时应修正配置。
+## 从 0.6 的共享学习库升级
 
-## 数据与备份
+旧配置不会被静默接管。检测到 `REPEATY_DATABASE` 或 `REPEATY_API_TOKEN` 时，新服务拒绝启动并提示迁移。
 
-卡组、笔记、卡片、复习记录、媒体元数据及常用筛选分别存储；每条记录一行，媒体保存为独立 BLOB。评分通过增量提交更新记录，不重写整个学习库或附件。修订号检查与记录写入处于同一事务，过期页面写入会被拒绝，刷新后再修改。
+1. 在旧版导出 `.repeaty`，并停止旧服务、备份 SQLite。
+2. 设置新的 `REPEATY_DATA_DIR`，移除旧访问密钥、插件和 LeetCode 环境变量。
+3. 使用上面的 `create-user` 创建接收数据的账户。在首次登录前执行：
 
-服务保留最近 10 个增量快照。恢复、导入和删除前保存快照；未引用上传在保留一天后随后续清理回收，仍被快照引用的附件保留。快照和当前数据在同一个数据库中，不能替代独立备份。
+   ```bash
+   REPEATY_DATA_DIR=/var/lib/repeaty ./repeaty-server import-library alice /backup/repeaty.sqlite3
+   ```
 
-两种备份方式：
+4. 启动新服务，登录并核对卡片、进度和附件。
 
-- 在「数据与备份」导出 `.repeaty`，可恢复到任一版本，包含卡片、进度与原始附件。插件代码、访问密钥、LeetCode 会话及未完成的浏览器草稿不包含在内。
-- 备份 SQLite：停止服务后复制数据库，或使用 SQLite 的在线备份功能，例如 `sqlite3 data/repeaty.sqlite3 ".backup '/backup/repeaty.sqlite3'"`。运行期间使用 WAL，不能仅复制主文件而忽略未合并的 WAL 内容。
+迁移使用 SQLite backup API，包含已提交的 WAL 数据。来源数据库保留不动；目标库已存在时拒绝覆盖，不会把旧数据自动分配给第一个注册者。也可正常登录后直接导入 `.repeaty`。
 
-不要将数据库放在网页目录或提交到 Git。升级前先备份 SQLite；当前数据库版本为 1，服务拒绝打开更新版本的数据库。纯前端旧数据的迁移由导入流程完成。
+旧 `.credentials.sqlite3` 不会复制或读取。确认迁移完成后，由部署者处理旧凭据文件；如果凭据曾保存在不再信任的服务上，应在 LeetCode 注销相关会话。
 
-## 使用边界
+## 存储和备份
 
-带后端版不启用 Service Worker，不支持断开服务后继续编辑。服务不可达时显示连接错误，不会切换到另一份浏览器学习库。界面语言、插件开关和 LeetCode 作答草稿仍按浏览器保存。
+```text
+data/
+  accounts.sqlite3          # 密码哈希、会话哈希
+  users/<user-id>.sqlite3    # 该账户的学习数据、媒体、增量快照
+```
 
-服务不是云同步系统：多个页面可读取同一个库，但不会实时刷新彼此内容，过期写入返回冲突。SQLite 负责持久化；当前启动仍将完整结构化学习记录读入前端内存，搜索也在前端执行。一次结构化提交上限 64 MiB，超出时会拒绝且不更改学习库；媒体单独上传，不计入该请求。SQLite 不意味着可以无限扩大浏览器内存中的学习库。
+Unix 下数据目录权限为 `0700`。不要将目录放在网页产物内或提交 Git。部署者仍能访问服务器上的学习数据；基本账户系统隔离不同使用者，不能对服务器管理员隐藏内容。
 
-### LeetCode 登录信息
+每个库按记录更新，使用事务和修订号拒绝过期写入。媒体保存为 BLOB，保留最近 10 个增量快照。服务端保存完整记录，但前端启动和搜索仍需加载结构化学习数据，附件按需读取。
 
-在「插件 → LeetCode」中填写 `LEETCODE_SESSION` 和 `csrftoken`，保存后立即生效。无需改环境变量或重启；环境变量保留为可选的初始配置。详见[配置步骤](LEETCODE.md#配置与启用)。
+- **个人备份**：在「数据与备份」导出 `.repeaty`，包含卡片、进度、附件，不包含账户凭据或插件代码。
+- **整站备份**：停止服务后复制整个数据目录；运行中应对每个 SQLite 文件使用在线备份 API，不能只复制主文件而遗漏 WAL。
 
-后端在学习数据库旁创建独立的凭据文件：例如 `data/repeaty.sqlite3.credentials.sqlite3`。服务需有该目录的写权限，Unix 下该文件权限为 `0600`。文件包含明文登录凭据，不应公开下载或提交到 Git；学习库导出和内置快照不会包含它。迁移时可私下复制此文件，也可在新服务的插件页面重新填写。
+内置快照与当前数据位于同一个数据库，不能替代独立备份。多个客户端不会实时刷新彼此修改，遇到修订冲突需刷新后继续。

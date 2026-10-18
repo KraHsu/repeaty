@@ -1,5 +1,64 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  桌面版可离线使用本地学习库: 'The desktop app can use its local library offline',
+  '桌面版 · 本地学习库': 'Desktop · Local library',
+  保存在本机应用中: 'Stored on this device',
+  '本地学习库保存在此设备。更换设备或卸载前，请先导出备份。':
+    'Your local library stays on this device. Export a backup before switching devices or uninstalling.',
+
+  '请登录；用户名或密码错误时请重新输入。':
+    'Please sign in. If your username or password is incorrect, try again.',
+  '登录账户已变更，请刷新页面后重试。':
+    'The signed-in account has changed. Reload this page before continuing.',
+  '用户名已被使用。': 'This username is already taken.',
+  '用户名需为 3–32 位字母、数字、下划线或连字符。':
+    'Use 3–32 letters, numbers, underscores or hyphens for your username.',
+  '密码需为 12–128 字节。': 'Use a password of 12–128 bytes.',
+  '此服务已关闭注册，请联系部署者创建账户。':
+    'Registration is closed. Ask the server owner to create an account.',
+  '操作过于频繁，请稍后重试。': 'Too many attempts. Please try again later.',
+  创建账户: 'Create account',
+  登录: 'Sign in',
+  用户名: 'Username',
+  密码: 'Password',
+  '已有账户，登录': 'Already have an account? Sign in',
+  修改密码: 'Change password',
+  退出登录: 'Sign out',
+  当前密码: 'Current password',
+  新密码: 'New password',
+  '修改后需在所有设备重新登录。': 'You will need to sign in again on every device.',
+  '本地插件 · 桌面版': 'Local plugin · Desktop',
+  '此插件仅在桌面版可用。': 'This plugin is available in the desktop app.',
+  'LeetCode 登录已过期或需要验证，请更新本机的登录信息。':
+    'Your LeetCode session has expired or needs verification. Update the credentials on this device.',
+  '无法连接 LeetCode，请稍后重试。': 'Cannot connect to LeetCode. Please try again later.',
+  '无法读取本机插件状态，请重试。': 'Cannot read the local plugin status. Please try again.',
+  '本机已保存该站点的登录信息，提交时会验证登录是否仍然有效。':
+    'Credentials for this site are saved on this device. Their validity is checked when you submit.',
+  '打开力扣网站并登录，不会自动连接 Repeaty。请将登录信息填入下方。':
+    'Signing in on LeetCode does not connect Repeaty automatically. Enter your credentials below.',
+  '填写 Cookie 的值。保存后立即生效；已保存的值不会回填。':
+    'Paste the cookie values. Changes take effect immediately; saved values are never displayed.',
+  '登录信息仅保存在本机，由桌面版直接连接力扣，不会发送给上游服务或包含在卡组导出中。':
+    'Credentials stay on this device. The desktop app connects directly to LeetCode; credentials are never sent to your upstream server or included in exports.',
+  '请输入 HTTPS 服务地址；本机服务可使用 HTTP。地址不应包含路径、账号或参数。':
+    'Enter an HTTPS server address. Localhost may use HTTP. Do not include a path, credentials or query parameters.',
+  学习库存储: 'Library storage',
+  上游后端地址: 'Upstream server address',
+  设置: 'Settings',
+  '留空使用本地学习库。连接后使用服务端账户的学习库，两者独立保留，不会自动合并。':
+    'Leave empty to use the local library. Connecting switches to your server account’s library. Both libraries stay separate and are not merged automatically.',
+  'LeetCode 登录信息始终保存在本机，不会发送给上游服务。':
+    'LeetCode credentials stay on this device and are never sent to the upstream server.',
+  保存并重新打开: 'Save and reload',
+
+  挖空答案: 'Missing text',
+  补充说明: 'Extra information',
+  '答案来自正面的挖空内容，这里可留空。':
+    'The answer comes from the cloze text. You can leave this empty.',
+  '将要记住的内容写在 {{c1::答案}} 中，也可写成 {{c1::答案::提示}}。显示答案时会自动还原；同编号一起隐藏，不同编号各生成一张卡片。':
+    'Wrap the text to remember in {{c1::answer}} or {{c1::answer::hint}}. Revealing restores it automatically. Matching numbers are hidden together; different numbers create separate cards.',
+
   '可读取公开题目。提交判题前，请填写下方的登录信息。':
     'Public problems can be loaded. Add your credentials below to submit code.',
   更新登录信息: 'Update credentials',

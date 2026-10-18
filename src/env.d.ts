@@ -1,1 +1,1 @@
-declare const __REPEATY_EDITION__: 'static' | 'server'
+declare const __REPEATY_EDITION__: 'static' | 'server' | 'desktop'

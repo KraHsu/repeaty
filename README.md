@@ -18,7 +18,7 @@
 
 Repeaty 是一个开源的网页记忆卡片工具。把想记住的内容做成卡片，按 FSRS 安排复习。
 
-无需注册，也没有订阅或付费功能。可以直接在浏览器里离线使用，也可以部署 Rust + SQLite 后端。
+可以直接在浏览器中使用，也可以安装桌面版，或部署带账户的 Rust + SQLite 服务。纯前端版与桌面本地模式无需注册，没有订阅或付费功能。
 
 ![Repeaty 的入门卡组与学习概览](docs/media/workspace.png)
 
@@ -35,22 +35,20 @@ Repeaty 是一个开源的网页记忆卡片工具。把想记住的内容做成
 - **制卡**：正反面、双向、挖空；Markdown、代码块、数学公式、图片和音频。
 - **复习**：FSRS 调度，按卡组设置目标记忆保留率和每日学习量；支持撤销评分、暂停、暂缓与顽固卡标记。
 - **整理与练习**：标签、组合搜索、常用筛选、批量编辑；专项练习可选择是否更新复习进度。
-- **数据导入导出**：CSV / TSV 导入笔记，`.repeaty` 备份包含附件和进度，两种部署版本之间可以迁移。
-- **插件**：部署时安装，使用时开关。支持纯前端插件；后端版内置 LeetCode 题目与判题插件。
+- **数据导入导出**：CSV / TSV 导入笔记，`.repeaty` 备份包含附件和进度，三个版本之间可以迁移。
+- **插件**：部署时安装，使用时开关。纯前端插件适用于所有版本；桌面版另支持本地插件，内置 LeetCode 题目与判题。
 
 目前不支持 Anki `.apkg` 导入、自定义字段 / HTML 模板、图片遮挡或个人 FSRS 参数训练。[完整用法](docs/USAGE.md) · [存储与性能](docs/DEVELOPMENT.md#大数据量存储)
 
 ## 自行部署
 
-|          | 纯前端版              | 带后端版                   |
-| -------- | --------------------- | -------------------------- |
-| 存储     | 浏览器 IndexedDB      | 服务端 SQLite              |
-| 部署产物 | `dist/`，任意静态托管 | Rust 程序 + `dist-server/` |
-| 离线使用 | 支持，含已保存的附件  | 需要连接服务               |
-| 插件     | 纯前端插件            | 纯前端及后端插件           |
-| LeetCode | 不包含                | 内置，需配置连接           |
-
-两版都没有账号系统。一个后端服务对应一个学习库，公开部署时使用访问密钥保护。
+|          | 纯前端版         | 带后端版          | 桌面版                       |
+| -------- | ---------------- | ----------------- | ---------------------------- |
+| 存储     | 浏览器 IndexedDB | 每账户独立 SQLite | 本机 IndexedDB，可连接上游   |
+| 账户     | 无               | 用户名、密码      | 本地无需账户；连接上游时登录 |
+| 离线     | 支持             | 需要连接服务      | 本地库支持                   |
+| 插件     | 纯前端           | 纯前端            | 纯前端、本地插件             |
+| LeetCode | 不包含           | 不包含            | 内置，登录信息留在本机       |
 
 需要 Node.js 24.12+（24.x）；后端另需 Rust 与 C 编译工具。CI 使用 Rust 1.97.1。
 
@@ -68,14 +66,22 @@ npm run build
 VITE_BASE_PATH=/repeaty/ npm run build
 ```
 
-**带后端版**：默认在 `http://127.0.0.1:8080` 提供服务，数据写入 `data/repeaty.sqlite3`。
+**带后端版**：默认在 `http://127.0.0.1:8080` 提供服务，账户与各自的学习库写入 `data/`。
 
 ```bash
 npm run build:server
 cargo run --release --locked --manifest-path server/Cargo.toml
 ```
 
-公网部署、反向代理、访问密钥与数据库备份见[部署指南](docs/SELF_HOSTING.md)。LeetCode 默认连接中国站，可切换国际站；判题需要配置 LeetCode 登录信息，见[LeetCode 文档](docs/LEETCODE.md)。
+**桌面版**：安装 [Desktop 工作流](https://github.com/KraHsu/repeaty/actions/workflows/desktop.yml)生成的安装包，或在安装 [Tauri 2 系统依赖](https://v2.tauri.app/start/prerequisites/)后构建：
+
+```bash
+npm run desktop:build
+```
+
+默认使用本地库，右上角「设置」可指定上游服务地址。本地库与账户库各自保留，不自动合并。
+
+[后端部署与旧库迁移](docs/SELF_HOSTING.md) · [桌面版说明](docs/DESKTOP.md) · [LeetCode 配置](docs/LEETCODE.md)
 
 ## 开发与贡献
 
@@ -86,6 +92,7 @@ npm run dev                      # http://127.0.0.1:5173
 npx playwright install chromium  # 首次运行浏览器测试前安装
 npm run check                    # 格式、单元测试、构建、浏览器测试
 npm run check:server             # Rust 与后端版检查
+npm run test:e2e:desktop         # 桌面界面与本地插件交互测试
 ```
 
 欢迎提交 Issue 和 PR。报告问题时，请附上复现步骤、浏览器版本和报错；修改功能时，一并更新相关测试和文档。

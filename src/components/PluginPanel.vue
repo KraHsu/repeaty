@@ -30,7 +30,9 @@ import {
     >
       <div class="plugin-heading">
         <h2>{{ t(plugin.label) }}</h2>
-        <span class="pill">{{ t(plugin.kind === 'frontend' ? '纯前端插件' : '需要后端') }}</span>
+        <span class="pill">{{
+          t(plugin.kind === 'frontend' ? '纯前端插件' : '本地插件 · 桌面版')
+        }}</span>
         <span class="pill">{{ t(builtin ? '内置' : '已安装') }}</span>
         <label class="plugin-toggle">
           <input
@@ -46,7 +48,7 @@ import {
         </label>
       </div>
       <p v-if="!pluginAvailable(plugin.id)" class="form-note">
-        {{ t('后端未安装或未开启此插件。') }}
+        {{ t('此插件仅在桌面版可用。') }}
       </p>
       <p v-if="plugin.description">{{ t(plugin.description) }}</p>
       <component v-if="pluginEnabled(plugin.id) && plugin.settings" :is="plugin.settings" />
