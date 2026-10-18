@@ -1,3 +1,4 @@
+import { msg, LocalizedError, duration, locale } from '../i18n'
 import { fsrs, State } from 'ts-fsrs'
 import {
   cardViews,
@@ -97,14 +98,14 @@ export function reviewCard(
   source: 'normal' | 'filtered' = 'normal',
 ): Library {
   const card = library.cards.find((entry) => entry.id === id)
-  if (!card) throw new Error('卡片已不存在。')
+  if (!card) throw new LocalizedError(msg('卡片已不存在。'))
   if (
     !available(card, now) ||
     (source === 'normal' && !dueCards(library, now).some((entry) => entry.id === id))
   )
-    throw new Error('这张卡片尚未到期、已暂停或已达到今日额度。')
+    throw new LocalizedError(msg('这张卡片尚未到期、已暂停或已达到今日额度。'))
   if (card.schedule.last_review && new Date(card.schedule.last_review) > now)
-    throw new Error('当前时间早于上次复习，请检查本机时间。')
+    throw new LocalizedError(msg('当前时间早于上次复习，请检查本机时间。'))
   const deckId = library.notes.find((note) => note.id === card.noteId)!.deckId
   const deck = library.decks.find((entry) => entry.id === deckId)!
   const result = scheduler(deck.desiredRetention).next(hydrateSchedule(card.schedule), now, rating)
@@ -162,10 +163,10 @@ export function reviewCard(
 }
 export function undoReview(library: Library): Library {
   const last = library.reviews.at(-1)
-  if (!last?.previous) throw new Error('没有可撤销的评分。旧版导入的记录不支持撤销。')
+  if (!last?.previous) throw new LocalizedError(msg('没有可撤销的评分。旧版导入的记录不支持撤销。'))
   const current = library.cards.find((card) => card.id === last.cardId)
   if (!current || current.schedule.last_review !== last.reviewedAt)
-    throw new Error('卡片进度已变化，无法撤销这次评分。')
+    throw new LocalizedError(msg('卡片进度已变化，无法撤销这次评分。'))
   return {
     ...library,
     cards: library.cards.map((card) =>
@@ -216,9 +217,9 @@ export function changeCards(
 }
 export function intervalLabel(due: Date, now = new Date()): string {
   const minutes = Math.max(1, Math.round((due.getTime() - now.getTime()) / 60_000))
-  if (minutes < 60) return `${minutes} 分钟`
-  if (minutes < 1_440) return `${Math.round(minutes / 60)} 小时`
-  return `${Math.round(minutes / 1_440)} 天`
+  if (minutes < 60) return duration(minutes, 'minute')
+  if (minutes < 1_440) return duration(Math.round(minutes / 60), 'hour')
+  return duration(Math.round(minutes / 1_440), 'day')
 }
 export function weekActivity(library: Library, now = new Date()) {
   return Array.from({ length: 7 }, (_, index) => {
@@ -227,7 +228,7 @@ export function weekActivity(library: Library, now = new Date()) {
     const key = localDay(date)
     return {
       key,
-      label: new Intl.DateTimeFormat('zh-CN', { weekday: 'short' }).format(date),
+      label: new Intl.DateTimeFormat(locale.value, { weekday: 'short' }).format(date),
       count: library.reviews.filter((review) => review.studyDay === key).length,
     }
   })

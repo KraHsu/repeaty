@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n'
 import { onUnmounted, ref, watch } from 'vue'
 import type { Media } from '../core/model'
 const props = defineProps<{
@@ -45,6 +46,6 @@ onUnmounted(() => {
       <audio v-else :src="file.url" controls preload="metadata" :aria-label="file.name" />
       <figcaption>{{ file.name }}</figcaption>
     </figure>
-    <p v-if="error" role="alert">{{ error }}</p>
+    <p v-if="error" role="alert">{{ t(error) }}</p>
   </div>
 </template>

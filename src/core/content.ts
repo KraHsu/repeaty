@@ -1,10 +1,11 @@
+import { t } from '../i18n'
 import MarkdownIt from 'markdown-it'
 import katex from 'katex'
 
 const markdown = new MarkdownIt({ html: false, breaks: true, linkify: false })
 // Attachments are stored locally; Markdown images never trigger remote requests.
 markdown.renderer.rules.image = (tokens, index) =>
-  `<span class="media-placeholder">[图片：${markdown.utils.escapeHtml(tokens[index]!.content)} · 请使用附件]</span>`
+  `<span class="media-placeholder">${markdown.utils.escapeHtml(t('[图片：{name} · 请使用附件]', { name: tokens[index]!.content }))}</span>`
 const linkOpen = markdown.renderer.rules.link_open
 markdown.renderer.rules.link_open = (tokens, index, options, env, renderer) => {
   tokens[index]!.attrSet('target', '_blank')

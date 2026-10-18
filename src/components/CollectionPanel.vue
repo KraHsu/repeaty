@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t, locale } from '../i18n'
+
 import { computed, ref, watch } from 'vue'
 import { Layers, Pencil, Plus, Repeat2, Search, Trash2 } from '@lucide/vue'
 import {
@@ -46,7 +48,7 @@ const result = computed(() => {
   try {
     return { cards: searchCards(props.library, filter.value, props.now), error: '' }
   } catch (error) {
-    return { cards: [] as CardView[], error: (error as Error).message }
+    return { cards: [] as CardView[], error: error as Error }
   }
 })
 const filtered = computed(() => result.value.cards)
@@ -147,42 +149,53 @@ async function editSelected() {
     <label class="search-field"
       ><Search :size="18" /><input
         v-model="query"
-        aria-label="搜索卡片"
+        :aria-label="t('搜索卡片')"
         maxlength="1000"
-        placeholder="关键词、tag:英语、is:due、lapses:>=3…"
+        :placeholder="t('关键词、tag:英语、is:due、lapses:>=3…')"
     /></label>
-    <select v-model="deckId" aria-label="筛选卡组">
-      <option value="">全部卡组</option>
+    <select v-model="deckId" :aria-label="t('筛选卡组')">
+      <option value="">{{ t('全部卡组') }}</option>
       <option v-for="deck in library.decks" :key="deck.id" :value="deck.id">{{ deck.name }}</option>
     </select>
-    <select v-model="state" aria-label="筛选状态">
-      <option value="all">全部状态</option>
-      <option v-for="label in filterStates.filter((entry) => entry !== 'all')" :key="label">
-        {{ label }}
+    <select v-model="state" :aria-label="t('筛选状态')">
+      <option value="all">{{ t('全部状态') }}</option>
+      <option
+        v-for="label in filterStates.filter((entry) => entry !== 'all')"
+        :key="label"
+        :value="label"
+      >
+        {{ t(label) }}
       </option>
     </select>
-    <button class="button secondary" @click="emit('review')"><Repeat2 :size="16" />复习</button>
+    <button class="button secondary" @click="emit('review')">
+      <Repeat2 :size="16" />{{ t('复习') }}
+    </button>
   </div>
-  <p v-if="result.error" class="import-warning" role="alert">{{ result.error }}</p>
+  <p v-if="result.error" class="import-warning" role="alert">{{ t(result.error) }}</p>
   <details class="search-options">
-    <summary>高级搜索、常用筛选与专项练习</summary>
+    <summary>{{ t('高级搜索、常用筛选与专项练习') }}</summary>
     <p class="form-note">
-      空格连接的条件需同时满足；双引号包围短语，减号排除条件。例如
-      <code>tag:英语 -is:suspended lapses:>=3</code>。支持
-      deck:"卡组名称"、type:cloze、is:leech、due:&lt;=7（距今天的日历天数，负数表示逾期）。is:due
-      包含所有已到期卡片，不考虑额度。
+      {{ t('空格连接的条件需同时满足；双引号包围短语，减号排除条件。例如')
+      }}<code>{{ t('tag:英语 -is:suspended lapses:>=3') }}</code
+      >{{
+        t(
+          '。支持 deck:"卡组名称"、type:cloze、is:leech、due:<=7（距今天的日历天数，负数表示逾期）。is:due 包含所有已到期卡片，不考虑额度。',
+        )
+      }}
     </p>
     <div class="batch-fields">
       <label
-        >常用筛选<select v-model="savedId" aria-label="常用筛选" @change="applySaved">
-          <option value="">选择已保存筛选</option>
+        >{{ t('常用筛选')
+        }}<select v-model="savedId" :aria-label="t('常用筛选')" @change="applySaved">
+          <option value="">{{ t('选择已保存筛选') }}</option>
           <option v-for="saved in library.savedSearches" :key="saved.id" :value="saved.id">
             {{ saved.name }}
           </option>
         </select></label
       >
       <label
-        >筛选名称<input v-model="savedName" maxlength="80" placeholder="例如：英语易忘卡"
+        >{{ t('筛选名称')
+        }}<input v-model="savedName" maxlength="80" :placeholder="t('例如：英语易忘卡')"
       /></label>
     </div>
     <div class="batch-actions">
@@ -191,7 +204,7 @@ async function editSelected() {
         :disabled="busy || !!result.error || !savedName.trim()"
         @click="saveFilter()"
       >
-        另存筛选
+        {{ t('另存筛选') }}
       </button>
       <button
         v-if="savedId"
@@ -199,44 +212,46 @@ async function editSelected() {
         :disabled="busy || !!result.error || !savedName.trim()"
         @click="saveFilter(true)"
       >
-        更新筛选
+        {{ t('更新筛选') }}
       </button>
       <button v-if="savedId" class="text-button danger-text" :disabled="busy" @click="removeFilter">
-        删除筛选
+        {{ t('删除筛选') }}
       </button>
     </div>
     <form class="study-form" @submit.prevent="startStudy">
       <label
-        >练习模式<select v-model="reschedule">
-          <option :value="false">只练习，不改进度</option>
-          <option :value="true">评分并更新进度</option>
+        >{{ t('练习模式')
+        }}<select v-model="reschedule">
+          <option :value="false">{{ t('只练习，不改进度') }}</option>
+          <option :value="true">{{ t('评分并更新进度') }}</option>
         </select></label
       >
       <label
-        >本轮最多张数<input
-          v-model.number="studyLimit"
-          type="number"
-          min="1"
-          max="500"
-          step="1"
-          required
+        >{{ t('本轮最多张数')
+        }}<input v-model.number="studyLimit" type="number" min="1" max="500" step="1" required
       /></label>
       <button class="button primary" :disabled="busy || !!result.error || !eligible.length">
-        开始专项练习
+        {{ t('开始专项练习') }}
       </button>
     </form>
     <p class="form-note">
-      当前筛选有 {{ eligible.length }} 张可练习卡片（跳过暂停和今日暂缓）。{{
-        reschedule
-          ? '会提前复习未到期卡片并重排进度；本轮不受每日额度限制，评分计入今日学习。'
-          : '只在本轮记录自评分，不改变到期时间、每日额度或学习统计。'
+      {{
+        t('当前筛选有 {p0} 张可练习卡片（跳过暂停和今日暂缓）。{p1} 每张卡片本轮练习一次。', {
+          p0: eligible.length,
+          p1: reschedule
+            ? t('会提前复习未到期卡片并重排进度；本轮不受每日额度限制，评分计入今日学习。')
+            : t('只在本轮记录自评分，不改变到期时间、每日额度或学习统计。'),
+        })
       }}
-      每张卡片本轮练习一次。
     </p>
   </details>
-  <div class="library-count">{{ filtered.length }} 张卡片 · {{ library.notes.length }} 条笔记</div>
+  <div class="library-count">
+    {{ t('{p0} 张卡片 · {p1} 条笔记', { p0: filtered.length, p1: library.notes.length }) }}
+  </div>
   <section v-if="selected.length" class="batch-panel">
-    <strong>已选 {{ selected.length }} 张卡片（{{ selectedNotes.length }} 条笔记）</strong>
+    <strong>{{
+      t('已选 {p0} 张卡片（{p1} 条笔记）', { p0: selected.length, p1: selectedNotes.length })
+    }}</strong>
     <div class="batch-actions">
       <button
         v-for="(label, action) in {
@@ -251,27 +266,31 @@ async function editSelected() {
         :disabled="busy"
         @click="change(action)"
       >
-        {{ label }}</button
+        {{ t(label) }}</button
       ><button class="button danger" :disabled="busy" @click="emit('delete', selectedNotes)">
-        删除所选笔记
+        {{ t('删除所选笔记') }}
       </button>
     </div>
     <details>
-      <summary>批量修改笔记的卡组与标签</summary>
+      <summary>{{ t('批量修改笔记的卡组与标签') }}</summary>
       <p class="form-note">
-        同一笔记的所有关联卡片都会更新，复习进度保留。暂停和暂缓仅影响勾选的卡片。
+        {{ t('同一笔记的所有关联卡片都会更新，复习进度保留。暂停和暂缓仅影响勾选的卡片。') }}
       </p>
       <div class="batch-fields">
         <label
-          >移动到卡组<select v-model="targetDeck">
-            <option value="">保持原卡组</option>
+          >{{ t('移动到卡组')
+          }}<select v-model="targetDeck">
+            <option value="">{{ t('保持原卡组') }}</option>
             <option v-for="deck in library.decks" :key="deck.id" :value="deck.id">
               {{ deck.name }}
             </option>
           </select></label
-        ><label>添加标签<input v-model="addTags" maxlength="820" placeholder="逗号分隔" /></label
         ><label
-          >移除标签<input v-model="removeTags" maxlength="820" placeholder="逗号分隔"
+          >{{ t('添加标签')
+          }}<input v-model="addTags" maxlength="820" :placeholder="t('逗号分隔')" /></label
+        ><label
+          >{{ t('移除标签')
+          }}<input v-model="removeTags" maxlength="820" :placeholder="t('逗号分隔')"
         /></label>
       </div>
       <button
@@ -279,7 +298,7 @@ async function editSelected() {
         :disabled="busy || (!targetDeck && !addTags.trim() && !removeTags.trim())"
         @click="editSelected"
       >
-        应用笔记修改
+        {{ t('应用笔记修改') }}
       </button>
     </details>
   </section>
@@ -291,14 +310,14 @@ async function editSelected() {
             <input
               type="checkbox"
               :checked="allSelected"
-              aria-label="选择本页卡片"
+              :aria-label="t('选择本页卡片')"
               @change="selectPage"
             />
           </th>
-          <th>问题 / 答案</th>
-          <th>卡组</th>
-          <th>状态</th>
-          <th>操作</th>
+          <th>{{ t('问题 / 答案') }}</th>
+          <th>{{ t('卡组') }}</th>
+          <th>{{ t('状态') }}</th>
+          <th>{{ t('操作') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -308,46 +327,49 @@ async function editSelected() {
               v-model="selected"
               type="checkbox"
               :value="card.id"
-              :aria-label="`选择卡片 ${card.front}`"
+              :aria-label="t('选择卡片 {p0}', { p0: card.front })"
             />
           </td>
           <td>
             <button class="card-row-title" @click="emit('edit', card)">{{ card.front }}</button>
             <p>{{ card.back }}</p>
             <div class="tag-list">
-              <span class="tag">{{ noteTypes[card.type] }} · {{ card.variant }}</span
-              ><span v-if="card.frontMedia.length + card.backMedia.length" class="tag"
-                >{{ card.frontMedia.length + card.backMedia.length }} 个媒体</span
+              <span class="tag">{{ t(noteTypes[card.type]) }} · {{ card.variant }}</span
+              ><span v-if="card.frontMedia.length + card.backMedia.length" class="tag">{{
+                t('{p0} 个媒体', { p0: card.frontMedia.length + card.backMedia.length })
+              }}</span
               ><span v-for="tag in card.tags" :key="tag" class="tag">{{ tag }}</span>
             </div>
           </td>
           <td>{{ library.decks.find((deck) => deck.id === card.deckId)?.name }}</td>
           <td>
             <span :class="['status-chip', { fresh: card.schedule.state === 0 }]">{{
-              cardStatus(card, now)
+              t(cardStatus(card, now))
             }}</span
             ><small v-if="card.schedule.state !== 0" class="due-date">{{
-              new Date(card.schedule.due).toLocaleString('zh-CN', {
+              new Date(card.schedule.due).toLocaleString(locale, {
                 month: 'short',
                 day: 'numeric',
                 hour: '2-digit',
                 minute: '2-digit',
               })
             }}</small>
-            <span v-if="card.leech" class="status-chip leech">顽固卡</span>
-            <small class="due-date">正式遗忘 {{ card.schedule.lapses }} 次</small>
+            <span v-if="card.leech" class="status-chip leech">{{ t('顽固卡') }}</span>
+            <small class="due-date">{{
+              t('正式遗忘 {p0} 次', { p0: card.schedule.lapses })
+            }}</small>
           </td>
           <td>
             <div class="row-actions">
               <button
                 class="icon-button"
-                :aria-label="`编辑卡片 ${card.front}`"
+                :aria-label="t('编辑卡片 {p0}', { p0: card.front })"
                 @click="emit('edit', card)"
               >
                 <Pencil :size="16" /></button
               ><button
                 class="icon-button danger-text"
-                :aria-label="`删除卡片 ${card.front}`"
+                :aria-label="t('删除卡片 {p0}', { p0: card.front })"
                 @click="emit('delete', [card.noteId])"
               >
                 <Trash2 :size="16" />
@@ -358,7 +380,7 @@ async function editSelected() {
               :disabled="busy"
               @click="change(card.suspended ? 'resume' : 'suspend', [card.id])"
             >
-              {{ card.suspended ? '恢复' : '暂停' }}
+              {{ card.suspended ? t('恢复') : t('暂停') }}
             </button>
           </td>
         </tr>
@@ -367,21 +389,24 @@ async function editSelected() {
   </div>
   <div v-else class="empty-state">
     <Layers :size="36" />
-    <h2>{{ query || state !== 'all' ? '还没有匹配的卡片' : '第一张卡片，从这里开始' }}</h2>
+    <h2>{{ query || state !== 'all' ? t('还没有匹配的卡片') : t('第一张卡片，从这里开始') }}</h2>
     <p>
       {{
         query || state !== 'all'
-          ? '试试其他关键词，或调整筛选条件。'
-          : '写下一条笔记，生成你的第一张卡片。'
+          ? t('试试其他关键词，或调整筛选条件。')
+          : t('写下一条笔记，生成你的第一张卡片。')
       }}
     </p>
     <button v-if="!query && state === 'all'" class="button primary" @click="emit('edit')">
-      <Plus :size="16" />添加卡片
+      <Plus :size="16" />{{ t('添加卡片') }}
     </button>
   </div>
   <div v-if="pages > 1" class="pagination">
-    <button class="button secondary" :disabled="page === 1" @click="page--">上一页</button
+    <button class="button secondary" :disabled="page === 1" @click="page--">
+      {{ t('上一页') }}</button
     ><span>{{ page }} / {{ pages }}</span
-    ><button class="button secondary" :disabled="page === pages" @click="page++">下一页</button>
+    ><button class="button secondary" :disabled="page === pages" @click="page++">
+      {{ t('下一页') }}
+    </button>
   </div>
 </template>

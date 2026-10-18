@@ -16,16 +16,24 @@ npm run dev
 ```bash
 npm run format:check # 格式检查；npm run format 自动整理
 npm run typecheck    # Vue / TypeScript 类型检查
-npm test             # 模型、迁移、调度、导入、存储及离线缓存逻辑测试
+npm test             # 核心逻辑、离线缓存、语言偏好与 DOM 交互测试
 npm run build        # 类型检查与生产构建，输出到 dist/
 npm run preview      # 本地预览生产构建
 npm run test:e2e     # 构建后执行 Playwright，使用生产站点而非开发服务器
 npm run check        # 格式检查 + 单元测试 + 构建 + 浏览器测试
 ```
 
-首次运行浏览器测试先执行 `npx playwright install chromium`。也可设置 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome` 使用已有 Chrome。浏览器测试启动 `127.0.0.1:4175`，覆盖制卡、复习、撤销、额度、批量管理、媒体恢复、快捷制卡、常用筛选、两种专项练习、自动暂缓和断网重载。
+首次运行浏览器测试先执行 `npx playwright install chromium`。也可设置 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome` 使用已有 Chrome。浏览器测试启动 `127.0.0.1:4175`，覆盖制卡、复习、撤销、额度、批量管理、媒体恢复、快捷制卡、常用筛选、两种专项练习、自动暂缓、双语切换与偏好持久化、移动端布局和断网重载。
 
 完整检查包含 Chromium 浏览器测试。若本机沙箱拒绝监听 / 访问预览端口（`EPERM`），请在允许本机端口的终端运行。单元测试包含 Service Worker 生命周期、离线响应和失败更新回退，不能替代真实浏览器断网验证。
+
+## 界面语言
+
+顶部语言选择器支持 **English / 中文（简体）**。首次打开按浏览器语言偏好选择，识别英语和中文的地区变体；没有匹配语言时使用 English。手动选择保存在当前网站的 `localStorage`（`repeaty.locale`），刷新后沿用；存储不可用时仍可在本次会话切换。
+
+导航、编辑表单、复习评分、搜索提示、通知、校验错误、日期、间隔和快照原因随界面语言变化，无需刷新。切换不改动卡片内容、卡组名称、标签、常用筛选、复习进度或已有快照，也不会结束当前复习。语言偏好独立于学习数据，不包含在 JSON 备份中。入门示例在添加时使用当前语言；CSV 示例与 PWA 安装信息也提供两种语言，并随应用离线缓存。
+
+文案集中在 `src/i18n/en.ts`，使用中文源文案作为稳定键；`t()` 负责响应式显示，带参数的通知与错误通过 `msg()` / `LocalizedError` 保留原始信息，避免切换语言后仍显示旧语言。用户内容作为参数插入，不参与翻译。已持久化的中文筛选状态和快照原因只翻译显示，不修改存储格式。
 
 ## 笔记与卡片
 
@@ -149,6 +157,7 @@ src/core/
   storage.ts         # IndexedDB 事务、自动快照与媒体回收
   backups.ts         # 包含媒体的可移植备份
   media.ts           # 附件校验
+src/i18n/           # 双语词典、语言偏好、格式化与 DOM 回归测试
 src/composables/     # 工作空间状态与离线更新状态
 src/components/      # 笔记编辑、卡片列表、导入、复习和媒体展示
 build/              # 构建时生成预缓存清单与 Service Worker

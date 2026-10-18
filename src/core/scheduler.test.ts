@@ -124,7 +124,7 @@ describe('daily limits and availability', () => {
     expect(suspended.cards[0]!.schedule).toEqual(library.cards[0]!.schedule)
   })
   it('shows non-zero readable intervals', () => {
-    expect(intervalLabel(now, now)).toBe('1 分钟')
-    expect(intervalLabel(new Date(now.getTime() + 86400000), now)).toBe('1 天')
+    expect(intervalLabel(now, now)).toBe('1分钟')
+    expect(intervalLabel(new Date(now.getTime() + 86400000), now)).toBe('1天')
   })
 })

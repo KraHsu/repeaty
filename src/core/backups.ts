@@ -1,3 +1,4 @@
+import { msg, LocalizedError } from '../i18n'
 import { z } from 'zod'
 import {
   MAX_BACKUP_BYTES,
@@ -32,12 +33,14 @@ export async function exportBackup(
       JSON.stringify(library).length * 3 >
     MAX_BACKUP_BYTES
   )
-    throw new Error('完整备份超过 100 MB，请先精简媒体后重试。')
+    throw new LocalizedError(msg('完整备份超过 100 MB，请先精简媒体后重试。'))
   const assets = []
   for (const meta of library.media) {
     const blob = await getMedia(meta.id)
     if (!blob || blob.size !== meta.size || blob.type !== meta.type)
-      throw new Error(`媒体「${meta.name}」缺失或损坏，未生成不完整的备份。`)
+      throw new LocalizedError(
+        msg('媒体「{p0}」缺失或损坏，未生成不完整的备份。', { p0: meta.name }),
+      )
     const bytes = new Uint8Array(await blob.arrayBuffer())
     let binary = ''
     for (let i = 0; i < bytes.length; i += 0x8000)
@@ -45,37 +48,41 @@ export async function exportBackup(
     assets.push({ id: meta.id, data: btoa(binary) })
   }
   const result = JSON.stringify({ format: 'repeaty-backup', version: 3, library, assets })
-  if (new Blob([result]).size > MAX_BACKUP_BYTES) throw new Error('完整备份超过 100 MB。')
+  if (new Blob([result]).size > MAX_BACKUP_BYTES)
+    throw new LocalizedError(msg('完整备份超过 100 MB。'))
   return result
 }
 export function parseBackup(text: string): BackupData {
-  if (new Blob([text]).size > MAX_BACKUP_BYTES) throw new Error('备份文件不能超过 100 MB。')
+  if (new Blob([text]).size > MAX_BACKUP_BYTES)
+    throw new LocalizedError(msg('备份文件不能超过 100 MB。'))
   let raw: unknown
   try {
     raw = JSON.parse(text)
   } catch {
-    throw new Error('文件不是有效的 JSON。')
+    throw new LocalizedError(msg('文件不是有效的 JSON。'))
   }
   try {
     if (typeof raw === 'object' && raw !== null && 'format' in raw) {
       const data = packageSchema.parse(raw)
       const encoded = new Map(data.assets.map((entry) => [entry.id, entry.data]))
       if (encoded.size !== data.assets.length || encoded.size !== data.library.media.length)
-        throw new Error('媒体数量不匹配')
+        throw new LocalizedError(msg('媒体数量不匹配'))
       const assets = data.library.media.map((meta) => {
         const base64 = encoded.get(meta.id)
-        if (base64 === undefined) throw new Error('媒体缺失')
+        if (base64 === undefined) throw new LocalizedError(msg('媒体缺失'))
         const bytes = Uint8Array.from(atob(base64), (ch) => ch.charCodeAt(0))
-        if (bytes.length !== meta.size) throw new Error('媒体大小不匹配')
+        if (bytes.length !== meta.size) throw new LocalizedError(msg('媒体大小不匹配'))
         return { meta, blob: new Blob([bytes], { type: meta.type }) }
       })
       return { library: data.library, assets }
     }
     const library = migrateLibrary(raw)
-    if (library.media.length) throw new Error('完整备份缺少媒体')
+    if (library.media.length) throw new LocalizedError(msg('完整备份缺少媒体'))
     return { library, assets: [] }
   } catch {
-    throw new Error('备份格式不正确、媒体不完整或版本不兼容，请使用 Repeaty 导出的 JSON 文件。')
+    throw new LocalizedError(
+      msg('备份格式不正确、媒体不完整或版本不兼容，请使用 Repeaty 导出的 JSON 文件。'),
+    )
   }
 }
 // Imported assets receive fresh identities so existing automatic snapshots stay immutable.

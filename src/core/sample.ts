@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 import { emptyLibrary, saveNote, type Library } from './model'
 
 export function sampleLibrary(): Library {
@@ -8,8 +9,8 @@ export function sampleLibrary(): Library {
     decks: [
       {
         id: deckId,
-        name: '学习如何学习',
-        description: '用 5 张小卡片，开始你的间隔复习之旅。',
+        name: t('学习如何学习'),
+        description: t('用 5 张小卡片，开始你的间隔复习之旅。'),
         color: 'sage',
         newLimit: 20,
         burySiblings: true,
@@ -48,9 +49,9 @@ export function sampleLibrary(): Library {
       {
         deckId,
         type: 'basic',
-        front: front!,
-        back: back!,
-        tags: ['入门'],
+        front: t(front!),
+        back: t(back!),
+        tags: [t('入门')],
         frontMedia: [],
         backMedia: [],
       },

@@ -1,3 +1,4 @@
+import { msg, LocalizedError } from '../i18n'
 import {
   cardViews,
   filterStates,
@@ -17,7 +18,7 @@ export function cardStatus(card: CardView, now: Date): SearchFilter['state'] {
 }
 // AND between terms, quoted phrases, and a leading minus for negation.
 function terms(query: string): string[] {
-  if (query.length > 1000) throw new Error('搜索条件最多 1000 字。')
+  if (query.length > 1000) throw new LocalizedError(msg('搜索条件最多 1000 字。'))
   const result: string[] = []
   let word = '',
     quoted = false
@@ -30,16 +31,17 @@ function terms(query: string): string[] {
       word = ''
     } else word += ch
   }
-  if (quoted) throw new Error('搜索中的双引号未闭合。')
+  if (quoted) throw new LocalizedError(msg('搜索中的双引号未闭合。'))
   if (word) result.push(word)
   return result
 }
 function numericCondition(expression: string, key: string): (n: number) => boolean {
   const match = expression.match(/^(<=|>=|<|>|=)?(-?\d+)$/)
-  if (!match) throw new Error(`${key} 应为数字条件，例如 ${key}:>=3。`)
+  if (!match)
+    throw new LocalizedError(msg('{p0} 应为数字条件，例如 {p1}:>=3。', { p0: key, p1: key }))
   const value = Number(match[2])
   if (!Number.isSafeInteger(value) || Math.abs(value) > 100000)
-    throw new Error(`${key} 数值超出范围。`)
+    throw new LocalizedError(msg('{p0} 数值超出范围。', { p0: key }))
   return (n) =>
     ({ '<': n < value, '>': n > value, '<=': n <= value, '>=': n >= value, '=': n === value })[
       match[1] ?? '='
@@ -53,7 +55,7 @@ export function searchCards(library: Library, filter: SearchFilter, now = new Da
   const predicates = terms(filter.query).map((raw) => {
     const negate = raw.startsWith('-')
     const term = (negate ? raw.slice(1) : raw).toLocaleLowerCase()
-    if (!term) throw new Error('减号后需要搜索条件。')
+    if (!term) throw new LocalizedError(msg('减号后需要搜索条件。'))
     const colon = term.indexOf(':')
     const key = term.slice(0, colon),
       value = term.slice(colon + 1)
@@ -63,13 +65,13 @@ export function searchCards(library: Library, filter: SearchFilter, now = new Da
         [card.front, card.back, ...card.tags].some((text) =>
           text.toLocaleLowerCase().includes(term),
         )
-    } else if (!value) throw new Error(`${key} 后需要填写条件。`)
+    } else if (!value) throw new LocalizedError(msg('{p0} 后需要填写条件。', { p0: key }))
     else if (key === 'tag')
       test = (card) => card.tags.some((tag) => tag.toLocaleLowerCase() === value)
     else if (key === 'deck') test = (card) => decks.get(card.deckId) === value
     else if (key === 'type') {
       if (!['basic', 'reversed', 'cloze'].includes(value))
-        throw new Error('type 支持 basic、reversed、cloze。')
+        throw new LocalizedError(msg('type 支持 basic、reversed、cloze。'))
       test = (card) => card.type === value
     } else if (key === 'is') {
       const states: Record<string, (card: CardView) => boolean> = {
@@ -82,7 +84,9 @@ export function searchCards(library: Library, filter: SearchFilter, now = new Da
         leech: (card) => card.leech,
       }
       if (!states[value])
-        throw new Error('is 支持 new、due、review、learning、suspended、buried、leech。')
+        throw new LocalizedError(
+          msg('is 支持 new、due、review、learning、suspended、buried、leech。'),
+        )
       test = states[value]!
     } else {
       const compare = numericCondition(value, key)
@@ -93,7 +97,7 @@ export function searchCards(library: Library, filter: SearchFilter, now = new Da
     }
     return (card: CardView) => (negate ? !test(card) : test(card))
   })
-  if (!filterStates.includes(filter.state)) throw new Error('筛选状态不正确。')
+  if (!filterStates.includes(filter.state)) throw new LocalizedError(msg('筛选状态不正确。'))
   return cardViews(library).filter(
     (card) =>
       (!filter.deckId || card.deckId === filter.deckId) &&
@@ -110,10 +114,11 @@ export function saveSearch(
 ): Library {
   searchCards(library, filter)
   if (filter.deckId && !library.decks.some((deck) => deck.id === filter.deckId))
-    throw new Error('筛选卡组已不存在。')
+    throw new LocalizedError(msg('筛选卡组已不存在。'))
   const entry = savedSearchSchema.parse({ ...filter, name, id })
   const exists = library.savedSearches.some((search) => search.id === id)
-  if (!exists && library.savedSearches.length >= 100) throw new Error('最多保存 100 个常用筛选。')
+  if (!exists && library.savedSearches.length >= 100)
+    throw new LocalizedError(msg('最多保存 100 个常用筛选。'))
   return {
     ...library,
     savedSearches: exists

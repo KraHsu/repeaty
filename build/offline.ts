@@ -24,7 +24,9 @@ export function offlinePlugin(): Plugin {
           'icon-192.png',
           'icon-512.png',
           'manifest.webmanifest',
+          'manifest.en.webmanifest',
           'example.csv',
+          'example.en.csv',
         ]
         const assets = [
           ...new Set([

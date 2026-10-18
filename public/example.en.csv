@@ -1,0 +1,4 @@
+type,front,back,tags,format
+basic,What is active recall?,Retrieving information from memory without looking at the answer.,learning,plain
+reversed,bonjour,hello,French|greetings,plain
+cloze,The capital of France is {{c1::Paris::city}}.,,geography,plain

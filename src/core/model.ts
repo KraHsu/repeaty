@@ -1,3 +1,4 @@
+import { msg, LocalizedError } from '../i18n'
 import { z } from 'zod'
 import { createEmptyCard, type Card as FsrsCard } from 'ts-fsrs'
 import { scheduleSchema, librarySchema as legacySchema } from './legacy'
@@ -53,7 +54,9 @@ export const MAX_BACKUP_BYTES = 100 * 1024 * 1024
 export function clozes(text: string) {
   const result: { raw: string; number: number; answer: string; hint: string }[] = []
   const fail = () =>
-    new Error('挖空格式应为 {{c1::答案}} 或 {{c1::答案::提示}}，编号为 1–99，不支持嵌套挖空。')
+    new LocalizedError(
+      msg('挖空格式应为 {{c1::答案}} 或 {{c1::答案::提示}}，编号为 1–99，不支持嵌套挖空。'),
+    )
   const starts = /\{\{c/gi
   let match: RegExpExecArray | null
   while ((match = starts.exec(text))) {
@@ -74,7 +77,7 @@ export function clozes(text: string) {
     }
     if (end >= text.length) throw fail()
     const [answer, ...hints] = text.slice(start, end).split('::')
-    if (!answer?.trim()) throw new Error('挖空答案不能为空。')
+    if (!answer?.trim()) throw new LocalizedError(msg('挖空答案不能为空。'))
     result.push({
       raw: text.slice(match.index, end + 2),
       number: Number(header[1]),
@@ -120,7 +123,11 @@ export const noteSchema = z
       try {
         clozes(note.front)
       } catch (error) {
-        ctx.addIssue({ code: 'custom', message: (error as Error).message })
+        ctx.addIssue({
+          code: 'custom',
+          message: (error as Error).message,
+          params: error instanceof LocalizedError ? { i18n: error.detail } : undefined,
+        })
       }
     }
   })
@@ -314,7 +321,7 @@ export function saveNote(
   now = new Date(),
 ): Library {
   const previous = library.notes.find((note) => note.id === noteId)
-  if (noteId && !previous) throw new Error('笔记已不存在，请刷新页面。')
+  if (noteId && !previous) throw new LocalizedError(msg('笔记已不存在，请刷新页面。'))
   const note = noteSchema.parse({
     ...input,
     id: noteId ?? crypto.randomUUID(),
@@ -327,7 +334,7 @@ export function saveNote(
     oldCards.filter((card) => !keys.includes(card.variant)).map((card) => card.id),
   )
   if (removed.size && !allowRemove)
-    throw new Error('修改后部分卡片将不再生成，请确认移除这些卡片及其复习记录。')
+    throw new LocalizedError(msg('修改后部分卡片将不再生成，请确认移除这些卡片及其复习记录。'))
   return pruneMedia({
     ...library,
     notes: previous

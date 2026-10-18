@@ -1,3 +1,4 @@
+import { msg, LocalizedError } from '../i18n'
 import { openDB, type DBSchema, type IDBPTransaction } from 'idb'
 import {
   emptyLibrary,
@@ -126,7 +127,7 @@ export function createRepository(name = 'repeaty', onBlocked?: () => void) {
       try {
         const current = await tx.objectStore('workspace').get('main')
         if ((current?.revision ?? 0) !== expectedRevision)
-          throw new Error('数据已在另一个标签页更新，请刷新页面后重试。')
+          throw new LocalizedError(msg('数据已在另一个标签页更新，请刷新页面后重试。'))
         if (current)
           await checkpoint(
             tx,
@@ -139,14 +140,14 @@ export function createRepository(name = 'repeaty', onBlocked?: () => void) {
           const meta = validated.media.find((item) => item.id === asset.meta.id)
           if (!meta) continue
           if (meta.type !== asset.blob.type || meta.size !== asset.blob.size)
-            throw new Error('媒体内容与文件信息不一致。')
+            throw new LocalizedError(msg('媒体内容与文件信息不一致。'))
           if (await tx.objectStore('assets').getKey(meta.id))
-            throw new Error('媒体 ID 冲突，未覆盖已有文件。')
+            throw new LocalizedError(msg('媒体 ID 冲突，未覆盖已有文件。'))
           await tx.objectStore('assets').put(asset.blob, meta.id)
         }
         for (const meta of validated.media)
           if (!(await tx.objectStore('assets').getKey(meta.id)))
-            throw new Error(`媒体「${meta.name}」缺失，未保存修改。`)
+            throw new LocalizedError(msg('媒体「{p0}」缺失，未保存修改。', { p0: meta.name }))
         const next = { revision: expectedRevision + 1, library: validated }
         await tx.objectStore('workspace').put(next, 'main')
         await collectUnusedAssets(tx, validated)
@@ -190,7 +191,7 @@ export function createRepository(name = 'repeaty', onBlocked?: () => void) {
     },
     async getBackup(id: string): Promise<Library> {
       const backup = await (await database).get('backups', id)
-      if (!backup) throw new Error('该快照已被清理，请重新打开备份列表。')
+      if (!backup) throw new LocalizedError(msg('该快照已被清理，请重新打开备份列表。'))
       return migrateLibrary(backup.library)
     },
     async getMedia(id: string) {

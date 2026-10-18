@@ -1,3 +1,4 @@
+import { msg, LocalizedError, validationMessage } from '../i18n'
 import { readonly, ref, shallowRef } from 'vue'
 import { ZodError } from 'zod'
 import {
@@ -52,8 +53,8 @@ export function useLibrary() {
     update: (current: Library) => Library,
     options: { assets?: MediaUpload[]; reason?: string } = {},
   ) {
-    if (busy.value) throw new Error('正在保存，请稍候。')
-    if (!ready.value) throw new Error('本地数据库尚未准备好。')
+    if (busy.value) throw new LocalizedError(msg('正在保存，请稍候。'))
+    if (!ready.value) throw new LocalizedError(msg('本地数据库尚未准备好。'))
     busy.value = true
     try {
       const saved = await repository.save(update(library.value), revision, options)
@@ -62,14 +63,14 @@ export function useLibrary() {
       await refreshBackups()
     } catch (error) {
       if (error instanceof ZodError)
-        throw new Error(`内容格式不正确：${error.issues[0]?.message ?? '请检查必填字段。'}`)
+        throw new LocalizedError(msg('内容格式不正确：{p0}', { p0: validationMessage(error) }))
       if (error instanceof DOMException && error.name === 'QuotaExceededError')
-        throw new Error('浏览器存储空间不足，未保存本次修改。请先导出备份。')
+        throw new LocalizedError(msg('浏览器存储空间不足，未保存本次修改。请先导出备份。'))
       if (
         error instanceof DOMException &&
         ['InvalidStateError', 'VersionError'].includes(error.name)
       )
-        throw new Error('本地数据库版本已更新，请刷新当前页面后重试。')
+        throw new LocalizedError(msg('本地数据库版本已更新，请刷新当前页面后重试。'))
       throw error
     } finally {
       busy.value = false
@@ -109,7 +110,7 @@ export function useLibrary() {
     saveDeck(input: DeckInput, id?: string) {
       return commit((current) => {
         const previous = current.decks.find((deck) => deck.id === id)
-        if (id && !previous) throw new Error('卡组已不存在。')
+        if (id && !previous) throw new LocalizedError(msg('卡组已不存在。'))
         const deck = deckSchema.parse({
           ...input,
           id: id ?? crypto.randomUUID(),

@@ -133,6 +133,7 @@ test('reverse cards share note content, preserve independent progress and suppor
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   await expect(page.locator('tbody tr')).toHaveCount(2)
   await page.getByRole('button', { name: '复习', exact: true }).click()
+  await expect(page.locator('.card-question')).toHaveText('What is active recall?')
   const question = await page.locator('.card-question').innerText()
   await page.getByRole('button', { name: '显示答案' }).click()
   await page.getByRole('button', { name: /简单/ }).click()

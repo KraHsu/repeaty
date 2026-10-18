@@ -39,7 +39,9 @@ self.addEventListener('fetch', (event) => {
         const shell = await cache.match(url('index.html'))
         if (shell) return shell
       }
-      const cached = await cache.match(request, { ignoreSearch: true })
+      // This versioned cache contains only the build's static shell. CORS requests
+      // can add Origin after precaching; a server's Vary header must not hide it.
+      const cached = await cache.match(request, { ignoreSearch: true, ignoreVary: true })
       return cached ?? fetch(request)
     })(),
   )

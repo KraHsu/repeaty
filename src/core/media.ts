@@ -1,8 +1,9 @@
+import { msg, LocalizedError } from '../i18n'
 import { MAX_MEDIA_BYTES, mediaSchema, type MediaUpload } from './model'
 
 export function prepareMedia(file: File): MediaUpload {
   if (!file.size || file.size > MAX_MEDIA_BYTES)
-    throw new Error('每个图片或音频文件须为 1 字节至 10 MB。')
+    throw new LocalizedError(msg('每个图片或音频文件须为 1 字节至 10 MB。'))
   const result = mediaSchema.safeParse({
     id: crypto.randomUUID(),
     name: file.name,
@@ -11,6 +12,8 @@ export function prepareMedia(file: File): MediaUpload {
     createdAt: new Date().toISOString(),
   })
   if (!result.success)
-    throw new Error('支持 PNG、JPEG、WebP、GIF 图片及 MP3、WAV、OGG、M4A、WebM、FLAC、AAC 音频。')
+    throw new LocalizedError(
+      msg('支持 PNG、JPEG、WebP、GIF 图片及 MP3、WAV、OGG、M4A、WebM、FLAC、AAC 音频。'),
+    )
   return { meta: result.data, blob: file }
 }

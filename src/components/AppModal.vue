@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from '../i18n'
+
 import { onMounted, ref } from 'vue'
 import { X } from '@lucide/vue'
 
@@ -19,7 +21,12 @@ onMounted(() => dialog.value?.showModal())
     <div class="modal-content">
       <header class="modal-header">
         <h2 id="modal-title">{{ title }}</h2>
-        <button class="icon-button" aria-label="关闭弹窗" :disabled="busy" @click="emit('close')">
+        <button
+          class="icon-button"
+          :aria-label="t('关闭弹窗')"
+          :disabled="busy"
+          @click="emit('close')"
+        >
           <X :size="20" />
         </button>
       </header>

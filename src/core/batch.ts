@@ -1,3 +1,4 @@
+import { msg, LocalizedError, validationMessage } from '../i18n'
 import { noteSchema, saveNote, type Library, type NoteInput } from './model'
 
 export function parseTable(text: string, delimiter: ',' | '\t'): string[][] {
@@ -29,21 +30,21 @@ export function parseTable(text: string, delimiter: ',' | '\t'): string[][] {
         row = []
       }
     } else if (ch === '"') {
-      if (cell || closed) throw new Error('引号格式不正确：请用双引号包围整个字段。')
+      if (cell || closed) throw new LocalizedError(msg('引号格式不正确：请用双引号包围整个字段。'))
       quoted = true
     } else {
-      if (closed) throw new Error('结束引号后只能接分隔符或换行。')
+      if (closed) throw new LocalizedError(msg('结束引号后只能接分隔符或换行。'))
       cell += ch
     }
-    if (rows.length > 5001) throw new Error('每次最多导入 5000 条笔记。')
+    if (rows.length > 5001) throw new LocalizedError(msg('每次最多导入 5000 条笔记。'))
   }
-  if (quoted) throw new Error('文件存在未闭合的引号。')
+  if (quoted) throw new LocalizedError(msg('文件存在未闭合的引号。'))
   row.push(cell)
   if (row.some((field) => field.trim())) rows.push(row)
   return rows
 }
 export function parseNoteImport(text: string, deckId: string, delimiter: ',' | '\t'): NoteInput[] {
-  if (text.length > 2 * 1024 * 1024) throw new Error('导入文本不能超过 2 MB。')
+  if (text.length > 2 * 1024 * 1024) throw new LocalizedError(msg('导入文本不能超过 2 MB。'))
   const rows = parseTable(text, delimiter)
   const header = rows.shift()?.map((field) => field.trim().toLowerCase()) ?? []
   if (
@@ -52,10 +53,14 @@ export function parseNoteImport(text: string, deckId: string, delimiter: ',' | '
     new Set(header).size !== header.length ||
     header.some((field) => !['front', 'back', 'type', 'tags', 'format'].includes(field))
   )
-    throw new Error('表头须包含 front、back，可选 type、tags、format；请使用示例格式。')
-  if (!rows.length || rows.length > 5000) throw new Error('文件须包含 1–5000 条笔记。')
+    throw new LocalizedError(
+      msg('表头须包含 front、back，可选 type、tags、format；请使用示例格式。'),
+    )
+  if (!rows.length || rows.length > 5000)
+    throw new LocalizedError(msg('文件须包含 1–5000 条笔记。'))
   return rows.map((row, index) => {
-    if (row.length !== header.length) throw new Error(`第 ${index + 2} 行的列数与表头不一致。`)
+    if (row.length !== header.length)
+      throw new LocalizedError(msg('第 {p0} 行的列数与表头不一致。', { p0: index + 2 }))
     const data = Object.fromEntries(header.map((key, i) => [key, row[i]!.trim()]))
     const note = noteSchema.safeParse({
       ...data,
@@ -77,7 +82,9 @@ export function parseNoteImport(text: string, deckId: string, delimiter: ',' | '
       updatedAt: new Date().toISOString(),
     })
     if (!note.success)
-      throw new Error(`第 ${index + 2} 行：${note.error.issues[0]?.message ?? '内容格式不正确'}`)
+      throw new LocalizedError(
+        msg('第 {p0} 行：{p1}', { p0: index + 2, p1: validationMessage(note.error) }),
+      )
     return note.data
   })
 }
@@ -114,7 +121,7 @@ export function editNotes(
   now = new Date(),
 ): Library {
   if (edit.deckId && !library.decks.some((deck) => deck.id === edit.deckId))
-    throw new Error('目标卡组不存在。')
+    throw new LocalizedError(msg('目标卡组不存在。'))
   return {
     ...library,
     notes: library.notes.map((note) =>

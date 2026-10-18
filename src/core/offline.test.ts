@@ -11,7 +11,7 @@ interface WorkerEvent {
 function workerHarness(failAsset = false) {
   const scope = 'https://repeaty.example/app/'
   const prefix = `repeaty-shell-${encodeURIComponent(scope)}-`
-  const buckets = new Map<string, Map<string, Response>>([
+  const buckets = new Map<string, Map<string, { request: Request; response: Response }>>([
     [`${prefix}old`, new Map()],
     ['unrelated', new Map()],
   ])
@@ -21,7 +21,9 @@ function workerHarness(failAsset = false) {
     activated = false
   const fetch = async (request: Request) => {
     if (!online || (failAsset && request.url.endsWith('main.js'))) throw new Error('offline')
-    return new Response(request.url.endsWith('index.html') ? '<html>repeaty</html>' : 'asset')
+    return new Response(request.url.endsWith('index.html') ? '<html>repeaty</html>' : 'asset', {
+      headers: { Vary: 'Origin' },
+    })
   }
   const caches = {
     async open(key: string) {
@@ -30,12 +32,30 @@ function workerHarness(failAsset = false) {
       return {
         async addAll(requests: Request[]) {
           const responses = await Promise.all(requests.map(fetch))
-          requests.forEach((request, index) => cache.set(request.url, responses[index]!))
+          requests.forEach((request, index) =>
+            cache.set(request.url, { request, response: responses[index]! }),
+          )
         },
-        async match(request: string | Request, options?: { ignoreSearch: boolean }) {
+        async match(
+          request: string | Request,
+          options?: { ignoreSearch?: boolean; ignoreVary?: boolean },
+        ) {
           let key = typeof request === 'string' ? request : request.url
           if (options?.ignoreSearch) key = key.split('?')[0]!
-          return cache.get(key)?.clone()
+          const cached = cache.get(key)
+          if (!cached) return
+          const query = typeof request === 'string' ? new Request(request) : request
+          if (!options?.ignoreVary) {
+            const vary = cached.response.headers.get('Vary')?.split(',') ?? []
+            if (
+              vary.some(
+                (header) =>
+                  cached.request.headers.get(header.trim()) !== query.headers.get(header.trim()),
+              )
+            )
+              return
+          }
+          return cached.response.clone()
         },
       }
     },
@@ -120,6 +140,18 @@ describe('production offline shell lifecycle', () => {
     await expect(worker.dispatch('install')).rejects.toThrow('offline')
     expect(worker.buckets.has(worker.prefix + 'old')).toBe(true)
     expect(worker.buckets.has(worker.prefix + 'new')).toBe(false)
+  })
+  it('serves precached scripts offline when CORS adds an Origin header', async () => {
+    const worker = workerHarness()
+    await worker.dispatch('install')
+    await worker.dispatch('activate')
+    worker.offline()
+    const response = (await worker.dispatch('fetch', {
+      request: new Request('https://repeaty.example/app/main.js', {
+        headers: { Origin: 'https://repeaty.example' },
+      }),
+    })) as Response
+    expect(await response.text()).toBe('asset')
   })
   it('only activates an update on the explicit application message', async () => {
     const worker = workerHarness()
