@@ -26,7 +26,7 @@ test('128 MiB of image/audio and long text survive archive restore, offline revi
     Readable.fromWeb(archive.stream() as import('node:stream/web').ReadableStream<Uint8Array>),
     createWriteStream(path),
   )
-  await page.goto('/')
+  await page.goto('./')
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
   await page.getByLabel('导入备份文件').setInputFiles(path)
   await expect(page.getByRole('dialog')).toContainText('2 张卡片', { timeout: 30_000 })

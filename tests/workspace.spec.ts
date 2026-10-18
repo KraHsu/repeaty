@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import type { Library } from '../src/core/model'
 
 async function createCard(page: Page, front = 'What is active recall?') {
-  await page.goto('/')
+  await page.goto('./')
   await page.getByRole('button', { name: '创建卡组', exact: true }).last().click()
   await page.getByLabel('卡组名称').fill('Learning')
   await page.getByRole('button', { name: '保存卡组', exact: true }).click()
@@ -101,7 +101,7 @@ test('backup export and confirmed restore retain cards, and malformed imports do
 
 test('mobile workspace and sample deck fit without page overflow', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('/')
+  await page.goto('./')
   await page.getByRole('button', { name: '体验示例', exact: true }).click()
   await expect(page.getByRole('button', { name: '学习如何学习', exact: true })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
@@ -118,7 +118,7 @@ test('mobile workspace and sample deck fit without page overflow', async ({ page
 
 test('desktop sample dashboard renders cleanly', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1050 })
-  await page.goto('/')
+  await page.goto('./')
   await page.getByRole('button', { name: '体验示例', exact: true }).click()
   await expect(page.getByRole('button', { name: '学习如何学习', exact: true })).toBeVisible()
   await page.screenshot({ path: 'test-results/desktop-dashboard.png', fullPage: true })

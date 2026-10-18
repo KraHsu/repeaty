@@ -5,7 +5,7 @@ test.use({ locale: 'en-US' })
 for (const width of [320, 390, 768, 1440]) {
   test(`language controls remain usable at ${width}px and survive reload`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
-    await page.goto('/')
+    await page.goto('./')
     await expect(page.getByRole('heading', { name: 'Every recall counts.' })).toBeVisible()
     await expect(page.locator('html')).toHaveAttribute('lang', 'en')
     await page.getByLabel('Interface language').selectOption('zh-CN')
@@ -25,7 +25,7 @@ for (const width of [320, 390, 768, 1440]) {
 test('English authoring and language switching preserve the active review and saved filter', async ({
   page,
 }) => {
-  await page.goto('/')
+  await page.goto('./')
   await page.getByRole('button', { name: 'Create deck', exact: true }).last().click()
   await page.getByLabel('Deck name', { exact: true }).fill('我的卡组')
   await page.getByRole('button', { name: 'Save deck', exact: true }).click()
@@ -59,7 +59,7 @@ test('English remains available offline along with its CSV example and install m
   page,
   context,
 }) => {
-  await page.goto('/')
+  await page.goto('./')
   await page.getByRole('button', { name: 'Data & backups', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Ready offline', exact: true })).toBeVisible()
   await page.reload()
@@ -69,8 +69,8 @@ test('English remains available offline along with its CSV example and install m
   await expect(page.getByRole('heading', { name: 'Every recall counts.' })).toBeVisible()
   const assets = await page.evaluate(async () => {
     const [manifest, csv] = await Promise.all([
-      fetch('/manifest.en.webmanifest'),
-      fetch('/example.en.csv'),
+      fetch('manifest.en.webmanifest'),
+      fetch('example.en.csv'),
     ])
     return { lang: (await manifest.json()).lang, example: await csv.text() }
   })
