@@ -7,7 +7,12 @@ import {
   practiceContentRevision,
   revealPracticeHistory,
 } from './practice'
-import { attemptSchema, practiceSchema } from './practice-data'
+import {
+  attemptSchema,
+  practiceSchema,
+  sameAttemptSummary,
+  summarizeAttempt,
+} from './practice-data'
 import { dailyUsage, reviewCard, undoReview } from './scheduler'
 import { librarySchema, migrateLibrary, removeNotes } from './model'
 import { createRepository } from './storage'
@@ -48,6 +53,21 @@ function example() {
   }
   return { library, practice, attempt, pending, completed }
 }
+
+it('compares submission summaries by values across JSON key reordering and rejects changed evidence', () => {
+  const { completed } = example()
+  const summary = summarizeAttempt(completed)
+  const reordered = Object.fromEntries(Object.entries(summary).reverse()) as typeof summary
+  expect(sameAttemptSummary(completed, reordered)).toBe(true)
+  expect(sameAttemptSummary(completed, { ...reordered, status: 'unknown' })).toBe(false)
+  expect(sameAttemptSummary(completed, { ...reordered, submissionId: 'different' })).toBe(false)
+  expect(
+    sameAttemptSummary(completed, {
+      ...reordered,
+      result: { ...reordered.result!, runtime: '2 ms' },
+    }),
+  ).toBe(false)
+})
 
 it('keeps content identity stable when SQLite or backups reorder JSON object keys', async () => {
   const plugin = { id: 'leetcode', version: 1, data: { site: 'leetcode.cn', slug: 'problem' } }
@@ -185,6 +205,7 @@ it('viewing past code marks only unfinished practices of the same card as reveal
       entry.practiceId === current.id
         ? {
             ...entry,
+            code: attempt.code,
             status: 'completed' as const,
             submissionId: '456',
             result: {

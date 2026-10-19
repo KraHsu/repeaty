@@ -3,11 +3,14 @@ import { computed, ref, watch } from 'vue'
 import { Search } from '@lucide/vue'
 import { t } from '../i18n'
 import type { Library } from '../core/model'
-import type { Attempt } from '../core/practice-data'
+import type { Attempt, AttemptRecord } from '../core/practice-data'
 import { questionPlugin } from '../plugins'
 import PracticeHistory from './PracticeHistory.vue'
 
-const props = defineProps<{ library: Library }>()
+const props = defineProps<{
+  library: Library
+  getAttempt?: (id: string, signal?: AbortSignal) => Promise<Attempt>
+}>()
 const emit = defineEmits<{ reveal: [practiceId: string] }>()
 const cardId = defineModel<string>('cardId', { default: '' })
 const query = ref('')
@@ -18,7 +21,7 @@ const pageSize = 20
 const notes = computed(() => new Map(props.library.notes.map((note) => [note.id, note])))
 const cards = computed(() => new Map(props.library.cards.map((card) => [card.id, card])))
 const attempts = computed(() => {
-  const grouped = new Map<string, Attempt[]>()
+  const grouped = new Map<string, AttemptRecord[]>()
   for (const attempt of props.library.attempts) {
     const group = grouped.get(attempt.practiceId) ?? []
     group.push(attempt)
@@ -141,6 +144,7 @@ watch(questions, (entries) => {
         :key="entry.practice.id"
         :practices="[entry.practice]"
         :attempts="entry.attempts"
+        :get-attempt="getAttempt"
         standalone
         @reveal="emit('reveal', $event)"
       />

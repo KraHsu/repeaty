@@ -1,7 +1,7 @@
 import type { Component } from 'vue'
 import type { CardView, Grade, Media } from '../core/model'
 import type { Assessment } from './data'
-import type { Practice, Attempt } from '../core/practice-data'
+import type { Practice, Attempt, AttemptRecord } from '../core/practice-data'
 
 export interface QuestionState {
   allowedGrades: Grade[]
@@ -20,12 +20,14 @@ export interface QuestionProps {
   revealed: boolean
   workspaceScope?: string
   practices?: Practice[]
-  attempts?: Attempt[]
+  attempts?: AttemptRecord[]
+  getAttempt?: (id: string, signal?: AbortSignal) => Promise<Attempt>
   saveAttempt?: (practice: Practice, attempt: Attempt, scope: string) => Promise<void>
 }
 export interface PracticeHistoryProps {
   practices: Practice[]
-  attempts: Attempt[]
+  attempts: AttemptRecord[]
+  getAttempt?: (id: string, signal?: AbortSignal) => Promise<Attempt>
   activeId?: string
   standalone?: boolean
 }

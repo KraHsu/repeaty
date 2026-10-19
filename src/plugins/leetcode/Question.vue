@@ -13,7 +13,12 @@ import {
 } from './model'
 import { bridgeRequest, BridgeError } from './bridge'
 import { readDraft, writeDraft, type Draft } from './drafts'
-import type { Practice, Attempt } from '../../core/practice-data'
+import {
+  hasAttemptBody,
+  type Practice,
+  type Attempt,
+  type AttemptRecord,
+} from '../../core/practice-data'
 import { practiceContentRevision } from '../../core/practice'
 import History from './History.vue'
 import RecoverSubmission from './RecoverSubmission.vue'
@@ -212,13 +217,20 @@ function visibilityChanged() {
   lastTick = performance.now()
   void persist()
 }
-async function check(target = activeAttempt) {
-  const submissionId = target?.submissionId ?? draft.value.pending
+async function fullAttempt(entry: AttemptRecord): Promise<Attempt> {
+  if (hasAttemptBody(entry)) return entry
+  const value = await props.getAttempt?.(entry.id, abort.signal)
+  if (!value) throw new Error('无法读取这次提交，请重试。')
+  return value
+}
+async function check(entry: AttemptRecord | undefined = activeAttempt) {
+  const submissionId = entry?.submissionId ?? draft.value.pending
   if (!problem || !submissionId || working.value || disposed) return
-  const current = !target || target.id === activeAttempt?.id
+  const current = !entry || entry.id === activeAttempt?.id
   working.value = true
   error.value = ''
   try {
+    let target = entry ? await fullAttempt(entry) : undefined
     if (target?.status === 'submitting') {
       target = {
         ...target,
@@ -267,12 +279,13 @@ async function check(target = activeAttempt) {
     working.value = false
   }
 }
-async function recover(attempt: Attempt, input: string) {
+async function recover(entry: AttemptRecord, input: string) {
   if (!problem || working.value || !ready.value || disposed || !activePractice) return false
   working.value = true
   error.value = ''
   let pending: Attempt
   try {
+    const attempt = await fullAttempt(entry)
     const submissionId = parseSubmissionInput(input, problem)
     const response = z.object({ submissionId: z.string() }).parse(
       await bridgeRequest(
@@ -456,9 +469,10 @@ onMounted(async () => {
         .reverse()
         .find((entry) => !entry.completedAt && entry.contentRevision === revision)
       if (activePractice) {
-        const latest = [...(props.attempts ?? [])]
+        const latestHeader = [...(props.attempts ?? [])]
           .reverse()
           .find((entry) => entry.practiceId === activePractice!.id)
+        const latest = latestHeader ? await fullAttempt(latestHeader) : undefined
         draft.value.practiceId = activePractice.id
         draft.value.attemptId = latest?.id
         if (latest) {
@@ -481,9 +495,10 @@ onMounted(async () => {
         mode: 'manual',
       }
     }
-    activeAttempt = props.attempts?.find(
+    const stored = props.attempts?.find(
       (entry) => entry.id === draft.value.attemptId && entry.practiceId === activePractice?.id,
     )
+    activeAttempt = stored ? await fullAttempt(stored) : undefined
     if (activeAttempt?.status === 'pending' || activeAttempt?.status === 'completed') {
       draft.value.awaitingSubmit = false
       draft.value.pending =
@@ -558,6 +573,7 @@ onUnmounted(() => {
       <History
         :practices="practices ?? []"
         :attempts="attempts ?? []"
+        :get-attempt="getAttempt"
         :active-id="draft.practiceId"
         @reveal="
           (id) => {
@@ -665,6 +681,7 @@ onUnmounted(() => {
           :attempt="attempt"
           :disabled="working || !ready"
           :recover="recover"
+          :get-attempt="getAttempt"
         />
         <div v-if="draft.result" class="judge-result" :class="{ accepted }" role="status">
           <strong>{{ t(draft.result.status) }}</strong>

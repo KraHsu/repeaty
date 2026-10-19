@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { t, locale } from '../../i18n'
-import type { Attempt } from '../../core/practice-data'
+import type { Attempt, AttemptRecord } from '../../core/practice-data'
+import AttemptBody from '../../components/AttemptBody.vue'
 const props = defineProps<{
-  attempt: Attempt
+  attempt: AttemptRecord
+  getAttempt?: (id: string, signal?: AbortSignal) => Promise<Attempt>
   disabled: boolean
-  recover: (attempt: Attempt, input: string) => Promise<boolean>
+  recover: (attempt: AttemptRecord, input: string) => Promise<boolean>
 }>()
 const input = ref('')
+const shown = ref(false)
 </script>
 <template>
   <form class="submission-recovery" @submit.prevent="props.recover(attempt, input)">
@@ -18,9 +21,15 @@ const input = ref('')
     <p>
       {{ t('在 LeetCode 找到这次提交，粘贴编号或详情链接。恢复只查询结果，不会重新提交代码。') }}
     </p>
-    <details>
+    <details
+      @toggle="
+        (event) => {
+          shown = (event.target as HTMLDetailsElement).open
+        }
+      "
+    >
       <summary>{{ t('核对本次提交的代码') }}</summary>
-      <pre class="recovery-code"><code>{{ attempt.code }}</code></pre>
+      <AttemptBody v-if="shown" :attempt="attempt" :get-attempt="getAttempt" code-only />
     </details>
     <label :for="`recover-${attempt.id}`">{{ t('提交编号或详情链接') }}</label>
     <div class="recovery-fields">

@@ -1,6 +1,6 @@
 {
   "name": "repeaty",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "private": true,
   "type": "module",
   "description": "Flashcards and spaced repetition for the browser, desktop, and self-hosted accounts.",

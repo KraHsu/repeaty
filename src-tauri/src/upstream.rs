@@ -55,11 +55,11 @@ pub fn endpoint(input: &str) -> Result<String, String> {
 }
 fn allowed(request: &Request) -> bool {
     match (request.method.as_str(), request.path.as_str()) {
-        ("GET", "/status" | "/auth/session" | "/library" | "/backups")
+        ("GET", "/status" | "/auth/session" | "/library" | "/library/summary" | "/backups")
         | (
             "POST",
             "/auth/login" | "/auth/register" | "/auth/logout" | "/auth/password"
-            | "/library/commit" | "/backups",
+            | "/library/commit" | "/library/attempts" | "/backups",
         ) => true,
         (method, path) => {
             let id = if matches!(method, "GET" | "PUT") && path.starts_with("/media/") {
@@ -209,12 +209,23 @@ mod tests {
             "https://example.com"
         );
         assert!(endpoint("http://127.0.0.1:8080").is_ok());
+        for (method, path) in [("GET", "/library/summary"), ("POST", "/library/attempts")] {
+            assert!(allowed(&Request {
+                path: path.into(),
+                method: method.into(),
+                body: None,
+                content_type: None,
+                user_id: None
+            }));
+        }
         for path in [
             "/plugins/leetcode",
             "/media/../auth/session",
             "//evil.test",
             "/media/x?token=x",
             "/media/%2e%2e",
+            "/library/attempts",
+            "/library/summary?user=another",
         ] {
             assert!(!allowed(&Request {
                 path: path.into(),

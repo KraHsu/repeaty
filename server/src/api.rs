@@ -1,6 +1,6 @@
 use crate::{
     auth::{AuthStore, User, private_directory},
-    db::{Commit, Database, MAX_MEDIA},
+    db::{Commit, Database, MAX_MEDIA, ReadAttempts},
     error::{Error, Result},
 };
 use axum::{
@@ -115,6 +115,11 @@ pub fn router(state: AppState, public_dir: PathBuf) -> Router {
             post(change_password).layer(DefaultBodyLimit::max(4096)),
         )
         .route("/library", get(load))
+        .route("/library/summary", get(load_summary))
+        .route(
+            "/library/attempts",
+            post(read_attempts).layer(DefaultBodyLimit::max(4096)),
+        )
         .route("/library/commit", post(commit))
         .route("/backups", get(backups).post(backup_now))
         .route("/backups/{id}", get(backup))
@@ -181,7 +186,8 @@ async fn protect(
         let library_request = matches!(
             request.uri().path(),
             "/library" | "/library/commit" | "/backups"
-        ) || request.uri().path().starts_with("/media/")
+        ) || request.uri().path().starts_with("/library/")
+            || request.uri().path().starts_with("/media/")
             || request.uri().path().starts_with("/backups/");
         if library_request
             && headers.get("x-repeaty-user").and_then(|v| v.to_str().ok()) != Some(&user.id)
@@ -202,7 +208,7 @@ async fn protect(
 }
 async fn status(State(state): State<AppState>) -> Json<Value> {
     Json(
-        json!({"edition":"server","version":env!("CARGO_PKG_VERSION"),"apiVersion":3,"authenticationRequired":true,"registration":state.registration}),
+        json!({"edition":"server","version":env!("CARGO_PKG_VERSION"),"apiVersion":3,"historyVersion":1,"authenticationRequired":true,"registration":state.registration}),
     )
 }
 #[derive(Deserialize)]
@@ -318,6 +324,23 @@ async fn commit(
 ) -> Result<Json<Value>> {
     let revision = state.database(user, |db| db.commit(input)).await?;
     Ok(Json(json!({"revision":revision})))
+}
+async fn load_summary(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+) -> Result<Json<Value>> {
+    Ok(Json(state.database(user, |db| db.load_summary()).await?))
+}
+async fn read_attempts(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+    Json(input): Json<ReadAttempts>,
+) -> Result<Json<Value>> {
+    Ok(Json(
+        state
+            .database(user, move |db| db.read_attempts(input))
+            .await?,
+    ))
 }
 async fn backups(
     State(state): State<AppState>,

@@ -4,7 +4,7 @@ export const AccountControls: Component | undefined = undefined
 export async function initializePlatform() {}
 export const ServerConnection: Component | undefined = undefined
 export async function createWorkspaceRepository(onBlocked: () => void) {
-  return createRepository('repeaty', onBlocked)
+  return createRepository('repeaty', onBlocked, { compactHistory: true })
 }
 
 export const createExportFile:

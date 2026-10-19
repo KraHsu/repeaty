@@ -11,8 +11,11 @@ const { values } = parseArgs({
   options: {
     history: { type: 'boolean', default: false },
     output: { type: 'string' },
+    runs: { type: 'string', default: '1' },
   },
 })
+const runs = Number(values.runs)
+if (!Number.isSafeInteger(runs) || runs < 1 || runs > 10) throw new Error('--runs must be 1–10')
 
 const bundle = await build({
   configFile: false,
@@ -42,16 +45,42 @@ const server = createServer((_req, res) => {
   res.end('<!doctype html><title>Repeaty storage benchmark</title>')
 })
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
-const browser = await chromium.launch({ args: ['--enable-precise-memory-info'] })
+const browser = await chromium.launch({
+  args: ['--enable-precise-memory-info', '--js-flags=--expose-gc'],
+})
 try {
-  const page = await browser.newPage()
-  page.on('pageerror', (error) => console.error(error))
-  page.on('console', (message) => {
-    if (message.text().startsWith('benchmark:')) console.error(message.text())
-  })
-  await page.goto(`http://127.0.0.1:${server.address().port}`)
-  await page.addScriptTag({ content: code })
-  const measurement = await page.evaluate(() => window.runScaleBenchmark())
+  const samples = []
+  for (let i = 0; i < runs; i++) {
+    const context = await browser.newContext()
+    const page = await context.newPage()
+    page.on('pageerror', (error) => console.error(error))
+    page.on('console', (message) => {
+      if (message.text().startsWith('benchmark:')) console.error(message.text())
+    })
+    await page.goto(`http://127.0.0.1:${server.address().port}`)
+    await page.addScriptTag({ content: code })
+    let prepared
+    if (values.history) {
+      prepared = await page.evaluate(() => window.prepareHistoryBenchmark())
+      // Drop the generator's objects and heap before measuring a real reopen.
+      await page.reload()
+      await page.addScriptTag({ content: code })
+    }
+    samples.push(await page.evaluate((prepared) => window.runScaleBenchmark(prepared), prepared))
+    await context.close()
+  }
+  const median = Object.fromEntries(
+    Object.keys(samples[0])
+      .filter((key) => typeof samples[0][key] === 'number')
+      .map((key) => {
+        const ordered = samples.map((sample) => sample[key]).sort((a, b) => a - b)
+        const middle = Math.floor(ordered.length / 2)
+        return [
+          key,
+          ordered.length % 2 ? ordered[middle] : (ordered[middle - 1] + ordered[middle]) / 2,
+        ]
+      }),
+  )
   const result = {
     environment: {
       os: `${platform()} ${release()}`,
@@ -59,7 +88,7 @@ try {
       browser: browser.version(),
       node: process.version,
     },
-    ...measurement,
+    ...(runs === 1 ? samples[0] : { runs, median, samples }),
   }
   console.log(JSON.stringify(result, null, 2))
   const output =

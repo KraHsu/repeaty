@@ -76,11 +76,14 @@ test('imported practice history is readable in the static edition without loadin
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.getByRole('button', { name: '练习历史', exact: true }).click()
   await expect(page.locator('.practice-history')).toHaveCount(3)
+  await expect(page.locator('.attempt-code')).toHaveCount(0)
   await page.locator('.attempt-history > summary').first().click()
   await expect(page.locator('.attempt-code code').first()).toContainText(
     '<script>stored text</script>',
   )
   await expect(page.locator('.attempt-code script')).toHaveCount(0)
+  await page.locator('.attempt-history > summary').first().click()
+  await expect(page.locator('.attempt-code')).toHaveCount(0)
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: '导出旧版 JSON', exact: true }).click()

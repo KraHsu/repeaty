@@ -814,6 +814,10 @@ export const en = {
   '还没有练习记录。提交题目后可在这里查看。':
     'No practice history yet. Submit a problem to start a record.',
   练习历史分页: 'Practice history pages',
+  '提交记录已不存在，请刷新后重试。': 'This submission no longer exists. Reload and try again.',
+  '无法读取这次提交，请重试。': 'Cannot load this submission. Please try again.',
+  '正在读取提交…': 'Loading submission…',
+  重试: 'Retry',
   '第 {page} / {pages} 页': 'Page {page} of {pages}',
   '查看 {title} 的练习历史': 'View practice history for {title}',
   '有一次提交未取得编号，自动评分暂不可用。请先核对并关联 LeetCode 提交记录。':

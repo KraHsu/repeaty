@@ -19,7 +19,7 @@ export async function initializePlatform() {
 export async function createWorkspaceRepository(onBlocked: () => void) {
   return remoteWorkspace.value
     ? createServerRepository(desktopEndpoint.value)
-    : createRepository('repeaty', onBlocked)
+    : createRepository('repeaty', onBlocked, { compactHistory: true })
 }
 
 export { createExportFile } from '../desktop/exports'

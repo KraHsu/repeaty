@@ -3,6 +3,8 @@ import { openDB, type DBSchema, type IDBPTransaction } from 'idb'
 import {
   emptyLibrary,
   librarySchema,
+  workspaceLibrarySchema,
+  validateLibraryReferences,
   migrateLibrary,
   deckSchema,
   noteSchema,
@@ -18,7 +20,13 @@ import {
 } from './model'
 import { compileSearch } from './search'
 import { available } from './scheduler'
-import { practiceSchema, attemptSchema } from './practice-data'
+import {
+  practiceSchema,
+  attemptSchema,
+  hasAttemptBody,
+  summarizeAttempt,
+  type Attempt,
+} from './practice-data'
 
 export interface Snapshot {
   revision: number
@@ -87,6 +95,7 @@ interface RepeatyDB extends DBSchema {
   savedSearches: RecordTable
   practices: RecordTable
   attempts: RecordTable
+  attemptSummaries: RecordTable
 }
 const stores = [
   'workspace',
@@ -95,6 +104,7 @@ const stores = [
   'meta',
   'checkpoints',
   'history',
+  'attemptSummaries',
   ...recordStores,
 ] as const
 type Transaction = IDBPTransaction<RepeatyDB, typeof stores, 'readwrite'>
@@ -122,9 +132,13 @@ export interface CardPage {
 }
 
 /** Domain updates are immutable: keep unchanged records by reference. Only changed rows are written. */
-export function createRepository(name = 'repeaty', onBlocked?: () => void) {
-  const database = openDB<RepeatyDB>(name, 6, {
-    upgrade(db, _oldVersion, _newVersion, tx) {
+export function createRepository(
+  name = 'repeaty',
+  onBlocked?: () => void,
+  options: { compactHistory?: boolean } = {},
+) {
+  const database = openDB<RepeatyDB>(name, 7, {
+    async upgrade(db, _oldVersion, _newVersion, tx) {
       for (const store of stores)
         if (!db.objectStoreNames.contains(store)) db.createObjectStore(store)
       for (const store of recordStores) {
@@ -136,6 +150,14 @@ export function createRepository(name = 'repeaty', onBlocked?: () => void) {
       const history = tx.objectStore('history')
       if (!history.indexNames.contains('revision')) history.createIndex('revision', 'revision')
       if (!history.indexNames.contains('store')) history.createIndex('store', 'store')
+      const summaries = tx.objectStore('attemptSummaries')
+      if (!summaries.indexNames.contains('position')) summaries.createIndex('position', 'position')
+      let cursor = await tx.objectStore('attempts').openCursor()
+      while (cursor) {
+        const row = cursor.value
+        await summaries.put({ ...row, value: summarizeAttempt(row.value as Attempt) }, row.id)
+        cursor = await cursor.continue()
+      }
     },
     blocking() {
       void database.then((db) => db.close())
@@ -147,13 +169,28 @@ export function createRepository(name = 'repeaty', onBlocked?: () => void) {
   let cached: Snapshot | undefined
   let maps = new Map<RecordStore, Map<string, { value: Entity; position: number }>>()
   function remember(snapshot: Snapshot, patches?: { store: RecordStore; id: string; row?: Row }[]) {
+    if (options.compactHistory && snapshot.library.attempts.some(hasAttemptBody)) {
+      snapshot = {
+        ...snapshot,
+        library: {
+          ...snapshot.library,
+          attempts: snapshot.library.attempts.map((entry) =>
+            hasAttemptBody(entry) ? summarizeAttempt(entry) : entry,
+          ),
+        },
+      }
+    }
     cached = snapshot
     if (patches) {
       for (const patch of patches) {
         if (patch.row)
-          maps
-            .get(patch.store)!
-            .set(patch.id, { value: patch.row.value, position: patch.row.position })
+          maps.get(patch.store)!.set(patch.id, {
+            value:
+              options.compactHistory && patch.store === 'attempts'
+                ? snapshot.library.attempts[patch.row.position]!
+                : patch.row.value,
+            position: patch.row.position,
+          })
         else maps.get(patch.store)!.delete(patch.id)
       }
       return snapshot
@@ -178,12 +215,14 @@ export function createRepository(name = 'repeaty', onBlocked?: () => void) {
     const library = emptyLibrary()
     await Promise.all(
       recordStores.map(async (store) => {
-        const rows = await tx.objectStore(store).index('position').getAll()
+        const source = store === 'attempts' && options.compactHistory ? 'attemptSummaries' : store
+        const rows = await tx.objectStore(source).index('position').getAll()
         ;(library[store] as Entity[]) = rows.map((row) => row.value)
       }),
     )
     return library
   }
+  const changed = () => new LocalizedError(msg('数据已在另一个标签页更新，请刷新页面后重试。'))
   async function prune(tx: Transaction) {
     const checkpoints = (await tx.objectStore('checkpoints').getAll()).sort(newest)
     const expired = checkpoints.slice(MAX_AUTO_BACKUPS)
@@ -270,6 +309,14 @@ export function createRepository(name = 'repeaty', onBlocked?: () => void) {
           ),
         ),
       )
+      if (store === 'attempts')
+        await Promise.all(
+          library.attempts.map((value, position) =>
+            tx
+              .objectStore('attemptSummaries')
+              .put({ id: value.id, value: summarizeAttempt(value), position }, value.id),
+          ),
+        )
     }
     for (const entry of await tx.objectStore('backups').getAll()) {
       const normalized = migrateLibrary(entry.library)
@@ -319,7 +366,7 @@ export function createRepository(name = 'repeaty', onBlocked?: () => void) {
       // The frequent grading path validates only changed cards/reviews. Structural edits and
       // external restores still receive complete cross-reference validation at the boundary.
       const progressOnly =
-        ['decks', 'notes', 'media', 'savedSearches', 'practices', 'attempts'].every(
+        ['decks', 'notes', 'media', 'savedSearches'].every(
           (key) => previous[key as RecordStore] === library[key as RecordStore],
         ) &&
         library.cards.length === previous.cards.length &&
@@ -328,7 +375,8 @@ export function createRepository(name = 'repeaty', onBlocked?: () => void) {
             Library['cards'][number] | undefined
           return prior && prior.noteId === card.noteId && prior.variant === card.variant
         })
-      if (!progressOnly) librarySchema.parse(library)
+      if (!progressOnly || library.practices.length > 100_000 || library.attempts.length > 500_000)
+        workspaceLibrarySchema.parse(library)
       if (library.reviews.length > 500_000)
         throw new LocalizedError(msg('复习记录已达到 50 万条上限，请先导出备份。'))
       const patches: { store: RecordStore; id: string; row?: Row }[] = []
@@ -358,6 +406,16 @@ export function createRepository(name = 'repeaty', onBlocked?: () => void) {
             progressOnly
           )
             throw new Error('Review references a missing card')
+          if (store === 'reviews' && progressOnly) {
+            const review = normalized as Library['reviews'][number]
+            if (
+              review.practiceId &&
+              !library.practices.some(
+                (entry) => entry.id === review.practiceId && entry.cardId === review.cardId,
+              )
+            )
+              throw new Error('Review references a missing practice')
+          }
           values.push(normalized)
           const deckId =
             store === 'cards'
@@ -382,12 +440,27 @@ export function createRepository(name = 'repeaty', onBlocked?: () => void) {
         for (const id of before.keys()) if (!seen.has(id)) patches.push({ store, id })
         ;(next[store] as Entity[]) = values
       }
+      const hasHistory =
+        previous.practices.length > 0 ||
+        next.practices.length > 0 ||
+        previous.attempts.length > 0 ||
+        next.attempts.length > 0
+      if (
+        !progressOnly ||
+        (hasHistory &&
+          (previous.practices !== next.practices ||
+            previous.attempts !== next.attempts ||
+            previous.reviews !== next.reviews))
+      )
+        validateLibraryReferences(next, (message) => {
+          throw new Error(message)
+        })
       const db = await database
       const tx = db.transaction(stores, 'readwrite')
       try {
         const current = await migrate(tx)
         if (current.revision !== expectedRevision || cached!.revision !== expectedRevision)
-          throw new LocalizedError(msg('数据已在另一个标签页更新，请刷新页面后重试。'))
+          throw changed()
         const expired =
           current.revision > 0 &&
           (await checkpoint(
@@ -434,6 +507,16 @@ export function createRepository(name = 'repeaty', onBlocked?: () => void) {
                 )
               if (patch.row) await table.put(patch.row, patch.id)
               else await table.delete(patch.id)
+              if (patch.store === 'attempts') {
+                if (patch.row)
+                  await tx
+                    .objectStore('attemptSummaries')
+                    .put(
+                      { ...patch.row, value: summarizeAttempt(patch.row.value as Attempt) },
+                      patch.id,
+                    )
+                else await tx.objectStore('attemptSummaries').delete(patch.id)
+              }
             }),
           )
         }
@@ -446,6 +529,45 @@ export function createRepository(name = 'repeaty', onBlocked?: () => void) {
         await abort(tx)
         throw error
       }
+    },
+    async getAttempt(id: string, expectedRevision = cached?.revision, signal?: AbortSignal) {
+      signal?.throwIfAborted()
+      const tx = (await database).transaction(['meta', 'attempts'], 'readonly')
+      const [meta, row] = await Promise.all([
+        tx.objectStore('meta').get('main'),
+        tx.objectStore('attempts').get(id),
+      ])
+      await tx.done
+      signal?.throwIfAborted()
+      if (meta?.revision !== expectedRevision) throw changed()
+      if (!row) throw new LocalizedError(msg('提交记录已不存在，请刷新后重试。'))
+      return attemptSchema.parse(row.value)
+    },
+    async readAttemptBatch(offset: number, expectedRevision: number, signal?: AbortSignal) {
+      signal?.throwIfAborted()
+      const tx = (await database).transaction(['meta', 'attempts'], 'readonly')
+      const [meta, rows] = await Promise.all([
+        tx.objectStore('meta').get('main'),
+        tx.objectStore('attempts').index('position').getAll(IDBKeyRange.lowerBound(offset), 128),
+      ])
+      await tx.done
+      signal?.throwIfAborted()
+      if (meta?.revision !== expectedRevision) throw changed()
+      return rows.map((row, index) => {
+        if (row.position !== offset + index) throw changed()
+        return attemptSchema.parse(row.value)
+      })
+    },
+    async completeLibrary() {
+      if (!cached) await this.load()
+      const { library, revision } = cached!
+      const attempts: Attempt[] = []
+      while (attempts.length < library.attempts.length) {
+        const batch = await this.readAttemptBatch(attempts.length, revision)
+        if (!batch.length) throw changed()
+        attempts.push(...batch)
+      }
+      return librarySchema.parse({ ...library, attempts })
     },
     async backupNow(force = false, now = new Date()) {
       const db = await database,

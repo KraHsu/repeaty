@@ -11,7 +11,7 @@ const tick = async () => {
   await nextTick()
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
 }
-async function benchmark() {
+async function prepare() {
   const cards = 10_000,
     practices = 20_000,
     attemptsPerPractice = 3,
@@ -40,6 +40,7 @@ async function benchmark() {
     nextDue: now.toISOString(),
     studyDay: '2026-10-17',
     kind: 'legacy' as const,
+    source: 'normal' as const,
   }))
   library.practices = Array.from({ length: practices }, (_, i) => {
     const note = library.notes[i % cards]!
@@ -77,7 +78,25 @@ async function benchmark() {
       },
     })),
   )
-  const times: Record<string, number> = {}
+  const name = `repeaty-history-benchmark-${crypto.randomUUID()}`
+  const repo = createRepository(name, undefined, { compactHistory: true })
+  const start = performance.now()
+  await repo.save(library, 0)
+  const initialSaveMs = performance.now() - start
+  console.log(`benchmark: initialSaveMs ${initialSaveMs.toFixed(1)} ms`)
+  await repo.close()
+  return {
+    name,
+    cards,
+    practices,
+    attempts: practices * attemptsPerPractice,
+    reviews: 100_000,
+    codeBytes,
+    initialSaveMs,
+  }
+}
+async function benchmark(prepared: Awaited<ReturnType<typeof prepare>>) {
+  const times: Record<string, number> = { initialSaveMs: prepared.initialSaveMs }
   const measure = async <T>(key: string, action: () => T | Promise<T>): Promise<T> => {
     const start = performance.now()
     const result = await action()
@@ -85,16 +104,26 @@ async function benchmark() {
     console.log(`benchmark: ${key} ${times[key].toFixed(1)} ms`)
     return result
   }
-  const name = `repeaty-history-benchmark-${crypto.randomUUID()}`
-  let repo = createRepository(name)
-  let saved = await measure('initialSaveMs', () => repo.save(library, 0))
-  await repo.close()
-  repo = createRepository(name)
-  saved = await measure('loadMs', () => repo.load())
+  const repo = createRepository(prepared.name, undefined, { compactHistory: true })
+  let saved = await measure('loadMs', () => repo.load())
+  ;(globalThis as { gc?: () => void }).gc?.()
+  const heap = performance as Performance & { memory?: { usedJSHeapSize: number } }
+  const loadedHeapMiB = heap.memory ? heap.memory.usedJSHeapSize / 1024 / 1024 : undefined
+  const loadedCodeCharacters = saved.library.attempts.reduce(
+    (sum, entry) => sum + (entry.code?.length ?? 0),
+    0,
+  )
   const current = shallowRef(saved.library)
   const host = document.createElement('main')
   document.body.append(host)
-  const app = createApp({ render: () => h(PracticeHistoryPanel, { library: current.value }) })
+  const app = createApp({
+    render: () =>
+      h(PracticeHistoryPanel, {
+        library: current.value,
+        getAttempt: (id: string, signal?: AbortSignal) =>
+          repo.getAttempt(id, saved.revision, signal),
+      }),
+  })
   await measure('historyMountMs', async () => {
     app.mount(host)
     await tick()
@@ -113,14 +142,25 @@ async function benchmark() {
     search.dispatchEvent(new Event('input', { bubbles: true }))
     await tick()
   })
+  await measure('expandCodeMs', async () => {
+    host.querySelector<HTMLDetailsElement>('.attempt-history')!.open = true
+    for (let i = 0; i < 60; i++) {
+      await tick()
+      if (host.querySelector('.attempt-code code')) return
+    }
+    throw new Error('Code did not load')
+  })
   const practice: Practice = {
-    ...library.practices[0]!,
+    ...saved.library.practices[0]!,
     id: 'benchmark-active',
     completedAt: undefined,
     completion: undefined,
   }
   const attempt: Attempt = {
-    ...library.attempts[0]!,
+    ...saved.library.attempts[0]!,
+    code: '# saved solution\n'
+      .repeat(Math.ceil(prepared.codeBytes / 17))
+      .slice(0, prepared.codeBytes),
     id: 'benchmark-submit',
     practiceId: practice.id,
     status: 'submitting',
@@ -132,11 +172,29 @@ async function benchmark() {
       ...attempt,
       status,
       submissionId: status === 'submitting' ? undefined : '999999999',
-      result: status === 'completed' ? library.attempts[2]!.result : undefined,
+      result:
+        status === 'completed'
+          ? {
+              outcome: 'accepted' as const,
+              status: '通过',
+              runtime: '1 ms',
+              memory: '10 MB',
+              detail: '',
+            }
+          : undefined,
     }
-    saved = await measure(`${status}SaveMs`, () =>
-      repo.save(recordAttempt(saved.library, practice, value), saved.revision),
-    )
+    saved = await measure(`${status}SaveMs`, async () => {
+      let current = saved.library
+      const previous = current.attempts.find((entry) => entry.id === value.id)
+      if (previous && typeof previous.code !== 'string') {
+        const full = await repo.getAttempt(previous.id, saved.revision)
+        current = {
+          ...current,
+          attempts: current.attempts.map((entry) => (entry.id === full.id ? full : entry)),
+        }
+      }
+      return repo.save(recordAttempt(current, practice, value), saved.revision)
+    })
   }
   saved = await measure('ratingSaveMs', () =>
     repo.save(
@@ -155,29 +213,28 @@ async function benchmark() {
           archiveBytes += bytes.byteLength
         },
       }),
+      readAttempts: (offset) => repo.readAttemptBatch(offset, saved.revision),
     }),
   )
-  const heap = performance as Performance & { memory?: { usedJSHeapSize: number } }
+  const { name: _name, initialSaveMs: _initialSave, ...size } = prepared
   const result = {
-    cards,
-    reviews: library.reviews.length,
-    practices,
-    attempts: practices * attemptsPerPractice,
-    codeBytes,
+    ...size,
     initialCodeNodes,
+    loadedCodeCharacters,
     archiveBytes,
-    // Includes the generated fixture and temporary allocations; not an idle app measurement.
-    benchmarkHeapMiB: heap.memory ? heap.memory.usedJSHeapSize / 1024 / 1024 : undefined,
+    loadedHeapMiB,
     ...times,
   }
   app.unmount()
   host.remove()
   await repo.close()
   await new Promise<void>((resolve, reject) => {
-    const request = indexedDB.deleteDatabase(name)
+    const request = indexedDB.deleteDatabase(prepared.name)
     request.onsuccess = () => resolve()
     request.onerror = () => reject(request.error)
   })
   return result
 }
 ;(window as unknown as { runScaleBenchmark: typeof benchmark }).runScaleBenchmark = benchmark
+;(window as unknown as { prepareHistoryBenchmark: typeof prepare }).prepareHistoryBenchmark =
+  prepare

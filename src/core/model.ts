@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { createEmptyCard, type Card as FsrsCard } from 'ts-fsrs'
 import { scheduleSchema, librarySchema as legacySchema } from './legacy'
 import { pluginDataSchema, assessmentSchema } from '../plugins/data'
-import { practiceSchema, attemptSchema } from './practice-data'
+import { practiceSchema, attemptSchema, attemptSummarySchema } from './practice-data'
 
 export { scheduleSchema } from './legacy'
 const date = z.iso.datetime()
@@ -224,77 +224,98 @@ export function variants(note: Pick<Note, 'type' | 'front'>): string[] {
     .map((number) => `cloze:${number}`)
 }
 
-export const librarySchema = z
-  .object({
-    version: z.literal(5),
-    practices: z.array(practiceSchema).max(100_000),
-    attempts: z.array(attemptSchema).max(500_000),
-    savedSearches: z.array(savedSearchSchema).max(100).default([]),
-    decks: z.array(deckSchema).max(1000),
-    notes: z.array(noteSchema).max(100_000),
-    cards: z.array(cardSchema).max(200_000),
-    reviews: z.array(reviewSchema).max(500_000),
-    media: z.array(mediaSchema).max(100_000),
-  })
-  .superRefine((library, ctx) => {
-    const problem = (message: string) => ctx.addIssue({ code: 'custom', message })
-    for (const key of [
-      'decks',
-      'notes',
-      'cards',
-      'reviews',
-      'media',
-      'savedSearches',
-      'practices',
-      'attempts',
-    ] as const) {
-      if (new Set(library[key].map((entry) => entry.id)).size !== library[key].length)
-        problem(`${key} 中存在重复 ID`)
+const libraryContents = z.object({
+  version: z.literal(5),
+  practices: z.array(practiceSchema).max(100_000),
+  attempts: z.array(attemptSchema).max(500_000),
+  savedSearches: z.array(savedSearchSchema).max(100).default([]),
+  decks: z.array(deckSchema).max(1000),
+  notes: z.array(noteSchema).max(100_000),
+  cards: z.array(cardSchema).max(200_000),
+  reviews: z.array(reviewSchema).max(500_000),
+  media: z.array(mediaSchema).max(100_000),
+})
+export function validateLibraryReferences(
+  library: Omit<z.infer<typeof libraryContents>, 'attempts'> & {
+    attempts: { id: string; practiceId: string }[]
+  },
+  problem: (message: string) => void,
+) {
+  for (const key of [
+    'decks',
+    'notes',
+    'cards',
+    'reviews',
+    'media',
+    'savedSearches',
+    'practices',
+    'attempts',
+  ] as const) {
+    if (new Set(library[key].map((entry) => entry.id)).size !== library[key].length)
+      problem(`${key} 中存在重复 ID`)
+  }
+  const decks = new Set(library.decks.map((deck) => deck.id))
+  const notes = new Map(library.notes.map((note) => [note.id, note]))
+  const cards = new Set(library.cards.map((card) => card.id))
+  const media = new Set(library.media.map((item) => item.id))
+  const cardVariants = new Map<string, string[]>()
+  for (const card of library.cards) {
+    if (!notes.has(card.noteId)) problem('卡片所属笔记不存在')
+    cardVariants.set(card.noteId, [...(cardVariants.get(card.noteId) ?? []), card.variant])
+  }
+  for (const note of library.notes) {
+    if (!decks.has(note.deckId)) problem('笔记所属卡组不存在')
+    if ([...note.frontMedia, ...note.backMedia].some((mediaId) => !media.has(mediaId)))
+      problem('笔记引用的媒体不存在')
+    try {
+      if (variants(note).sort().join(',') !== (cardVariants.get(note.id) ?? []).sort().join(','))
+        problem('卡片与笔记生成规则不匹配')
+    } catch {
+      problem('挖空格式不正确')
     }
-    const decks = new Set(library.decks.map((deck) => deck.id))
-    const notes = new Map(library.notes.map((note) => [note.id, note]))
-    const cards = new Set(library.cards.map((card) => card.id))
-    const media = new Set(library.media.map((item) => item.id))
-    const cardVariants = new Map<string, string[]>()
-    for (const card of library.cards) {
-      if (!notes.has(card.noteId)) problem('卡片所属笔记不存在')
-      cardVariants.set(card.noteId, [...(cardVariants.get(card.noteId) ?? []), card.variant])
-    }
-    for (const note of library.notes) {
-      if (!decks.has(note.deckId)) problem('笔记所属卡组不存在')
-      if ([...note.frontMedia, ...note.backMedia].some((mediaId) => !media.has(mediaId)))
-        problem('笔记引用的媒体不存在')
-      try {
-        if (variants(note).sort().join(',') !== (cardVariants.get(note.id) ?? []).sort().join(','))
-          problem('卡片与笔记生成规则不匹配')
-      } catch {
-        problem('挖空格式不正确')
-      }
-    }
-    if (library.reviews.some((review) => !cards.has(review.cardId)))
-      problem('复习记录对应的卡片不存在')
-    const practices = new Map(library.practices.map((entry) => [entry.id, entry]))
-    if (library.practices.some((entry) => !cards.has(entry.cardId))) problem('练习对应的卡片不存在')
-    if (library.attempts.some((entry) => !practices.has(entry.practiceId)))
-      problem('提交对应的练习不存在')
-    for (const review of library.reviews) {
-      if (review.practiceId && practices.get(review.practiceId)?.cardId !== review.cardId)
-        problem('评分与练习不匹配')
-    }
-    const reviews = new Map(library.reviews.map((entry) => [entry.id, entry]))
-    for (const practice of library.practices) {
-      const review = practice.reviewId ? reviews.get(practice.reviewId) : undefined
-      if (
-        practice.reviewId &&
-        (!review ||
-          review.practiceId !== practice.id ||
-          review.cardId !== practice.cardId ||
-          review.rating !== practice.rating)
-      )
-        problem('练习关联的评分不存在')
-    }
-  })
-export type Library = z.infer<typeof librarySchema>
+  }
+  if (library.reviews.some((review) => !cards.has(review.cardId)))
+    problem('复习记录对应的卡片不存在')
+  const practices = new Map(library.practices.map((entry) => [entry.id, entry]))
+  if (library.practices.some((entry) => !cards.has(entry.cardId))) problem('练习对应的卡片不存在')
+  if (library.attempts.some((entry) => !practices.has(entry.practiceId)))
+    problem('提交对应的练习不存在')
+  for (const review of library.reviews) {
+    if (review.practiceId && practices.get(review.practiceId)?.cardId !== review.cardId)
+      problem('评分与练习不匹配')
+  }
+  const reviews = new Map(library.reviews.map((entry) => [entry.id, entry]))
+  for (const practice of library.practices) {
+    const review = practice.reviewId ? reviews.get(practice.reviewId) : undefined
+    if (
+      practice.reviewId &&
+      (!review ||
+        review.practiceId !== practice.id ||
+        review.cardId !== practice.cardId ||
+        review.rating !== practice.rating)
+    )
+      problem('练习关联的评分不存在')
+  }
+}
+export const librarySchema = libraryContents.superRefine((library, ctx) =>
+  validateLibraryReferences(library, (message) => ctx.addIssue({ code: 'custom', message })),
+)
+export const workspaceLibrarySchema = libraryContents
+  .extend({ attempts: z.array(z.union([attemptSchema, attemptSummarySchema])).max(500_000) })
+  .superRefine((library, ctx) =>
+    validateLibraryReferences(library, (message) => ctx.addIssue({ code: 'custom', message })),
+  )
+export type Library = z.infer<typeof workspaceLibrarySchema>
+export const recordSchemas = {
+  decks: deckSchema,
+  notes: noteSchema,
+  cards: cardSchema,
+  reviews: reviewSchema,
+  media: mediaSchema,
+  savedSearches: savedSearchSchema,
+  practices: practiceSchema,
+  attempts: attemptSchema,
+}
 export function emptyLibrary(): Library {
   return {
     version: 5,
