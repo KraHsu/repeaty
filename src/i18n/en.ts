@@ -1,5 +1,7 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  '学习库已变化，请重新比较后再导入。': 'The library has changed. Compare again before importing.',
+  '请先确认新增和移除的卡片。': 'Confirm the cards to add and remove before continuing.',
   '最多 5000 条 · 文件最大 256 MB · 单个附件最大 10 MB':
     'Up to 5,000 notes · 256 MB per file · 10 MB per attachment',
   'Anki 文件损坏、格式不受支持或超过导入限制。':
