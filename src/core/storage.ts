@@ -408,11 +408,12 @@ export function createRepository(
           const normalized = same ? prior.value : schemas[store].parse(value)
           if (
             store === 'reviews' &&
+            !same &&
             !maps.get('cards')!.has((normalized as Library['reviews'][number]).cardId) &&
             progressOnly
           )
             throw new Error('Review references a missing card')
-          if (store === 'reviews' && progressOnly) {
+          if (store === 'reviews' && progressOnly && !same) {
             const review = normalized as Library['reviews'][number]
             if (
               review.practiceId &&
