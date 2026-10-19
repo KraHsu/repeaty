@@ -26,6 +26,7 @@ export default defineConfig(({ mode }) => {
       target: 'esnext',
       manifest: true,
     },
+    worker: { format: 'es' },
     plugins: [vue(), ...(server || desktop ? [] : [offlinePlugin()])],
     test: { include: ['src/**/*.test.ts'], environment: 'node' },
   }

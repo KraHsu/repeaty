@@ -1,5 +1,48 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  '最多 5000 条 · 文件最大 256 MB · 单个附件最大 10 MB':
+    'Up to 5,000 notes · 256 MB per file · 10 MB per attachment',
+  'Anki 文件损坏、格式不受支持或超过导入限制。':
+    'The Anki file is damaged, unsupported, or exceeds the import limits.',
+  'Anki 文件不能超过 256 MB。': 'Anki files must not exceed 256 MB.',
+  '无法启动 Anki 导入器，请重新加载页面后重试。':
+    'Could not start the Anki importer. Reload the page and try again.',
+  'Anki 文件处理超时，请拆分卡组后重试。':
+    'Processing the Anki file timed out. Split the deck and try again.',
+  'Anki .apkg': 'Anki .apkg',
+  导入格式: 'Import format',
+  '选择 Anki 文件': 'Choose Anki file',
+  '支持 Basic、双向和 Cloze。导入为新卡，不保留 Anki 的复习进度。':
+    'Supports Basic, reversed, and Cloze notes. Imports as new cards without Anki review progress.',
+  '内容转为 Markdown，图片和音频作为附件。模板样式不保留。':
+    'Content is converted to Markdown, with images and audio as attachments. Template styling is not retained.',
+  '正在读取 Anki 文件… {percent}%': 'Reading Anki file… {percent}%',
+  '正在读取 Anki 文件…': 'Reading Anki file…',
+  '共 {total} 条笔记：可导入 {ready} 条，已存在 {duplicates} 条，跳过 {skipped} 条。':
+    '{total} notes: {ready} ready to import, {duplicates} already present, {skipped} skipped.',
+  '将添加 {cards} 张新卡和 {media} 个附件。': 'New cards: {cards} · Attachments: {media}',
+  '文件含 {count} 条 Anki 复习记录，本次不会导入。':
+    'Anki review records: {count}. These will not be imported.',
+  '相同 GUID 的笔记会跳过，保留 Repeaty 中已有的内容和进度。':
+    'Notes with the same GUID are skipped, keeping the content and progress already in Repeaty.',
+  导入报告: 'Import report',
+  下载报告: 'Download report',
+  查看内容预览: 'Preview content',
+  '模板无法转换为问答、双向或挖空卡':
+    'Template cannot be converted to a Basic, reversed, or Cloze note',
+  字段数量或身份不正确: 'Invalid fields or note identity',
+  '内容、标签或挖空格式超出支持范围': 'Unsupported content, tags, or cloze syntax',
+  卡片变体不完整或不受支持: 'Incomplete or unsupported card variants',
+  '附件缺失、损坏或格式不受支持': 'Missing, damaged, or unsupported attachments',
+  已移除脚本或交互内容: 'Scripts or interactive content removed',
+  已移除外部图片或音频: 'External images or audio removed',
+  已跳过: 'Skipped',
+  已调整: 'Adjusted',
+  '还有 {count} 项，完整列表见下载报告。':
+    '{count} more items are included in the downloaded report.',
+  '没有可导入的新笔记。': 'No new notes to import.',
+  'Anki 笔记导入完成': 'Anki notes imported',
+  导入完成前: 'Before importing',
   桌面版可离线使用本地学习库: 'The desktop app can use its local library offline',
   '桌面版 · 本地学习库': 'Desktop · Local library',
   保存在本机应用中: 'Stored on this device',
