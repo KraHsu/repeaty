@@ -453,8 +453,61 @@ try {
     try{return await new Promise((resolve,reject)=>{const r=db.transaction('notes').objectStore('notes').getAll();r.onsuccess=()=>resolve(r.result.filter(n=>n.id.startsWith('anki:')).length);r.onerror=()=>reject(r.error)})}finally{db.close()}})();`),
     4,
   )
+  await execute("document.querySelectorAll('.main-nav button')[1].click()")
+  await click('批量导入')
+  await execute(
+    "const select=document.querySelector('#import-format');select.value='anki';select.dispatchEvent(new Event('change',{bubbles:true}));",
+  )
+  await until(
+    () => execute("return !!document.querySelector('#anki-file')"),
+    'native repeated import input',
+  )
+  await execute(
+    `const bytes=Uint8Array.from(atob(arguments[0]), c=>c.charCodeAt(0));
+    const transfer=new DataTransfer();transfer.items.add(new File([bytes],'updated.apkg',{type:'application/zip'}));
+    const input=document.querySelector('#anki-file');input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));`,
+    (await readFile('tests/fixtures/anki/updated.apkg')).toString('base64'),
+  )
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.anki-preview')?.textContent.includes('3 条内容不同')",
+      ),
+    'native SHA-256 attachment comparison',
+  )
+  await execute("document.querySelector('.anki-detail-toggle').click()")
+  await until(
+    () => execute("return document.querySelectorAll('.anki-compare-side audio').length===2"),
+    'native comparison media',
+  )
+  await writeFile(
+    'test-results/native-anki-comparison.png',
+    Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
+  )
+  await click('选择所有内容不同的笔记')
+  assert.equal(
+    await execute(
+      "return [...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='确认导入').disabled",
+    ),
+    true,
+  )
+  await execute("document.querySelector('.anki-card-impact input').click()")
+  await click('确认导入')
+  await until(
+    () => execute("return !document.querySelector('dialog')"),
+    'native repeated import saved',
+  )
+  await command(`/session/${session}/refresh`, {})
+  await until(
+    () => execute("return document.querySelectorAll('.deck-title').length===1"),
+    'native updated library restart',
+  )
+  const updatedCounts =
+    await execute(`return (async()=>{const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('repeaty');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
+    try { const result={};for(const key of ['notes','cards','reviews','attempts'])result[key]=await new Promise((resolve,reject)=>{const r=db.transaction(key).objectStore(key).getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});return {notes:result.notes.filter(n=>n.id.startsWith('anki:')).length,cards:result.cards.length,reviews:result.reviews.length,attempts:result.attempts.length}}finally{db.close()}})();`)
+  assert.deepEqual(updatedCounts, { notes: 5, cards: 7, reviews: 1, attempts: 1 })
   console.log(
-    'Native WebKit/Tauri: starter lifecycle, accounts, upstream, credentials, backup, LeetCode history and Anki worker/wasm import passed.',
+    'Native WebKit/Tauri: starter lifecycle, accounts, upstream, credentials, backup, LeetCode history and Anki import/update with media comparison passed.',
   )
 } catch (error) {
   console.error(log.slice(-20).join(''))

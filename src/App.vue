@@ -37,7 +37,7 @@ import { ServerConnection, AccountControls, createExportFile } from '@repeaty-pl
 import { canReviewCard, listenPluginPreferences } from './plugins'
 import type { BackupData } from './core/backups'
 import type { BatchEdit } from './core/batch'
-import type { AnkiPackage } from './core/anki/types'
+import type { AnkiImportPlan, AnkiSelection } from './core/anki/changes'
 import type { CardAction } from './core/scheduler'
 import { useOffline } from './composables/useOffline'
 import { useLibrary } from './composables/useLibrary'
@@ -231,8 +231,13 @@ function startStudy(study: StudySession) {
 async function importNotes(notes: NoteInput[], skip: boolean) {
   if (await run(() => workspace.importNotes(notes, skip), '笔记导入完成')) modal.value = null
 }
-async function importAnki(data: AnkiPackage, deckId: string, scope: string) {
-  return run(() => workspace.importAnki(data, deckId, scope), 'Anki 笔记导入完成')
+async function importAnki(
+  plan: AnkiImportPlan,
+  selection: AnkiSelection,
+  deckId: string,
+  scope: string,
+) {
+  return run(() => workspace.importAnki(plan, selection, deckId, scope), 'Anki 笔记导入完成')
 }
 async function changeCards(ids: string[], action: CardAction) {
   return run(() => workspace.changeCards(new Set(ids), action))
@@ -1182,6 +1187,8 @@ async function restoreBackup() {
         :deck-id="selectedDeck"
         :busy="busy"
         :import-anki="importAnki"
+        :preview-anki="workspace.previewAnki"
+        :get-media="workspace.getMedia"
         :workspace-scope="workspace.scope.value"
         @import="importNotes"
         @close="modal = null"

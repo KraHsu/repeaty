@@ -6,12 +6,15 @@ export async function createImportDeck(page: Page) {
   await page.getByRole('button', { name: '保存卡组', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
 }
-export async function previewAnki(page: Page, format: 'modern' | 'legacy' = 'modern') {
+export async function previewAnki(page: Page, format: 'modern' | 'legacy' | 'updated' = 'modern') {
   await page.getByRole('button', { name: /^全部卡片/ }).click()
   await page.getByRole('button', { name: '批量导入', exact: true }).click()
   await page.getByLabel('导入格式').selectOption('anki')
   await page.getByLabel('选择 Anki 文件').setInputFiles(`tests/fixtures/anki/${format}.apkg`)
-  await expect(page.locator('.anki-preview')).toContainText('共 7 条笔记', { timeout: 20_000 })
+  await expect(page.locator('.anki-preview')).toContainText(
+    `共 ${format === 'updated' ? 5 : 7} 条笔记`,
+    { timeout: 20_000 },
+  )
 }
 export async function confirmAnki(page: Page) {
   await expect(page.locator('.anki-preview')).toContainText('可导入 4 条，已存在 0 条，跳过 3 条')
