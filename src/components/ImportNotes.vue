@@ -5,13 +5,21 @@ import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { parseNoteImport, noteKey } from '../core/batch'
 import { variants, type Library, type NoteInput } from '../core/model'
 import type { AnkiPackage } from '../core/anki/types'
+import type { AnkiImportPlan, AnkiSelection } from '../core/anki/changes'
 const ImportAnki = defineAsyncComponent(() => import('./ImportAnki.vue'))
 const props = defineProps<{
   library: Library
   deckId?: string
   busy: boolean
   workspaceScope: string
-  importAnki: (data: AnkiPackage, deckId: string, scope: string) => Promise<boolean>
+  importAnki: (
+    plan: AnkiImportPlan,
+    selection: AnkiSelection,
+    deckId: string,
+    scope: string,
+  ) => Promise<boolean>
+  previewAnki: (data: AnkiPackage, scope: string, signal?: AbortSignal) => Promise<AnkiImportPlan>
+  getMedia: (id: string) => Promise<Blob | undefined>
 }>()
 const importScope = props.workspaceScope
 const emit = defineEmits<{ import: [notes: NoteInput[], skip: boolean]; close: [] }>()
@@ -78,7 +86,9 @@ async function fileChanged(event: Event) {
       :library="library"
       :deck-id="selectedDeck"
       :busy="busy"
-      :submit="(data, deckId) => importAnki(data, deckId, importScope)"
+      :submit="(plan, selection, deckId) => importAnki(plan, selection, deckId, importScope)"
+      :analyze="(data, signal) => previewAnki(data, importScope, signal)"
+      :get-media="getMedia"
       @close="emit('close')"
     />
     <form v-else class="editor-form import-table-form" @submit.prevent="validate">

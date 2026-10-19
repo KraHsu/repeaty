@@ -109,9 +109,9 @@ Fork 后需在自己的仓库启用 Pages 的 GitHub Actions 发布源，并单�
 
 纯前端版独立运行于浏览器；带后端版使用 Rust + Axum + SQLite，由同一服务托管网页与 API。带后端版提供基本账户；范围不包含订阅、支付、商业云同步或团队协作。
 
-Anki `.apkg` 在同源 Worker 中通过 sql.js 读取，HTML 用 parse5 作为纯数据转换，单独打包的 SQLite Wasm 随应用离线缓存。新版压缩使用有大小检查的 fzstd 解码。Anki 的 `unicase` 排序规则仅在临时内存副本的模型表定义中替换为 BINARY，查询只按数值身份与序号读取，不按名称比较；原包不改写。解析不访问学习库，确认后沿用现有存储事务，GUID 编码为稳定笔记 ID，无需改变学习数据、SQLite 或备份版本。[格式、边界与实际 Anki 样例](ANKI.md)。
+Anki `.apkg` 在同源 Worker 中通过 sql.js 读取，HTML 用 parse5 作为纯数据转换，单独打包的 SQLite Wasm 随应用离线缓存。新版压缩使用有大小检查的 fzstd 解码。Anki 的 `unicase` 排序规则仅在临时内存副本的模型表定义中替换为 BINARY，查询只按数值身份与序号读取，不按名称比较；原包不改写。解析不访问学习库；随后按 GUID 比较当前库，附件逐个计算 SHA-256 并复用相同文件的已有引用，比较结果绑定工作空间与修订。确认后批量更新笔记，按变体保留原卡片，只在明确确认时移除变体及关联历史；沿用现有存储事务和操作前快照，GUID 编码为稳定笔记 ID，无需改变学习数据、SQLite 或备份版本。[格式、边界与实际 Anki 样例](ANKI.md)。
 
-尚未实现 Anki 进度迁移与导出、自定义字段 / HTML 模板、所见即所得富文本编辑器、图片遮挡、嵌套挖空、FSRS 参数训练。
+Anki 集成只规划导入，不计划提供 Repeaty → Anki 导出。尚未实现 Anki 进度迁移、自定义字段 / HTML 模板、所见即所得富文本编辑器、图片遮挡、嵌套挖空、FSRS 参数训练。
 
 ```text
 src/core/
@@ -124,7 +124,7 @@ src/core/
   authoring.ts       # 选中文字插入挖空
   search.ts          # 组合搜索、常用筛选及专项练习队列
   batch.ts           # CSV / TSV 校验与批量操作
-  anki/              # .apkg 解析、HTML 转换、媒体校验与新卡导入
+  anki/              # .apkg 解析、HTML 转换、媒体比较与选择性导入更新
   storage.ts         # IndexedDB 分表存储、增量快照与媒体回收
   archive.ts         # 流式 ZIP / NDJSON 备份与原始媒体
   backups.ts         # 旧版 JSON 备份兼容

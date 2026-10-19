@@ -1,5 +1,46 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  新笔记: 'New notes',
+  内容相同: 'Same content',
+  内容不同: 'Different content',
+  无法比较: 'Comparison unavailable',
+  筛选笔记: 'Filter notes',
+  所有笔记: 'All notes',
+  选择所有内容不同的笔记: 'Select all different notes',
+  保留所有已有笔记: 'Keep all existing notes',
+  '没有符合筛选条件的笔记。': 'No notes match this filter.',
+  添加此笔记: 'Add this note',
+  采用文件内容: 'Use file content',
+  '不同之处：{fields}': 'Differences: {fields}',
+  '保留 {count} 张卡片及其进度。': 'Keep {count} cards and their progress.',
+  '新增卡片：{variants}': 'Cards to add: {variants}',
+  '移除卡片：{variants}': 'Cards to remove: {variants}',
+  '无法读取已有附件，此笔记不能更新。请检查附件后重新比较。':
+    'Existing attachments could not be read. Check them and compare again before updating this note.',
+  收起比较: 'Hide comparison',
+  查看内容比较: 'Compare content',
+  'Anki 文件中的内容': 'Content in the Anki file',
+  'Repeaty 中的内容': 'Content in Repeaty',
+  笔记比较分页: 'Note comparison pages',
+  '支持 Basic、双向和 Cloze。新笔记作为新卡添加；已有笔记可选择更新。不导入 Anki 复习进度。':
+    'Supports Basic, reversed, and Cloze notes. Add new notes or choose which existing notes to update. Anki review progress is not imported.',
+  '正在比较笔记和附件…': 'Comparing notes and attachments…',
+  '已有笔记：{same} 条相同，{changed} 条内容不同，{unavailable} 条无法比较。':
+    'Existing notes: {same} identical, {changed} different, {unavailable} unavailable for comparison.',
+  '已选择更新 {count} 条笔记。': 'Selected {count} notes to update.',
+  '已有笔记默认保留。选择采用文件内容会覆盖当前内容和标签，所属卡组不变；保留的卡片继续使用原进度。':
+    'Existing notes are kept by default. Using file content replaces their content and tags, keeps their deck, and preserves progress on surviving cards.',
+  确认卡片变化: 'Confirm card changes',
+  '更新将新增 {added} 张卡片、移除 {removed} 张卡片。新增卡片从头学习。':
+    'This import adds {added} cards and removes {removed} cards. Added cards start as new.',
+  '移除的卡片包含 {reviews} 条复习记录、{practices} 次练习和 {attempts} 次提交，将一并移除。':
+    'The removed cards have {reviews} reviews, {practices} practices, and {attempts} submissions. These records will also be removed.',
+  '导入前会保存快照，可恢复原内容、进度和附件。':
+    'A snapshot is saved before import so you can restore the original content, progress, and attachments.',
+  我已确认以上卡片变化: 'I have reviewed these card changes',
+  '未选择添加或更新任何笔记。': 'No notes selected to add or update.',
+  '学习库已变化，请重新比较后再导入。': 'The library has changed. Compare again before importing.',
+  '请先确认新增和移除的卡片。': 'Confirm the cards to add and remove before continuing.',
   '最多 5000 条 · 文件最大 256 MB · 单个附件最大 10 MB':
     'Up to 5,000 notes · 256 MB per file · 10 MB per attachment',
   'Anki 文件损坏、格式不受支持或超过导入限制。':

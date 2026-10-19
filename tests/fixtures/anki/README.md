@@ -11,4 +11,6 @@ pip install anki==26.9.3
 python tests/fixtures/anki/generate.py
 ```
 
+`updated.apkg` is a second export with the same GUIDs: it changes an answer and tags, replaces WAV bytes without changing the filename or size, converts reversed to Basic, replaces cloze 2 with cloze 3, keeps one note identical, and adds a new note sharing the unchanged PNG. `generate-updates.py` regenerates only this fixture.
+
 Anki is only needed to regenerate these files. CI reads the committed packages directly.

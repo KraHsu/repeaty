@@ -17,7 +17,13 @@ import {
 } from '../core/model'
 import { changeCards, reviewCard, undoReview, type CardAction } from '../core/scheduler'
 import { editNotes, importNotes, type BatchEdit } from '../core/batch'
-import { prepareAnkiImport } from '../core/anki/import'
+import { applyAnkiImportPlan } from '../core/anki/import'
+import {
+  compareAnkiImport,
+  staleAnkiPreview,
+  type AnkiImportPlan,
+  type AnkiSelection,
+} from '../core/anki/changes'
 import type { AnkiPackage } from '../core/anki/types'
 import { saveSearch } from '../core/search'
 import type { TransferOptions } from '../core/archive'
@@ -246,10 +252,48 @@ export function useLibrary() {
     importNotes(notes: NoteInput[], skip: boolean) {
       return commit((current) => importNotes(current, notes, skip), { reason: '导入笔记前' })
     },
-    importAnki(data: AnkiPackage, deckId: string, expectedScope: string) {
+    async previewAnki(data: AnkiPackage, expectedScope: string, signal?: AbortSignal) {
+      const target = repository
+      await savingDone
+      signal?.throwIfAborted()
+      if (!expectedScope || expectedScope !== scope.value || target !== repository || !ready.value)
+        throw staleAnkiPreview()
+      const base = library.value,
+        expectedRevision = revision
+      function assertCurrent() {
+        signal?.throwIfAborted()
+        if (
+          target !== repository ||
+          expectedScope !== scope.value ||
+          expectedRevision !== revision ||
+          base !== library.value ||
+          !ready.value
+        )
+          throw staleAnkiPreview()
+      }
+      const plan = await compareAnkiImport(
+        base,
+        data,
+        async (id) => {
+          assertCurrent()
+          const blob = await target.getMedia(id)
+          assertCurrent()
+          return blob
+        },
+        signal,
+      )
+      assertCurrent()
+      return plan
+    },
+    importAnki(
+      plan: AnkiImportPlan,
+      selection: AnkiSelection,
+      deckId: string,
+      expectedScope: string,
+    ) {
       if (!expectedScope || expectedScope !== scope.value)
         return Promise.reject(new LocalizedError(msg('登录账户已变更，请刷新页面后重试。')))
-      const next = prepareAnkiImport(library.value, data, deckId)
+      const next = applyAnkiImportPlan(library.value, plan, selection, deckId)
       return commit(() => next.library, { assets: next.assets, reason: '导入笔记前' })
     },
     changeCards(ids: Set<string>, action: CardAction) {
