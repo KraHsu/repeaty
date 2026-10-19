@@ -3,7 +3,7 @@ import {
   createSourceDeck,
   previewSource,
   saveSource,
-  createExcerptCard,
+  selectSourceExcerpt,
   sourceText,
   sourceQuote,
 } from '../fixtures/source-flow'
@@ -24,7 +24,35 @@ test('sources and excerpts commit atomically to the account, read bodies on dema
   expect((await (await request.get('api/library', { headers })).json()).library.sources).toEqual([])
   reject = false
   await saveSource(page)
-  await createExcerptCard(page)
+  const imported = await (await request.get('api/library', { headers })).json()
+  const sourceId = imported.library.sources[0].mediaId
+  let release!: () => void, arrived!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const started = new Promise<void>((resolve) => {
+    arrived = resolve
+  })
+  await page.route(`**/api/media/${sourceId}`, async (route) => {
+    arrived()
+    await gate
+    await route.continue()
+  })
+  await selectSourceExcerpt(page)
+  await page.getByRole('button', { name: '用摘录制卡', exact: true }).click()
+  await page.getByLabel('正面 · 问题', { exact: true }).fill('间隔复习如何安排时间？')
+  await page.getByRole('button', { name: '保存卡片', exact: true }).click()
+  try {
+    await started
+    await expect(
+      page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }),
+    ).toBeDisabled()
+    await expect(page.getByRole('button', { name: '关闭弹窗', exact: true })).toBeDisabled()
+  } finally {
+    release()
+  }
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await page.unroute(`**/api/media/${sourceId}`)
   const saved = await (await request.get('api/library', { headers })).json()
   const source = saved.library.sources[0]
   expect(source).not.toHaveProperty('content')

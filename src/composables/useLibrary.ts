@@ -289,9 +289,18 @@ export function useLibrary() {
     ) {
       if (!expectedScope || expectedScope !== scope.value)
         throw new LocalizedError(msg('登录账户已变更，请刷新页面后重试。'))
-      const text = await getSource(excerpt.sourceId)
-      if (text.slice(excerpt.start, excerpt.end) !== excerpt.quote || expectedScope !== scope.value)
-        throw new LocalizedError(msg('摘录与原文不一致，请重新选取。'))
+      if (busy.value) throw new LocalizedError(msg('正在保存，请稍候。'))
+      busy.value = true
+      try {
+        const text = await getSource(excerpt.sourceId)
+        if (
+          text.slice(excerpt.start, excerpt.end) !== excerpt.quote ||
+          expectedScope !== scope.value
+        )
+          throw new LocalizedError(msg('摘录与原文不一致，请重新选取。'))
+      } finally {
+        busy.value = false
+      }
       return commit(
         (current) =>
           saveNote(
