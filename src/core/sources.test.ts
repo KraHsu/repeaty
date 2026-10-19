@@ -36,6 +36,17 @@ it('stores a single lazy snapshot, anchors repeated Unicode text by exact offset
   expect(removeNotes(next, new Set([note.id])).media).toEqual([asset.meta])
   librarySchema.parse(next)
 })
+it('normalizes Windows newlines and BOM before recording offsets', async () => {
+  const { source, asset } = prepareSource(
+    { title: 'Windows text', url: '', format: 'plain', content: '\uFEFFOne\r\nTwo🙂\rThree' },
+    now,
+  )
+  const library = addSource(fixture(), source, asset)
+  const text = await readSource(source, library, async () => asset.blob)
+  expect(text).toBe('One\nTwo🙂\nThree')
+  const start = text.indexOf('Two')
+  expect(sourceExcerpt(source, text, start, start + 'Two🙂'.length).quote).toBe('Two🙂')
+})
 it('bounds input, refuses invalid links or split emoji, and never treats text snapshots as card audio', () => {
   const { source, asset, library } = sample()
   expect(() =>
@@ -139,7 +150,7 @@ it('upgrades a real v7 database and keeps existing checkpoints, while old client
         db.createObjectStore(key)
     },
   })
-  const tx = db.transaction([...oldStores, 'meta'], 'readwrite')
+  const tx = db.transaction([...oldStores, 'meta', 'checkpoints'], 'readwrite')
   for (const key of oldStores)
     for (const [position, value] of library[key].entries())
       await tx.objectStore(key).put({ id: value.id, value, position }, value.id)
@@ -150,10 +161,22 @@ it('upgrades a real v7 database and keeps existing checkpoints, while old client
     },
     'main',
   )
+  await tx.objectStore('checkpoints').put(
+    {
+      id: 'v7-snapshot',
+      revision: 7,
+      createdAt: now.toISOString(),
+      reason: '手动快照',
+      cards: library.cards.length,
+      notes: library.notes.length,
+    },
+    'v7-snapshot',
+  )
   await tx.done
   db.close()
   const repo = createRepository(name)
   expect((await repo.load()).library).toEqual(library)
+  expect(await repo.getBackup('v7-snapshot')).toEqual(library)
   await expect(openDB(name, 7)).rejects.toMatchObject({ name: 'VersionError' })
   const { sources: _sources, ...v5 } = library
   expect(migrateLibrary({ ...v5, version: 5 })).toEqual(library)

@@ -1,5 +1,14 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  导入材料前: 'Before importing a source',
+  删除材料前: 'Before deleting a source',
+  摘录制卡前: 'Before creating a card from an excerpt',
+
+  '学习材料和原文快照也包含在完整备份中。':
+    'Sources and their snapshots are included in full backups.',
+  '还包含 {count} 份学习材料及其原文快照。': 'Also includes {count} sources and their snapshots.',
+
+  关闭: 'Close',
   显示原文与摘录位置: 'Show original text and excerpt position',
   '摘录与原文不一致，请从备份恢复。':
     'The excerpt does not match the source. Restore it from a backup.',

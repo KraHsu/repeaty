@@ -21,6 +21,7 @@ import { insertCloze } from '../core/authoring'
 const props = defineProps<{
   library: Library
   note?: Note
+  initial?: Partial<NoteInput>
   deckId?: string
   busy: boolean
   getMedia: (id: string) => Promise<Blob | undefined>
@@ -33,12 +34,14 @@ const editor = ref<HTMLFormElement>()
 const frontInput = ref<HTMLTextAreaElement>()
 const savedCount = ref(0)
 const form = reactive<NoteInput>({
-  deckId: props.note?.deckId ?? props.deckId ?? props.library.decks[0]?.id ?? '',
-  type: props.note?.type ?? 'basic',
-  format: props.note?.format ?? 'markdown',
+  deckId:
+    props.note?.deckId ?? props.initial?.deckId ?? props.deckId ?? props.library.decks[0]?.id ?? '',
+  type: props.note?.type ?? props.initial?.type ?? 'basic',
+  format: props.note?.format ?? props.initial?.format ?? 'markdown',
   plugin: props.note?.plugin,
-  front: props.note?.front ?? '',
-  back: props.note?.back ?? '',
+  excerpt: props.note?.excerpt ?? props.initial?.excerpt,
+  front: props.note?.front ?? props.initial?.front ?? '',
+  back: props.note?.back ?? props.initial?.back ?? '',
   tags: [...(props.note?.tags ?? [])],
   frontMedia: [...(props.note?.frontMedia ?? [])],
   backMedia: [...(props.note?.backMedia ?? [])],
@@ -130,7 +133,7 @@ function shortcut(event: KeyboardEvent) {
     void addCloze()
   } else if (event.key === 'Enter') {
     event.preventDefault()
-    void save(!props.note)
+    void save(!props.note && !props.initial?.excerpt)
   }
 }
 function remove(id: string, side: 'frontMedia' | 'backMedia') {
@@ -199,6 +202,13 @@ async function save(continueAdding = false) {
           {{ t('已保存 {p0} 条笔记。', { p0: savedCount }) }}
         </p>
         <p v-if="error" class="import-warning" role="alert">{{ t(error) }}</p>
+        <details v-if="form.excerpt" class="source-note-excerpt">
+          <summary>
+            {{ t('原文摘录') }} ·
+            {{ library.sources.find((source) => source.id === form.excerpt?.sourceId)?.title }}
+          </summary>
+          <blockquote>{{ form.excerpt.quote }}</blockquote>
+        </details>
         <div class="note-metadata">
           <div class="form-field">
             <label for="note-type">{{ t('笔记类型') }}</label>
@@ -390,7 +400,7 @@ async function save(continueAdding = false) {
       </div>
       <div class="form-actions editor-actions">
         <button
-          v-if="!note"
+          v-if="!note && !initial?.excerpt"
           type="button"
           class="button secondary save-continue"
           :disabled="busy"

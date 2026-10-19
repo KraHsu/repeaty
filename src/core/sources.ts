@@ -15,9 +15,11 @@ export function prepareSource(
   input: SourceInput,
   now = new Date(),
 ): { source: Source; asset: MediaUpload } {
-  if (!input.content.trim() || input.content.length > MAX_SOURCE_CHARACTERS)
+  // Textarea selections use LF and UTF-16 offsets on every platform.
+  const content = input.content.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n')
+  if (!content.trim() || content.length > MAX_SOURCE_CHARACTERS)
     throw new LocalizedError(msg('正文不能为空，且不能超过 250000 个字符。'))
-  const blob = new Blob([input.content], {
+  const blob = new Blob([content], {
     type: input.format === 'markdown' ? 'text/markdown' : 'text/plain',
   })
   if (blob.size > MAX_SOURCE_BYTES)
@@ -28,7 +30,7 @@ export function prepareSource(
     ...input,
     id: crypto.randomUUID(),
     mediaId,
-    characters: input.content.length,
+    characters: content.length,
     createdAt: timestamp,
   })
   const meta = mediaSchema.parse({
@@ -67,7 +69,7 @@ export async function readSource(
     throw invalid()
   }
   signal?.throwIfAborted()
-  if (text.length !== source.characters || !text.trim()) throw invalid()
+  if (text.length !== source.characters || !text.trim() || text.includes('\r')) throw invalid()
   return text
 }
 export function sourceExcerpt(

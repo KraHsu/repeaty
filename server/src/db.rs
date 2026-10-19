@@ -355,7 +355,7 @@ impl Database {
         if bad {
             return Err(Error::invalid());
         }
-        let mut contents = HashMap::<String, Vec<u16>>::new();
+        let mut changed_sources = HashSet::new();
         for patch in patches
             .iter()
             .filter(|patch| patch.store == "sources" && patch.value.is_some())
@@ -367,60 +367,58 @@ impl Database {
                 |row| row.get(0),
             )?;
             let text = std::str::from_utf8(&body).map_err(|_| Error::invalid())?;
-            let utf16: Vec<u16> = text.encode_utf16().collect();
             if text.trim().is_empty()
-                || utf16.len() as u64 != source["characters"].as_u64().unwrap_or(0)
+                || text.contains('\r')
+                || text.encode_utf16().count() as u64 != source["characters"].as_u64().unwrap_or(0)
             {
                 return Err(Error::invalid());
             }
-            contents.insert(patch.id.clone(), utf16);
+            changed_sources.insert(patch.id.clone());
         }
-        let mut notes = Vec::<Value>::new();
+        let mut excerpts = BTreeMap::<String, Vec<Value>>::new();
+        let mut add_excerpt = |note: &Value| {
+            if let Some(id) = note["excerpt"]["sourceId"].as_str() {
+                excerpts
+                    .entry(id.into())
+                    .or_default()
+                    .push(note["excerpt"].clone());
+            }
+        };
         for patch in patches.iter().filter(|patch| patch.store == "notes") {
             if let Some(note) = &patch.value {
-                notes.push(note.clone());
+                add_excerpt(note);
             }
         }
-        for source_id in contents.keys() {
+        for source_id in changed_sources {
             let mut stmt = tx.prepare(
                 "SELECT data FROM notes WHERE json_extract(data,'$.excerpt.sourceId')=?1",
             )?;
             for row in stmt.query_map([source_id], |row| row.get::<_, String>(0))? {
-                notes.push(serde_json::from_str(&row?)?);
+                add_excerpt(&serde_json::from_str::<Value>(&row?)?);
             }
         }
-        for note in notes {
-            let excerpt = &note["excerpt"];
-            if excerpt.is_null() {
-                continue;
-            }
-            let id = excerpt["sourceId"].as_str().ok_or_else(Error::invalid)?;
-            if !contents.contains_key(id) {
-                let body: Vec<u8> = tx.query_row(
-                    "SELECT a.body FROM sources s JOIN assets a ON a.id=s.media_id WHERE s.id=?1",
-                    [id],
-                    |row| row.get(0),
-                )?;
-                contents.insert(
-                    id.into(),
-                    std::str::from_utf8(&body)
-                        .map_err(|_| Error::invalid())?
-                        .encode_utf16()
-                        .collect(),
-                );
-            }
-            let start = excerpt["start"].as_u64().ok_or_else(Error::invalid)? as usize;
-            let end = excerpt["end"].as_u64().ok_or_else(Error::invalid)? as usize;
-            let quote: Vec<u16> = excerpt["quote"]
-                .as_str()
-                .ok_or_else(Error::invalid)?
+        // Keep at most one snapshot body in memory when validating a bulk restore.
+        for (id, values) in excerpts {
+            let body: Vec<u8> = tx.query_row(
+                "SELECT a.body FROM sources s JOIN assets a ON a.id=s.media_id WHERE s.id=?1",
+                [id],
+                |row| row.get(0),
+            )?;
+            let text: Vec<u16> = std::str::from_utf8(&body)
+                .map_err(|_| Error::invalid())?
                 .encode_utf16()
                 .collect();
-            if contents[id].get(start..end) != Some(quote.as_slice())
-                || quote.is_empty()
-                || quote.len() > 10_000
-            {
-                return Err(Error::invalid());
+            for excerpt in values {
+                let start = excerpt["start"].as_u64().ok_or_else(Error::invalid)? as usize;
+                let end = excerpt["end"].as_u64().ok_or_else(Error::invalid)? as usize;
+                let quote = excerpt["quote"].as_str().ok_or_else(Error::invalid)?;
+                let utf16: Vec<u16> = quote.encode_utf16().collect();
+                if text.get(start..end) != Some(utf16.as_slice())
+                    || quote.trim().is_empty()
+                    || utf16.len() > 10_000
+                {
+                    return Err(Error::invalid());
+                }
             }
         }
         Ok(())
