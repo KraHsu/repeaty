@@ -35,9 +35,21 @@ export const test = base.extend<{ native: void; emptyWorkspace: void }>({
   native: [
     async ({ context }, use) => {
       let configured: string[] = []
-      await context.route('**/__native/leetcode', (route) =>
-        route.fulfill({ json: { version: 1, configured } }),
-      )
+      await context.route('**/__native/leetcode', (route) => {
+        const request = route.request().postDataJSON()
+        return route.fulfill({
+          json:
+            request.action === 'account'
+              ? {
+                  site: request.site,
+                  state: configured.includes(request.site) ? 'authenticated' : 'unconfigured',
+                  ...(configured.includes(request.site)
+                    ? { username: request.site === 'leetcode.cn' ? 'tester-cn' : 'tester-com' }
+                    : {}),
+                }
+              : { version: 1, configured },
+        })
+      })
       await context.route('**/__native/leetcode/credentials', (route) => {
         const { site, action } = route.request().postDataJSON()
         configured = configured.filter((s) => s !== site)

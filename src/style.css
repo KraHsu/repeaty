@@ -2662,6 +2662,11 @@ textarea::placeholder {
   color: var(--muted);
   font-size: var(--text-sm);
 }
+.connection-header .connection-account {
+  color: var(--green);
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
 .connection-header .connection-status {
   display: flex;
   align-items: baseline;

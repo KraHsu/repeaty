@@ -260,6 +260,15 @@ try {
     operation: 'credentials',
     payload: { action: 'clear', site: 'leetcode.cn' },
   })
+  // Exercise the real account IPC without sending fake credentials to LeetCode.
+  assert.deepEqual(
+    await invoke('local_plugin', {
+      id: 'leetcode',
+      operation: 'request',
+      payload: { action: 'account', site: 'leetcode.cn' },
+    }),
+    { site: 'leetcode.cn', state: 'unconfigured' },
+  )
   assert.deepEqual(
     (
       await invoke('local_plugin', {

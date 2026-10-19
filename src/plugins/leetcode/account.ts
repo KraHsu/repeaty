@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { siteSchema, type LeetCodeSite } from './model'
+export const configurationSchema = z.object({ configured: z.array(siteSchema) })
 
 export const accountSchema = z.discriminatedUnion('state', [
   z.object({ site: siteSchema, state: z.literal('unconfigured') }),
