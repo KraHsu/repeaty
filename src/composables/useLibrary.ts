@@ -17,6 +17,8 @@ import {
 } from '../core/model'
 import { changeCards, reviewCard, undoReview, type CardAction } from '../core/scheduler'
 import { editNotes, importNotes, type BatchEdit } from '../core/batch'
+import { prepareAnkiImport } from '../core/anki/import'
+import type { AnkiPackage } from '../core/anki/types'
 import { saveSearch } from '../core/search'
 import type { TransferOptions } from '../core/archive'
 import { exportBackup, rekeyBackup, type BackupData } from '../core/backups'
@@ -243,6 +245,12 @@ export function useLibrary() {
     },
     importNotes(notes: NoteInput[], skip: boolean) {
       return commit((current) => importNotes(current, notes, skip), { reason: '导入笔记前' })
+    },
+    importAnki(data: AnkiPackage, deckId: string, expectedScope: string) {
+      if (!expectedScope || expectedScope !== scope.value)
+        return Promise.reject(new LocalizedError(msg('登录账户已变更，请刷新页面后重试。')))
+      const next = prepareAnkiImport(library.value, data, deckId)
+      return commit(() => next.library, { assets: next.assets, reason: '导入笔记前' })
     },
     changeCards(ids: Set<string>, action: CardAction) {
       return commit((current) => changeCards(current, ids, action))

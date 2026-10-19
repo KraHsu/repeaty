@@ -177,4 +177,10 @@ describe('inert HTML conversion', () => {
       decompressAnki(new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, 0x20, 0, 1, 0, 0, 0]), 1024),
     ).toThrow()
   })
+  it('keeps blank lines in code and reports Anki compiled LaTeX instead of importing broken markup', () => {
+    expect(convertAnkiHtml('<pre>line 1\n\n\nline 4</pre>').text).toBe(
+      '```\nline 1\n\n\nline 4\n```',
+    )
+    expect(() => convertAnkiHtml('[latex]x[/latex]')).toThrow('compiled LaTeX')
+  })
 })

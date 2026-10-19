@@ -1,5 +1,7 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  '最多 5000 条 · 文件最大 256 MB · 单个附件最大 10 MB':
+    'Up to 5,000 notes · 256 MB per file · 10 MB per attachment',
   'Anki 文件损坏、格式不受支持或超过导入限制。':
     'The Anki file is damaged, unsupported, or exceeds the import limits.',
   'Anki 文件不能超过 256 MB。': 'Anki files must not exceed 256 MB.',
@@ -18,9 +20,9 @@ export const en = {
   '正在读取 Anki 文件…': 'Reading Anki file…',
   '共 {total} 条笔记：可导入 {ready} 条，已存在 {duplicates} 条，跳过 {skipped} 条。':
     '{total} notes: {ready} ready to import, {duplicates} already present, {skipped} skipped.',
-  '将添加 {cards} 张新卡和 {media} 个附件。': 'Will add {cards} new cards and {media} attachments.',
+  '将添加 {cards} 张新卡和 {media} 个附件。': 'New cards: {cards} · Attachments: {media}',
   '文件含 {count} 条 Anki 复习记录，本次不会导入。':
-    'The file contains {count} Anki review records, which will not be imported.',
+    'Anki review records: {count}. These will not be imported.',
   '相同 GUID 的笔记会跳过，保留 Repeaty 中已有的内容和进度。':
     'Notes with the same GUID are skipped, keeping the content and progress already in Repeaty.',
   导入报告: 'Import report',

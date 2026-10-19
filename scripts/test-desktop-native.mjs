@@ -407,8 +407,54 @@ try {
       attempt.code,
     'native independent history code',
   )
+  // Production CSP and WebKit must allow the bundled worker and SQLite wasm.
+  // The generated File contains only the committed synthetic Anki fixture.
+  await execute("document.querySelectorAll('.main-nav button')[1].click()")
+  await click('批量导入')
+  await execute(
+    "const select=document.querySelector('#import-format');select.value='anki';select.dispatchEvent(new Event('change',{bubbles:true}));",
+  )
+  await until(
+    () => execute("return !!document.querySelector('#anki-file')"),
+    'native Anki file input',
+  )
+  await execute(
+    `const bytes=Uint8Array.from(atob(arguments[0]), c=>c.charCodeAt(0));
+    const transfer=new DataTransfer();transfer.items.add(new File([bytes],'modern.apkg',{type:'application/zip'}));
+    const input=document.querySelector('#anki-file');input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));`,
+    (await readFile('tests/fixtures/anki/modern.apkg')).toString('base64'),
+  )
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.anki-preview')?.textContent.includes('可导入 4 条')",
+      ),
+    'native Anki worker preview',
+  )
+  await writeFile(
+    'test-results/native-anki-preview.png',
+    Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
+  )
+  await click('确认导入')
+  await until(
+    () =>
+      execute(
+        "return !document.querySelector('dialog') && document.querySelectorAll('tbody tr').length===7",
+      ),
+    'native Anki import saved',
+  )
+  await command(`/session/${session}/refresh`, {})
+  await until(
+    () => execute("return document.querySelectorAll('.deck-title').length===1"),
+    'native Anki restart',
+  )
+  assert.equal(
+    await execute(`return (async()=>{ const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('repeaty');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
+    try{return await new Promise((resolve,reject)=>{const r=db.transaction('notes').objectStore('notes').getAll();r.onsuccess=()=>resolve(r.result.filter(n=>n.id.startsWith('anki:')).length);r.onerror=()=>reject(r.error)})}finally{db.close()}})();`),
+    4,
+  )
   console.log(
-    'Native WebKit/Tauri: starter lifecycle, account registration, upstream switching, local credentials, native backup, LeetCode history recovery, rating and independent history passed.',
+    'Native WebKit/Tauri: starter lifecycle, accounts, upstream, credentials, backup, LeetCode history and Anki worker/wasm import passed.',
   )
 } catch (error) {
   console.error(log.slice(-20).join(''))

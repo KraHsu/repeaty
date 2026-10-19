@@ -54,6 +54,7 @@ function textWithMath(text: string): string {
 /** Parse HTML as data, never through a browser document or a live element. */
 export function convertAnkiHtml(html: string): AnkiField {
   if (html.length > 100_000) throw new Error('Anki field too large')
+  if (/\[(?:latex|\${1,2})\]/i.test(html)) throw new Error('Anki compiled LaTeX is not supported')
   const result: AnkiField = { text: '', media: [], active: false, external: false }
   function media(name: string, kind: 'image' | 'audio') {
     let normalized = name.trim()
@@ -146,7 +147,6 @@ export function convertAnkiHtml(html: string): AnkiField {
     .map((node) => visit(node))
     .join('')
     .replace(/\u00a0/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
     .trim()
   if (!result.text && result.media.length)
     result.text = result.media.map((item) => escape(item.name)).join('\n')

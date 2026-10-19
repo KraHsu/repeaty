@@ -29,10 +29,11 @@ export function prepareAnkiImport(
   })
   const used = new Set(imported.flatMap((note) => [...note.frontMedia, ...note.backMedia]))
   const assets = data.assets.filter((asset) => used.has(asset.meta.id))
+  const existingMedia = new Set(library.media.map((meta) => meta.id))
   if (
     assets.length !== used.size ||
     new Set(assets.map((asset) => asset.meta.id)).size !== used.size ||
-    assets.some((asset) => library.media.some((meta) => meta.id === asset.meta.id))
+    assets.some((asset) => existingMedia.has(asset.meta.id))
   )
     throw new LocalizedError(msg('Anki 文件损坏、格式不受支持或超过导入限制。'))
   const cards = imported.flatMap((note) =>

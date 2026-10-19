@@ -113,14 +113,15 @@ export async function parseAnkiPackage(
       compressed = false,
     ): Promise<Uint8Array<ArrayBuffer>> {
       const entry = entries.get(name)
-      if (!entry || entry.uncompressedSize > limit) throw failure()
+      const inputLimit = compressed ? limit + 128 * 1024 : limit
+      if (!entry || entry.uncompressedSize > inputLimit) throw failure()
       const chunks: Uint8Array<ArrayBuffer>[] = []
       let size = 0
       await entry.getData(
         new WritableStream<Uint8Array>({
           write(chunk) {
             size += chunk.length
-            if (size > limit) throw failure()
+            if (size > inputLimit) throw failure()
             chunks.push(new Uint8Array(chunk))
           },
         }),
@@ -137,6 +138,7 @@ export async function parseAnkiPackage(
       if (readBytes > MAX_ANKI_EXPANDED_BYTES) throw failure()
       return output
     }
+    if (entries.has('collection.anki21b') && !entries.has('meta')) throw failure()
     const meta = entries.has('meta')
       ? protoNumber(protobuf(await read('meta', 1024)), 1)
       : entries.has('collection.anki21')
