@@ -36,6 +36,12 @@ pub struct Patch {
     pub position: Option<i64>,
     pub value: Option<Value>,
 }
+#[derive(Deserialize)]
+#[serde(tag = "mode", rename_all = "camelCase", deny_unknown_fields)]
+pub enum ReadAttempts {
+    One { id: String, revision: i64 },
+    Batch { offset: i64, revision: i64 },
+}
 pub struct Database {
     connection: Connection,
     validators: HashMap<String, jsonschema::Validator>,
@@ -111,17 +117,28 @@ impl Database {
         })
     }
     pub fn load(&mut self) -> Result<Value> {
+        self.load_history(false)
+    }
+    pub fn load_summary(&mut self) -> Result<Value> {
+        self.load_history(true)
+    }
+    fn load_history(&mut self, summary: bool) -> Result<Value> {
         let tx = self.connection.transaction()?;
         let current = revision(&tx)?;
         Self::checkpoint(&tx, "自动备份", false)?;
-        let library = Self::library(&tx)?;
+        let library = Self::library_history(&tx, summary)?;
         tx.commit()?;
         Ok(json!({"revision":current,"library":library}))
     }
-    fn library(db: &Connection) -> Result<Value> {
+    fn library_history(db: &Connection, summary: bool) -> Result<Value> {
         let mut library = json!({"version":5});
         for store in STORES {
-            let mut stmt = db.prepare(&format!("SELECT data FROM {store} ORDER BY position"))?;
+            let data = if store == "attempts" && summary {
+                "json_remove(data,'$.code','$.result.detail')"
+            } else {
+                "data"
+            };
+            let mut stmt = db.prepare(&format!("SELECT {data} FROM {store} ORDER BY position"))?;
             let rows = stmt
                 .query_map([], |row| row.get::<_, String>(0))?
                 .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -132,6 +149,53 @@ impl Database {
             );
         }
         Ok(library)
+    }
+    pub fn read_attempts(&mut self, input: ReadAttempts) -> Result<Value> {
+        let tx = self.connection.transaction()?;
+        let current = revision(&tx)?;
+        let mut values = Vec::new();
+        match input {
+            ReadAttempts::One { id, revision } => {
+                if !valid_id(&id) || revision < 0 {
+                    return Err(Error::invalid());
+                }
+                if current != revision {
+                    return Err(Error::conflict());
+                }
+                let data: String = tx
+                    .query_row("SELECT data FROM attempts WHERE id=?1", [&id], |row| {
+                        row.get(0)
+                    })
+                    .optional()?
+                    .ok_or_else(Error::missing)?;
+                values.push(serde_json::from_str::<Value>(&data)?);
+            }
+            ReadAttempts::Batch { offset, revision } => {
+                if !(0..=500_000).contains(&offset) || revision < 0 {
+                    return Err(Error::invalid());
+                }
+                if current != revision {
+                    return Err(Error::conflict());
+                }
+                let mut stmt = tx.prepare("SELECT position,data FROM attempts WHERE position>=?1 ORDER BY position LIMIT 128")?;
+                let mut rows = stmt.query([offset])?;
+                let mut bytes = 0;
+                while let Some(row) = rows.next()? {
+                    let position: i64 = row.get(0)?;
+                    if position != offset + values.len() as i64 {
+                        return Err(Error::invalid());
+                    }
+                    let data: String = row.get(1)?;
+                    if !values.is_empty() && bytes + data.len() > 4 * 1024 * 1024 {
+                        break;
+                    }
+                    bytes += data.len();
+                    values.push(serde_json::from_str::<Value>(&data)?);
+                }
+            }
+        }
+        tx.commit()?;
+        Ok(json!({"revision":current,"attempts":values}))
     }
     pub fn commit(&mut self, commit: Commit) -> Result<i64> {
         if commit.expected_revision < 0

@@ -22,7 +22,12 @@ import type { TransferOptions } from '../core/archive'
 import { exportBackup, rekeyBackup, type BackupData } from '../core/backups'
 import { initializeWorkspace } from '../core/onboarding'
 import { recordAttempt, finishPractice, revealPracticeHistory } from '../core/practice'
-import type { Practice, Attempt } from '../core/practice-data'
+import {
+  hasAttemptBody,
+  sameAttemptSummary,
+  type Practice,
+  type Attempt,
+} from '../core/practice-data'
 import { remoteWorkspace } from '../edition'
 import type { createServerRepository } from '../backend/repository'
 import type { createRepository, BackupSummary } from '../core/storage'
@@ -38,6 +43,7 @@ export function useLibrary() {
   const backups = shallowRef<BackupSummary[]>([])
   let revision = 0
   let repository: ReturnType<typeof createRepository> | ReturnType<typeof createServerRepository>
+  let savingDone: Promise<void> = Promise.resolve()
   async function refreshBackups() {
     backups.value = await repository.listBackups()
   }
@@ -74,6 +80,10 @@ export function useLibrary() {
     if (busy.value) throw new LocalizedError(msg('正在保存，请稍候。'))
     if (!ready.value) throw new LocalizedError(msg('本地数据库尚未准备好。'))
     busy.value = true
+    let finishSave!: () => void
+    savingDone = new Promise((resolve) => {
+      finishSave = resolve
+    })
     try {
       const saved = await repository.save(update(library.value), revision, options)
       library.value = saved.library
@@ -92,7 +102,29 @@ export function useLibrary() {
       throw error
     } finally {
       busy.value = false
+      finishSave()
     }
+  }
+  async function getAttempt(id: string, signal?: AbortSignal): Promise<Attempt> {
+    const target = repository,
+      targetScope = scope.value
+    await savingDone
+    signal?.throwIfAborted()
+    if (target !== repository || !ready.value || targetScope !== scope.value)
+      throw new LocalizedError(msg('练习记录已变化，请重新打开题目后重试。'))
+    const expectedRevision = revision
+    const attempt = await target.getAttempt(id, expectedRevision, signal)
+    signal?.throwIfAborted()
+    const current = library.value.attempts.find((entry) => entry.id === id)
+    if (
+      target !== repository ||
+      targetScope !== scope.value ||
+      revision !== expectedRevision ||
+      !current ||
+      !sameAttemptSummary(current, attempt)
+    )
+      throw new LocalizedError(msg('练习记录已变化，请重新打开题目后重试。'))
+    return attempt
   }
   return {
     library,
@@ -103,6 +135,7 @@ export function useLibrary() {
     backups: readonly(backups),
     backupError: readonly(backupError),
     init,
+    getAttempt,
     async backupNow(force = false) {
       if (!ready.value || busy.value) return
       try {
@@ -135,14 +168,27 @@ export function useLibrary() {
       try {
         await repository.backupNow(true)
         const { exportArchive } = await import('../core/archive')
-        return await exportArchive(library.value, (id) => repository.getMedia(id), options)
+        const target = repository,
+          expectedRevision = revision
+        return await exportArchive(library.value, (id) => target.getMedia(id), {
+          ...options,
+          readAttempts: (offset) =>
+            target.readAttemptBatch(offset, expectedRevision, options.signal),
+        })
       } finally {
         busy.value = false
         await refreshBackups()
       }
     },
-    exportData() {
-      return exportBackup(library.value, (id) => repository.getMedia(id))
+    async exportData() {
+      if (busy.value) throw new LocalizedError(msg('正在保存，请稍候。'))
+      busy.value = true
+      try {
+        const target = repository
+        return await exportBackup(await target.completeLibrary(), (id) => target.getMedia(id))
+      } finally {
+        busy.value = false
+      }
     },
     getBackup(id: string) {
       return repository.getBackup(id)
@@ -201,10 +247,34 @@ export function useLibrary() {
     changeCards(ids: Set<string>, action: CardAction) {
       return commit((current) => changeCards(current, ids, action))
     },
-    recordAttempt(practice: Practice, attempt: Attempt, expectedScope: string) {
+    async recordAttempt(practice: Practice, attempt: Attempt, expectedScope: string) {
       if (expectedScope !== scope.value || !expectedScope)
         throw new LocalizedError(msg('练习记录已变化，请重新打开题目后重试。'))
-      return commit((current) => recordAttempt(current, practice, attempt))
+      await savingDone
+      if (expectedScope !== scope.value)
+        throw new LocalizedError(msg('练习记录已变化，请重新打开题目后重试。'))
+      const previous = library.value.attempts.find((entry) => entry.id === attempt.id)
+      const expectedRevision = revision
+      const full = previous && !hasAttemptBody(previous) ? await getAttempt(previous.id) : undefined
+      if (expectedScope !== scope.value || (full && expectedRevision !== revision))
+        throw new LocalizedError(msg('练习记录已变化，请重新打开题目后重试。'))
+      return commit((current) => {
+        if (full) {
+          const prior = current.attempts.find((entry) => entry.id === full.id)
+          if (!prior || !sameAttemptSummary(prior, full))
+            throw new LocalizedError(msg('练习记录已变化，请重新打开题目后重试。'))
+        }
+        return recordAttempt(
+          full
+            ? {
+                ...current,
+                attempts: current.attempts.map((entry) => (entry.id === full.id ? full : entry)),
+              }
+            : current,
+          practice,
+          attempt,
+        )
+      })
     },
     revealPracticeHistory(practiceId: string, expectedScope: string) {
       if (expectedScope !== scope.value || !expectedScope)

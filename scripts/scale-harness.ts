@@ -21,6 +21,7 @@ export async function benchmark(noteCount = 10_000, reviewCount = 100_000) {
     nextDue: now.toISOString(),
     studyDay: '2026-01-01',
     kind: 'legacy' as const,
+    source: 'normal' as const,
   }))
   const name = `repeaty-benchmark-${crypto.randomUUID()}`,
     repo = createRepository(name)

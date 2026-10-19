@@ -81,6 +81,31 @@ export const en = {
   '登录信息已保存，后续提交立即使用新配置。':
     'Credentials saved. New submissions will use this configuration.',
   '登录信息已清除。': 'Credentials cleared.',
+  '登录信息已保存在本机。': 'Credentials saved on this device.',
+  'LeetCode 登录': 'LeetCode session',
+  '正在验证登录…': 'Verifying session…',
+  登录有效: 'Signed in',
+  登录已失效: 'Session expired',
+  需要网页验证: 'Website verification required',
+  网络连接异常: 'Network unavailable',
+  验证暂时受限: 'Verification rate limited',
+  尚未确认登录状态: 'Session not verified',
+  '当前账号：{username}': 'Account: {username}',
+  '验证时间：{time}': 'Checked: {time}',
+  '力扣要求额外验证，请在网站完成验证后重试。':
+    'LeetCode requires additional verification. Complete it on the website and try again.',
+  '登录信息已更新，请刷新状态后重试。':
+    'The credentials changed. Refresh the status and try again.',
+  '无法连接力扣，已保存的登录信息仍然保留。请检查网络后重试。':
+    'Could not reach LeetCode. Your saved credentials are kept. Check your network and try again.',
+  '力扣暂时限制验证请求，请稍后刷新状态。':
+    'LeetCode is limiting verification requests. Refresh the status later.',
+  '无法识别力扣返回的验证结果，请稍后重试。':
+    'LeetCode returned an unreadable verification result. Try again later.',
+  '登录信息无效或已过期，请重新登录力扣并更新下方 Cookie。':
+    'Your credentials are invalid or expired. Sign in to LeetCode again and update the cookies below.',
+  '正在向力扣验证登录。你可以继续编辑代码或更新登录信息。':
+    'Checking your session with LeetCode. You can keep editing code or update your credentials.',
   '操作未确认成功，请刷新状态后重试。':
     'The operation could not be confirmed. Refresh the status before trying again.',
 
@@ -789,6 +814,10 @@ export const en = {
   '还没有练习记录。提交题目后可在这里查看。':
     'No practice history yet. Submit a problem to start a record.',
   练习历史分页: 'Practice history pages',
+  '提交记录已不存在，请刷新后重试。': 'This submission no longer exists. Reload and try again.',
+  '无法读取这次提交，请重试。': 'Cannot load this submission. Please try again.',
+  '正在读取提交…': 'Loading submission…',
+  重试: 'Retry',
   '第 {page} / {pages} 页': 'Page {page} of {pages}',
   '查看 {title} 的练习历史': 'View practice history for {title}',
   '有一次提交未取得编号，自动评分暂不可用。请先核对并关联 LeetCode 提交记录。':

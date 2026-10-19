@@ -260,6 +260,15 @@ try {
     operation: 'credentials',
     payload: { action: 'clear', site: 'leetcode.cn' },
   })
+  // Exercise the real account IPC without sending fake credentials to LeetCode.
+  assert.deepEqual(
+    await invoke('local_plugin', {
+      id: 'leetcode',
+      operation: 'request',
+      payload: { action: 'account', site: 'leetcode.cn' },
+    }),
+    { site: 'leetcode.cn', state: 'unconfigured' },
+  )
   assert.deepEqual(
     (
       await invoke('local_plugin', {
@@ -326,12 +335,18 @@ try {
     `return (async () => {
     const values = arguments[0];
     const db = await new Promise((resolve, reject) => { const r = indexedDB.open('repeaty'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
-    const tx = db.transaction(['meta', ...Object.keys(values)], 'readwrite');
+    const tx = db.transaction(['meta', ...Object.keys(values), 'attemptSummaries'], 'readwrite');
     const read = tx.objectStore('meta').get('main');
     read.onsuccess = () => { const meta = read.result; meta.revision++; for (const [kind, rows] of Object.entries(values)) {
       meta.counts[kind] = rows.length;
       rows.forEach((value, position) => tx.objectStore(kind).put({ id: value.id, value, position, deckId: kind === 'cards' ? values.decks[0].id : undefined }, value.id));
-    } tx.objectStore('meta').put(meta, 'main'); };
+    }
+    values.attempts.forEach((value, position) => {
+      const { code, result, ...summary } = value;
+      if (result) { const { detail, ...judge } = result; summary.result = judge; }
+      tx.objectStore('attemptSummaries').put({ id: value.id, value: summary, position }, value.id);
+    });
+    tx.objectStore('meta').put(meta, 'main'); };
     await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onabort = () => reject(tx.error); });
     db.close();
   })();`,
@@ -362,9 +377,11 @@ try {
   )
   await execute("document.querySelector('.leetcode-history > summary').click()")
   await execute("document.querySelector('.attempt-history > summary').click()")
-  assert.equal(
-    await execute("return document.querySelector('.attempt-code code').textContent"),
-    attempt.code,
+  await until(
+    async () =>
+      (await execute("return document.querySelector('.attempt-code code')?.textContent")) ===
+      attempt.code,
+    'native history code',
   )
   await click('结束作答并查看答案')
   await execute("document.querySelector('.grade-button.good').click()")
@@ -384,9 +401,11 @@ try {
   await execute(
     "document.querySelector('.practice-history-page .attempt-history > summary').click()",
   )
-  assert.equal(
-    await execute("return document.querySelector('.attempt-code code').textContent"),
-    attempt.code,
+  await until(
+    async () =>
+      (await execute("return document.querySelector('.attempt-code code')?.textContent")) ===
+      attempt.code,
+    'native independent history code',
   )
   console.log(
     'Native WebKit/Tauri: starter lifecycle, account registration, upstream switching, local credentials, native backup, LeetCode history recovery, rating and independent history passed.',

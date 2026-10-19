@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { msg, LocalizedError } from '../i18n'
 import { emptyLibrary, librarySchema, MAX_BACKUP_BYTES, type Library } from './model'
 import { parseBackup, type BackupData } from './backups'
+import { hasAttemptBody, type Attempt } from './practice-data'
 
 const kinds = [
   'decks',
@@ -57,7 +58,10 @@ const mediaPath = (index: number) => `media/${index}.bin`
 export async function exportArchive(
   library: Library,
   getMedia: (id: string) => Promise<Blob | undefined>,
-  options: TransferOptions & { writable?: WritableStream<Uint8Array> } = {},
+  options: TransferOptions & {
+    writable?: WritableStream<Uint8Array>
+    readAttempts?: (offset: number) => Promise<Attempt[]>
+  } = {},
 ): Promise<Blob | undefined> {
   options.signal?.throwIfAborted()
   const fallback = options.writable ? undefined : new BlobWriter('application/zip')
@@ -103,8 +107,24 @@ export async function exportArchive(
         lines = []
         size = 0
       }
-      for (const record of library[kind]) {
+      let bodyBatch: Attempt[] = [],
+        bodyPosition = 0,
+        offset = 0
+      for (const stored of library[kind]) {
         options.signal?.throwIfAborted()
+        let record = stored
+        if (kind === 'attempts' && options.readAttempts) {
+          if (bodyPosition === bodyBatch.length) {
+            bodyBatch = await options.readAttempts(offset)
+            bodyPosition = 0
+            if (!bodyBatch.length || offset + bodyBatch.length > library.attempts.length)
+              throw failure()
+          }
+          record = bodyBatch[bodyPosition++]!
+          if (record.id !== stored.id) throw failure()
+          offset++
+        }
+        if (kind === 'attempts' && !hasAttemptBody(record as Attempt)) throw failure()
         const line = JSON.stringify(record) + '\n',
           bytes = encoder.encode(line).length
         if (bytes > MAX_PART_BYTES) throw failure()

@@ -556,6 +556,7 @@ async function restoreBackup() {
         :get-media="workspace.getMedia"
         :workspace-scope="workspace.scope.value"
         :save-attempt="workspace.recordAttempt"
+        :get-attempt="workspace.getAttempt"
         :finish-practice="
           (id, cardId, assessment) => run(() => workspace.finishPractice(id, cardId, assessment))
         "
@@ -818,6 +819,7 @@ async function restoreBackup() {
         :key="workspace.scope.value"
         v-model:card-id="historyCardId"
         :library="library"
+        :get-attempt="workspace.getAttempt"
         @reveal="(id) => run(() => workspace.revealPracticeHistory(id, workspace.scope.value))"
       />
 

@@ -14,7 +14,7 @@ use std::{
 };
 use tokio::sync::Mutex;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Credentials {
     pub session: String,
     pub csrf: String,
@@ -30,6 +30,9 @@ pub struct LeetCode {
 #[serde(tag = "action", rename_all = "lowercase", deny_unknown_fields)]
 pub enum Request {
     Ping,
+    Account {
+        site: String,
+    },
     Question {
         site: String,
         slug: String,
@@ -110,6 +113,10 @@ impl LeetCode {
             .lock()
             .map_err(|_| Error::internal())?
             .get(site);
+        let account = matches!(request, Request::Account { .. });
+        if account && credentials.is_none() {
+            return Ok(json!({"site":site,"state":"unconfigured"}));
+        }
         if (submit || matches!(request, Request::Recover { .. })) && credentials.is_none() {
             return Err(Error(
                 StatusCode::PRECONDITION_FAILED,
@@ -126,6 +133,57 @@ impl LeetCode {
         } else {
             None
         };
+        let result = self
+            .fetch(site, &path, body, credentials.as_ref(), submit)
+            .await;
+        // An old request must not describe replacement credentials as expired or valid.
+        if (account
+            || result
+                .as_ref()
+                .err()
+                .is_some_and(|error| matches!(error.1, "login-required" | "verification-required")))
+            && self
+                .credentials
+                .lock()
+                .map_err(|_| Error::internal())?
+                .get(site)
+                != credentials
+        {
+            return Err(Error(StatusCode::CONFLICT, "credentials-changed"));
+        }
+        if account {
+            return match result {
+                Ok(value) => account_status(&value, site),
+                Err(error) if error.1 == "login-required" => {
+                    Ok(json!({"site":site,"state":"expired"}))
+                }
+                Err(error) => Err(error),
+            };
+        }
+        let value = result?;
+        if let Request::Recover {
+            site,
+            slug,
+            question_id,
+            submission_id,
+            lang,
+            code,
+            submitted_at,
+        } = &request
+        {
+            verify_submission(&value, site, slug, question_id, lang, code, *submitted_at)?;
+            return Ok(json!({ "submissionId": submission_id }));
+        }
+        Ok(value)
+    }
+    async fn fetch(
+        &self,
+        site: &str,
+        path: &str,
+        body: Option<Value>,
+        credentials: Option<&Credentials>,
+        submit: bool,
+    ) -> Result<Value> {
         let origin = format!("https://{site}");
         #[cfg(test)]
         let origin = self.test_origin.clone().unwrap_or(origin);
@@ -162,7 +220,8 @@ impl LeetCode {
             return Err(Error(
                 StatusCode::BAD_GATEWAY,
                 match status.as_u16() {
-                    401 | 403 => "login-required",
+                    401 => "login-required",
+                    403 => "verification-required",
                     429 => "rate-limit",
                     _ if submit => "submission-unknown",
                     _ => "request-failed",
@@ -203,7 +262,9 @@ impl LeetCode {
                 },
             )
         })?;
-        if !value["errors"].is_null() || !value["error"].is_null() {
+        if !(value["errors"].is_null() || value["errors"].as_array().is_some_and(Vec::is_empty))
+            || !value["error"].is_null()
+        {
             return Err(Error(
                 StatusCode::BAD_GATEWAY,
                 if submit {
@@ -213,20 +274,25 @@ impl LeetCode {
                 },
             ));
         }
-        if let Request::Recover {
-            site,
-            slug,
-            question_id,
-            submission_id,
-            lang,
-            code,
-            submitted_at,
-        } = &request
-        {
-            verify_submission(&value, site, slug, question_id, lang, code, *submitted_at)?;
-            return Ok(json!({ "submissionId": submission_id }));
-        }
         Ok(value)
+    }
+}
+fn account_status(value: &Value, site: &str) -> Result<Value> {
+    let user = &value["data"]["userStatus"];
+    match user["isSignedIn"].as_bool() {
+        Some(false) => Ok(json!({"site":site,"state":"expired"})),
+        Some(true) => {
+            let username = user["username"]
+                .as_str()
+                .filter(|value| {
+                    !value.trim().is_empty()
+                        && value.chars().count() <= 200
+                        && !value.chars().any(char::is_control)
+                })
+                .ok_or(Error(StatusCode::BAD_GATEWAY, "invalid-response"))?;
+            Ok(json!({"site":site,"state":"authenticated","username":username}))
+        }
+        _ => Err(Error(StatusCode::BAD_GATEWAY, "invalid-response")),
     }
 }
 fn slug(s: &str) -> bool {
@@ -240,7 +306,8 @@ fn number(s: &str) -> bool {
 }
 fn request_parts(request: &Request) -> Result<(&str, String, Option<Value>, bool)> {
     let site = match request {
-        Request::Question { site, .. }
+        Request::Account { site }
+        | Request::Question { site, .. }
         | Request::Submit { site, .. }
         | Request::Check { site, .. }
         | Request::Recover { site, .. } => site.as_str(),
@@ -250,6 +317,12 @@ fn request_parts(request: &Request) -> Result<(&str, String, Option<Value>, bool
         return Err(Error::invalid());
     }
     match request {
+        Request::Account { .. } => Ok((
+            site,
+            "/graphql/".into(),
+            Some(json!({"query":"query RepeatyAccount { userStatus { isSignedIn username } }"})),
+            false,
+        )),
         Request::Question { slug: name, .. } if slug(name) => {
             let translated = if site == "leetcode.cn" {
                 "translatedTitle translatedContent"
@@ -447,6 +520,180 @@ mod tests {
             lang: "python3".into(),
             code: "return 1".into(),
             submitted_at: 1_700_000_000,
+        }
+    }
+    #[test]
+    fn account_status_requires_explicit_authentication_and_exposes_only_the_username() {
+        let valid = json!({"data":{"userStatus":{"isSignedIn":true,"username":"learner","ignored":"private"}}});
+        assert_eq!(
+            account_status(&valid, "leetcode.cn").unwrap(),
+            json!({"site":"leetcode.cn","state":"authenticated","username":"learner"})
+        );
+        assert_eq!(
+            account_status(
+                &json!({"data":{"userStatus":{"isSignedIn":false,"username":""}}}),
+                "leetcode.cn"
+            )
+            .unwrap(),
+            json!({"site":"leetcode.cn","state":"expired"})
+        );
+        for value in [
+            json!({}),
+            json!({"data":{"userStatus":null}}),
+            json!({"data":{"userStatus":{"isSignedIn":"true","username":"learner"}}}),
+            json!({"data":{"userStatus":{"isSignedIn":true}}}),
+        ] {
+            assert_eq!(
+                account_status(&value, "leetcode.cn").unwrap_err().1,
+                "invalid-response"
+            );
+        }
+        for username in [
+            String::new(),
+            " ".into(),
+            "bad\nname".into(),
+            "x".repeat(201),
+        ] {
+            let mut value = valid.clone();
+            value["data"]["userStatus"]["username"] = json!(username);
+            assert!(account_status(&value, "leetcode.cn").is_err());
+        }
+    }
+    #[tokio::test]
+    async fn account_checks_are_read_only_site_specific_and_skip_unconfigured_sites() {
+        let received = Arc::new(StoreMutex::new(Vec::new()));
+        let capture = received.clone();
+        let (client, task) = mock(Router::new().route("/graphql/", post(move |headers: HeaderMap, Json(value): Json<Value>| {
+            capture.lock().unwrap().push((headers["cookie"].to_str().unwrap().to_owned(), headers["referer"].to_str().unwrap().to_owned()));
+            assert_eq!(value, json!({"query":"query RepeatyAccount { userStatus { isSignedIn username } }"}));
+            async { Json(json!({"data":{"userStatus":{"isSignedIn":true,"username":"learner","ignored":"must not escape"}}})) }
+        }))).await;
+        assert_eq!(
+            client
+                .request(Request::Account {
+                    site: "leetcode.com".into()
+                })
+                .await
+                .unwrap(),
+            json!({"site":"leetcode.com","state":"unconfigured"})
+        );
+        assert!(received.lock().unwrap().is_empty());
+        client
+            .set_credentials(
+                "leetcode.com",
+                Some(Credentials {
+                    session: "com-session".into(),
+                    csrf: "com-csrf".into(),
+                }),
+            )
+            .unwrap();
+        for site in ["leetcode.cn", "leetcode.com"] {
+            assert_eq!(
+                client
+                    .request(Request::Account { site: site.into() })
+                    .await
+                    .unwrap(),
+                json!({"site":site,"state":"authenticated","username":"learner"})
+            );
+        }
+        assert_eq!(
+            *received.lock().unwrap(),
+            vec![
+                (
+                    "LEETCODE_SESSION=test-session; csrftoken=test-csrf".into(),
+                    "https://leetcode.cn/".into()
+                ),
+                (
+                    "LEETCODE_SESSION=com-session; csrftoken=com-csrf".into(),
+                    "https://leetcode.com/".into()
+                )
+            ]
+        );
+        assert!(
+            client
+                .request(Request::Account {
+                    site: "evil.test".into()
+                })
+                .await
+                .is_err()
+        );
+        task.abort();
+    }
+    #[tokio::test]
+    async fn account_checks_distinguish_expiry_verification_and_network_or_protocol_errors() {
+        for (status, expected) in [
+            (StatusCode::UNAUTHORIZED, "expired"),
+            (StatusCode::FORBIDDEN, "verification-required"),
+            (StatusCode::TOO_MANY_REQUESTS, "rate-limit"),
+            (StatusCode::BAD_GATEWAY, "request-failed"),
+            (StatusCode::OK, "invalid-response"),
+        ] {
+            let (client, task) = mock(Router::new().route(
+                "/graphql/",
+                post(move || async move { (status, "not JSON") }),
+            ))
+            .await;
+            let result = client
+                .request(Request::Account {
+                    site: "leetcode.cn".into(),
+                })
+                .await;
+            if expected == "expired" {
+                assert_eq!(result.unwrap()["state"], "expired");
+            } else {
+                assert_eq!(result.unwrap_err().1, expected);
+            }
+            assert_eq!(client.configured().unwrap(), vec!["leetcode.cn"]);
+            task.abort();
+        }
+    }
+    #[tokio::test]
+    async fn account_checks_discard_responses_after_credentials_are_replaced_or_cleared() {
+        for clear in [false, true] {
+            let started = Arc::new(tokio::sync::Notify::new());
+            let released = Arc::new(tokio::sync::Notify::new());
+            let arrived = started.clone();
+            let release = released.clone();
+            let (client, task) = mock(Router::new().route("/graphql/", post(move || {
+                let arrived = arrived.clone(); let release = release.clone();
+                async move { arrived.notify_one(); release.notified().await; Json(json!({"data":{"userStatus":{"isSignedIn":true,"username":"old-account"}}})) }
+            }))).await;
+            let update = async {
+                started.notified().await;
+                client
+                    .set_credentials(
+                        "leetcode.cn",
+                        if clear {
+                            None
+                        } else {
+                            Some(Credentials {
+                                session: "replacement".into(),
+                                csrf: "new-csrf".into(),
+                            })
+                        },
+                    )
+                    .unwrap();
+                released.notify_one();
+            };
+            let (result, ()) = tokio::join!(
+                client.request(Request::Account {
+                    site: "leetcode.cn".into()
+                }),
+                update
+            );
+            assert_eq!(result.unwrap_err().1, "credentials-changed");
+            if clear {
+                assert_eq!(
+                    client
+                        .request(Request::Account {
+                            site: "leetcode.cn".into()
+                        })
+                        .await
+                        .unwrap()["state"],
+                    "unconfigured"
+                );
+            }
+            task.abort();
         }
     }
     fn recovery_details() -> Value {
@@ -720,7 +967,8 @@ mod tests {
             "leetcode-not-configured"
         );
         for (status, expected) in [
-            (StatusCode::FORBIDDEN, "login-required"),
+            (StatusCode::UNAUTHORIZED, "login-required"),
+            (StatusCode::FORBIDDEN, "verification-required"),
             (StatusCode::TOO_MANY_REQUESTS, "rate-limit"),
             (StatusCode::BAD_GATEWAY, "submission-unknown"),
             (StatusCode::OK, "submission-unknown"),

@@ -1,6 +1,6 @@
 use axum::http::StatusCode;
 use repeaty_server::{
-    db::{Commit, Database, STORES},
+    db::{Commit, Database, ReadAttempts, STORES},
     error::Error,
 };
 use serde_json::{Value, json};
@@ -13,6 +13,75 @@ fn commit(revision: i64, library: &Value) -> Commit {
 }
 fn input(revision: i64, patches: Value) -> Commit {
     serde_json::from_value(json!({"expectedRevision":revision,"patches":patches})).unwrap()
+}
+#[test]
+fn history_bodies_are_paged_with_byte_limits_without_losing_unicode_or_order() {
+    let mut db = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let mut library = fixture();
+    library["practices"] = json!([{
+        "id":"practice", "cardId":library["cards"][0]["id"], "contentRevision":"snapshot",
+        "question":{"front":"Problem","back":"","format":"plain","plugin":{"id":"leetcode","version":1,"data":{}}},
+        "startedAt":"2026-10-18T00:00:00.000Z"
+    }]);
+    let code = "学".repeat(50_000);
+    library["attempts"] = Value::Array((0..300).map(|i| json!({
+        "id":format!("attempt-{i}"), "practiceId":"practice", "language":"python3", "code":code,
+        "submittedAt":"2026-10-18T00:00:00.000Z", "updatedAt":"2026-10-18T00:00:00.000Z",
+        "elapsedMs":1000, "status":"completed", "submissionId":(i+1).to_string(),
+        "result":{"outcome":"accepted","status":"通过","runtime":"1 ms","memory":"10 MB","detail":"详细输出".repeat(2000)}
+    })).collect());
+    db.commit(commit(0, &library)).unwrap();
+    let summary = db.load_summary().unwrap();
+    assert!(
+        summary["library"]["attempts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|entry| entry.get("code").is_none() && entry["result"].get("detail").is_none())
+    );
+    let mut offset = 0;
+    while offset < 300 {
+        let result = db
+            .read_attempts(ReadAttempts::Batch {
+                offset,
+                revision: 1,
+            })
+            .unwrap();
+        assert!(result.to_string().len() <= 4 * 1024 * 1024 + 2048);
+        let values = result["attempts"].as_array().unwrap();
+        assert!(!values.is_empty() && values.len() <= 128);
+        for value in values {
+            assert_eq!(value, &library["attempts"][offset as usize]);
+            offset += 1;
+        }
+    }
+    assert_eq!(
+        db.read_attempts(ReadAttempts::Batch {
+            offset,
+            revision: 1
+        })
+        .unwrap()["attempts"],
+        json!([])
+    );
+    assert_eq!(
+        db.read_attempts(ReadAttempts::One {
+            id: "attempt-0".into(),
+            revision: 0
+        })
+        .unwrap_err()
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        db.read_attempts(ReadAttempts::Batch {
+            offset: 500_001,
+            revision: 1
+        })
+        .unwrap_err()
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(db.load().unwrap()["library"]["attempts"][0]["code"], code);
 }
 #[test]
 fn sqlite_persists_records_and_rejects_stale_writers() {

@@ -51,3 +51,41 @@ export const attemptSchema = z.object({
 })
 export type Practice = z.infer<typeof practiceSchema>
 export type Attempt = z.infer<typeof attemptSchema>
+
+/** A runtime index entry, never a portable submission or a replacement for its body. */
+export const attemptSummarySchema = attemptSchema.omit({ code: true, result: true }).extend({
+  code: z.never().optional(),
+  result: judgeResultSchema
+    .omit({ detail: true })
+    .extend({ detail: z.never().optional() })
+    .optional(),
+})
+export type AttemptSummary = z.infer<typeof attemptSummarySchema>
+export type AttemptRecord = Attempt | AttemptSummary
+export function hasAttemptBody(value: AttemptRecord): value is Attempt {
+  return (
+    typeof value.code === 'string' && (!value.result || typeof value.result.detail === 'string')
+  )
+}
+export function summarizeAttempt(value: AttemptRecord): AttemptSummary {
+  const { code: _code, result, ...summary } = value
+  if (!result) return summary
+  const { detail: _detail, ...judge } = result
+  return { ...summary, result: judge }
+}
+export function sameAttemptSummary(left: AttemptRecord, right: AttemptRecord) {
+  const keys = [
+    'id',
+    'practiceId',
+    'submittedAt',
+    'updatedAt',
+    'language',
+    'elapsedMs',
+    'status',
+    'submissionId',
+  ] as const
+  if (!keys.every((key) => left[key] === right[key])) return false
+  if (!left.result || !right.result) return left.result === right.result
+  const resultKeys = ['outcome', 'status', 'runtime', 'memory'] as const
+  return resultKeys.every((key) => left.result![key] === right.result![key])
+}

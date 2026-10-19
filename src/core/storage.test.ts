@@ -226,7 +226,7 @@ it('writes only a graded card and new review, and reconstructs the earlier check
   const first = await repo.save(fixture(), 0)
   const graded = reviewCard(first.library, first.library.cards[0]!.id, 3, now)
   await repo.save(graded, 1, { now })
-  const db = await openDB(name, 6)
+  const db = await openDB(name, 7)
   expect(await db.get('workspace', 'main')).toBeUndefined()
   expect(await db.count('cards')).toBe(1)
   expect(await db.count('reviews')).toBe(1)
@@ -236,6 +236,36 @@ it('writes only a graded card and new review, and reconstructs the earlier check
   expect(checkpoints[0]).not.toHaveProperty('library')
   expect(await repo.getBackup(checkpoints[0].id)).toEqual(first.library)
   db.close()
+  await repo.close()
+})
+
+it('rejects an invalid practice reference on the incremental grading path', async () => {
+  const repo = repository()
+  const original = await repo.save(fixture(), 0)
+  const graded = reviewCard(original.library, original.library.cards[0]!.id, 3, now)
+  graded.reviews[0]!.practiceId = 'missing-practice'
+  await expect(repo.save(graded, original.revision)).rejects.toThrow('missing practice')
+  await expect(
+    repo.save(
+      {
+        ...original.library,
+        attempts: [
+          {
+            id: 'orphan-attempt',
+            practiceId: 'missing-practice',
+            code: 'return 0',
+            language: 'python3',
+            status: 'unknown',
+            elapsedMs: 1000,
+            submittedAt: now.toISOString(),
+            updatedAt: now.toISOString(),
+          },
+        ],
+      },
+      original.revision,
+    ),
+  ).rejects.toThrow('提交对应的练习不存在')
+  expect((await repo.load()).library).toEqual(original.library)
   await repo.close()
 })
 
@@ -251,7 +281,7 @@ it('leaves legacy data intact if migration fails validation', async () => {
   db.close()
   const repo = createRepository(name)
   await expect(repo.load()).rejects.toThrow()
-  const inspect = await openDB(name, 6)
+  const inspect = await openDB(name, 7)
   expect(await inspect.get('workspace', 'main')).toEqual(corrupt)
   expect(await inspect.get('meta', 'main')).toBeUndefined()
   inspect.close()

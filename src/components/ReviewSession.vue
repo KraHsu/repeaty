@@ -34,6 +34,7 @@ const props = defineProps<{
   undo: () => Promise<boolean>
   change: (ids: string[], action: 'suspend' | 'bury') => Promise<boolean>
   getMedia: (id: string) => Promise<Blob | undefined>
+  getAttempt: (id: string, signal?: AbortSignal) => Promise<Attempt>
 }>()
 const emit = defineEmits<{ close: [] }>()
 const clock = ref(new Date())
@@ -65,6 +66,14 @@ const current = computed(() =>
   ),
 )
 const plugin = computed(() => current.value && questionPlugin(current.value))
+const cardHistory = computed(() => {
+  const practices = props.library.practices.filter((entry) => entry.cardId === current.value?.id)
+  const ids = new Set(practices.map((entry) => entry.id))
+  return {
+    practices,
+    attempts: props.library.attempts.filter((entry) => ids.has(entry.practiceId)),
+  }
+})
 const questionState = reactive<QuestionState>({ allowedGrades: [], busy: false })
 watch(
   currentId,
@@ -284,8 +293,9 @@ onUnmounted(() => {
           :state="questionState"
           :revealed="revealed"
           :workspace-scope="workspaceScope"
-          :practices="library.practices.filter((entry) => entry.cardId === current!.id)"
-          :attempts="library.attempts"
+          :practices="cardHistory.practices"
+          :attempts="cardHistory.attempts"
+          :get-attempt="getAttempt"
           :save-attempt="saveAttempt"
         />
         <div

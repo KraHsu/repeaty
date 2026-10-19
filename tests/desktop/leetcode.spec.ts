@@ -29,6 +29,7 @@ async function connect(
     checkFails?: boolean
     submitFails?: boolean
     recoveryError?: string
+    checkError?: string
   } = {},
 ) {
   const site = options.site ?? 'leetcode.cn'
@@ -40,7 +41,9 @@ async function connect(
   await context.route('**/__native/leetcode', async (route) => {
     const request = route.request().postDataJSON()
     if (request.action !== 'ping') expect(request.site).toBe(site)
-    if (request.action === 'ping') await route.fulfill({ json: { version: 1 } })
+    if (request.action === 'ping') await route.fulfill({ json: { version: 1, configured: [site] } })
+    else if (request.action === 'account')
+      await route.fulfill({ json: { site, state: 'authenticated', username: 'test-learner' } })
     else if (request.action === 'question') {
       expect(request.slug).toBe('test-problem')
       await route.fulfill({ json: { data: { question } } })
@@ -55,7 +58,9 @@ async function connect(
       if (recoveryError) await route.fulfill({ status: 502, json: { error: recoveryError } })
       else await route.fulfill({ json: { submissionId: request.submissionId } })
     } else if (request.action === 'check') {
-      if (checkFails) await route.fulfill({ status: 502, json: { error: 'request-failed' } })
+      if (options.checkError)
+        await route.fulfill({ status: 401, json: { error: options.checkError } })
+      else if (checkFails) await route.fulfill({ status: 502, json: { error: 'request-failed' } })
       else
         await route.fulfill({
           json: {
@@ -73,6 +78,7 @@ async function connect(
     submissions: () => submissions,
     allowChecks: () => {
       checkFails = false
+      options.checkError = undefined
     },
     failChecks: () => {
       checkFails = true
@@ -195,7 +201,9 @@ test('international site, English, manual rating, and pending judge recovery do 
   await page.getByLabel('Programming language').selectOption('javascript')
   await page.getByLabel('Code', { exact: true }).fill('function solve(value) { return value; }')
   await page.getByRole('button', { name: 'Submit to LeetCode' }).click()
-  await expect(page.getByRole('alert')).toContainText('Cannot connect to LeetCode')
+  await expect(page.locator('.leetcode-question > [role="alert"]')).toContainText(
+    'Cannot connect to LeetCode',
+  )
   await expect(page.getByRole('button', { name: 'Submit to LeetCode' })).toBeDisabled()
   await page.reload()
   remote.allowChecks()
@@ -210,6 +218,44 @@ test('international site, English, manual rating, and pending judge recovery do 
   expect(await page.evaluate(() => localStorage.getItem('repeaty.leetcode.site'))).toBe(
     'leetcode.com',
   )
+})
+
+test('an expired session during judging retains code and the official submission for credential renewal', async ({
+  context,
+  page,
+}) => {
+  const remote = await connect(context, { checkError: 'login-required' })
+  await create(page)
+  const before = await storedLibrary(page)
+  const code = 'def solve(value): return value'
+  await page.getByLabel('代码', { exact: true }).fill(code)
+  await page.getByRole('button', { name: '提交到 LeetCode' }).click()
+  const cn = page.getByRole('region', { name: '中国站 · leetcode.cn', exact: true })
+  await expect(cn.getByRole('status')).toContainText('登录已失效')
+  await expect(cn.locator('.connection-account')).toHaveCount(0)
+  await expect(page.getByLabel('代码', { exact: true })).toHaveValue(code)
+  await expect(page.getByRole('button', { name: '继续查询结果', exact: true })).toBeEnabled()
+  const pending = await storedLibrary(page)
+  expect(pending.attempts).toMatchObject([
+    { value: { status: 'pending', submissionId: '1001', code } },
+  ])
+  await cn.getByLabel('LEETCODE_SESSION', { exact: true }).fill('replacement-session')
+  await cn.getByLabel('csrftoken', { exact: true }).fill('replacement-csrf')
+  await cn.getByRole('button', { name: '保存登录信息', exact: true }).click()
+  await expect(cn.getByRole('status')).toContainText('登录有效')
+  remote.allowChecks()
+  await page.getByRole('button', { name: '继续查询结果', exact: true }).click()
+  await expect(page.locator('.judge-result')).toContainText('通过')
+  const after = await storedLibrary(page)
+  expect(after.cards).toEqual(before.cards)
+  expect(after.reviews).toEqual(before.reviews)
+  expect(after.attempts).toMatchObject([
+    {
+      id: (pending.attempts as { id: string }[])[0]!.id,
+      value: { status: 'completed', submissionId: '1001', code },
+    },
+  ])
+  expect(remote.submissions()).toBe(1)
 })
 
 test('an unavailable judge service is reported without creating a placeholder question', async ({
@@ -334,11 +380,13 @@ test('recovery rejects wrong sites and mismatched remote submissions without alt
   const before = await storedLibrary(page)
   await page.getByLabel('提交编号或详情链接').fill('https://leetcode.com/submissions/detail/1001/')
   await page.getByRole('button', { name: '关联并查询' }).click()
-  await expect(page.getByRole('alert')).toContainText('请填写当前站点的提交编号')
+  await expect(page.locator('.leetcode-question > [role="alert"]')).toContainText(
+    '请填写当前站点的提交编号',
+  )
   expect(remote.recovered).toHaveLength(0)
   await page.getByLabel('提交编号或详情链接').fill('1001')
   await page.getByRole('button', { name: '关联并查询' }).click()
-  await expect(page.getByRole('alert')).toContainText(
+  await expect(page.locator('.leetcode-question > [role="alert"]')).toContainText(
     '该提交的题目、语言、代码或时间与本次记录不符',
   )
   expect((await storedLibrary(page)).attempts).toEqual(before.attempts)
@@ -361,7 +409,9 @@ test('a recovered international submission survives another disconnect and resum
   await page.getByLabel('界面语言').selectOption('en')
   await page.getByLabel('Submission ID or detail link').fill('1001')
   await page.getByRole('button', { name: 'Link and check' }).click()
-  await expect(page.getByRole('alert')).toContainText('Cannot connect to LeetCode')
+  await expect(page.locator('.leetcode-question > [role="alert"]')).toContainText(
+    'Cannot connect to LeetCode',
+  )
   expect((await storedLibrary(page)).attempts).toMatchObject([
     { value: { status: 'pending', submissionId: '1001' } },
   ])
@@ -541,7 +591,9 @@ test('viewing past code on the history page marks a pending practice as having s
   remote.failChecks()
   await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
   await page.getByRole('button', { name: '提交到 LeetCode' }).click()
-  await expect(page.getByRole('alert')).toContainText('无法连接 LeetCode')
+  await expect(page.locator('.leetcode-question > [role="alert"]')).toContainText(
+    '无法连接 LeetCode',
+  )
   await page.getByRole('button', { name: '练习历史', exact: true }).click()
   await expect(page.locator('.practice-history')).toHaveCount(2)
   await page.locator('.attempt-history > summary').last().click()
@@ -592,7 +644,9 @@ test('pending official submissions recover from library records when the tempora
   await create(page)
   await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
   await page.getByRole('button', { name: '提交到 LeetCode' }).click()
-  await expect(page.getByRole('alert')).toContainText('无法连接 LeetCode')
+  await expect(page.locator('.leetcode-question > [role="alert"]')).toContainText(
+    '无法连接 LeetCode',
+  )
   await page.evaluate(
     () =>
       new Promise<void>((resolve, reject) => {
@@ -620,7 +674,9 @@ test('revealing an answer remains recorded when the temporary draft is lost', as
   await create(page)
   await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
   await page.getByRole('button', { name: '提交到 LeetCode' }).click()
-  await expect(page.getByRole('alert')).toContainText('无法连接 LeetCode')
+  await expect(page.locator('.leetcode-question > [role="alert"]')).toContainText(
+    '无法连接 LeetCode',
+  )
   await page.getByRole('button', { name: '结束作答并查看答案' }).click()
   await expect
     .poll(
@@ -680,11 +736,17 @@ test('plugin settings distinguish website login from per-site judge credentials 
 }) => {
   let configured: string[] = []
   let fail = false
-  await context.route('**/__native/leetcode', (route) =>
-    fail
+  await context.route('**/__native/leetcode', (route) => {
+    const request = route.request().postDataJSON()
+    return fail
       ? route.fulfill({ status: 503, json: { error: 'request-failed' } })
-      : route.fulfill({ json: { version: 1, configured } }),
-  )
+      : route.fulfill({
+          json:
+            request.action === 'account'
+              ? { site: request.site, state: 'authenticated', username: 'settings-learner' }
+              : { version: 1, configured },
+        })
+  })
   await context.route('https://leetcode.cn/**', (route) =>
     route.fulfill({ contentType: 'text/html', body: '<title>LeetCode website</title>' }),
   )
@@ -704,7 +766,8 @@ test('plugin settings distinguish website login from per-site judge credentials 
   await expect(cn.getByLabel('csrftoken', { exact: true })).toBeVisible()
   configured = ['leetcode.cn']
   await cn.getByRole('button', { name: '刷新状态' }).click()
-  await expect(cn.getByRole('status')).toContainText('已配置登录信息')
+  await expect(cn.getByRole('status')).toContainText('登录有效')
+  await expect(cn.getByText('当前账号：settings-learner', { exact: true })).toBeVisible()
   await expect(com.getByRole('status')).toContainText('未配置登录信息')
   fail = true
   await cn.getByRole('button', { name: '刷新状态' }).click()
@@ -712,12 +775,12 @@ test('plugin settings distinguish website login from per-site judge credentials 
   await expect(cn.getByRole('alert')).toBeVisible()
   fail = false
   await cn.getByRole('button', { name: '刷新状态' }).click()
-  await expect(cn.getByRole('status')).toContainText('已配置登录信息')
+  await expect(cn.getByRole('status')).toContainText('登录有效')
   await page.getByLabel('界面语言').selectOption('en')
   await expect(cn.getByRole('status')).toHaveCount(0)
   await expect(
     page.getByRole('region', { name: 'China · leetcode.cn', exact: true }).getByRole('status'),
-  ).toContainText('Credentials configured')
+  ).toContainText('Signed in')
 })
 
 test('credentials can be saved, replaced and cleared per site without exposing stored values', async ({
@@ -738,35 +801,38 @@ test('credentials can be saved, replaced and cleared per site without exposing s
   const saving = page.waitForResponse('**/__native/leetcode/credentials')
   await cn.getByRole('button', { name: '保存登录信息', exact: true }).click()
   expect(await (await saving).json()).toEqual({ configured: ['leetcode.cn'] })
-  await expect(cn.getByRole('status')).toContainText('已配置登录信息')
+  await expect(cn.getByRole('status')).toContainText('登录有效')
+  await expect(cn.getByText('当前账号：tester-cn', { exact: true })).toBeVisible()
   await expect(cn.getByLabel('LEETCODE_SESSION', { exact: true })).toHaveValue('')
   await expect(cn.getByLabel('csrftoken', { exact: true })).toHaveValue('')
   await expect(com.getByRole('status')).toContainText('未配置登录信息')
   await com.getByLabel('LEETCODE_SESSION', { exact: true }).fill('browser-session-com')
   await com.getByLabel('csrftoken', { exact: true }).fill('browser-csrf-com')
   await com.getByRole('button', { name: '保存登录信息', exact: true }).click()
-  await expect(com.getByRole('status')).toContainText('已配置登录信息')
+  await expect(com.getByRole('status')).toContainText('登录有效')
+  await expect(com.getByText('当前账号：tester-com', { exact: true })).toBeVisible()
   await page.reload()
   await page.getByRole('button', { name: '插件', exact: true }).click()
-  await expect(cn.getByRole('status')).toContainText('已配置登录信息')
-  await expect(com.getByRole('status')).toContainText('已配置登录信息')
+  await expect(cn.getByRole('status')).toContainText('登录有效')
+  await expect(com.getByRole('status')).toContainText('登录有效')
   await expect(cn.getByLabel('LEETCODE_SESSION', { exact: true })).toHaveValue('')
   expect(JSON.stringify(await storedLibrary(page))).not.toContain('browser-session-')
+  expect(JSON.stringify(await storedLibrary(page))).not.toContain('tester-cn')
   expect(await page.evaluate(() => JSON.stringify([localStorage, sessionStorage]))).not.toContain(
     'browser-session-',
   )
   await cn.getByLabel('LEETCODE_SESSION', { exact: true }).fill('replacement-session')
   await cn.getByLabel('csrftoken', { exact: true }).fill('replacement-csrf')
   await cn.getByRole('button', { name: '保存登录信息', exact: true }).click()
-  await expect(cn.getByText('登录信息已保存，后续提交立即使用新配置。')).toBeVisible()
+  await expect(cn.getByText('登录信息已保存在本机。')).toBeVisible()
   await page.screenshot({ path: 'test-results/credentials-desktop.png', fullPage: true })
   await cn.getByRole('button', { name: '清除登录信息', exact: true }).click()
   await cn.getByRole('button', { name: '取消', exact: true }).click()
-  await expect(cn.getByRole('status')).toContainText('已配置登录信息')
+  await expect(cn.getByRole('status')).toContainText('登录有效')
   await cn.getByRole('button', { name: '清除登录信息', exact: true }).click()
   await cn.getByRole('button', { name: '确认清除', exact: true }).click()
   await expect(cn.getByRole('status')).toContainText('未配置登录信息')
-  await expect(com.getByRole('status')).toContainText('已配置登录信息')
+  await expect(com.getByRole('status')).toContainText('登录有效')
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByLabel('界面语言').selectOption('en')
   const english = page.getByRole('region', { name: 'China · leetcode.cn', exact: true })
@@ -800,7 +866,7 @@ test('credential errors preserve drafts and changing the editor site clears sens
   await expect(page.getByRole('dialog')).toBeVisible()
   await page.unroute('**/__native/leetcode/credentials')
   await cn.getByLabel('csrftoken', { exact: true }).press('Enter')
-  await expect(cn.getByRole('status')).toContainText('已配置登录信息')
+  await expect(cn.getByRole('status')).toContainText('登录有效')
   await expect(page.getByRole('dialog')).toBeVisible()
   await cn.getByLabel('LEETCODE_SESSION', { exact: true }).fill('unsaved-private-value')
   await page.getByLabel('LeetCode 站点').selectOption('leetcode.com')

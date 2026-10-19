@@ -1,5 +1,11 @@
 import { msg, LocalizedError } from '../i18n'
-import { practiceSchema, attemptSchema, type Practice, type Attempt } from './practice-data'
+import {
+  practiceSchema,
+  attemptSchema,
+  type Practice,
+  type Attempt,
+  type AttemptRecord,
+} from './practice-data'
 import type { Library, CardView } from './model'
 
 export async function practiceContentRevision(card: Pick<CardView, 'front' | 'back' | 'plugin'>) {
@@ -161,7 +167,7 @@ export function revealPracticeHistory(library: Library, viewedId: string): Libra
       .map((entry) => entry.id),
   )
   if (!candidates.size) return library
-  const latest = new Map<string, Attempt>()
+  const latest = new Map<string, AttemptRecord>()
   for (const attempt of library.attempts) {
     if (candidates.has(attempt.practiceId)) latest.set(attempt.practiceId, attempt)
   }

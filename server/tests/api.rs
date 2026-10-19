@@ -122,6 +122,77 @@ async fn accounts_isolate_identical_record_ids_media_and_backups() {
         call(&app, "/library", &alice, None).await.1["library"]["attempts"][0]["code"],
         "private source code"
     );
+    let summary = call(&app, "/library/summary", &alice, None).await;
+    assert_eq!(summary.0, StatusCode::OK);
+    assert!(summary.1["library"]["attempts"][0].get("code").is_none());
+    assert_eq!(call(&app, "/status", "", None).await.1["historyVersion"], 1);
+    let one = json!({"mode":"one","id":"attempt","revision":1});
+    let body = call(&app, "/library/attempts", &alice, Some(one.clone())).await;
+    assert_eq!(body.0, StatusCode::OK);
+    assert_eq!(body.1["attempts"][0]["code"], "private source code");
+    assert_eq!(
+        call(
+            &app,
+            "/library/attempts",
+            &bob,
+            Some(json!({"mode":"one","id":"attempt","revision":0}))
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        call(
+            &app,
+            "/library/attempts",
+            &alice,
+            Some(json!({"mode":"one","id":"attempt","revision":0}))
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    let batch = call(
+        &app,
+        "/library/attempts",
+        &alice,
+        Some(json!({"mode":"batch","offset":0,"revision":1})),
+    )
+    .await;
+    assert_eq!(batch.1["attempts"], body.1["attempts"]);
+    assert_eq!(
+        call(
+            &app,
+            "/library/attempts",
+            &alice,
+            Some(json!({"mode":"batch","offset":-1,"revision":1}))
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    let who = call(&app, "/auth/session", &alice, None).await.1;
+    for (path, body) in [("/library/summary", None), ("/library/attempts", Some(one))] {
+        let mut request = request(path)
+            .header("Authorization", format!("Bearer {bob}"))
+            .header("X-Repeaty-User", who["user"]["id"].as_str().unwrap());
+        let payload = if let Some(body) = body {
+            request = request
+                .method("POST")
+                .header("Content-Type", "application/json");
+            Body::from(body.to_string())
+        } else {
+            Body::empty()
+        };
+        assert_eq!(
+            app.clone()
+                .oneshot(request.body(payload).unwrap())
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::CONFLICT
+        );
+    }
     assert_eq!(
         call(
             &app,

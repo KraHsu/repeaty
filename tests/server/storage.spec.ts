@@ -5,6 +5,7 @@ import { writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { exportArchive, parseArchive } from '../../src/core/archive'
 import { richLibrary } from '../fixtures/rich-library'
+import { practiceHistoryFixture } from '../fixtures/practice-history'
 
 test('128 MiB media and long text round trip through SQLite, snapshots, and the static edition', async ({
   page,
@@ -99,7 +100,7 @@ test('stale pages cannot overwrite SQLite and an unavailable service never falls
   await expect(old.getByLabel('卡组名称')).toHaveValue('Stale deck')
   const saved = await (await request.get('api/library', { headers })).json()
   expect(saved.library.decks.map((deck: { name: string }) => deck.name)).toEqual(['Saved deck'])
-  await page.route('**/api/library', (route) => route.abort())
+  await page.route('**/api/library/summary', (route) => route.abort())
   await page.reload()
   await expect(
     page.getByText('无法连接服务，请检查后端是否正在运行。', { exact: true }),
@@ -107,6 +108,58 @@ test('stale pages cannot overwrite SQLite and an unavailable service never falls
   expect(
     await page.evaluate(async () => (await indexedDB.databases()).map((db) => db.name)),
   ).not.toContain('repeaty')
+})
+
+test('account history fetches bodies only on expansion, retries safely and exports complete submissions', async ({
+  page,
+  request,
+}) => {
+  const library = practiceHistoryFixture(130)
+  await page.goto('./')
+  await page.getByRole('button', { name: '数据与备份', exact: true }).click()
+  await page.getByLabel('导入备份文件').setInputFiles({
+    name: 'history.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(library)),
+  })
+  await page.getByRole('button', { name: '替换并恢复', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  const bodies: unknown[] = []
+  let fail = true
+  await page.route('**/api/library/attempts', async (route) => {
+    bodies.push(route.request().postDataJSON())
+    if (fail) {
+      fail = false
+      return route.abort()
+    }
+    return route.continue()
+  })
+  const summary = page.waitForResponse('**/api/library/summary')
+  await page.reload()
+  const loaded = (await (await summary).json()).library
+  expect(loaded.attempts).toHaveLength(130)
+  expect(loaded.attempts.every((entry: { code?: string }) => entry.code === undefined)).toBe(true)
+  await page.getByRole('button', { name: '练习历史', exact: true }).click()
+  await expect(page.locator('.practice-history')).toHaveCount(20)
+  await expect(page.locator('.attempt-code')).toHaveCount(0)
+  expect(bodies).toEqual([])
+  await page.locator('.attempt-history > summary').first().click()
+  await expect(page.locator('.attempt-body [role="alert"]')).toContainText('无法读取这次提交')
+  await page.getByRole('button', { name: '重试', exact: true }).click()
+  await expect(page.locator('.attempt-code code')).toContainText('# attempt 129')
+  expect(bodies).toHaveLength(2)
+  await page.locator('.attempt-history > summary').first().click()
+  await expect(page.locator('.attempt-code')).toHaveCount(0)
+  await page.getByRole('button', { name: '下一页', exact: true }).click()
+  expect(bodies).toHaveLength(2)
+  await page.getByRole('button', { name: '数据与备份', exact: true }).click()
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: '导出 .repeaty', exact: true }).click()
+  const restored = await parseArchive(await openAsBlob((await (await download).path())!))
+  expect(restored.library.attempts).toEqual(library.attempts)
+  const stored = await (await request.get('api/library', { headers })).json()
+  expect(stored.library.attempts).toEqual(library.attempts)
+  expect(bodies.filter((entry) => (entry as { mode: string }).mode === 'batch')).toHaveLength(2)
 })
 
 isolatedTest(
