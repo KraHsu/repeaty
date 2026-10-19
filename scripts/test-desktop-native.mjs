@@ -581,11 +581,18 @@ try {
   await execute("document.querySelectorAll('.main-nav button')[1].click()")
   await fill('.search-field input', 'Native source question')
   await until(
-    () => execute("return document.querySelectorAll('tbody tr').length===1"),
+    () =>
+      execute(
+        "return document.querySelectorAll('tbody tr').length===1 && document.querySelector('tbody tr').textContent.includes('Native source question')",
+      ),
     'native excerpt filter',
   )
   await execute(
     "document.querySelector('.search-options').open=true;const select=document.querySelector('.study-form select');select.value='true';select.dispatchEvent(new Event('change',{bubbles:true}));",
+  )
+  await until(
+    () => execute("return document.querySelector('.study-form button')?.disabled === false"),
+    'native source practice ready',
   )
   await click('开始专项练习')
   await until(
