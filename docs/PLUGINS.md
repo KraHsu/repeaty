@@ -44,7 +44,9 @@ interface QuestionPlugin {
 
 宿主负责复习队列、翻面、FSRS、持久化与撤销。`editor` 使用 `NoteInput` 的 `v-model`，写入 `front`、`back` 和 `plugin: { id, version, data }`。可复用宿主表单样式，校验自己的插件数据；组件卸载时清理计时器和网络请求。题目、答案应按文本或安全渲染器显示，不直接执行导入内容中的 HTML。
 
-可选的 `history` 组件接收 `PracticeHistoryProps`：`practices`、`attempts`、可选 `activeId` 和 `standalone`。它只显示已保存记录，不调用裁判或更新评分；展开历史代码时发送 `reveal(practiceId)`，由宿主记录未完成练习的答案查看状态。主导航提供独立「练习历史」，按题目、卡组和结果筛选、每页 20 次练习。没有对应组件或插件未启用时，宿主使用通用视图显示代码和结果，不加载插件专用界面。
+可选的 `history` 组件接收 `PracticeHistoryProps`：`practices`、`attempts`、`getAttempt(id, signal?)`、可选 `activeId` 和 `standalone`。它只显示已保存记录，不调用裁判或更新评分；历史代码成功显示后发送 `reveal(practiceId)`，由宿主记录未完成练习的答案查看状态。主导航和复习中的历史每页 20 次练习。没有对应组件或插件未启用时，宿主使用通用视图显示代码和结果，不加载插件专用界面。
+
+`QuestionProps.attempts` 和 `PracticeHistoryProps.attempts` 接收 `AttemptRecord[]`，其中可能只有摘要。使用 `hasAttemptBody(record)` 判断；需要原始代码或裁判详情时调用 `getAttempt`，不能把未加载的 `code` 当作空字符串。关闭详情、切换题目或卸载组件时取消请求并释放正文；读取失败保留摘要并允许重试。宿主会核对账户、工作空间和记录状态。摘要仅供运行时使用，提交记录的备份与保存仍要求完整正文。
 
 `data` 仅接受 JSON，最大 200,000 字符。每条插件笔记生成一张独立调度的卡片。插件 ID 唯一，采用小写字母、数字和连字符；`flashcard`、`unavailable` 为保留 ID。当前只加载与 `version` 完全匹配的数据，不自动迁移插件版本。
 
