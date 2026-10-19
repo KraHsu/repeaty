@@ -112,6 +112,24 @@ describe('Anki package import', () => {
     expect(next.library.reviews).toHaveLength(1)
   })
 
+  it('reads a v1 collection.anki2 envelope without package metadata', async () => {
+    const original = await file('legacy')
+    const reader = new ZipReader(new BlobReader(original), { useWebWorkers: false })
+    const entries = await reader.getEntries()
+    const entry = entries.find((entry) => entry.filename === 'collection.anki21')!
+    if (entry.directory) throw new Error('Expected an Anki database file')
+    const database = await entry.getData(new BlobWriter())
+    await reader.close()
+    const old = await rewrite(original, async (name, blob) =>
+      name === 'collection.anki2'
+        ? database
+        : ['meta', 'collection.anki21'].includes(name)
+          ? undefined
+          : blob,
+    )
+    expect((await parseAnkiPackage(old, SQL)).notes).toHaveLength(4)
+  })
+
   it('does not retain orphan attachments when a note fails conversion', async () => {
     const broken = await rewrite(await file('legacy'), async (name, blob) =>
       name === '1' ? undefined : blob,
@@ -130,6 +148,10 @@ describe('Anki package import', () => {
       name === 'meta' ? new Blob([new Uint8Array([8, 99])]) : blob,
     )
     await expect(parseAnkiPackage(future, SQL)).rejects.toThrow('Anki 文件损坏')
+    const missingMeta = await rewrite(await file('modern'), async (name, blob) =>
+      name === 'meta' ? undefined : blob,
+    )
+    await expect(parseAnkiPackage(missingMeta, SQL)).rejects.toThrow('Anki 文件损坏')
     const paths = await rewrite(await file('legacy'), async (name, blob) =>
       name === 'media' ? new Blob(['{"0":"../pixel.png"}']) : blob,
     )

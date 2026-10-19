@@ -22,7 +22,7 @@ test('modern Anki import previews, cancels, imports media, reviews offline and d
   await page.getByRole('button', { name: '取消', exact: true }).click()
   await expect(page.locator('tbody tr')).toHaveCount(0)
   // The worker and wasm are served from this build and precached, including on
-  // a Pages subpath. Import should work after going offline, before first use.
+  // a Pages subpath. Import should still work after going offline and reloading.
   await expect
     .poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)))
     .toBe(true)
@@ -79,8 +79,15 @@ test('modern Anki import previews, cancels, imports media, reviews offline and d
 
 test('legacy packages import, malformed input preserves data, and the preview fits a narrow English screen', async ({
   page,
+  context,
 }) => {
   await createImportDeck(page)
+  // No Anki UI, parser or wasm has been opened in this context yet.
+  await expect
+    .poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)))
+    .toBe(true)
+  await context.setOffline(true)
+  await page.reload()
   await previewAnki(page, 'legacy')
   await confirmAnki(page)
   await page.getByRole('button', { name: '批量导入', exact: true }).click()

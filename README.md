@@ -26,7 +26,7 @@ Repeaty 是一个开源的网页记忆卡片工具。把想记住的内容做成
 
 打开 **[Repeaty 在线版](https://www.krahsu.top/repeaty/)**，点击「开始复习」即可。默认的入门卡组有 24 条笔记、27 张卡片，一边介绍 FSRS，一边带你试用评分、挖空、公式、图片和音频。支持 English / 中文（简体）。
 
-已有自己的材料？创建卡组并添加卡片，或从 CSV / TSV 导入。复习时先回答，再翻面，按实际表现选择「重来 / 困难 / 良好 / 简单」。
+已有自己的材料？创建卡组并添加卡片，或从 Anki `.apkg`、CSV / TSV 导入。复习时先回答，再翻面，按实际表现选择「重来 / 困难 / 良好 / 简单」。
 
 在线版由 GitHub Pages 托管，数据只保存在当前浏览器。换浏览器或清理网站数据前，请在「数据与备份」中导出 `.repeaty` 文件。
 
@@ -35,10 +35,10 @@ Repeaty 是一个开源的网页记忆卡片工具。把想记住的内容做成
 - **制卡**：正反面、双向、挖空；Markdown、代码块、数学公式、图片和音频。
 - **复习**：FSRS 调度，按卡组设置目标记忆保留率和每日学习量；支持撤销评分、暂停、暂缓与顽固卡标记。
 - **整理与练习**：标签、组合搜索、常用筛选、批量编辑；专项练习可选择是否更新复习进度。
-- **数据导入导出**：CSV / TSV 导入笔记，`.repeaty` 备份包含附件和进度，三个版本之间可以迁移。
+- **数据导入导出**：Anki `.apkg` 导入问答、双向和挖空卡及媒体，先预览、再按新卡导入；支持 CSV / TSV，`.repeaty` 备份包含附件和进度，三个版本之间可以迁移。
 - **插件**：部署时安装，使用时开关。纯前端插件适用于所有版本；桌面版另支持本地插件，内置 LeetCode 题目与判题，显示登录账号并支持提交恢复。独立练习历史保存历次代码、结果和评分，随备份迁移。
 
-目前不支持 Anki `.apkg` 导入、自定义字段 / HTML 模板、图片遮挡或个人 FSRS 参数训练。[完整用法](docs/USAGE.md) · [存储与性能](docs/DEVELOPMENT.md#大数据量存储)
+目前不支持 Anki 进度迁移、自定义字段 / HTML 模板、图片遮挡或个人 FSRS 参数训练。[Anki 导入范围](docs/ANKI.md) · [完整用法](docs/USAGE.md) · [存储与性能](docs/DEVELOPMENT.md#大数据量存储)
 
 ## 自行部署
 
@@ -73,7 +73,7 @@ npm run build:server
 cargo run --release --locked --manifest-path server/Cargo.toml
 ```
 
-**桌面版**：安装 [Desktop 工作流](https://github.com/KraHsu/repeaty/actions/workflows/desktop.yml)生成的安装包，或在安装 [Tauri 2 系统依赖](https://v2.tauri.app/start/prerequisites/)后构建：
+**桌面版**：从 [Releases](https://github.com/KraHsu/repeaty/releases) 下载安装包，或在安装 [Tauri 2 系统依赖](https://v2.tauri.app/start/prerequisites/)后构建。尚未发布的构建可在 [Desktop 工作流](https://github.com/KraHsu/repeaty/actions/workflows/desktop.yml)中获取。
 
 ```bash
 npm run desktop:build
