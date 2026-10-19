@@ -108,6 +108,7 @@ export function applyAnkiImportPlan(
     if (!decks.has(target)) throw new LocalizedError(msg('目标卡组不存在。'))
     return noteSchema.parse({
       ...change.input,
+      excerpt: change.current?.excerpt,
       id,
       deckId: target,
       createdAt: change.current?.createdAt ?? timestamp,

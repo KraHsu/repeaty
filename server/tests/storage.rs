@@ -228,3 +228,75 @@ fn practice_evidence_survives_snapshots_and_invalid_references_are_rejected() {
     db.commit(input(1, json!(deletions))).unwrap();
     assert_eq!(db.backup(&snapshot).unwrap(), library);
 }
+
+#[test]
+fn source_snapshots_validate_utf16_excerpts_and_restore_without_changing_cards() {
+    let mut db = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let mut library = fixture();
+    let text = "开头🙂\n原文摘录\nMarkdown **text**";
+    let size = text.len();
+    db.put_media("source-body", "text/markdown", text.as_bytes())
+        .unwrap();
+    library["media"] = json!([{"id":"source-body","name":"source.md","type":"text/markdown","size":size,"createdAt":"2026-10-18T00:00:00.000Z"}]);
+    library["sources"] = json!([{"id":"source","title":"来源","url":"https://example.org/notes","format":"markdown","mediaId":"source-body","characters":text.encode_utf16().count(),"createdAt":"2026-10-18T00:00:00.000Z"}]);
+    library["notes"][0]["frontMedia"] = json!([]);
+    library["notes"][0]["backMedia"] = json!([]);
+    library["notes"][0]["excerpt"] =
+        json!({"sourceId":"source","start":5,"end":9,"quote":"原文摘录"});
+    db.commit(commit(0, &library)).unwrap();
+    assert_eq!(db.load().unwrap()["library"], library);
+    let before = library["notes"][0].clone();
+    let mut bad = before.clone();
+    bad["excerpt"]["quote"] = json!("错误内容");
+    assert!(
+        db.commit(input(
+            1,
+            json!([{"store":"notes","id":bad["id"],"position":0,"value":bad}])
+        ))
+        .is_err()
+    );
+    assert_eq!(db.load().unwrap()["revision"], 1);
+    assert!(
+        db.commit(input(1, json!([{"store":"sources","id":"source"}])))
+            .is_err()
+    );
+    let mut detached = before.clone();
+    detached.as_object_mut().unwrap().remove("excerpt");
+    let removal: Commit = serde_json::from_value(json!({"expectedRevision":1,"reason":"删除材料前","patches":[{"store":"notes","id":detached["id"],"position":0,"value":detached},{"store":"sources","id":"source"},{"store":"media","id":"source-body"}]})).unwrap();
+    db.commit(removal).unwrap();
+    assert_eq!(db.load().unwrap()["library"]["cards"], library["cards"]);
+    let backups = db.backups().unwrap();
+    assert_eq!(
+        db.backup(backups[0]["id"].as_str().unwrap()).unwrap(),
+        library
+    );
+    assert_eq!(db.media("source-body").unwrap().1, text.as_bytes());
+    assert!(db.put_media("bad-text", "text/plain", &[255, 255]).is_err());
+}
+
+#[test]
+fn source_only_libraries_get_snapshots_and_sqlite_v2_upgrades_safely() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("sources.sqlite3");
+    {
+        let connection = rusqlite::Connection::open(&path).unwrap();
+        connection.pragma_update(None, "user_version", 2).unwrap();
+    }
+    let mut db = Database::open(&path).unwrap();
+    db.put_media("body", "text/plain", b"original").unwrap();
+    let patches = json!([
+        {"store":"media","id":"body","position":0,"value":{"id":"body","name":"source.txt","type":"text/plain","size":8,"createdAt":"2026-10-18T00:00:00.000Z"}},
+        {"store":"sources","id":"source","position":0,"value":{"id":"source","title":"Only source","format":"plain","url":"","mediaId":"body","characters":8,"createdAt":"2026-10-18T00:00:00.000Z"}}
+    ]);
+    db.commit(input(0, patches)).unwrap();
+    db.backup_now(false).unwrap();
+    assert_eq!(db.backups().unwrap().as_array().unwrap().len(), 1);
+    drop(db);
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    assert_eq!(
+        connection
+            .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+            .unwrap(),
+        3
+    );
+}

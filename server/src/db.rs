@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 
-pub const STORES: [&str; 8] = [
+pub const STORES: [&str; 9] = [
     "decks",
     "notes",
     "cards",
@@ -18,6 +18,7 @@ pub const STORES: [&str; 8] = [
     "savedSearches",
     "practices",
     "attempts",
+    "sources",
 ];
 pub const MAX_MEDIA: usize = 10 * 1024 * 1024;
 
@@ -67,7 +68,7 @@ impl Database {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         let version: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 2 {
+        if version > 3 {
             return Err(Error::invalid());
         }
         let tx = connection.transaction()?;
@@ -93,12 +94,15 @@ impl Database {
                 "attempts" => {
                     ", practice_id TEXT GENERATED ALWAYS AS (json_extract(data,'$.practiceId')) STORED REFERENCES practices(id) DEFERRABLE INITIALLY DEFERRED"
                 }
+                "sources" => {
+                    ", media_id TEXT GENERATED ALWAYS AS (json_extract(data,'$.mediaId')) STORED REFERENCES media(id) DEFERRABLE INITIALLY DEFERRED"
+                }
                 "media" => ", FOREIGN KEY(id) REFERENCES assets(id) DEFERRABLE INITIALLY DEFERRED",
                 _ => "",
             };
             tx.execute_batch(&format!("CREATE TABLE IF NOT EXISTS {store} (id TEXT PRIMARY KEY, position INTEGER NOT NULL CHECK(position>=0), data TEXT NOT NULL CHECK(json_valid(data)){relation}); CREATE INDEX IF NOT EXISTS {store}_position ON {store}(position);"))?;
         }
-        tx.execute_batch("CREATE INDEX IF NOT EXISTS notes_deck ON notes(deck_id); CREATE INDEX IF NOT EXISTS cards_note ON cards(note_id); CREATE INDEX IF NOT EXISTS reviews_card ON reviews(card_id); CREATE INDEX IF NOT EXISTS practices_card ON practices(card_id); CREATE INDEX IF NOT EXISTS attempts_practice ON attempts(practice_id); PRAGMA user_version=2;")?;
+        tx.execute_batch("CREATE INDEX IF NOT EXISTS notes_deck ON notes(deck_id); CREATE INDEX IF NOT EXISTS cards_note ON cards(note_id); CREATE INDEX IF NOT EXISTS reviews_card ON reviews(card_id); CREATE INDEX IF NOT EXISTS practices_card ON practices(card_id); CREATE INDEX IF NOT EXISTS attempts_practice ON attempts(practice_id); PRAGMA user_version=3;")?;
         tx.commit()?;
         let schemas: HashMap<String, Value> =
             serde_json::from_str(include_str!("../schema/entities.json"))?;
@@ -131,7 +135,7 @@ impl Database {
         Ok(json!({"revision":current,"library":library}))
     }
     fn library_history(db: &Connection, summary: bool) -> Result<Value> {
-        let mut library = json!({"version":5});
+        let mut library = json!({"version":6});
         for store in STORES {
             let data = if store == "attempts" && summary {
                 "json_remove(data,'$.code','$.result.detail')"
@@ -306,6 +310,7 @@ impl Database {
                 "practices" => 100000,
                 "attempts" => 500000,
                 "savedSearches" => 100,
+                "sources" => 10000,
                 _ => 1600000,
             };
             if count > limit || distinct != count || (count > 0 && max != Some(count - 1)) {
@@ -333,15 +338,98 @@ impl Database {
                 return Err(Error::invalid());
             }
         }
+        Self::validate_sources(&tx, &commit.patches)?;
         tx.execute("UPDATE workspace SET revision=?1 WHERE id=1", [current + 1])?;
         Self::collect_assets(&tx)?;
         tx.commit()?;
         Ok(current + 1)
     }
+    fn validate_sources(tx: &Transaction<'_>, patches: &[Patch]) -> Result<()> {
+        if !patches
+            .iter()
+            .any(|p| ["sources", "notes", "media"].contains(&p.store.as_str()))
+        {
+            return Ok(());
+        }
+        let bad: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM sources s LEFT JOIN media m ON m.id=s.media_id WHERE m.id IS NULL OR json_extract(m.data,'$.type') <> CASE json_extract(s.data,'$.format') WHEN 'markdown' THEN 'text/markdown' ELSE 'text/plain' END OR json_extract(m.data,'$.size') > 1048576) OR EXISTS(SELECT 1 FROM notes n LEFT JOIN sources s ON s.id=json_extract(n.data,'$.excerpt.sourceId') WHERE json_extract(n.data,'$.excerpt.sourceId') IS NOT NULL AND (s.id IS NULL OR json_extract(n.data,'$.excerpt.end') > json_extract(s.data,'$.characters'))) OR EXISTS(SELECT 1 FROM notes n, json_each(n.data,'$.frontMedia') a JOIN media m ON m.id=a.value WHERE json_extract(m.data,'$.type') LIKE 'text/%') OR EXISTS(SELECT 1 FROM notes n, json_each(n.data,'$.backMedia') a JOIN media m ON m.id=a.value WHERE json_extract(m.data,'$.type') LIKE 'text/%')", [], |row| row.get(0))?;
+        if bad {
+            return Err(Error::invalid());
+        }
+        let mut contents = HashMap::<String, Vec<u16>>::new();
+        for patch in patches
+            .iter()
+            .filter(|patch| patch.store == "sources" && patch.value.is_some())
+        {
+            let source = patch.value.as_ref().unwrap();
+            let body: Vec<u8> = tx.query_row(
+                "SELECT body FROM assets WHERE id=?1",
+                [source["mediaId"].as_str().unwrap_or("")],
+                |row| row.get(0),
+            )?;
+            let text = std::str::from_utf8(&body).map_err(|_| Error::invalid())?;
+            let utf16: Vec<u16> = text.encode_utf16().collect();
+            if text.trim().is_empty()
+                || utf16.len() as u64 != source["characters"].as_u64().unwrap_or(0)
+            {
+                return Err(Error::invalid());
+            }
+            contents.insert(patch.id.clone(), utf16);
+        }
+        let mut notes = Vec::<Value>::new();
+        for patch in patches.iter().filter(|patch| patch.store == "notes") {
+            if let Some(note) = &patch.value {
+                notes.push(note.clone());
+            }
+        }
+        for source_id in contents.keys() {
+            let mut stmt = tx.prepare(
+                "SELECT data FROM notes WHERE json_extract(data,'$.excerpt.sourceId')=?1",
+            )?;
+            for row in stmt.query_map([source_id], |row| row.get::<_, String>(0))? {
+                notes.push(serde_json::from_str(&row?)?);
+            }
+        }
+        for note in notes {
+            let excerpt = &note["excerpt"];
+            if excerpt.is_null() {
+                continue;
+            }
+            let id = excerpt["sourceId"].as_str().ok_or_else(Error::invalid)?;
+            if !contents.contains_key(id) {
+                let body: Vec<u8> = tx.query_row(
+                    "SELECT a.body FROM sources s JOIN assets a ON a.id=s.media_id WHERE s.id=?1",
+                    [id],
+                    |row| row.get(0),
+                )?;
+                contents.insert(
+                    id.into(),
+                    std::str::from_utf8(&body)
+                        .map_err(|_| Error::invalid())?
+                        .encode_utf16()
+                        .collect(),
+                );
+            }
+            let start = excerpt["start"].as_u64().ok_or_else(Error::invalid)? as usize;
+            let end = excerpt["end"].as_u64().ok_or_else(Error::invalid)? as usize;
+            let quote: Vec<u16> = excerpt["quote"]
+                .as_str()
+                .ok_or_else(Error::invalid)?
+                .encode_utf16()
+                .collect();
+            if contents[id].get(start..end) != Some(quote.as_slice())
+                || quote.is_empty()
+                || quote.len() > 10_000
+            {
+                return Err(Error::invalid());
+            }
+        }
+        Ok(())
+    }
     fn checkpoint(tx: &Transaction<'_>, reason: &str, force: bool) -> Result<()> {
         let rev = revision(tx)?;
         let notes: i64 = tx.query_row("SELECT COUNT(*) FROM notes", [], |r| r.get(0))?;
-        if notes == 0 && !force {
+        let sources: i64 = tx.query_row("SELECT COUNT(*) FROM sources", [], |r| r.get(0))?;
+        if notes == 0 && sources == 0 && !force {
             return Ok(());
         }
         let latest: Option<String> = tx
@@ -402,7 +490,7 @@ impl Database {
             })
             .optional()?
             .ok_or_else(Error::missing)?;
-        let mut library = json!({"version":5});
+        let mut library = json!({"version":6});
         for store in STORES {
             let mut rows = BTreeMap::<String, (i64, Value)>::new();
             let mut stmt = self
@@ -453,8 +541,15 @@ impl Database {
             "audio/webm",
             "audio/flac",
             "audio/aac",
+            "text/plain",
+            "text/markdown",
         ];
         if !valid_id(id) || bytes.is_empty() || bytes.len() > MAX_MEDIA || !allowed.contains(&mime)
+        {
+            return Err(Error::invalid());
+        }
+        if mime.starts_with("text/")
+            && (bytes.len() > 1024 * 1024 || std::str::from_utf8(bytes).is_err())
         {
             return Err(Error::invalid());
         }

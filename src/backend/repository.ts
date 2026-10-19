@@ -49,7 +49,7 @@ export function createServerRepository(source = location.origin) {
     scope: () => `${source}:${userId}`,
     async load(): Promise<Snapshot> {
       const status = await requestJson<{ apiVersion: number; historyVersion?: number }>('/status')
-      if (status.apiVersion !== 3) throw new ServerError('incompatible-version')
+      if (status.apiVersion !== 4) throw new ServerError('incompatible-version')
       compactHistory = status.historyVersion === 1
       if (!userId) userId = (await requestJson<{ user: { id: string } }>('/auth/session')).user.id
       const saved = await apiJson<Snapshot>(compactHistory ? '/library/summary' : '/library')
@@ -72,7 +72,7 @@ export function createServerRepository(source = location.origin) {
       if (cached!.revision !== expectedRevision) throw new ServerError('revision-conflict')
       const previous = cached!.library
       if (
-        !(['decks', 'notes', 'media', 'savedSearches'] as const).every(
+        !(['decks', 'notes', 'media', 'savedSearches', 'sources'] as const).every(
           (key) => previous[key] === library[key],
         ) ||
         library.cards.length !== previous.cards.length ||

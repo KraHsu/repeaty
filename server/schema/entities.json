@@ -1,4 +1,28 @@
 {
+  "sources": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "id": { "type": "string", "minLength": 1, "maxLength": 100 },
+      "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+      "url": {
+        "default": "",
+        "type": "string",
+        "maxLength": 2048,
+        "pattern": "^(?:https?:\\/\\/[^\\s]+)?$"
+      },
+      "format": { "type": "string", "enum": ["plain", "markdown"] },
+      "mediaId": { "type": "string", "minLength": 1, "maxLength": 100 },
+      "characters": { "type": "integer", "minimum": 1, "maximum": 250000 },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+      }
+    },
+    "required": ["id", "title", "url", "format", "mediaId", "characters", "createdAt"],
+    "additionalProperties": false
+  },
   "decks": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
@@ -51,6 +75,17 @@
           }
         },
         "required": ["id", "version", "data"],
+        "additionalProperties": false
+      },
+      "excerpt": {
+        "type": "object",
+        "properties": {
+          "sourceId": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "start": { "type": "integer", "minimum": 0, "maximum": 250000 },
+          "end": { "type": "integer", "exclusiveMinimum": 0, "maximum": 250000 },
+          "quote": { "type": "string", "minLength": 1, "maxLength": 10000 }
+        },
+        "required": ["sourceId", "start", "end", "quote"],
         "additionalProperties": false
       },
       "format": { "default": "plain", "type": "string", "enum": ["plain", "markdown"] },
@@ -355,7 +390,9 @@
           "audio/mp4",
           "audio/webm",
           "audio/flac",
-          "audio/aac"
+          "audio/aac",
+          "text/plain",
+          "text/markdown"
         ]
       },
       "size": { "type": "integer", "exclusiveMinimum": 0, "maximum": 10485760 },

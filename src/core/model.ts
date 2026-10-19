@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { createEmptyCard, type Card as FsrsCard } from 'ts-fsrs'
 import { scheduleSchema, librarySchema as legacySchema } from './legacy'
 import { pluginDataSchema, assessmentSchema } from '../plugins/data'
+import { sourceSchema, excerptSchema, MAX_SOURCE_BYTES } from './source-data'
 import { practiceSchema, attemptSchema, attemptSummarySchema } from './practice-data'
 
 export { scheduleSchema } from './legacy'
@@ -115,6 +116,7 @@ export const noteSchema = z
     deckId: id,
     type: z.enum(['basic', 'reversed', 'cloze', 'plugin']),
     plugin: pluginDataSchema.optional(),
+    excerpt: excerptSchema.optional(),
     format: z.enum(['plain', 'markdown']).default('plain'),
     front: z.string().trim().min(1).max(10_000),
     back: z.string().trim().max(10_000),
@@ -161,7 +163,7 @@ export const cardSchema = z.object({
 export const mediaSchema = z.object({
   id,
   name: z.string().min(1).max(255),
-  type: z.enum(mediaTypes),
+  type: z.enum([...mediaTypes, 'text/plain', 'text/markdown']),
   size: z.number().int().positive().max(MAX_MEDIA_BYTES),
   createdAt: date,
 })
@@ -204,12 +206,21 @@ export type DeckInput = Pick<
 >
 export type NoteInput = Pick<
   Note,
-  'deckId' | 'type' | 'front' | 'back' | 'tags' | 'frontMedia' | 'backMedia' | 'plugin'
+  'deckId' | 'type' | 'front' | 'back' | 'tags' | 'frontMedia' | 'backMedia' | 'plugin' | 'excerpt'
 > & { format?: Note['format'] }
 export type CardView = Card &
   Pick<
     Note,
-    'deckId' | 'front' | 'back' | 'tags' | 'type' | 'format' | 'frontMedia' | 'backMedia' | 'plugin'
+    | 'deckId'
+    | 'front'
+    | 'back'
+    | 'tags'
+    | 'type'
+    | 'format'
+    | 'frontMedia'
+    | 'backMedia'
+    | 'plugin'
+    | 'excerpt'
   > & { cloze?: { answers: string[]; context: string; extra: string } }
 export interface MediaUpload {
   meta: Media
@@ -225,7 +236,8 @@ export function variants(note: Pick<Note, 'type' | 'front'>): string[] {
 }
 
 const libraryContents = z.object({
-  version: z.literal(5),
+  version: z.literal(6),
+  sources: z.array(sourceSchema).max(10_000),
   practices: z.array(practiceSchema).max(100_000),
   attempts: z.array(attemptSchema).max(500_000),
   savedSearches: z.array(savedSearchSchema).max(100).default([]),
@@ -250,6 +262,7 @@ export function validateLibraryReferences(
     'savedSearches',
     'practices',
     'attempts',
+    'sources',
   ] as const) {
     if (new Set(library[key].map((entry) => entry.id)).size !== library[key].length)
       problem(`${key} 中存在重复 ID`)
@@ -257,7 +270,17 @@ export function validateLibraryReferences(
   const decks = new Set(library.decks.map((deck) => deck.id))
   const notes = new Map(library.notes.map((note) => [note.id, note]))
   const cards = new Set(library.cards.map((card) => card.id))
-  const media = new Set(library.media.map((item) => item.id))
+  const media = new Map(library.media.map((item) => [item.id, item]))
+  const sources = new Map(library.sources.map((source) => [source.id, source]))
+  for (const source of library.sources) {
+    const asset = media.get(source.mediaId)
+    if (
+      !asset ||
+      asset.type !== (source.format === 'markdown' ? 'text/markdown' : 'text/plain') ||
+      asset.size > MAX_SOURCE_BYTES
+    )
+      problem('来源正文缺失或格式不正确')
+  }
   const cardVariants = new Map<string, string[]>()
   for (const card of library.cards) {
     if (!notes.has(card.noteId)) problem('卡片所属笔记不存在')
@@ -267,6 +290,19 @@ export function validateLibraryReferences(
     if (!decks.has(note.deckId)) problem('笔记所属卡组不存在')
     if ([...note.frontMedia, ...note.backMedia].some((mediaId) => !media.has(mediaId)))
       problem('笔记引用的媒体不存在')
+    if (
+      [...note.frontMedia, ...note.backMedia].some((id) => media.get(id)?.type.startsWith('text/'))
+    )
+      problem('正文快照不能用作图片或音频')
+    if (note.excerpt) {
+      const source = sources.get(note.excerpt.sourceId)
+      if (
+        !source ||
+        note.excerpt.end > source.characters ||
+        note.excerpt.end - note.excerpt.start !== note.excerpt.quote.length
+      )
+        problem('摘录与来源不匹配')
+    }
     try {
       if (variants(note).sort().join(',') !== (cardVariants.get(note.id) ?? []).sort().join(','))
         problem('卡片与笔记生成规则不匹配')
@@ -307,6 +343,7 @@ export const workspaceLibrarySchema = libraryContents
   )
 export type Library = z.infer<typeof workspaceLibrarySchema>
 export const recordSchemas = {
+  sources: sourceSchema,
   decks: deckSchema,
   notes: noteSchema,
   cards: cardSchema,
@@ -318,7 +355,8 @@ export const recordSchemas = {
 }
 export function emptyLibrary(): Library {
   return {
-    version: 5,
+    version: 6,
+    sources: [],
     decks: [],
     notes: [],
     cards: [],
@@ -386,6 +424,7 @@ export function renderCard(card: Card, note: Note): CardView {
     deckId: note.deckId,
     type: note.type,
     plugin: note.plugin,
+    excerpt: note.excerpt,
     format: note.format,
     tags: note.tags,
     front,
@@ -399,7 +438,10 @@ export function cardViews(library: Library): CardView[] {
   return library.cards.map((card) => renderCard(card, notes.get(card.noteId)!))
 }
 export function pruneMedia(library: Library): Library {
-  const used = new Set(library.notes.flatMap((note) => [...note.frontMedia, ...note.backMedia]))
+  const used = new Set([
+    ...library.notes.flatMap((note) => [...note.frontMedia, ...note.backMedia]),
+    ...library.sources.map((source) => source.mediaId),
+  ])
   return { ...library, media: library.media.filter((item) => used.has(item.id)) }
 }
 export function saveNote(
@@ -413,6 +455,7 @@ export function saveNote(
   if (noteId && !previous) throw new LocalizedError(msg('笔记已不存在，请刷新页面。'))
   const note = noteSchema.parse({
     ...input,
+    excerpt: input.excerpt ?? previous?.excerpt,
     id: noteId ?? crypto.randomUUID(),
     createdAt: previous?.createdAt ?? now.toISOString(),
     updatedAt: now.toISOString(),
@@ -465,22 +508,30 @@ export function migrateLibrary(value: unknown): Library {
     typeof value === 'object' &&
     value !== null &&
     'version' in value &&
-    (value.version === 2 || value.version === 3 || value.version === 4 || value.version === 5)
+    (value.version === 2 ||
+      value.version === 3 ||
+      value.version === 4 ||
+      value.version === 5 ||
+      value.version === 6)
   )
     return librarySchema.parse(
-      value.version === 5
+      value.version === 6
         ? value
-        : {
-            practices: [],
-            attempts: [],
-            ...value,
-            version: 5,
-          },
+        : value.version === 5
+          ? { sources: [], ...value, version: 6 }
+          : {
+              sources: [],
+              practices: [],
+              attempts: [],
+              ...value,
+              version: 6,
+            },
     )
   const old = legacySchema.parse(value)
   const seen = new Set<string>()
   return librarySchema.parse({
-    version: 5,
+    version: 6,
+    sources: [],
     practices: [],
     attempts: [],
     decks: old.decks,

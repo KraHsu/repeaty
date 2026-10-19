@@ -9,8 +9,10 @@ const vite = await createServer({
 try {
   const model = await vite.ssrLoadModule('/src/core/model.ts')
   const practices = await vite.ssrLoadModule('/src/core/practice-data.ts')
+  const sources = await vite.ssrLoadModule('/src/core/source-data.ts')
   const schemas = {}
   for (const [store, name] of Object.entries({
+    sources: 'sourceSchema',
     decks: 'deckSchema',
     notes: 'noteSchema',
     cards: 'cardSchema',
@@ -20,7 +22,9 @@ try {
     practices: 'practiceSchema',
     attempts: 'attemptSchema',
   })) {
-    schemas[store] = z.toJSONSchema(model[name] ?? practices[name], { unrepresentable: 'any' })
+    schemas[store] = z.toJSONSchema(model[name] ?? practices[name] ?? sources[name], {
+      unrepresentable: 'any',
+    })
   }
   const source = await format(JSON.stringify(schemas), { parser: 'json', printWidth: 100 })
   const path = 'server/schema/entities.json'
