@@ -139,24 +139,30 @@ export function createRepository(
 ) {
   const database = openDB<RepeatyDB>(name, 7, {
     async upgrade(db, _oldVersion, _newVersion, tx) {
-      for (const store of stores)
-        if (!db.objectStoreNames.contains(store)) db.createObjectStore(store)
-      for (const store of recordStores) {
-        const table = tx.objectStore(store)
-        if (!table.indexNames.contains('position')) table.createIndex('position', 'position')
-        if (!table.indexNames.contains('deckId'))
-          table.createIndex('deckId', ['deckId', 'position'])
-      }
-      const history = tx.objectStore('history')
-      if (!history.indexNames.contains('revision')) history.createIndex('revision', 'revision')
-      if (!history.indexNames.contains('store')) history.createIndex('store', 'store')
-      const summaries = tx.objectStore('attemptSummaries')
-      if (!summaries.indexNames.contains('position')) summaries.createIndex('position', 'position')
-      let cursor = await tx.objectStore('attempts').openCursor()
-      while (cursor) {
-        const row = cursor.value
-        await summaries.put({ ...row, value: summarizeAttempt(row.value as Attempt) }, row.id)
-        cursor = await cursor.continue()
+      try {
+        for (const store of stores)
+          if (!db.objectStoreNames.contains(store)) db.createObjectStore(store)
+        for (const store of recordStores) {
+          const table = tx.objectStore(store)
+          if (!table.indexNames.contains('position')) table.createIndex('position', 'position')
+          if (!table.indexNames.contains('deckId'))
+            table.createIndex('deckId', ['deckId', 'position'])
+        }
+        const history = tx.objectStore('history')
+        if (!history.indexNames.contains('revision')) history.createIndex('revision', 'revision')
+        if (!history.indexNames.contains('store')) history.createIndex('store', 'store')
+        const summaries = tx.objectStore('attemptSummaries')
+        if (!summaries.indexNames.contains('position'))
+          summaries.createIndex('position', 'position')
+        let cursor = await tx.objectStore('attempts').openCursor()
+        while (cursor) {
+          const row = cursor.value
+          await summaries.put({ ...row, value: summarizeAttempt(row.value as Attempt) }, row.id)
+          cursor = await cursor.continue()
+        }
+      } catch {
+        // An async upgrade callback must abort explicitly on JavaScript errors too.
+        await abort(tx)
       }
     },
     blocking() {
@@ -203,7 +209,7 @@ export function createRepository(
     )
     return snapshot
   }
-  async function abort(tx: Transaction) {
+  async function abort(tx: Pick<Transaction, 'abort' | 'done'>) {
     try {
       tx.abort()
     } catch {

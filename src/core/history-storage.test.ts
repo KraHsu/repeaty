@@ -134,3 +134,21 @@ it('upgrades v6 in place with full bodies and checkpoints intact and rejects the
   await expect(openDB(name, 6)).rejects.toMatchObject({ name: 'VersionError' })
   await repo.close()
 })
+
+it('aborts the schema upgrade on a malformed old row without advancing the database version', async () => {
+  const name = `repeaty-history-invalid-v6-${crypto.randomUUID()}`
+  const old = await openDB(name, 6, {
+    upgrade(db) {
+      db.createObjectStore('attempts')
+    },
+  })
+  const row = { id: 'broken', value: null, position: 0 }
+  await old.put('attempts', row, row.id)
+  old.close()
+  const repo = createRepository(name, undefined, { compactHistory: true })
+  await expect(repo.load()).rejects.toMatchObject({ name: 'AbortError' })
+  const intact = await openDB(name, 6)
+  expect(await intact.get('attempts', row.id)).toEqual(row)
+  expect(intact.objectStoreNames.contains('attemptSummaries')).toBe(false)
+  intact.close()
+})
