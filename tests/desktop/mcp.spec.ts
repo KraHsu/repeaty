@@ -34,6 +34,7 @@ test('desktop settings opt in to local read queries, revoke keys, and retain the
   await page.getByRole('button', { name: '设置', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '桌面设置' })
   const mcp = dialog.getByRole('region', { name: 'MCP 连接' })
+  await mcp.getByLabel('MCP 客户端', { exact: true }).selectOption('http')
   await expect(mcp.getByRole('status')).toHaveText('已关闭')
   await expect(mcp.getByRole('button', { name: '开启 MCP' })).toBeEnabled()
   await mcp.getByRole('button', { name: '开启 MCP' }).click()
@@ -90,4 +91,69 @@ test('an upstream workspace cannot enable MCP', async ({ page }) => {
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await expect(page.getByRole('button', { name: '开启 MCP' })).toBeDisabled()
   await expect(page.getByRole('region', { name: 'MCP 连接' })).toContainText('仅支持本地学习库')
+  await expect(page.getByLabel('MCP 客户端', { exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '显示连接配置' })).toBeDisabled()
+})
+
+test('client configurations can be copied before enabling MCP and reused after restart', async ({
+  page,
+  context,
+}, info) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '桌面设置' })
+  const mcp = dialog.getByRole('region', { name: 'MCP 连接' })
+  const client = mcp.getByLabel('MCP 客户端', { exact: true })
+  const configurations = new Map<string, string>()
+  for (const [name, file] of [
+    ['codex', '~/.codex/config.toml'],
+    ['claude-code', '.mcp.json'],
+    ['claude-desktop', 'claude_desktop_config.json'],
+  ]) {
+    await client.selectOption(name!)
+    await expect(mcp.locator('textarea')).toHaveCount(0)
+    await mcp.getByRole('button', { name: '显示连接配置' }).click()
+    const field = mcp.getByLabel('客户端连接配置')
+    const configuration = await field.inputValue()
+    configurations.set(name!, configuration)
+    expect(configuration).not.toMatch(/Authorization|Bearer|43123/)
+    expect(configuration).toContain('--mcp-stdio')
+    await expect(mcp).toContainText(file!)
+    if (name === 'codex') expect(configuration).toContain('[mcp_servers.repeaty]')
+    else
+      expect(JSON.parse(configuration).mcpServers.repeaty.args).toEqual([
+        '--mcp-stdio',
+        '--connection-file',
+        '/test/Repeaty 用户/mcp.connection.json',
+      ])
+    expect(
+      await field.evaluate((el) => Number.parseFloat(getComputedStyle(el).fontSize)),
+    ).toBeGreaterThanOrEqual(16)
+    await mcp.getByRole('button', { name: '复制配置' }).click()
+    await expect(mcp.getByRole('button', { name: '已复制' })).toBeVisible()
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(configuration)
+  }
+  await mcp.getByRole('button', { name: '隐藏连接配置' }).click()
+  await expect(mcp.locator('textarea')).toHaveCount(0)
+  await mcp.getByRole('button', { name: '开启 MCP' }).click()
+  await mcp.getByRole('button', { name: '显示连接配置' }).click()
+  expect(await mcp.getByLabel('客户端连接配置').inputValue()).toBe(
+    configurations.get('claude-desktop'),
+  )
+  await mcp.getByRole('button', { name: '关闭 MCP' }).click()
+  await expect(mcp.locator('textarea')).toHaveCount(0)
+  await client.selectOption('http')
+  await expect(mcp.getByRole('button', { name: '显示连接配置' })).toHaveCount(0)
+  await page.reload()
+  await page.getByLabel('界面语言').selectOption('en')
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.setViewportSize({ width: 390, height: 844 })
+  const englishMcp = page.getByRole('region', { name: 'MCP connection' })
+  await expect(englishMcp.getByRole('status')).toHaveText('Disabled')
+  await englishMcp.getByRole('button', { name: 'Show connection configuration' }).click()
+  expect(await englishMcp.getByLabel('Client configuration').inputValue()).toBe(
+    configurations.get('codex'),
+  )
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.screenshot({ path: info.outputPath('mcp-clients-narrow-en.png'), fullPage: true })
 })

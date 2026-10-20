@@ -66,6 +66,8 @@ jobs:
           cargo test --manifest-path src-tauri/Cargo.toml --locked
       - name: Build installer
         run: npm run desktop:build -- --bundles ${{ matrix.bundles }}
+      - name: Exercise MCP stdio without a graphical session
+        run: node scripts/test-mcp-stdio.mjs
       - name: Exercise native WebKit and Rust IPC
         if: runner.os == 'Linux'
         env:

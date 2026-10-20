@@ -1,26 +1,40 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { t } from '../i18n'
+import { remoteWorkspace } from '../edition'
 import {
   mcpStatus,
   mcpBridgeError,
   refreshMcpStatus,
   startMcp,
   stopMcp,
-  mcpConfiguration,
+  mcpClientConfiguration,
+  type McpClient,
 } from './mcp'
 
+const client = ref<McpClient>('codex')
+const configuring = ref(false)
+const target = computed(
+  () =>
+    ({
+      codex: '~/.codex/config.toml',
+      'claude-code': '.mcp.json',
+      'claude-desktop': 'claude_desktop_config.json',
+      http: '',
+    })[client.value],
+)
+let alive = true
+onUnmounted(() => {
+  alive = false
+})
 const working = ref(false),
   configuration = ref(''),
   error = ref(''),
   copied = ref(false)
-watch(
-  () => mcpStatus.value.enabled,
-  () => {
-    configuration.value = ''
-    copied.value = false
-  },
-)
+watch([() => mcpStatus.value.enabled, client], () => {
+  configuration.value = ''
+  copied.value = false
+})
 onMounted(() => {
   void refreshMcpStatus().catch(() => {
     error.value = '无法读取 MCP 状态，请重新打开设置。'
@@ -39,13 +53,24 @@ async function toggle() {
   }
 }
 async function showConfiguration() {
+  if (working.value || configuring.value || remoteWorkspace.value) return
   error.value = ''
-  const url = mcpStatus.value.url
+  configuring.value = true
+  const chosen = client.value,
+    url = mcpStatus.value.url
   try {
-    const value = await mcpConfiguration()
-    if (mcpStatus.value.enabled && mcpStatus.value.url === url) configuration.value = value
+    const value = await mcpClientConfiguration(chosen)
+    if (
+      alive &&
+      !remoteWorkspace.value &&
+      client.value === chosen &&
+      (chosen !== 'http' || (mcpStatus.value.enabled && mcpStatus.value.url === url))
+    )
+      configuration.value = value
   } catch {
-    error.value = 'MCP 连接已关闭，请重新开启。'
+    if (alive) error.value = '无法生成客户端配置，请重试。'
+  } finally {
+    configuring.value = false
   }
 }
 async function copy() {
@@ -68,7 +93,7 @@ async function copy() {
       {{ t('可查询待复习题目、学习统计和练习摘要。在材料中分享摘录后，还可接收制卡草稿。') }}
     </p>
     <p class="form-note">
-      {{ t('仅支持本地学习库。退出应用或切换学习库后连接关闭，需要重新开启并更新客户端配置。') }}
+      {{ t('仅支持本地学习库。每次打开应用后需开启 MCP；切换学习库会关闭连接。') }}
     </p>
     <p v-if="mcpStatus.enabled && !mcpStatus.available" class="form-note" role="status">
       {{ t('学习库正在处理数据，查询暂不可用。') }}
@@ -76,25 +101,45 @@ async function copy() {
     <p v-if="error || mcpBridgeError" class="import-warning" role="alert">
       {{ t(error || mcpBridgeError) }}
     </p>
+    <div class="mcp-client-field">
+      <label for="mcp-client">{{ t('MCP 客户端') }}</label>
+      <select
+        id="mcp-client"
+        v-model="client"
+        :disabled="working || configuring || remoteWorkspace"
+      >
+        <option value="codex">Codex</option>
+        <option value="claude-code">Claude Code</option>
+        <option value="claude-desktop">Claude Desktop</option>
+        <option value="http">{{ t('通用 HTTP 客户端') }}</option>
+      </select>
+    </div>
+    <p v-if="client !== 'http'" class="form-note">
+      {{ t('配置只需添加一次。关闭再开启 MCP 或重启 Repeaty 后，可沿用原配置。') }}
+    </p>
     <div class="connection-actions">
       <button
         class="button secondary"
         type="button"
-        :disabled="working || (!mcpStatus.enabled && !mcpStatus.available)"
+        :disabled="working || configuring || (!mcpStatus.enabled && !mcpStatus.available)"
         @click="toggle"
       >
         {{ t(mcpStatus.enabled ? '关闭 MCP' : '开启 MCP') }}
       </button>
       <button
-        v-if="mcpStatus.enabled && !configuration"
+        v-if="!configuration && (client !== 'http' || mcpStatus.enabled)"
         class="text-button"
         type="button"
+        :disabled="working || configuring || remoteWorkspace"
         @click="showConfiguration"
       >
         {{ t('显示连接配置') }}
       </button>
     </div>
     <template v-if="configuration">
+      <p v-if="target" class="form-note mcp-config-target">
+        {{ t('将配置合并到 {file}，保留已有条目。', { file: target }) }}
+      </p>
       <label class="form-field" for="mcp-configuration">
         {{ t('客户端连接配置') }}
         <textarea
@@ -106,7 +151,13 @@ async function copy() {
         />
       </label>
       <p class="form-note">
-        {{ t('配置包含本次连接的访问密钥。只交给你信任的客户端；关闭连接后密钥失效。') }}
+        {{
+          t(
+            client === 'http'
+              ? '配置包含本次连接的访问密钥。只交给你信任的客户端；关闭连接后密钥失效。'
+              : '配置不包含访问密钥。客户端仅连接本机运行中的 Repeaty，不会自动启动应用或开启 MCP。',
+          )
+        }}
       </p>
       <div class="connection-actions">
         <button class="button secondary" type="button" @click="copy">
@@ -151,9 +202,28 @@ textarea {
   background: #f8f9f6;
   color: inherit;
   font:
-    0.875rem/1.6 ui-monospace,
+    1rem/1.6 ui-monospace,
     monospace;
   resize: vertical;
+}
+.mcp-client-field {
+  display: grid;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+.mcp-client-field select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8f9f6;
+  color: inherit;
+  font: inherit;
+}
+.mcp-config-target {
+  overflow-wrap: anywhere;
 }
 .form-field {
   margin-top: 1.25rem;

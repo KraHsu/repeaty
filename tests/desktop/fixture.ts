@@ -92,6 +92,37 @@ export const test = base.extend<{ native: void; emptyWorkspace: void }>({
                 mcpEnabled = false
                 return status()
               }
+              if (command === 'mcp_client_configuration') {
+                if (args.client === 'http') {
+                  if (!mcpEnabled) throw 'library-unavailable'
+                  return JSON.stringify(
+                    {
+                      mcpServers: {
+                        repeaty: {
+                          type: 'http',
+                          url: status().url,
+                          headers: { Authorization: `Bearer test-key-${mcpKey}` },
+                        },
+                      },
+                    },
+                    null,
+                    2,
+                  )
+                }
+                const command = '/test/Repeaty 用户/repeaty-desktop'
+                const params = [
+                  '--mcp-stdio',
+                  '--connection-file',
+                  '/test/Repeaty 用户/mcp.connection.json',
+                ]
+                if (args.client === 'codex')
+                  return `[mcp_servers.repeaty]\ncommand = ${JSON.stringify(command)}\nargs = ${JSON.stringify(params)}\n`
+                return JSON.stringify(
+                  { mcpServers: { repeaty: { command, args: params } } },
+                  null,
+                  2,
+                )
+              }
               if (command === 'mcp_configuration') {
                 if (!mcpEnabled) throw 'library-unavailable'
                 return {

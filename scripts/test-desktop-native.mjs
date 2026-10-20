@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { resolve, join } from 'node:path'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
+import { startMcpClient } from './mcp-client.mjs'
 const exec = promisify(execFile)
 const xdotool = process.env.REPEATY_XDOTOOL || 'xdotool'
 const directory = await mkdtemp(join(tmpdir(), 'repeaty-native-test-'))
@@ -64,6 +65,7 @@ async function until(operation, label) {
   throw new Error(`Timed out: ${label}: ${last ?? ''}`)
 }
 let session
+let stdioClient
 async function command(path, body, method = body === undefined ? 'GET' : 'POST') {
   const response = await fetch(`${origin}${path}`, {
     method,
@@ -107,6 +109,10 @@ const invoke = async (name, args = {}) => {
   return result.value
 }
 let mcpRequestId = 0
+function studySnapshot({ generatedAt, ...data }) {
+  assert.ok(Number.isFinite(Date.parse(generatedAt)))
+  return data
+}
 async function mcpRpc(configuration, method, params) {
   const response = await fetch(configuration.url, {
     method: 'POST',
@@ -191,10 +197,34 @@ try {
   await until(async () => (await invoke('mcp_status')).available, 'local MCP reader ready')
   assert.equal((await invoke('mcp_status')).enabled, false)
   const beforeMcp = await libraryRecords()
+  const stableConfiguration = JSON.parse(
+    await invoke('mcp_client_configuration', { client: 'claude-desktop' }),
+  )
+  const stdioConfiguration = stableConfiguration.mcpServers.repeaty
+  assert.deepEqual(Object.keys(stdioConfiguration).sort(), ['args', 'command'])
+  assert.equal(stdioConfiguration.args[0], '--mcp-stdio')
+  assert.deepEqual(
+    JSON.parse(await invoke('mcp_client_configuration', { client: 'claude-code' })),
+    stableConfiguration,
+  )
+  await mkdir('test-results', { recursive: true })
+  await writeFile(
+    'test-results/native-codex-config.toml',
+    await invoke('mcp_client_configuration', { client: 'codex' }),
+  )
+  stdioClient = await startMcpClient(stdioConfiguration, { env })
+  assert.equal((await stdioClient.listTools()).tools.length, 5)
+  assert.equal(
+    (await stdioClient.call('repeaty_study_stats')).structuredContent.code,
+    'library-unavailable',
+  )
   await click('设置')
   await waitButton('开启 MCP')
   await click('开启 MCP')
   await until(async () => (await invoke('mcp_status')).enabled, 'MCP enabled')
+  await execute(
+    "const select=document.querySelector('#mcp-client');select.value='http';select.dispatchEvent(new Event('change',{bubbles:true}));",
+  )
   await waitButton('显示连接配置')
   await click('显示连接配置')
   await until(
@@ -233,6 +263,10 @@ try {
   const stats = (await mcpRpc(mcp, 'tools/call', { name: 'repeaty_study_stats', arguments: {} }))
     .result.structuredContent
   assert.equal(stats.totals.cards, beforeMcp.cards.length)
+  assert.deepEqual(
+    studySnapshot((await stdioClient.call('repeaty_study_stats')).structuredContent),
+    studySnapshot(stats),
+  )
   const questions = (
     await mcpRpc(mcp, 'tools/call', {
       name: 'repeaty_due_cards',
@@ -267,17 +301,36 @@ try {
   await click('关闭 MCP')
   await until(async () => !(await invoke('mcp_status')).enabled, 'MCP disabled')
   assert.equal(await revokedMcp(mcp), true)
+  await assert.rejects(readFile(stdioConfiguration.args[2]), { code: 'ENOENT' })
+  assert.equal(
+    (await stdioClient.call('repeaty_study_stats')).structuredContent.code,
+    'library-unavailable',
+  )
   await waitButton('开启 MCP')
   await click('开启 MCP')
   await until(async () => (await invoke('mcp_status')).enabled, 'MCP re-enabled')
   const restartedMcp = (await invoke('mcp_configuration')).mcpServers.repeaty
   assert.notEqual(restartedMcp.headers.Authorization, mcp.headers.Authorization)
+  assert.deepEqual(
+    studySnapshot((await stdioClient.call('repeaty_study_stats')).structuredContent),
+    studySnapshot(stats),
+  )
+  assert.deepEqual(
+    JSON.parse(await invoke('mcp_client_configuration', { client: 'claude-desktop' })),
+    stableConfiguration,
+  )
   await command(`/session/${session}/refresh`, {})
   await until(async () => (await invoke('mcp_status')).available, 'MCP reader after reload')
   assert.equal((await invoke('mcp_status')).enabled, false)
   assert.equal(await revokedMcp(restartedMcp), true)
+  assert.equal(
+    (await stdioClient.call('repeaty_study_stats')).structuredContent.code,
+    'library-unavailable',
+  )
   assert.deepEqual(await libraryRecords(), beforeMcp)
-  console.log('Native MCP protocol, read projections, token revocation and reload passed')
+  console.log(
+    'Native MCP HTTP and real stdio process: offline discovery, queries, port rotation and reload passed',
+  )
   // Real Rust IPC writes a fake local credential. No LeetCode network call is made.
   await invoke('local_plugin', {
     id: 'leetcode',
@@ -391,6 +444,10 @@ try {
   )
   assert.equal((await invoke('mcp_status')).enabled, false)
   assert.equal((await invoke('mcp_status')).available, false)
+  assert.equal(
+    (await stdioClient.call('repeaty_study_stats')).structuredContent.code,
+    'library-unavailable',
+  )
   assert.equal(await revokedMcp(beforeUpstreamMcp), true)
   await assert.rejects(invoke('mcp_start'))
   assert.equal(
@@ -814,9 +871,7 @@ try {
     () => execute("return !!document.querySelector('.draft-queue')"),
     'native draft queue',
   )
-  const selection = (
-    await mcpRpc(draftMcp, 'tools/call', { name: 'repeaty_selected_excerpt', arguments: {} })
-  ).result.structuredContent
+  const selection = (await stdioClient.call('repeaty_selected_excerpt')).structuredContent
   assert.equal(selection.text, sourceQuote)
   assert.equal(Object.hasOwn(selection, 'url'), false)
   assert.equal(JSON.stringify(selection).includes('Context 中文'), false)
@@ -835,11 +890,8 @@ try {
       { type: 'cloze', front: 'Native {{c1::answer}} text' },
     ],
   }
-  const receipt = await mcpRpc(draftMcp, 'tools/call', {
-    name: 'repeaty_propose_cards',
-    arguments: draftArguments,
-  })
-  assert.equal(receipt.result.isError, false)
+  const receipt = await stdioClient.call('repeaty_propose_cards', draftArguments)
+  assert.equal(receipt.isError, false)
   await until(
     () => execute("return document.querySelectorAll('.draft-list li').length===3"),
     'native received drafts',
@@ -848,7 +900,7 @@ try {
     name: 'repeaty_propose_cards',
     arguments: draftArguments,
   })
-  assert.deepEqual(retry.result.structuredContent, receipt.result.structuredContent)
+  assert.deepEqual(retry.result.structuredContent, receipt.structuredContent)
   assert.deepEqual(await libraryRecords(), beforeDrafts)
   await click('停止分享')
   assert.equal(
@@ -948,6 +1000,20 @@ try {
   assert.deepEqual(await libraryRecords(), afterDrafts)
   await waitButton('制卡草稿（1）')
   assert.equal((await invoke('mcp_status')).enabled, false)
+  assert.equal(
+    (await stdioClient.call('repeaty_study_stats')).structuredContent.code,
+    'library-unavailable',
+  )
+  await invoke('mcp_start')
+  assert.equal(
+    (await stdioClient.call('repeaty_study_stats')).structuredContent.totals.cards,
+    afterDrafts.cards.length,
+  )
+  assert.equal(
+    (await stdioClient.call('repeaty_selected_excerpt')).structuredContent.code,
+    'selection-unavailable',
+  )
+  await invoke('mcp_stop')
   await click('制卡草稿（1）')
   assert.equal(await execute("return document.body.textContent.includes('当前分享的摘录')"), false)
   await click('检查并编辑')
@@ -2087,6 +2153,7 @@ try {
   }
   throw error
 } finally {
+  if (stdioClient) await stdioClient.close().catch(() => {})
   if (session) await command(`/session/${session}`, undefined, 'DELETE').catch(() => {})
   driver.kill('SIGTERM')
   service.kill('SIGTERM')

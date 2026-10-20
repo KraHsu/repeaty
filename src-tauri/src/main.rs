@@ -95,6 +95,19 @@ fn mcp_configuration(
     state.mcp.configuration().map_err(str::to_owned)
 }
 #[tauri::command]
+fn mcp_client_configuration(
+    window: tauri::WebviewWindow,
+    state: State<'_, Desktop>,
+    client: mcp::Client,
+) -> Result<String, String> {
+    main_window(&window)?;
+    let executable = std::env::current_exe().map_err(|_| "invalid-data")?;
+    state
+        .mcp
+        .client_configuration(client, &executable)
+        .map_err(str::to_owned)
+}
+#[tauri::command]
 async fn desktop_config(state: State<'_, Desktop>) -> Result<Config, String> {
     Ok(state.upstream.lock().await.config.clone())
 }
@@ -178,6 +191,16 @@ async fn export_cancel(state: State<'_, Desktop>, token: String) -> Result<(), S
     state.exports.lock().await.cancel(&token)
 }
 fn main() {
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == "--mcp-stdio")
+    {
+        if let Err(error) = mcp::stdio::run(std::env::args_os().skip(2).collect()) {
+            eprintln!("Repeaty MCP: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
@@ -190,7 +213,9 @@ fn main() {
             }
             app.manage(Desktop {
                 exports: Mutex::new(exports::Exporter::default()),
-                mcp: Arc::new(mcp::Mcp::default()),
+                mcp: Arc::new(mcp::Mcp::with_connection_file(
+                    directory.join("mcp.connection.json"),
+                )),
                 upstream: Mutex::new(Upstream::open(&directory.join("desktop.json"))?),
                 plugins: Plugins::new(vec![Arc::new(
                     repeaty_leetcode_local::leetcode::LeetCode::open(
@@ -231,6 +256,7 @@ fn main() {
             mcp_start,
             mcp_stop,
             mcp_configuration,
+            mcp_client_configuration,
             export_begin,
             export_write,
             export_finish,

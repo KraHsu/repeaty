@@ -247,12 +247,25 @@ button {
   color: var(--muted);
   margin-top: 9px;
 }
-.version {
-  display: block;
-  font-size: var(--text-xs);
-  color: var(--muted);
-  letter-spacing: 1.2px;
+.version-links {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
   margin-top: 22px;
+  font-size: var(--text-xs);
+}
+.version-links a {
+  color: var(--muted);
+  text-underline-offset: 3px;
+}
+.version-links a:hover,
+.version-links a:focus-visible {
+  color: var(--green);
+}
+.version {
+  color: var(--muted);
+  letter-spacing: 0.2px;
 }
 .main-content {
   margin-left: 230px;
