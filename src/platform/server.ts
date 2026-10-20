@@ -11,4 +11,4 @@ export async function createWorkspaceRepository(_onBlocked: () => void) {
   return createServerRepository()
 }
 
-export { createExportFile } from './static'
+export { createExportFile, connectLearningReader } from './static'

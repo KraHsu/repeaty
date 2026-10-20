@@ -77,7 +77,7 @@ export function readLearning(
         variant: card.variant,
         question: card.front,
         format: card.format,
-        tags: card.tags,
+        tags: [...card.tags],
         dueAt: card.schedule.due,
         state: card.schedule.state,
         ...(card.plugin ? { plugin: { id: card.plugin.id, version: card.plugin.version } } : {}),

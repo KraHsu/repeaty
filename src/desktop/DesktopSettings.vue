@@ -6,6 +6,7 @@ import { desktopEndpoint } from '../platform/desktop'
 import { setEndpoint } from './native'
 import AppModal from '../components/AppModal.vue'
 import AccountControls from '../components/AccountControls.vue'
+import McpSettings from './McpSettings.vue'
 const opened = ref(false),
   endpoint = ref(desktopEndpoint.value),
   saving = ref(false),
@@ -27,7 +28,7 @@ async function save() {
   <button class="text-button" @click="opened = true">{{ t('设置') }}</button>
   <AppModal
     v-if="opened"
-    :title="t('学习库存储')"
+    :title="t('桌面设置')"
     :busy="saving"
     :error="t(error)"
     @close="opened = false"
@@ -55,5 +56,6 @@ async function save() {
         </button>
       </div>
     </form>
+    <McpSettings />
   </AppModal>
 </template>
