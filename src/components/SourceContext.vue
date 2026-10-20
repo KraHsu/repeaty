@@ -7,10 +7,33 @@ import CardContent from './CardContent.vue'
 
 const props = defineProps<{
   source: Source
+  origin?: Source
   excerpt?: SourceExcerpt
   read: (id: string, signal?: AbortSignal) => Promise<string>
 }>()
 const emit = defineEmits<{ close: [] }>()
+const originOpen = ref(false)
+const original = computed(() =>
+  props.origin?.id === props.source.origin?.sourceId ? props.origin : undefined,
+)
+const shown = computed(() => (originOpen.value && original.value ? original.value : props.source))
+const selected = computed(() => {
+  const anchor = props.source.origin,
+    excerpt = props.excerpt
+  if (!originOpen.value || !original.value || !anchor || !excerpt) return excerpt
+  return {
+    sourceId: original.value.id,
+    start: anchor.start + excerpt.start,
+    end: anchor.start + excerpt.end,
+    quote: excerpt.quote,
+  }
+})
+watch(
+  () => props.source.id,
+  () => {
+    originOpen.value = false
+  },
+)
 const highlight = ref<HTMLElement>()
 const text = ref(''),
   error = ref<DisplayMessage>(''),
@@ -22,42 +45,52 @@ async function load() {
   const current = new AbortController()
   controller = current
   loading.value = true
+  preview.value = false
   error.value = ''
   text.value = ''
   try {
-    text.value = await props.read(props.source.id, current.signal)
+    text.value = await props.read(shown.value.id, current.signal)
   } catch (issue) {
     if (!current.signal.aborted) error.value = issue as Error
   } finally {
     if (controller === current) loading.value = false
   }
 }
-watch(() => props.source.mediaId, load, { immediate: true })
+watch([() => shown.value.id, () => shown.value.mediaId], load, { immediate: true })
 onUnmounted(() => controller?.abort())
-watch([text, preview], async () => {
+watch([text, preview, selected], async () => {
   await nextTick()
   highlight.value?.scrollIntoView({ block: 'center' })
 })
 const matches = computed(
   () =>
-    !!props.excerpt &&
-    text.value.slice(props.excerpt.start, props.excerpt.end) === props.excerpt.quote,
+    !!selected.value &&
+    text.value.slice(selected.value.start, selected.value.end) === selected.value.quote,
 )
 </script>
 
 <template>
-  <AppModal wide :title="source.title" @close="emit('close')">
+  <AppModal wide :title="shown.title" @close="emit('close')">
     <div class="source-context">
+      <button
+        v-if="original"
+        type="button"
+        class="text-button source-origin-toggle"
+        :aria-pressed="originOpen"
+        @click="originOpen = !originOpen"
+      >
+        {{ t(originOpen ? '返回摘录' : '查看出处') }}
+      </button>
       <p class="form-note">
-        {{ t('保存于 {date}', { date: new Date(source.createdAt).toLocaleString(locale) }) }}
+        {{ t('保存于 {date}', { date: new Date(shown.createdAt).toLocaleString(locale) }) }}
       </p>
       <a
-        v-if="source.url"
+        v-if="shown.url"
         class="source-url"
-        :href="source.url"
+        :href="shown.url"
         target="_blank"
         rel="noopener noreferrer"
-        >{{ source.url }}</a
+        >{{ shown.url }}</a
       >
       <p v-if="loading" role="status">{{ t('正在读取原文…') }}</p>
       <template v-else-if="error"
@@ -67,12 +100,12 @@ const matches = computed(
         </button></template
       >
       <template v-else>
-        <p v-if="excerpt && !matches" class="import-warning" role="alert">
+        <p v-if="selected && !matches" class="import-warning" role="alert">
           {{ t('摘录与原文不一致，请从备份恢复。') }}
         </p>
-        <blockquote v-if="excerpt" class="source-quote">{{ excerpt.quote }}</blockquote>
+        <blockquote v-if="selected" class="source-quote">{{ selected.quote }}</blockquote>
         <button
-          v-if="source.format === 'markdown'"
+          v-if="shown.format === 'markdown'"
           type="button"
           class="text-button"
           :aria-pressed="preview"
@@ -82,10 +115,10 @@ const matches = computed(
         </button>
         <CardContent v-if="preview" :text="text" format="markdown" />
         <div v-else class="source-original" tabindex="0" :aria-label="t('原文快照')">
-          <template v-if="excerpt && matches"
-            >{{ text.slice(0, excerpt.start)
-            }}<mark ref="highlight">{{ text.slice(excerpt.start, excerpt.end) }}</mark
-            >{{ text.slice(excerpt.end) }}</template
+          <template v-if="selected && matches"
+            >{{ text.slice(0, selected.start)
+            }}<mark ref="highlight">{{ text.slice(selected.start, selected.end) }}</mark
+            >{{ text.slice(selected.end) }}</template
           ><template v-else>{{ text }}</template>
         </div>
       </template>
@@ -106,6 +139,9 @@ const matches = computed(
   padding: 1.3rem 1.75rem;
   min-width: 0;
   overflow-y: auto;
+}
+.source-origin-toggle {
+  justify-self: start;
 }
 .source-context > * {
   min-width: 0;

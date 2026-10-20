@@ -1088,4 +1088,20 @@ export const en = {
   '请从原文保存摘录。': 'Save excerpts from the original material.',
   保存摘录前: 'Before saving an excerpt',
   '摘录与来源不匹配。': 'The excerpt does not match its source.',
+  摘录: 'Excerpt',
+  查看出处: 'View original',
+  返回摘录: 'Back to excerpt',
+  用此摘录制卡: 'Make a card from this excerpt',
+  保存为摘录: 'Save as excerpt',
+  摘录标题: 'Excerpt title',
+  选中的原文: 'Selected text',
+  保存摘录: 'Save excerpt',
+  摘录已保存: 'Excerpt saved',
+  '摘录会加入待阅读列表，可单独阅读和制卡。':
+    'The excerpt will join your to-read list. Read it separately or use it to make cards.',
+  '原文已删除，摘录内容仍保留。': 'The original was deleted. This excerpt is still available.',
+  '由此保存的摘录仍保留，出处关联会解除。':
+    'Saved excerpts will remain, with their links to this original removed.',
+  '选中原文中的文字，保存为摘录或直接制卡。每次最多 10000 个字符。':
+    'Select text to save an excerpt or make a card. Up to 10,000 characters per selection.',
 } as const

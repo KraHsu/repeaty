@@ -115,7 +115,13 @@ defineExpose({ resume, restart, capture: update, ready: computed(() => !restorin
 <template>
   <div class="source-selection-tools">
     <p class="form-note">
-      {{ t('选中原文中的文字，再点击「用摘录制卡」。每次最多 10000 个字符。') }}
+      {{
+        t(
+          source.kind === 'excerpt'
+            ? '选中原文中的文字，再点击「用摘录制卡」。每次最多 10000 个字符。'
+            : '选中原文中的文字，保存为摘录或直接制卡。每次最多 10000 个字符。',
+        )
+      }}
     </p>
     <button
       v-if="source.format === 'markdown'"
@@ -140,6 +146,7 @@ defineExpose({ resume, restart, capture: update, ready: computed(() => !restorin
     v-else
     ref="reader"
     class="source-text"
+    :class="{ 'short-excerpt': source.kind === 'excerpt' && text.length < 600 }"
     :value="text"
     readonly
     :aria-label="t('材料正文')"
@@ -172,6 +179,9 @@ defineExpose({ resume, restart, capture: update, ready: computed(() => !restorin
   background: #fafbf8;
   color: #293d33;
   padding: 11px 13px;
+}
+.source-text.short-excerpt {
+  min-height: 10rem;
 }
 .source-text:hover {
   border-color: #a8bca2;

@@ -247,8 +247,9 @@ it.each([7, 8, 9])(
   'migrates v%i libraries and backups without inventing priority or arrangements',
   async (version) => {
     const { library, asset } = sample()
-    if (version === 8)
+    if (version >= 8)
       library.sources[0]!.queue = { state: 'active', availableOn: nextReadingDay(now) }
+    if (version === 9) library.sources[0]!.priority = 'high'
     const old = { ...library, version }
     expect(migrateLibrary(old)).toEqual(library)
     const json = JSON.parse(await exportBackup(library, async () => asset.blob))
@@ -276,6 +277,7 @@ it.each([7, 8, 9])(
     const restored = (await parseArchive(await output.getData())).library
     expect(restored).toEqual(library)
     expect(restored.sources[0]!.queue).toEqual(library.sources[0]!.queue)
-    expect(restored.sources[0]!.priority).toBeUndefined()
+    expect(restored.sources[0]!.priority).toBe(library.sources[0]!.priority)
+    expect(restored.sources[0]!.kind).toBeUndefined()
   },
 )
