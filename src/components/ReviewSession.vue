@@ -22,6 +22,7 @@ const props = defineProps<{
   library: Library
   deckId?: string
   study?: StudySession
+  mixedCardId?: string
   busy: boolean
   submit: (
     id: string,
@@ -38,7 +39,8 @@ const props = defineProps<{
   getSource: (id: string, signal?: AbortSignal) => Promise<string>
   getAttempt: (id: string, signal?: AbortSignal) => Promise<Attempt>
 }>()
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; step: [graded: boolean]; activity: [busy: boolean] }>()
+const grading = ref(false)
 const clock = ref(new Date())
 const revealed = ref(false)
 const sourceOpen = ref(false)
@@ -65,7 +67,9 @@ const queue = computed(() =>
         studied.value.map((entry) => entry.id),
         clock.value,
       ).filter(canReviewCard)
-    : dueCards(props.library, clock.value, props.deckId, canReviewCard),
+    : dueCards(props.library, clock.value, props.deckId, canReviewCard).filter(
+        (card) => !props.mixedCardId || card.id === props.mixedCardId,
+      ),
 )
 const startedWith = queue.value.length
 const views = computed(() => cardViews(props.library))
@@ -84,6 +88,11 @@ const cardHistory = computed(() => {
   }
 })
 const questionState = reactive<QuestionState>({ allowedGrades: [], busy: false })
+watch(
+  () => props.busy || questionState.busy || grading.value,
+  (value) => emit('activity', value),
+  { immediate: true, flush: 'sync' },
+)
 watch(
   currentId,
   () => {
@@ -149,37 +158,44 @@ async function grade(value: Grade) {
     !current.value ||
     !revealed.value ||
     props.busy ||
+    grading.value ||
     questionState.busy ||
     !questionState.allowedGrades.includes(value)
   )
     return
   const id = current.value.id
   const complete = questionState.complete
-  const saved = practice.value
-    ? !questionState.practiceId ||
-      (await props.finishPractice(questionState.practiceId, id, questionState.assessment))
-    : await props.submit(id, value, questionState.assessment, questionState.practiceId)
-  if (saved) {
-    await complete?.()
-    const effects = practice.value ? undefined : props.library.reviews.at(-1)?.effects
-    feedback.value = [
-      effects?.siblings.length
-        ? msg('同笔记的 {count} 张关联卡片已自动暂缓至明天。', { count: effects.siblings.length })
-        : '',
-      effects?.markedLeech ? msg('这张卡已标记为顽固卡，可在卡片列表中筛选并改写问题。') : '',
-    ].filter((entry): entry is Message => Boolean(entry))
-    if (props.study)
-      studied.value.push({
-        id,
-        grade: value,
-        reviewId: practice.value ? undefined : props.library.reviews.at(-1)?.id,
-      })
-    completed.value++
-    selectNext()
+  grading.value = true
+  try {
+    const saved = practice.value
+      ? !questionState.practiceId ||
+        (await props.finishPractice(questionState.practiceId, id, questionState.assessment))
+      : await props.submit(id, value, questionState.assessment, questionState.practiceId)
+    if (saved) {
+      await complete?.()
+      const effects = practice.value ? undefined : props.library.reviews.at(-1)?.effects
+      feedback.value = [
+        effects?.siblings.length
+          ? msg('同笔记的 {count} 张关联卡片已自动暂缓至明天。', { count: effects.siblings.length })
+          : '',
+        effects?.markedLeech ? msg('这张卡已标记为顽固卡，可在卡片列表中筛选并改写问题。') : '',
+      ].filter((entry): entry is Message => Boolean(entry))
+      if (props.study)
+        studied.value.push({
+          id,
+          grade: value,
+          reviewId: practice.value ? undefined : props.library.reviews.at(-1)?.id,
+        })
+      completed.value++
+      if (props.mixedCardId) emit('step', true)
+      selectNext()
+    }
+  } finally {
+    grading.value = false
   }
 }
 async function undoLast() {
-  if (!canUndo.value || props.busy || questionState.busy) return
+  if (!canUndo.value || props.busy || questionState.busy || grading.value) return
   const id = practice.value ? studied.value.at(-1)?.id : props.library.reviews.at(-1)?.cardId
   if (practice.value || (await props.undo())) {
     feedback.value = []
@@ -190,8 +206,16 @@ async function undoLast() {
   }
 }
 async function changeCurrent(action: 'suspend' | 'bury') {
-  if (!questionState.busy && current.value && (await props.change([current.value.id], action)))
-    selectNext()
+  if (props.busy || grading.value || questionState.busy || !current.value) return
+  grading.value = true
+  try {
+    if (await props.change([current.value.id], action)) {
+      if (props.mixedCardId) emit('step', false)
+      selectNext()
+    }
+  } finally {
+    grading.value = false
+  }
 }
 function keydown(event: KeyboardEvent) {
   if (document.querySelector('dialog[open]')) return
@@ -201,7 +225,8 @@ function keydown(event: KeyboardEvent) {
     event.metaKey ||
     event.altKey ||
     props.busy ||
-    questionState.busy
+    questionState.busy ||
+    grading.value
   )
     return
   if ((event.target as HTMLElement)?.closest('input, textarea, select, button, [contenteditable]'))
@@ -225,13 +250,18 @@ onMounted(() => {
 onUnmounted(() => {
   clearInterval(timer)
   window.removeEventListener('keydown', keydown)
+  emit('activity', false)
 })
 </script>
 
 <template>
   <section class="review-space">
-    <header class="review-header">
-      <button class="text-button" :disabled="busy || questionState.busy" @click="emit('close')">
+    <header v-if="!mixedCardId" class="review-header">
+      <button
+        class="text-button"
+        :disabled="busy || questionState.busy || grading"
+        @click="emit('close')"
+      >
         <ArrowLeft :size="17" /> {{ study ? t('结束专项练习') : t('结束复习') }}
       </button>
       <span class="muted">{{
@@ -247,7 +277,7 @@ onUnmounted(() => {
         })
       }}
     </p>
-    <div class="review-progress">
+    <div v-if="!mixedCardId" class="review-progress">
       <span
         :style="{
           width: `${Math.min(100, (completed / Math.max(startedWith, completed + queue.length, 1)) * 100)}%`,
@@ -257,8 +287,9 @@ onUnmounted(() => {
 
     <div class="review-tools">
       <button
+        v-if="!mixedCardId"
         class="text-button"
-        :disabled="busy || questionState.busy || !canUndo"
+        :disabled="busy || questionState.busy || grading || !canUndo"
         @click="undoLast"
       >
         {{ t('撤销上次评分') }}
@@ -266,13 +297,13 @@ onUnmounted(() => {
       <template v-if="current && !practice"
         ><button
           class="text-button"
-          :disabled="busy || questionState.busy"
+          :disabled="busy || questionState.busy || grading"
           @click="changeCurrent('bury')"
         >
           {{ t('今天暂缓') }}</button
         ><button
           class="text-button"
-          :disabled="busy || questionState.busy"
+          :disabled="busy || questionState.busy || grading"
           @click="changeCurrent('suspend')"
         >
           {{ t('暂停此卡') }}
@@ -371,7 +402,10 @@ onUnmounted(() => {
             :key="item.value"
             :class="['grade-button', item.class]"
             :disabled="
-              busy || questionState.busy || !questionState.allowedGrades.includes(item.value)
+              busy ||
+              questionState.busy ||
+              grading ||
+              !questionState.allowedGrades.includes(item.value)
             "
             @click="grade(item.value)"
           >

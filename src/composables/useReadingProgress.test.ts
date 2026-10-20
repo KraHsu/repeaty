@@ -41,6 +41,28 @@ function setup() {
   return { workspace, save, progress, update }
 }
 const scopes: ReturnType<typeof effectScope>[] = []
+it('holds autosaves across a manual action, then resumes the latest position exactly once', async () => {
+  const { progress, update, save, workspace } = setup()
+  progress.record(update(100))
+  const release = progress.hold()
+  progress.record(update(200), true)
+  workspace.busy.value = true
+  workspace.busy.value = false
+  await nextTick()
+  await vi.advanceTimersByTimeAsync(1500)
+  expect(save).not.toHaveBeenCalled()
+  release()
+  release()
+  await vi.advanceTimersByTimeAsync(0)
+  expect(save).toHaveBeenCalledTimes(1)
+  expect(workspace.library.value.sources[0]!.reading?.offset).toBe(200)
+  const stale = progress.hold()
+  progress.clear()
+  stale()
+  progress.record(update(300))
+  await vi.advanceTimersByTimeAsync(700)
+  expect(save).toHaveBeenCalledTimes(2)
+})
 cleanup(() => {
   for (const scope of scopes.splice(0)) scope.stop()
   vi.useRealTimers()

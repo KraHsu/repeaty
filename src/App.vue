@@ -75,6 +75,7 @@ import {
 import { queuedSources } from './core/source-queue'
 import { blockedByLimit, dayKey, dueCards, weekActivity } from './core/scheduler'
 const SourcePanel = defineAsyncComponent(() => import('./components/SourcePanel.vue'))
+const MixedSession = defineAsyncComponent(() => import('./components/MixedSession.vue'))
 const PracticeHistoryPanel = defineAsyncComponent(
   () => import('./components/PracticeHistoryPanel.vue'),
 )
@@ -95,14 +96,20 @@ watch(workspace.scope, () => {
   sourceDraft.value = undefined
   modal.value = null
   review.value = null
+  mixed.value = null
 })
 const selectedDeck = ref('')
 const searchQuery = ref('')
 const filterState = ref<SearchFilter['state']>('all')
 const now = ref(new Date())
 const review = ref<{ deckId?: string; study?: StudySession } | null>(null)
+const mixed = ref<{ cardsPerReading: number } | null>(null)
+const mixedRatio = ref(3)
+const mixedReader = ref<InstanceType<typeof SourcePanel>>()
 const notice = ref<{ text: DisplayMessage; error: boolean } | null>(null)
-const modal = ref<'deck' | 'card' | 'confirm' | 'import' | 'bulkImport' | 'snapshot' | null>(null)
+const modal = ref<
+  'deck' | 'card' | 'confirm' | 'import' | 'bulkImport' | 'snapshot' | 'mixed' | null
+>(null)
 const editingId = ref<string>()
 const sourceDraft = ref<Partial<NoteInput>>()
 const deckForm = reactive<DeckInput>({
@@ -134,6 +141,40 @@ const readyReading = computed(() =>
 const readyExcerpts = computed(
   () => readyReading.value.filter((source) => source.kind === 'excerpt').length,
 )
+const sourceBindings = computed(() => ({
+  library: library.value,
+  busy: busy.value,
+  scope: workspace.scope.value,
+  reading: readingProgress,
+  now: now.value,
+  canShare: desktopEdition && !remoteWorkspace.value,
+  read: workspace.getSource,
+  save: saveSource,
+  updateDetails: editSourceDetails,
+  saveExcerpt: saveSourceExcerpt,
+  remove: deleteSource,
+  arrange: arrangeSource,
+  arrangeBatch: arrangeSources,
+  undoReading,
+  canUndoReading: workspace.canUndoReading.value,
+  readingUndoId: workspace.readingUndo.value?.id,
+  saveReading,
+  actionError: notice.value?.error ? t(notice.value.text) : undefined,
+}))
+const reviewBindings = computed(() => ({
+  library: library.value,
+  busy: busy.value,
+  submit: submitReview,
+  undo: undoReview,
+  change: changeCards,
+  getMedia: workspace.getMedia,
+  workspaceScope: workspace.scope.value,
+  saveAttempt: workspace.recordAttempt,
+  getAttempt: workspace.getAttempt,
+  getSource: workspace.getSource,
+  finishPractice: (id: string, cardId: string, assessment?: import('./plugins/data').Assessment) =>
+    run(() => workspace.finishPractice(id, cardId, assessment)),
+}))
 const newCount = computed(() => due.value.filter((card) => card.schedule.state === 0).length)
 const todayReviews = computed(() =>
   library.value.reviews.filter((entry) => entry.studyDay === dayKey(now.value)),
@@ -183,6 +224,7 @@ onUnmounted(() => {
 function navigate(next: typeof tab.value) {
   tab.value = next
   review.value = null
+  mixed.value = null
   selectedDeck.value = ''
   searchQuery.value = ''
   filterState.value = 'all'
@@ -192,6 +234,17 @@ function navigate(next: typeof tab.value) {
 function startReading() {
   navigate('sources')
   autoStartReading.value = true
+}
+function startMixed() {
+  if (!Number.isInteger(mixedRatio.value) || mixedRatio.value < 1 || mixedRatio.value > 10) return
+  navigate('overview')
+  now.value = new Date()
+  notice.value = null
+  modal.value = null
+  mixed.value = { cardsPerReading: mixedRatio.value }
+}
+async function leaveMixedReading() {
+  return (await mixedReader.value?.leaveSession()) ?? true
 }
 function openHistory(card?: CardView) {
   navigate('history')
@@ -608,7 +661,9 @@ async function restoreBackup() {
     <main class="main-content">
       <header class="topbar">
         <div class="breadcrumb">
-          Repeaty<ChevronRight :size="14" /><strong>{{ review ? t('复习') : pageTitle }}</strong>
+          Repeaty<ChevronRight :size="14" /><strong>{{
+            mixed ? t('混合学习') : review ? t('复习') : pageTitle
+          }}</strong>
         </div>
         <div class="topbar-tools">
           <component
@@ -660,23 +715,52 @@ async function restoreBackup() {
         <Repeat2 :size="32" />
         <p>{{ t('正在加载…') }}</p>
       </section>
+      <MixedSession
+        v-else-if="mixed"
+        :key="workspace.scope.value"
+        :library="library"
+        :scope="workspace.scope.value"
+        :now="now"
+        :busy="busy"
+        :cards-per-reading="mixed.cardsPerReading"
+        :leave-reading="leaveMixedReading"
+        :undo-card="undoReview"
+        :undo-reading="undoReading"
+        :can-undo-reading="workspace.canUndoReading.value"
+        :reading-undo-id="workspace.readingUndo.value?.id"
+        @close="mixed = null"
+        @clear-notice="notice = null"
+      >
+        <template #card="{ item, done, activity }">
+          <ReviewSession
+            :key="item.key"
+            v-bind="reviewBindings"
+            :mixed-card-id="item.id"
+            @step="done"
+            @activity="activity"
+            @close="mixed = null"
+          />
+        </template>
+        <template #reading="{ item, done, activity }">
+          <SourcePanel
+            :key="item.key"
+            ref="mixedReader"
+            v-bind="sourceBindings"
+            :session="{ sourceId: item.id, mediaId: item.mediaId }"
+            @session-done="done"
+            @activity="activity"
+            @create="createFromExcerpt"
+            @share="mcpSelection = $event"
+            @edit="(id) => editCard(cards.find((card) => card.noteId === id))"
+            @clear-notice="notice = null"
+          />
+        </template>
+      </MixedSession>
       <ReviewSession
         v-else-if="review"
-        :library="library"
+        v-bind="reviewBindings"
         :deck-id="review.deckId"
         :study="review.study"
-        :busy="busy"
-        :submit="submitReview"
-        :undo="undoReview"
-        :change="changeCards"
-        :get-media="workspace.getMedia"
-        :workspace-scope="workspace.scope.value"
-        :save-attempt="workspace.recordAttempt"
-        :get-attempt="workspace.getAttempt"
-        :get-source="workspace.getSource"
-        :finish-practice="
-          (id, cardId, assessment) => run(() => workspace.finishPractice(id, cardId, assessment))
-        "
         @close="review = null"
       />
 
@@ -797,6 +881,13 @@ async function restoreBackup() {
             </p>
           </div>
           <div class="daily-reading-actions">
+            <button
+              class="button secondary"
+              :disabled="busy || (!due.length && !readyReading.length)"
+              @click="modal = 'mixed'"
+            >
+              {{ t('开始混合学习') }}
+            </button>
             <button
               v-if="readyReading.length"
               class="button primary"
@@ -976,25 +1067,8 @@ async function restoreBackup() {
       <SourcePanel
         v-else-if="tab === 'sources'"
         :key="workspace.scope.value"
-        :library="library"
-        :busy="busy"
-        :scope="workspace.scope.value"
-        :reading="readingProgress"
-        :now="now"
-        :can-share="desktopEdition && !remoteWorkspace"
-        :read="workspace.getSource"
-        :save="saveSource"
-        :update-details="editSourceDetails"
-        :save-excerpt="saveSourceExcerpt"
-        :remove="deleteSource"
-        :arrange="arrangeSource"
-        :arrange-batch="arrangeSources"
-        :undo-reading="undoReading"
-        :can-undo-reading="workspace.canUndoReading.value"
-        :reading-undo-id="workspace.readingUndo.value?.id"
+        v-bind="sourceBindings"
         :auto-start="autoStartReading"
-        :save-reading="saveReading"
-        :action-error="notice?.error ? t(notice.text) : undefined"
         @start-handled="autoStartReading = false"
         @review="startReview()"
         @create="createFromExcerpt"
@@ -1217,6 +1291,35 @@ async function restoreBackup() {
         </div>
       </div>
     </main>
+
+    <AppModal
+      v-if="modal === 'mixed'"
+      :title="t('开始混合学习')"
+      :busy="busy"
+      @close="modal = null"
+    >
+      <form class="editor-form" @submit.prevent="startMixed">
+        <p>{{ t('按现有复习额度安排卡片，在其中穿插今天待阅读的材料。') }}</p>
+        <label for="mixed-ratio">{{ t('每篇材料之间复习几张卡片？') }}</label>
+        <input
+          id="mixed-ratio"
+          v-model.number="mixedRatio"
+          type="number"
+          min="1"
+          max="10"
+          step="1"
+          required
+        />
+        <p class="form-note">
+          {{ t('其中一类处理完后继续另一类。结束或刷新页面后，下次重新开始一轮。') }}
+        </p>
+        <div class="form-actions">
+          <button type="button" class="button secondary" @click="modal = null">
+            {{ t('取消') }}</button
+          ><button class="button primary" :disabled="busy">{{ t('开始学习') }}</button>
+        </div>
+      </form>
+    </AppModal>
 
     <AppModal
       :error="notice?.error ? t(notice.text) : undefined"

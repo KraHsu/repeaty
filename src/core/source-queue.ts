@@ -160,7 +160,10 @@ export function arrangeSource(
       ? { readingIntervalDays: action.intervalDays }
       : action.type === 'read-adaptive'
         ? { adaptiveReading: nextAdaptiveReading(source, action.feedback, now) }
-        : { adaptiveReading, readingIntervalDays }),
+        : {
+            ...(adaptiveReading ? { adaptiveReading } : {}),
+            ...(readingIntervalDays !== undefined ? { readingIntervalDays } : {}),
+          }),
   })
   return { ...library, sources: library.sources.map((entry) => (entry.id === id ? next : entry)) }
 }

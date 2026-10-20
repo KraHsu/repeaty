@@ -1,5 +1,34 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  间隔方式: 'Interval method',
+  固定递增: 'Fixed progression',
+  自适应: 'Adaptive',
+  '这次理解如何？': 'How well did you understand it?',
+  需要再读: 'Need to reread',
+  基本理解: 'Understood',
+  已经熟悉: 'Familiar',
+  '根据这次理解和距上次阅读的天数调整，间隔为 1–365 天。卡片仍由 FSRS 安排。':
+    'Adjusts from your feedback and the days since your last reading, from 1 to 365 days. Cards use FSRS.',
+  混合学习: 'Mixed study',
+  开始混合学习: 'Start mixed study',
+  结束混合学习: 'End mixed study',
+  本轮混合学习结束: 'Mixed study round complete',
+  '已复习 {cards} 次 · 已处理 {sources} 篇':
+    'Reviewed {cards} cards · Processed {sources} materials',
+  '每 {count} 张卡片穿插 1 篇材料。': 'Read one material after every {count} cards.',
+  '本轮材料已处理完，当前没有可复习卡片。':
+    'You have finished this round of materials. No cards are due right now.',
+  返回学习概览: 'Back to overview',
+  '按现有复习额度安排卡片，在其中穿插今天待阅读的材料。':
+    'Use your current review limits and include materials ready to read today.',
+  '每篇材料之间复习几张卡片？': 'How many cards between materials?',
+  '其中一类处理完后继续另一类。结束或刷新页面后，下次重新开始一轮。':
+    'Continue with the remaining type when one runs out. Ending or reloading starts a new round next time.',
+  开始学习: 'Start study',
+  '阅读位置会保存；可安排下次阅读，或直接继续。':
+    'Your reading position is saved. Schedule another reading or continue.',
+  跳过本篇: 'Skip this material',
+  '完成阅读，继续学习': 'Finish reading and continue',
   'MCP 客户端': 'MCP client',
   '通用 HTTP 客户端': 'Generic HTTP client',
   '仅支持本地学习库。每次打开应用后需开启 MCP；切换学习库会关闭连接。':

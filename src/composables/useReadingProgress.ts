@@ -11,7 +11,8 @@ export function useReadingProgress(workspace: ReturnType<typeof useLibrary>) {
   let timer: ReturnType<typeof setTimeout> | undefined
   let token = 0,
     epoch = 0,
-    disposed = false
+    disposed = false,
+    holds = 0
   function record(update: ReadingUpdate, immediately = false) {
     if (!workspace.ready.value || update.scope !== workspace.scope.value) return
     const source = workspace.library.value.sources.find(
@@ -47,11 +48,12 @@ export function useReadingProgress(workspace: ReturnType<typeof useLibrary>) {
       }, 700)
   }
   async function flush() {
-    if (savingId.value || workspace.busy.value || !workspace.ready.value || disposed) return
+    if (savingId.value || workspace.busy.value || !workspace.ready.value || disposed || holds)
+      return
     clearTimeout(timer)
     timer = undefined
     const generation = epoch
-    while (pending.size && generation === epoch && !workspace.busy.value && !disposed) {
+    while (pending.size && generation === epoch && !workspace.busy.value && !disposed && !holds) {
       const entry = pending.values().next().value!
       savingId.value = entry.update.sourceId
       try {
@@ -71,7 +73,7 @@ export function useReadingProgress(workspace: ReturnType<typeof useLibrary>) {
   watch(
     () => workspace.busy.value,
     (busy) => {
-      if (!busy && !timer && ![...pending.values()].some((entry) => entry.error))
+      if (!busy && !holds && !timer && ![...pending.values()].some((entry) => entry.error))
         timer = setTimeout(() => {
           // Let the completed operation clear stale work after a restore.
           timer = undefined
@@ -81,6 +83,7 @@ export function useReadingProgress(workspace: ReturnType<typeof useLibrary>) {
   )
   function clear() {
     epoch++
+    holds = 0
     clearTimeout(timer)
     timer = undefined
     pending.clear()
@@ -105,6 +108,30 @@ export function useReadingProgress(workspace: ReturnType<typeof useLibrary>) {
   function acknowledge(sourceId: string, token: number | undefined) {
     if (token !== undefined && pending.get(sourceId)?.token === token) pending.delete(sourceId)
   }
-  return { record, flush, clear, acknowledge, pending, savingId }
+  // Explicit position/arrangement writes own the pending position while a dialog or action is active.
+  function hold() {
+    const generation = epoch
+    holds++
+    clearTimeout(timer)
+    timer = undefined
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      if (generation !== epoch) return
+      holds--
+      if (
+        !holds &&
+        !disposed &&
+        pending.size &&
+        ![...pending.values()].some((entry) => entry.error)
+      )
+        timer = setTimeout(() => {
+          timer = undefined
+          void flush()
+        }, 0)
+    }
+  }
+  return { record, flush, clear, acknowledge, hold, pending, savingId }
 }
 export type ReadingProgress = ReturnType<typeof useReadingProgress>

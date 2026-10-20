@@ -14,18 +14,19 @@ export function nextAdaptiveReading(source: Source, feedback: ReadingFeedback, n
   const today = localDay(now)
   const elapsed = previous ? calendarDays(today) - calendarDays(previous.lastReadOn) : base
   // Early rereads do not inflate intervals; overdue reads contribute at most twice the last span.
-  const observed = clamp(elapsed, Math.max(1, Math.ceil(base / 2)), base * 2)
+  const observed = clamp(elapsed, Math.max(1, base / 2), base * 2)
   const nextFactor =
     Math.round(
       clamp(factor + (feedback === 'again' ? -0.2 : feedback === 'easy' ? 0.15 : 0), 1.3, 3) * 100,
     ) / 100
-  const intervalDays = clamp(
+  let intervalDays = clamp(
     Math.round(
       feedback === 'again' ? base / 2 : observed * nextFactor * (feedback === 'easy' ? 1.3 : 1),
     ),
     1,
     365,
   )
+  if (previous && elapsed < base) intervalDays = Math.min(intervalDays, base)
   return {
     intervalDays,
     factor: nextFactor,

@@ -20,7 +20,9 @@ import {
   type SourceTarget,
   type SourceBatchUpdate,
   type SourceBatchAction,
+  type ReadingFeedback,
 } from '../core/source-data'
+import { adaptiveReadingPlan } from '../core/adaptive-reading'
 import { sourceExcerpt, recentSource } from '../core/sources'
 import { sourceArrangement } from '../core/reading-operations'
 import { sourceContextPath } from '../core/source-tree'
@@ -57,6 +59,7 @@ const props = defineProps<{
   now: Date
   canShare?: boolean
   autoStart?: boolean
+  session?: { sourceId: string; mediaId: string }
   canUndoReading: boolean
   readingUndoId?: string
   arrangeBatch: (update: SourceBatchUpdate) => Promise<boolean>
@@ -77,9 +80,12 @@ const emit = defineEmits<{
   clearNotice: []
   review: []
   startHandled: []
+  sessionDone: [arranged: boolean]
+  activity: [busy: boolean]
 }>()
 const today = computed(() => localDay(props.now))
 const round = shallowRef<ReadingRound>()
+const inRound = computed(() => !!round.value || !!props.session)
 const roundFilter = shallowRef<SourceFilter>()
 const roundEnded = computed(
   () => !!round.value && round.value.cursor === round.value.entries.length,
@@ -147,9 +153,16 @@ function resetFilters() {
   priority.value = 'all'
 }
 const selectedId = ref(
-  recentSource(queuedSources(props.library.sources, 'ready', today.value))?.id ?? '',
+  props.session?.sourceId ??
+    recentSource(queuedSources(props.library.sources, 'ready', today.value))?.id ??
+    '',
 )
-const source = computed(() => props.library.sources.find((entry) => entry.id === selectedId.value))
+const source = computed(() =>
+  props.library.sources.find(
+    (entry) =>
+      entry.id === selectedId.value && (!props.session || entry.mediaId === props.session.mediaId),
+  ),
+)
 const linked = computed(() =>
   props.library.notes.filter((note) => note.excerpt?.sourceId === selectedId.value),
 )
@@ -296,7 +309,7 @@ let controller: AbortController | undefined,
   alive = true
 let readingLoad: Promise<void> = Promise.resolve()
 watch(filteredSources, (sources) => {
-  if (!round.value && !sources.some((entry) => entry.id === selectedId.value)) {
+  if (!inRound.value && !sources.some((entry) => entry.id === selectedId.value)) {
     selectedId.value = sources[page.value * pageSize]?.id ?? sources[0]?.id ?? ''
   }
   page.value = Math.min(page.value, pages.value - 1)
@@ -370,7 +383,7 @@ async function saveExcerpt() {
     if (!alive || props.scope !== draft.input.scope || excerptDraft.value !== draft) return
     props.reading.acknowledge(draft.input.excerpt.sourceId, draft.token)
     excerptDraft.value = undefined
-    if (!round.value) {
+    if (!inRound.value) {
       resetFilters()
       view.value = 'ready'
       const child = props.library.sources.at(-1)
@@ -420,7 +433,45 @@ const deferOptions = computed(() => [
   { label: '3 天后', date: nextReadingDay(props.now, 3) },
   { label: '1 周后', date: nextReadingDay(props.now, 7) },
 ])
+let releaseReading: (() => void) | undefined
+watch(
+  () =>
+    deferring.value ||
+    schedulingRead.value ||
+    resettingInterval.value ||
+    moving.value ||
+    arranging.value ||
+    !!detailsDraft.value ||
+    !!excerptDraft.value ||
+    !!batchDraft.value,
+  (held) => {
+    if (held) releaseReading ??= props.reading.hold()
+    else {
+      releaseReading?.()
+      releaseReading = undefined
+    }
+  },
+  { flush: 'sync' },
+)
+onUnmounted(() => releaseReading?.())
 const intervalPlan = computed(() => source.value && nextReadingInterval(source.value, props.now))
+const scheduleMode = ref<'fixed' | 'adaptive'>('fixed')
+const readingFeedback = ref<ReadingFeedback>('good')
+const adaptivePlan = computed(
+  () => source.value && adaptiveReadingPlan(source.value, readingFeedback.value, props.now),
+)
+const selectedPlan = computed(() =>
+  scheduleMode.value === 'adaptive' ? adaptivePlan.value : intervalPlan.value,
+)
+function saveReadSchedule() {
+  if (scheduleMode.value === 'adaptive' && adaptivePlan.value)
+    return arrange({
+      type: 'read-adaptive',
+      feedback: readingFeedback.value,
+      ...adaptivePlan.value,
+    })
+  if (intervalPlan.value) return arrange({ type: 'read', ...intervalPlan.value })
+}
 watch([() => source.value?.id, () => source.value?.mediaId], () => {
   schedulingRead.value = false
   resettingInterval.value = false
@@ -434,6 +485,55 @@ const canMove = computed(
     !error.value &&
     !!reader.value?.ready,
 )
+watch(
+  () =>
+    props.busy ||
+    loading.value ||
+    arranging.value ||
+    moving.value ||
+    savingExcerpt.value ||
+    savingDetails.value ||
+    savingBatch.value ||
+    undoing.value,
+  (value) => emit('activity', value),
+  { immediate: true, flush: 'sync' },
+)
+watch(
+  () => props.session,
+  (session) => {
+    if (session) selectedId.value = session.sourceId
+  },
+)
+async function leaveSession() {
+  if (props.busy || moving.value || arranging.value || loading.value) return false
+  moving.value = true
+  try {
+    return !source.value || !!error.value || (await savePosition())
+  } finally {
+    moving.value = false
+  }
+}
+async function finishSession() {
+  if (!props.session || props.busy || moving.value || arranging.value || loading.value) return
+  const session = { ...props.session },
+    scope = props.scope
+  moving.value = true
+  emit('clearNotice')
+  try {
+    const saved = !source.value || !!error.value || (await savePosition())
+    if (
+      saved &&
+      alive &&
+      props.scope === scope &&
+      props.session?.sourceId === session.sourceId &&
+      props.session.mediaId === session.mediaId
+    )
+      emit('sessionDone', false)
+  } finally {
+    moving.value = false
+  }
+}
+defineExpose({ leaveSession })
 function showRound(next: ReadingRound) {
   round.value = next
   selectedId.value = next.entries[next.cursor]?.sourceId ?? ''
@@ -542,6 +642,8 @@ function openDefer() {
 function openReadSchedule() {
   if (!canMove.value || queueState.value === 'archived') return
   emit('clearNotice')
+  scheduleMode.value = source.value?.adaptiveReading ? 'adaptive' : 'fixed'
+  readingFeedback.value = 'good'
   schedulingRead.value = true
 }
 function openIntervalReset() {
@@ -573,10 +675,17 @@ async function arrange(action: SourceQueueAction) {
         deferring.value = false
         schedulingRead.value = false
         resettingInterval.value = false
+        if (props.session && ['defer', 'archive', 'read', 'read-adaptive'].includes(action.type)) {
+          await nextTick()
+          if (alive) emit('sessionDone', true)
+        }
         if (
           started &&
           round.value === started &&
-          (action.type === 'defer' || action.type === 'archive' || action.type === 'read')
+          (action.type === 'defer' ||
+            action.type === 'archive' ||
+            action.type === 'read' ||
+            action.type === 'read-adaptive')
         ) {
           const after = advanceReadingRound(started, props.library.sources, today.value)
           showRound(after)
@@ -621,7 +730,7 @@ async function openExcerptSource(id: string) {
   if (!entry || !parent || props.busy || moving.value || arranging.value) return
   emit('clearNotice')
   navigationError.value = ''
-  if (round.value) {
+  if (inRound.value) {
     viewingExcerptId.value = id
     return
   }
@@ -797,14 +906,14 @@ async function download() {
 
 <template>
   <div class="page sources-page">
-    <header class="page-heading">
+    <header v-if="!session" class="page-heading">
       <div>
         <h1>{{ t('学习材料') }}</h1>
         <p>{{ t('保存原文，选取摘录制作卡片。') }}</p>
       </div>
       <div class="source-actions">
         <button
-          v-if="canUndoReading"
+          v-if="canUndoReading && !session"
           :title="t('撤销最近一次阅读安排（刷新后清除）')"
           class="button secondary"
           :disabled="busy || moving || arranging || undoing"
@@ -813,24 +922,34 @@ async function download() {
           {{ t('撤销阅读安排') }}
         </button>
         <button
-          v-if="!round"
+          v-if="!inRound"
           class="button secondary"
           :disabled="busy || moving || arranging || !readyCount || (!!source && !canMove)"
           @click="beginRound()"
         >
           {{ t('开始一轮阅读') }}
         </button>
-        <button class="button primary" :disabled="busy || moving || !!round" @click="openImport">
+        <button class="button primary" :disabled="busy || moving || inRound" @click="openImport">
           <Plus :size="18" />{{ t('导入材料') }}
         </button>
       </div>
     </header>
-    <div v-if="!library.sources.length && !round" class="empty-state">
+    <div v-if="!library.sources.length && !inRound" class="empty-state">
       <FileText :size="36" />
       <h2>{{ t('还没有学习材料') }}</h2>
       <p>{{ t('导入文本或 Markdown，也可以直接粘贴。原文会保存在当前学习库中。') }}</p>
     </div>
     <template v-else>
+      <section v-if="session" class="reading-round" :aria-label="t('本轮阅读')">
+        <p>{{ t('阅读位置会保存；可安排下次阅读，或直接继续。') }}</p>
+        <button
+          class="button primary"
+          :disabled="busy || moving || arranging || loading"
+          @click="finishSession"
+        >
+          {{ t(error ? '跳过本篇' : '完成阅读，继续学习') }}
+        </button>
+      </section>
       <section
         v-if="round && !roundEnded"
         class="reading-round"
@@ -856,19 +975,19 @@ async function download() {
           </button>
         </div>
       </section>
-      <nav v-if="!round" class="source-queue-filters" :aria-label="t('阅读队列')">
+      <nav v-if="!inRound" class="source-queue-filters" :aria-label="t('阅读队列')">
         <button
           v-for="value in queueViews"
           :key="value"
           type="button"
           :aria-pressed="view === value"
-          :disabled="busy || moving || arranging || !!round"
+          :disabled="busy || moving || arranging || inRound"
           @click="view = value"
         >
           {{ t(queueLabels[value]) }} <span>{{ counts[value] }}</span>
         </button>
       </nav>
-      <section v-if="!round" class="source-filters" :aria-label="t('材料筛选')">
+      <section v-if="!inRound" class="source-filters" :aria-label="t('材料筛选')">
         <div class="source-filter-fields">
           <div class="source-filter-field source-search">
             <label for="source-search">{{ t('搜索材料') }}</label>
@@ -934,7 +1053,7 @@ async function download() {
         </div>
       </section>
       <section
-        v-if="!round && filteredSources.length"
+        v-if="!inRound && filteredSources.length"
         class="source-selection-toolbar"
         :aria-label="t('批量选择材料')"
       >
@@ -971,8 +1090,8 @@ async function download() {
           </button>
         </div>
       </section>
-      <div class="sources-layout" :class="{ 'round-layout': !!round }">
-        <aside v-if="!round" class="source-list">
+      <div class="sources-layout" :class="{ 'round-layout': inRound }">
+        <aside v-if="!inRound" class="source-list">
           <p v-if="!visibleSources.length" class="form-note">{{ t('没有找到材料。') }}</p>
           <div
             v-for="entry in visibleSources"
@@ -993,7 +1112,7 @@ async function download() {
             <button
               class="source-list-title"
               :aria-pressed="entry.id === selectedId"
-              :disabled="busy || moving || !!round"
+              :disabled="busy || moving || inRound"
               @click="openSource(entry.id)"
             >
               <strong>{{ entry.title }}</strong></button
@@ -1023,7 +1142,7 @@ async function download() {
               }}</span>
               <button
                 class="text-button source-continue"
-                :disabled="busy || moving || !!round"
+                :disabled="busy || moving || inRound"
                 @click="resume(entry.id)"
               >
                 {{ t('继续阅读') }}
@@ -1183,10 +1302,18 @@ async function download() {
           <p id="source-priority-help" class="form-note source-priority-help">
             {{ t('待阅读先按优先级、再按日期排序。') }}
           </p>
-          <div v-if="source.readingIntervalDays" class="source-interval-control">
+          <div
+            v-if="source.readingIntervalDays || source.adaptiveReading"
+            class="source-interval-control"
+          >
             <p class="form-note">
               {{
-                t('上次间隔：{interval}', { interval: duration(source.readingIntervalDays, 'day') })
+                t('上次间隔：{interval}', {
+                  interval: duration(
+                    (source.adaptiveReading?.intervalDays ?? source.readingIntervalDays)!,
+                    'day',
+                  ),
+                })
               }}
             </p>
             <button
@@ -1480,30 +1607,56 @@ async function download() {
       </form>
     </AppModal>
     <AppModal
-      v-if="schedulingRead && source && intervalPlan"
+      v-if="schedulingRead && source && selectedPlan"
       :title="t('读过，安排下次')"
       :busy="busy || arranging"
       :error="actionError"
       @close="schedulingRead = false"
     >
-      <form class="source-defer-form" @submit.prevent="arrange({ type: 'read', ...intervalPlan })">
+      <form class="source-defer-form" @submit.prevent="saveReadSchedule">
+        <label for="reading-schedule-mode">{{ t('间隔方式') }}</label>
+        <select id="reading-schedule-mode" v-model="scheduleMode" :disabled="busy || arranging">
+          <option value="fixed">{{ t('固定递增') }}</option>
+          <option value="adaptive">{{ t('自适应') }}</option>
+        </select>
+        <fieldset
+          v-if="scheduleMode === 'adaptive'"
+          class="reading-feedback"
+          :disabled="busy || arranging"
+        >
+          <legend>{{ t('这次理解如何？') }}</legend>
+          <label
+            v-for="(label, value) in { again: '需要再读', good: '基本理解', easy: '已经熟悉' }"
+            :key="value"
+          >
+            <input v-model="readingFeedback" type="radio" name="reading-feedback" :value="value" />
+            {{ t(label) }}
+          </label>
+        </fieldset>
         <p class="source-interval-summary">
-          {{ t('本次间隔：{interval}', { interval: duration(intervalPlan.intervalDays, 'day') }) }}
+          {{ t('本次间隔：{interval}', { interval: duration(selectedPlan.intervalDays, 'day') }) }}
         </p>
         <p class="source-interval-date">
-          {{ t('下次阅读：{date}', { date: readingDate(intervalPlan.date) }) }}
+          {{ t('下次阅读：{date}', { date: readingDate(selectedPlan.date) }) }}
         </p>
-        <ol class="source-interval-steps" :aria-label="t('阅读间隔')">
+        <ol
+          v-if="scheduleMode === 'fixed'"
+          class="source-interval-steps"
+          :aria-label="t('阅读间隔')"
+        >
           <li
             v-for="days in READING_INTERVAL_DAYS"
             :key="days"
-            :aria-current="days === intervalPlan.intervalDays ? 'step' : undefined"
+            :aria-current="days === selectedPlan.intervalDays ? 'step' : undefined"
           >
             {{ duration(days, 'day') }}
           </li>
         </ol>
-        <p class="form-note">
+        <p v-if="scheduleMode === 'fixed'" class="form-note">
           {{ t('每次确认后依次使用 1、3、7、14、30 天，之后保持 30 天。') }}
+        </p>
+        <p v-else class="form-note">
+          {{ t('根据这次理解和距上次阅读的天数调整，间隔为 1–365 天。卡片仍由 FSRS 安排。') }}
         </p>
         <p class="form-note">{{ t('按本机日期安排，到这一天会自动加入待阅读列表。') }}</p>
         <div class="form-actions">
@@ -1695,6 +1848,40 @@ async function download() {
 </template>
 
 <style scoped>
+.reading-feedback {
+  display: grid;
+  gap: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+.reading-feedback label {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 32px;
+  font-size: 1rem;
+}
+.source-defer-form .reading-feedback input[type='radio'] {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  padding: 0;
+  margin: 0;
+  flex: 0 0 18px;
+}
+#reading-schedule-mode {
+  width: 100%;
+  min-height: 44px;
+  font: inherit;
+  margin: 0.5rem 0 1rem;
+  padding: 0.65rem 0.75rem;
+  color: inherit;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
 .source-selection-toolbar {
   display: flex;
   flex-wrap: wrap;

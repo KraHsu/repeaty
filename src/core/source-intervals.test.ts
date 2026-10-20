@@ -166,83 +166,86 @@ it('round-trips intervals and positions through both backup formats, rekeying an
   await repo.close()
 })
 
-it('upgrades a v13 record database while preserving drafts, snapshots, media and learning identity', async () => {
-  const { library, source, asset } = sample()
-  const name = `interval-upgrade-${crypto.randomUUID()}`
-  const draft = cardDraftSchema.parse({
-    version: 1,
-    id: crypto.randomUUID(),
-    position: 0,
-    selectionId: crypto.randomUUID(),
-    scope: `local:${name}`,
-    mediaId: source.mediaId,
-    deckId: 'deck',
-    title: source.title,
-    format: 'markdown',
-    excerpt: { sourceId: source.id, start: 0, end: 9, quote: '# Reading' },
-    receivedAt: now.toISOString(),
-    updatedAt: now.toISOString(),
-    input: { type: 'basic', format: 'markdown', front: '', back: 'Unfinished', tags: [] },
-    uploads: [],
-  })
-  const old = await openDB(name, 13, {
-    upgrade(db) {
-      for (const store of [
-        ...recordStores,
-        'workspace',
-        'assets',
-        'backups',
-        'meta',
-        'checkpoints',
-        'cardDrafts',
-        'attemptSummaries',
-      ])
-        db.createObjectStore(store)
-      const history = db.createObjectStore('history')
-      history.createIndex('store', 'store')
-      history.createIndex('revision', 'revision')
-    },
-  })
-  const tx = old.transaction(
-    [...recordStores, 'meta', 'assets', 'checkpoints', 'cardDrafts'],
-    'readwrite',
-  )
-  for (const store of recordStores)
-    for (const [position, value] of library[store].entries())
-      await tx
-        .objectStore(store)
-        .put(
-          { id: value.id, value, position, deckId: store === 'cards' ? 'deck' : undefined },
-          value.id,
-        )
-  await tx.objectStore('meta').put(
-    {
-      revision: 7,
-      counts: Object.fromEntries(recordStores.map((store) => [store, library[store].length])),
-    },
-    'main',
-  )
-  await tx.objectStore('assets').put(asset.blob, asset.meta.id)
-  await tx.objectStore('cardDrafts').put(draft, draft.id)
-  await tx.objectStore('checkpoints').put(
-    {
-      id: 'before-upgrade',
-      revision: 7,
-      createdAt: now.toISOString(),
-      reason: '手动快照',
-      cards: library.cards.length,
-      notes: library.notes.length,
-    },
-    'before-upgrade',
-  )
-  await tx.done
-  old.close()
-  const repo = createRepository(name)
-  expect(await repo.load()).toEqual({ revision: 7, library })
-  expect((await repo.load()).library.sources[0]!.readingIntervalDays).toBeUndefined()
-  expect(await repo.getBackup('before-upgrade')).toEqual(library)
-  expect(await repo.readCardDrafts()).toEqual([draft])
-  expect(await (await repo.getMedia(asset.meta.id))!.text()).toBe(await asset.blob.text())
-  await expect(openDB(name, 13)).rejects.toMatchObject({ name: 'VersionError' })
-  await repo.close()
-})
+it.each([13, 14, 15])(
+  'upgrades a v%i record database while preserving drafts, snapshots, media and learning identity',
+  async (oldVersion) => {
+    const { library, source, asset } = sample()
+    const name = `interval-upgrade-${crypto.randomUUID()}`
+    const draft = cardDraftSchema.parse({
+      version: 1,
+      id: crypto.randomUUID(),
+      position: 0,
+      selectionId: crypto.randomUUID(),
+      scope: `local:${name}`,
+      mediaId: source.mediaId,
+      deckId: 'deck',
+      title: source.title,
+      format: 'markdown',
+      excerpt: { sourceId: source.id, start: 0, end: 9, quote: '# Reading' },
+      receivedAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      input: { type: 'basic', format: 'markdown', front: '', back: 'Unfinished', tags: [] },
+      uploads: [],
+    })
+    const old = await openDB(name, oldVersion, {
+      upgrade(db) {
+        for (const store of [
+          ...recordStores,
+          'workspace',
+          'assets',
+          'backups',
+          'meta',
+          'checkpoints',
+          'cardDrafts',
+          'attemptSummaries',
+        ])
+          db.createObjectStore(store)
+        const history = db.createObjectStore('history')
+        history.createIndex('store', 'store')
+        history.createIndex('revision', 'revision')
+      },
+    })
+    const tx = old.transaction(
+      [...recordStores, 'meta', 'assets', 'checkpoints', 'cardDrafts'],
+      'readwrite',
+    )
+    for (const store of recordStores)
+      for (const [position, value] of library[store].entries())
+        await tx
+          .objectStore(store)
+          .put(
+            { id: value.id, value, position, deckId: store === 'cards' ? 'deck' : undefined },
+            value.id,
+          )
+    await tx.objectStore('meta').put(
+      {
+        revision: 7,
+        counts: Object.fromEntries(recordStores.map((store) => [store, library[store].length])),
+      },
+      'main',
+    )
+    await tx.objectStore('assets').put(asset.blob, asset.meta.id)
+    await tx.objectStore('cardDrafts').put(draft, draft.id)
+    await tx.objectStore('checkpoints').put(
+      {
+        id: 'before-upgrade',
+        revision: 7,
+        createdAt: now.toISOString(),
+        reason: '手动快照',
+        cards: library.cards.length,
+        notes: library.notes.length,
+      },
+      'before-upgrade',
+    )
+    await tx.done
+    old.close()
+    const repo = createRepository(name)
+    expect(await repo.load()).toEqual({ revision: 7, library })
+    expect((await repo.load()).library.sources[0]!.readingIntervalDays).toBeUndefined()
+    expect(await repo.getBackup('before-upgrade')).toEqual(library)
+    expect(await repo.readCardDrafts()).toEqual([draft])
+    expect(await (await repo.getMedia(asset.meta.id))!.text()).toBe(await asset.blob.text())
+    await expect(openDB(name, oldVersion)).rejects.toMatchObject({ name: 'VersionError' })
+    await repo.close()
+  },
+)

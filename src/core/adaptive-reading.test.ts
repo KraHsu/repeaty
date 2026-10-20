@@ -40,6 +40,11 @@ it('uses comprehension and elapsed calendar days, with bounded early and overdue
     adaptiveReading: { ...read.adaptiveReading, intervalDays: 1, factor: 1.3 },
   }
   expect(nextAdaptiveReading(low, 'again', now)).toMatchObject({ intervalDays: 1, factor: 1.3 })
+  const early = {
+    ...source,
+    adaptiveReading: { ...read.adaptiveReading, intervalDays: 7, factor: 2.8 },
+  }
+  expect(nextAdaptiveReading(early, 'easy', now).intervalDays).toBeLessThanOrEqual(7)
   const boundary = adaptiveReadingPlan(source, 'easy', new Date('2026-12-31T12:00:00'))
   expect(boundary.date).toBe('2027-01-03')
 })
@@ -141,4 +146,17 @@ it('rejects invalid adaptive feedback, counters, dates and unbounded factors', (
     expect(
       sourceSchema.safeParse({ ...source, adaptiveReading: { ...state, ...patch } }).success,
     ).toBe(false)
+})
+
+it('does not introduce undefined adaptive fields when arranging an unread legacy source', () => {
+  const { source, library } = setup()
+  const deferred = arrangeSource(
+    library,
+    source.id,
+    source.mediaId,
+    { type: 'defer', date: '2027-01-01' },
+    now,
+  )
+  expect(Object.hasOwn(deferred.sources[0]!, 'adaptiveReading')).toBe(false)
+  expect(Object.hasOwn(deferred.sources[0]!, 'readingIntervalDays')).toBe(false)
 })
