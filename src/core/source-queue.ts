@@ -25,15 +25,19 @@ export function queuedSources(sources: Source[], view: SourceQueueView, today: s
         (view === 'all' || sourceQueueState(source, today) === view) &&
         source.title.toLocaleLowerCase().includes(search),
     )
+    .map((source) => ({
+      source,
+      rank: ranks[sourceQueueState(source, today)],
+      date: source.queue?.availableOn ?? localDay(new Date(source.createdAt)),
+    }))
     .sort(
       (a, b) =>
-        ranks[sourceQueueState(a, today)] - ranks[sourceQueueState(b, today)] ||
-        (a.queue?.availableOn ?? localDay(new Date(a.createdAt))).localeCompare(
-          b.queue?.availableOn ?? localDay(new Date(b.createdAt)),
-        ) ||
-        a.createdAt.localeCompare(b.createdAt) ||
-        a.id.localeCompare(b.id),
+        a.rank - b.rank ||
+        a.date.localeCompare(b.date) ||
+        a.source.createdAt.localeCompare(b.source.createdAt) ||
+        a.source.id.localeCompare(b.source.id),
     )
+    .map((entry) => entry.source)
 }
 
 export function nextReadingDay(now: Date, days = 1) {

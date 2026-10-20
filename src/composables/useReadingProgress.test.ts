@@ -56,6 +56,17 @@ it('captures a reactive position without retaining its proxy or mutable input', 
   expect(progress.pending.size).toBe(0)
 })
 
+it('acknowledges only the position included in a queue action while retaining newer scrolling', async () => {
+  const { progress, update } = setup()
+  progress.record(update(100))
+  const first = progress.pending.get(update(0).sourceId)!
+  progress.record(update(200))
+  progress.acknowledge(update(0).sourceId, first.token)
+  expect(progress.pending.get(update(0).sourceId)!.update.position.offset).toBe(200)
+  progress.acknowledge(update(0).sourceId, progress.pending.get(update(0).sourceId)!.token)
+  expect(progress.pending.size).toBe(0)
+})
+
 it('coalesces scrolling, waits for a formal save and preserves the newest position while a write is pending', async () => {
   const { workspace, save, progress, update } = setup()
   const cards = workspace.library.value.cards,

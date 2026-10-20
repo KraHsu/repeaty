@@ -1052,8 +1052,8 @@ export const en = {
   稍后阅读: 'Read later',
   已归档: 'Archived',
   全部材料: 'All materials',
-  归档材料: 'Archive material',
-  加入待阅读: 'Move to to-read list',
+  归档材料: 'Archive',
+  加入待阅读: 'Read now',
   下次阅读日期: 'Next reading date',
   保存阅读安排: 'Save reading schedule',
   '按本机日期安排，到这一天会自动加入待阅读列表。':
@@ -1061,6 +1061,6 @@ export const en = {
   '安排于 {date}': 'Scheduled for {date}',
   暂无待阅读材料: 'Nothing to read today',
   '切换到稍后阅读或已归档查看材料。': 'Check Read later or Archived to find your materials.',
-  选择一篇材料开始阅读: 'Choose a material to start reading',
+  选择一篇材料开始阅读: 'Choose something to read',
   '当前列表为空。': 'This list is empty.',
 } as const

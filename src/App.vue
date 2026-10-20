@@ -32,7 +32,7 @@ import ReviewSession from './components/ReviewSession.vue'
 import NoteEditor from './components/NoteEditor.vue'
 import CollectionPanel from './components/CollectionPanel.vue'
 import ImportNotes from './components/ImportNotes.vue'
-import type { SourceInput, SourceExcerpt } from './core/source-data'
+import type { SourceInput, SourceExcerpt, SourceQueueUpdate } from './core/source-data'
 import PluginPanel from './components/PluginPanel.vue'
 import { remoteWorkspace, desktopEdition } from './edition'
 import {
@@ -255,6 +255,9 @@ async function saveSource(input: SourceInput, scope: string) {
 }
 async function deleteSource(id: string, scope: string) {
   return run(() => workspace.deleteSource(id, scope), '材料已删除')
+}
+async function arrangeSource(update: SourceQueueUpdate) {
+  return run(() => workspace.arrangeSource(update), '阅读安排已保存')
 }
 function createFromExcerpt(excerpt: SourceExcerpt, format: 'plain' | 'markdown') {
   notice.value = null
@@ -901,10 +904,12 @@ async function restoreBackup() {
         :busy="busy"
         :scope="workspace.scope.value"
         :reading="readingProgress"
+        :now="now"
         :can-share="desktopEdition && !remoteWorkspace"
         :read="workspace.getSource"
         :save="saveSource"
         :remove="deleteSource"
+        :arrange="arrangeSource"
         :action-error="notice?.error ? t(notice.text) : undefined"
         @create="createFromExcerpt"
         @share="mcpSelection = $event"
