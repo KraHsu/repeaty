@@ -194,3 +194,5 @@ docs/               # 使用指南、开发文档与 README 插图
 接口、完整示例、本地注册方式及版本兼容规则见[插件开发](PLUGINS.md)。内置 LeetCode 的登录配置、判题规则和限制见[LeetCode 插件](LEETCODE.md)。
 
 桌面构建与原生 WebKit 测试见[桌面版开发说明](DESKTOP.md#测试)。桌面 CI 为 Linux、Windows、macOS 分别构建安装包；LeetCode UI 测试模拟 IPC，Rust 测试使用受控上游服务，均不提交到真实账号。
+
+桌面安装程序支持 `--mcp-stdio --connection-file <绝对路径>`，在创建 Tauri 窗口前进入无界面 MCP 模式。它只代理运行中应用的本机接口，不读取 IndexedDB 或直接写入卡片。客户端配置生成、独占连接文件与协议限制见 [ADR 013](adr/013-mcp-clients.md)。构建后运行 `node scripts/test-mcp-stdio.mjs` 检查真实进程的初始化、工具发现、离线错误与 stdin EOF；三平台 CI 均运行此检查。Linux 原生测试再覆盖本机 HTTP、stdio 到 WebView 的查询、草稿确认和重启恢复，不调用付费模型或修改开发者的 Codex / Claude 配置。
