@@ -27,6 +27,7 @@ import {
 import type { AnkiPackage } from '../core/anki/types'
 import {
   addSource,
+  editSourceDetails,
   prepareSource,
   readSource,
   removeSource,
@@ -39,6 +40,7 @@ import type {
   ReadingUpdate,
   SourceQueueUpdate,
   SaveSourceExcerptInput,
+  SourceDetailsUpdate,
 } from '../core/source-data'
 import { arrangeSource } from '../core/source-queue'
 import { saveSearch } from '../core/search'
@@ -245,6 +247,28 @@ export function useLibrary() {
       if (update.position)
         next = saveReadingPosition(next, update.sourceId, update.mediaId, update.position, at)
       if (next !== library.value) await commit(() => next, { reason: '更改阅读安排前' })
+    },
+    async editSourceDetails(update: SourceDetailsUpdate) {
+      const target = repository
+      await savingDone
+      if (!ready.value || !update.scope || update.scope !== scope.value || target !== repository)
+        throw new LocalizedError(msg('学习库已变化，材料信息未保存。'))
+      let next = editSourceDetails(
+        library.value,
+        update.sourceId,
+        update.mediaId,
+        update.before,
+        update.details,
+      )
+      if (update.position)
+        next = saveReadingPosition(
+          next,
+          update.sourceId,
+          update.mediaId,
+          update.position,
+          new Date(),
+        )
+      if (next !== library.value) await commit(() => next, { reason: '编辑材料信息前' })
     },
     localLearningSnapshot,
     readLearning(query: LearningQuery, expectedScope: string) {

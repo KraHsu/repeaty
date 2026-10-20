@@ -59,16 +59,28 @@ export const sourceOriginSchema = z
     (origin) => origin.end > origin.start && origin.end - origin.start <= MAX_EXCERPT_CHARACTERS,
   )
 export type SourceOrigin = z.infer<typeof sourceOriginSchema>
+export const sourceDetailsSchema = z.strictObject({
+  title: z.string().trim().min(1).max(160),
+  url: z
+    .string()
+    .trim()
+    .max(2048)
+    .regex(/^(?:https?:\/\/[^\s]+)?$/)
+    .default(''),
+})
+export type SourceDetails = z.infer<typeof sourceDetailsSchema>
+export interface SourceDetailsUpdate {
+  sourceId: string
+  mediaId: string
+  scope: string
+  before: SourceDetails
+  details: SourceDetails
+  position?: ReadingPosition
+}
 export const sourceSchema = z
   .object({
     id,
-    title: z.string().trim().min(1).max(160),
-    url: z
-      .string()
-      .trim()
-      .max(2048)
-      .regex(/^(?:https?:\/\/[^\s]+)?$/)
-      .default(''),
+    ...sourceDetailsSchema.shape,
     format: z.enum(['plain', 'markdown']),
     mediaId: id,
     characters: z.number().int().min(1).max(MAX_SOURCE_CHARACTERS),

@@ -1,5 +1,11 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  编辑材料信息: 'Edit source details',
+  保存材料信息: 'Save source details',
+  材料信息已保存: 'Source details saved',
+  编辑材料信息前: 'Before editing source details',
+  '材料信息已变化，请重新打开编辑。': 'Source details have changed. Reopen the editor.',
+  '学习库已变化，材料信息未保存。': 'The library has changed. Source details were not saved.',
   开始一轮阅读: 'Start a reading round',
   材料筛选: 'Source filters',
   搜索标题: 'Search titles',
