@@ -261,6 +261,11 @@ const deferring = ref(false),
   arranging = ref(false),
   moving = ref(false),
   deferDate = ref('')
+const deferOptions = computed(() => [
+  { label: '明天', date: nextReadingDay(props.now) },
+  { label: '3 天后', date: nextReadingDay(props.now, 3) },
+  { label: '1 周后', date: nextReadingDay(props.now, 7) },
+])
 const canMove = computed(
   () =>
     !props.busy &&
@@ -1014,6 +1019,22 @@ async function download() {
       @close="deferring = false"
     >
       <form class="source-defer-form" @submit.prevent="arrange({ type: 'defer', date: deferDate })">
+        <fieldset class="source-defer-options" :disabled="busy || arranging">
+          <legend>{{ t('快捷安排') }}</legend>
+          <div>
+            <button
+              v-for="option in deferOptions"
+              :key="option.label"
+              type="button"
+              class="button secondary source-defer-option"
+              :aria-pressed="deferDate === option.date"
+              @click="deferDate = option.date"
+            >
+              <span>{{ t(option.label) }}</span>
+              <time :datetime="option.date">{{ readingDate(option.date) }}</time>
+            </button>
+          </div>
+        </fieldset>
         <label for="source-reading-date">{{ t('下次阅读日期') }}</label>
         <input
           id="source-reading-date"
@@ -1263,7 +1284,45 @@ async function download() {
 .source-defer-form {
   display: grid;
   gap: 1rem;
-  padding: 1.25rem 1.75rem;
+}
+.source-defer-options {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.source-defer-options legend {
+  padding: 0;
+  margin-bottom: 0.75rem;
+}
+.source-defer-options > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+.source-defer-option {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.85rem 0.5rem;
+  font-size: 1rem;
+}
+.source-defer-option time {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.source-defer-option[aria-pressed='true'] {
+  border-color: #67886d;
+  background: #e7eee3;
+}
+@media (max-width: 480px) {
+  .source-defer-options > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .source-defer-option {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.85rem 0.75rem;
+  }
 }
 .source-defer-form input {
   min-width: 0;

@@ -1076,6 +1076,10 @@ export const en = {
   归档材料: 'Archive',
   加入待阅读: 'Read now',
   下次阅读日期: 'Next reading date',
+  快捷安排: 'Quick schedule',
+  明天: 'Tomorrow',
+  '3 天后': 'In 3 days',
+  '1 周后': 'In 1 week',
   保存阅读安排: 'Save reading schedule',
   '按本机日期安排，到这一天会自动加入待阅读列表。':
     'The material returns to your to-read list on this date, using your local time.',
