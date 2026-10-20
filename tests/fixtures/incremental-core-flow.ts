@@ -167,6 +167,20 @@ export async function nestedDailyFlow(page: Page, read: () => Promise<Library>, 
   await page.getByRole('button', { name: '撤销阅读安排', exact: true }).click()
   await expect(page.locator('.reading-round strong')).toHaveText('第 1 篇，共 3 篇')
   await expect(page.getByRole('heading', { name: root.title, exact: true })).toBeVisible()
+  const beforeRead = (await read()).sources.find((source) => source.id === root.id)!
+  await page.getByRole('button', { name: '读过，安排下次', exact: true }).click()
+  const schedule = page.getByRole('dialog', { name: '读过，安排下次', exact: true })
+  await schedule.getByRole('button', { name: '保存阅读安排', exact: true }).click()
+  await expect(schedule).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: child.title, exact: true })).toBeVisible()
+  expect((await read()).sources.find((source) => source.id === root.id)!.readingIntervalDays).toBe(
+    1,
+  )
+  await page.getByRole('button', { name: '撤销阅读安排', exact: true }).click()
+  await expect(page.getByRole('heading', { name: root.title, exact: true })).toBeVisible()
+  expect(
+    sourceArrangement((await read()).sources.find((source) => source.id === root.id)!),
+  ).toEqual(sourceArrangement(beforeRead))
   for (let i = 0; i < 3; i++) {
     const next = page.getByRole('button', { name: i === 2 ? '完成本轮' : '下一篇', exact: true })
     await expect(next).toBeEnabled()
