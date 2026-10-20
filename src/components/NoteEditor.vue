@@ -22,6 +22,7 @@ const props = defineProps<{
   library: Library
   note?: Note
   initial?: Partial<NoteInput>
+  draft?: boolean
   deckId?: string
   busy: boolean
   getMedia: (id: string) => Promise<Blob | undefined>
@@ -42,7 +43,7 @@ const form = reactive<NoteInput>({
   excerpt: props.note?.excerpt ?? props.initial?.excerpt,
   front: props.note?.front ?? props.initial?.front ?? '',
   back: props.note?.back ?? props.initial?.back ?? '',
-  tags: [...(props.note?.tags ?? [])],
+  tags: [...(props.note?.tags ?? props.initial?.tags ?? [])],
   frontMedia: [...(props.note?.frontMedia ?? [])],
   backMedia: [...(props.note?.backMedia ?? [])],
 })
@@ -412,7 +413,7 @@ async function save(continueAdding = false) {
           {{ t('取消') }}
         </button>
         <button class="button primary" :disabled="busy">
-          {{ busy ? t('保存中…') : t('保存卡片') }}
+          {{ busy ? t('保存中…') : t(draft ? '确认并保存卡片' : '保存卡片') }}
         </button>
       </div>
     </fieldset>

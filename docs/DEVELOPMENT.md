@@ -113,7 +113,9 @@ Anki `.apkg` 在同源 Worker 中通过 sql.js 读取，HTML 用 parse5 作为�
 
 学习材料保存为 `sources` 元数据记录，正文采用 `text/plain` / `text/markdown` Blob，沿用附件的不可覆盖 ID、上传、快照保留与回收机制；加载学习库时不读取正文。摘录先以内联的 `Note.excerpt` 保存来源 ID、UTF-16 起止位置与原文引用，不提前建立独立片段树。导入统一换行为 LF，复习打开原文时再按需读取并检查位置。[用法与边界](SOURCES.md)。
 
-桌面 MCP 通过 Rust 本机 HTTP 监听和 IPC Channel 请求当前窗口的只读应用接口。`useLibrary.readLearning` 校验作用域与忙碌状态，`core/learning-reader.ts` 从已提交的内存视图投影有上限的结果；不绕过 IndexedDB、不读取提交正文，也不提供写工具。授权仅存于本次进程，切库和重载撤销。查询沿用现有修订号，无存储或备份格式变更。[设计与验证](adr/002-desktop-mcp-bridge.md) · [客户端配置](MCP.md)。
+桌面 MCP 的学习查询通过 Rust 本机 HTTP 监听和 IPC Channel 请求当前窗口的只读应用接口。`useLibrary.readLearning` 校验作用域与忙碌状态，`core/learning-reader.ts` 从已提交的内存视图投影有上限的结果；不绕过 IndexedDB，也不读取提交正文。授权仅存于本次进程，切库和重载撤销。查询沿用现有修订号，无存储或备份格式变更。[设计与验证](adr/002-desktop-mcp-bridge.md) · [客户端配置](MCP.md)。
+
+0.13.0 增加受选区授权限制的 `repeaty_selected_excerpt` 与 `repeaty_propose_cards`。`core/draft-proposals.ts` 管理临时批次、重试与容量；`desktop/mcp.ts` 在原生接受回复后才让草稿可见。`DraftWorkbench` 复用 NoteEditor，由用户确认调用 `saveExcerptNote` 才生成正式记录。临时草稿不属于库、API 或备份格式，不增加迁移。[ADR 003](adr/003-mcp-card-drafts.md)。
 
 本次数据格式升级为 Library v6、IndexedDB v8、SQLite v3、HTTP API v4、`.repeaty` v3 和 JSON 备份 v6。旧 Library / 备份升级时补空材料列表，保留原 ID、FSRS 状态、记录和检查点；旧客户端拒绝写入新版本数据库，前后端需要一起升级。旧 `.repeaty` v1 / v2 和 JSON 备份仍可恢复。服务端校验来源、快照和摘录引用，按材料逐份读取正文验证位置，避免批量恢复时同时缓存全部原文。
 

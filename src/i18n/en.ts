@@ -992,4 +992,32 @@ export const en = {
   '无法更新 MCP 连接，请重试。': 'Cannot update the MCP connection. Please try again.',
   'MCP 连接已关闭，请重新开启。': 'The MCP connection is closed. Enable it to reconnect.',
   '未能复制，请选中配置后手动复制。': 'Copy failed. Select the configuration and copy it manually.',
+  '可查询待复习题目、学习统计和练习摘要。在材料中分享摘录后，还可接收制卡草稿。':
+    'Use read-only queries for due questions, study statistics, and practice summaries. Share an excerpt from Materials to receive card drafts.',
+  '制卡草稿（{count}）': 'Card drafts ({count})',
+  制卡草稿: 'Card drafts',
+  '通过 MCP 制卡': 'Create cards with MCP',
+  '将这段摘录分享给已连接的客户端，供它生成制卡草稿。草稿保存前由你确认。':
+    'Share this excerpt with your connected client to generate card drafts. You review them before saving.',
+  草稿默认卡组: 'Default deck for drafts',
+  '客户端可能将摘录发送给它使用的模型服务。请确认选区中包含的内容。':
+    'Your client may send the excerpt to its model provider. Check the content you have selected.',
+  '正在分享…': 'Sharing…',
+  分享这段摘录: 'Share this excerpt',
+  当前分享的摘录: 'Shared excerpt',
+  停止分享: 'Stop sharing',
+  '在 MCP 客户端请求生成卡片草稿。收到后会显示在这里。':
+    'Ask your MCP client to create card drafts. They will appear here when received.',
+  '草稿在关闭、重载应用或切换学习库后清空。确认保存后，卡片才会进入学习库和备份。':
+    'Unconfirmed drafts are cleared when you close or reload the app, or switch libraries. Once saved, cards become part of your library and backups.',
+  '还没有待确认的草稿。': 'No drafts awaiting review.',
+  待确认草稿: 'Drafts awaiting review',
+  '材料或卡组已不存在，请丢弃草稿后重新选取。':
+    'The source or deck is no longer available. Discard the draft and select an excerpt again.',
+  检查并编辑: 'Review and edit',
+  丢弃草稿: 'Discard draft',
+  确认制卡草稿: 'Review card draft',
+  确认并保存卡片: 'Confirm and save card',
+  '材料或学习库已变化，请重新选取摘录。':
+    'The source or library has changed. Please select the excerpt again.',
 } as const

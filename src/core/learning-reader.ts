@@ -3,7 +3,12 @@ import { dueCards, blockedByLimit, dayKey, type CardEligibility } from './schedu
 import type { Library } from './model'
 
 export type LearningQuery = {
-  tool: 'repeaty_due_cards' | 'repeaty_study_stats' | 'repeaty_practice_history'
+  tool:
+    | 'repeaty_due_cards'
+    | 'repeaty_study_stats'
+    | 'repeaty_practice_history'
+    | 'repeaty_selected_excerpt'
+    | 'repeaty_propose_cards'
   arguments: Record<string, unknown>
 }
 export type LearningReader = {
@@ -11,9 +16,17 @@ export type LearningReader = {
   ready: { readonly value: boolean }
   busy: { readonly value: boolean }
   readLearning(query: LearningQuery, expectedScope: string): unknown
+  localLearningSnapshot(expectedScope: string): LocalLearningSnapshot
 }
+export type LocalLearningSnapshot = { library: Library; revision: number; scope: string }
 export type LearningReadError =
-  'library-unavailable' | 'library-changed' | 'invalid-arguments' | 'unsupported-query'
+  | 'library-unavailable'
+  | 'library-changed'
+  | 'invalid-arguments'
+  | 'unsupported-query'
+  | 'selection-unavailable'
+  | 'draft-limit'
+  | 'request-conflict'
 
 export class LearningQueryError extends Error {
   constructor(readonly code: LearningReadError) {

@@ -216,9 +216,17 @@ try {
     clientInfo: { name: 'repeaty-native-test', version: '1' },
   })
   assert.equal(initialized.result.serverInfo.name, 'repeaty')
+  assert.equal(
+    initialized.result.serverInfo.version,
+    JSON.parse(await readFile('package.json', 'utf8')).version,
+  )
   const mcpTools = await mcpRpc(mcp, 'tools/list', {})
-  assert.equal(mcpTools.result.tools.length, 3)
-  assert.ok(mcpTools.result.tools.every((tool) => tool.annotations.readOnlyHint))
+  assert.equal(mcpTools.result.tools.length, 5)
+  assert.ok(
+    mcpTools.result.tools.every(
+      (tool) => tool.annotations.readOnlyHint === (tool.name !== 'repeaty_propose_cards'),
+    ),
+  )
   const stats = (await mcpRpc(mcp, 'tools/call', { name: 'repeaty_study_stats', arguments: {} }))
     .result.structuredContent
   assert.equal(stats.totals.cards, beforeMcp.cards.length)
@@ -236,6 +244,11 @@ try {
     await mcpRpc(mcp, 'tools/call', { name: 'repeaty_practice_history', arguments: {} })
   ).result.structuredContent
   assert.equal(history.total, 0)
+  const unshared = await mcpRpc(mcp, 'tools/call', {
+    name: 'repeaty_selected_excerpt',
+    arguments: {},
+  })
+  assert.equal(unshared.result.structuredContent.code, 'selection-unavailable')
   const stale = await mcpRpc(mcp, 'tools/call', {
     name: 'repeaty_due_cards',
     arguments: { revision: stats.revision + 1 },
@@ -776,6 +789,143 @@ try {
     async () =>
       (await execute("return document.querySelector('.source-text')?.value")) === sourceText,
     'native snapshot after restart',
+  )
+  const selectDraftExcerpt = () =>
+    execute(
+      `const el=document.querySelector('.source-text');
+    const start=el.value.lastIndexOf(arguments[0]);el.focus();el.setSelectionRange(start,start+arguments[0].length);el.dispatchEvent(new Event('select',{bubbles:true}));`,
+      sourceQuote,
+    )
+  await selectDraftExcerpt()
+  await click('通过 MCP 制卡')
+  await waitButton('开启 MCP')
+  await click('开启 MCP')
+  await waitButton('分享这段摘录')
+  await writeFile(
+    'test-results/native-draft-sharing.png',
+    Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
+  )
+  const draftMcp = (await invoke('mcp_configuration')).mcpServers.repeaty
+  await click('分享这段摘录')
+  await until(
+    () => execute("return !!document.querySelector('.draft-queue')"),
+    'native draft queue',
+  )
+  const selection = (
+    await mcpRpc(draftMcp, 'tools/call', { name: 'repeaty_selected_excerpt', arguments: {} })
+  ).result.structuredContent
+  assert.equal(selection.text, sourceQuote)
+  assert.equal(Object.hasOwn(selection, 'url'), false)
+  assert.equal(JSON.stringify(selection).includes('Context 中文'), false)
+  const beforeDrafts = await libraryRecords()
+  const draftArguments = {
+    selectionId: selection.selectionId,
+    requestId: 'native-draft-batch',
+    cards: [
+      {
+        type: 'basic',
+        front: 'Native MCP long question ' + '字'.repeat(9000),
+        back: 'Native MCP answer',
+        tags: ['native-draft'],
+      },
+      { type: 'reversed', front: 'forward', back: 'reverse' },
+      { type: 'cloze', front: 'Native {{c1::answer}} text' },
+    ],
+  }
+  const receipt = await mcpRpc(draftMcp, 'tools/call', {
+    name: 'repeaty_propose_cards',
+    arguments: draftArguments,
+  })
+  assert.equal(receipt.result.isError, false)
+  await until(
+    () => execute("return document.querySelectorAll('.draft-list li').length===3"),
+    'native received drafts',
+  )
+  const retry = await mcpRpc(draftMcp, 'tools/call', {
+    name: 'repeaty_propose_cards',
+    arguments: draftArguments,
+  })
+  assert.deepEqual(retry.result.structuredContent, receipt.result.structuredContent)
+  assert.deepEqual(await libraryRecords(), beforeDrafts)
+  await click('停止分享')
+  assert.equal(
+    (await mcpRpc(draftMcp, 'tools/call', { name: 'repeaty_selected_excerpt', arguments: {} }))
+      .result.structuredContent.code,
+    'selection-unavailable',
+  )
+  for (let remaining = 3; remaining > 0; remaining--) {
+    await click('检查并编辑')
+    await until(
+      () => execute("return !!document.querySelector('#card-front')"),
+      'native draft editor',
+    )
+    if (remaining === 3) {
+      await fill('#card-front', 'Native MCP edited question')
+      await fill('#card-back', 'Native MCP edited answer')
+    }
+    await waitButton('确认并保存卡片')
+    await click('确认并保存卡片')
+    await until(
+      () =>
+        execute(
+          "return !!document.querySelector('.draft-queue') && document.querySelectorAll('.draft-list li').length===arguments[0]",
+          remaining - 1,
+        ),
+      'native confirmed draft',
+    )
+  }
+  const afterDrafts = await libraryRecords()
+  assert.equal(afterDrafts.notes.length, beforeDrafts.notes.length + 3)
+  assert.equal(afterDrafts.cards.length, beforeDrafts.cards.length + 4)
+  assert.deepEqual(afterDrafts.reviews, beforeDrafts.reviews)
+  const oldIds = new Set(beforeDrafts.notes.map((note) => note.id))
+  const newNotes = afterDrafts.notes
+    .filter((note) => !oldIds.has(note.id))
+    .map((note) => note.value)
+  assert.deepEqual(newNotes.map((note) => note.type).sort(), ['basic', 'cloze', 'reversed'])
+  assert.ok(newNotes.every((note) => note.excerpt.quote === sourceQuote))
+  assert.ok(
+    newNotes.some(
+      (note) => note.front === 'Native MCP edited question' && note.tags.includes('native-draft'),
+    ),
+  )
+  await execute("document.querySelector('dialog .modal-header button').click()")
+  await selectDraftExcerpt()
+  await click('通过 MCP 制卡')
+  await waitButton('分享这段摘录')
+  await click('分享这段摘录')
+  await until(
+    () => execute("return !!document.querySelector('.draft-queue')"),
+    'native second excerpt shared',
+  )
+  const nextSelection = (
+    await mcpRpc(draftMcp, 'tools/call', { name: 'repeaty_selected_excerpt', arguments: {} })
+  ).result.structuredContent
+  assert.equal(nextSelection.text, sourceQuote)
+  const unconfirmed = await mcpRpc(draftMcp, 'tools/call', {
+    name: 'repeaty_propose_cards',
+    arguments: {
+      ...draftArguments,
+      selectionId: nextSelection.selectionId,
+      requestId: 'unconfirmed',
+      cards: [draftArguments.cards[0]],
+    },
+  })
+  assert.equal(unconfirmed.result.isError, false)
+  await until(
+    () => execute("return document.querySelectorAll('.draft-list li').length===1"),
+    'native unsaved draft',
+  )
+  assert.deepEqual(await libraryRecords(), afterDrafts)
+  await command(`/session/${session}/refresh`, {})
+  await until(
+    () => execute("return document.querySelectorAll('.deck-title').length===1"),
+    'native confirmed drafts after restart',
+  )
+  assert.deepEqual(await libraryRecords(), afterDrafts)
+  assert.equal(await execute("return document.body.textContent.includes('制卡草稿（')"), false)
+  console.log(
+    'Native MCP excerpt sharing, long drafts, retry, three note types, confirmation and restart passed',
   )
   console.log(
     'Native WebKit/Tauri: starter lifecycle, accounts, upstream, credentials, backup, LeetCode history and Anki import/update, source snapshots, excerpt review and native text export passed.',

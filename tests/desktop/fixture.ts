@@ -38,6 +38,7 @@ export const test = base.extend<{ native: void; emptyWorkspace: void }>({
           requestId = 0
         let channel: { onmessage(request: unknown): void } | undefined
         const pending = new Map<string, (value: unknown) => void>()
+        Object.defineProperty(window, '__repeatyTestMcpFailReply', { value: false, writable: true })
         const status = () => ({
           enabled: mcpEnabled,
           available: mcpAvailable,
@@ -104,6 +105,14 @@ export const test = base.extend<{ native: void; emptyWorkspace: void }>({
                 }
               }
               if (command === 'mcp_reply') {
+                if (
+                  (window as unknown as { __repeatyTestMcpFailReply: boolean })
+                    .__repeatyTestMcpFailReply
+                ) {
+                  pending.get(args.id as string)?.({ status: 'error', code: 'read-timeout' })
+                  pending.delete(args.id as string)
+                  throw 'library-unavailable'
+                }
                 pending.get(args.id as string)?.(args.reply)
                 pending.delete(args.id as string)
                 return

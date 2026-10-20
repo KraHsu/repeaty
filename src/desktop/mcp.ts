@@ -6,6 +6,7 @@ import {
   type LearningQuery,
   type LearningReader,
 } from '../core/learning-reader'
+import { draftSession } from './drafts'
 
 type Status = { enabled: boolean; available: boolean; url: string | null }
 type BridgeRequest = { id: string; scope: string; query: LearningQuery }
@@ -24,6 +25,7 @@ export async function startMcp() {
   return refreshMcpStatus()
 }
 export async function stopMcp() {
+  draftSession.revoke()
   await invoke('mcp_stop')
   return refreshMcpStatus()
 }
@@ -36,25 +38,44 @@ export async function connectLearningReader(reader: LearningReader): Promise<() 
     sequence = 0,
     scopeEpoch = 0,
     lastScope = ''
-  onRequest.onmessage = (request) => {
+  onRequest.onmessage = async (request) => {
     let reply: unknown
+    let proposal: ReturnType<typeof draftSession.prepare> | undefined
     try {
       if (!alive || remoteWorkspace.value) throw new LearningQueryError('library-unavailable')
-      reply = { status: 'ok', data: reader.readLearning(request.query, request.scope) }
+      let data: unknown
+      if (request.query.tool === 'repeaty_selected_excerpt') {
+        data = draftSession.readSelection(
+          reader.localLearningSnapshot(request.scope),
+          request.query.arguments,
+        )
+      } else if (request.query.tool === 'repeaty_propose_cards') {
+        proposal = draftSession.prepare(
+          reader.localLearningSnapshot(request.scope),
+          request.query.arguments,
+        )
+        data = proposal.receipt
+      } else data = reader.readLearning(request.query, request.scope)
+      reply = { status: 'ok', data }
     } catch (error) {
       reply = {
         status: 'error',
         code: error instanceof LearningQueryError ? error.code : 'library-unavailable',
       }
     }
-    void invoke('mcp_reply', { id: request.id, scope: request.scope, reply }).catch(() => {
-      // Cancellation, expiry and scope changes invalidate an outstanding reply.
-    })
+    try {
+      await invoke('mcp_reply', { id: request.id, scope: request.scope, reply })
+      proposal?.finish(true)
+    } catch {
+      // Cancelled, expired and revoked calls must not display unacknowledged drafts.
+      proposal?.finish(false)
+    }
   }
   try {
     const attachment = await invoke<string>('mcp_attach', { onRequest })
     function update() {
       const scope = reader.scope.value
+      draftSession.bindScope(remoteWorkspace.value ? '' : scope)
       if (scope !== lastScope) {
         scopeEpoch++
         lastScope = scope
@@ -88,6 +109,7 @@ export async function connectLearningReader(reader: LearningReader): Promise<() 
     return () => {
       alive = false
       stop()
+      draftSession.bindScope('')
       void invoke('mcp_workspace', {
         attachment,
         workspace: { scope: '', scopeEpoch: ++scopeEpoch, sequence: ++sequence, available: false },
@@ -100,3 +122,9 @@ export async function connectLearningReader(reader: LearningReader): Promise<() 
     }
   }
 }
+watch(
+  () => mcpStatus.value.enabled,
+  (enabled) => {
+    if (!enabled) draftSession.revoke()
+  },
+)
