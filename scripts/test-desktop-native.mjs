@@ -981,6 +981,100 @@ try {
   console.log(
     'Native MCP excerpt sharing, long drafts, retry, three note types, confirmation and restart passed',
   )
+  await click('学习材料')
+  await until(
+    () =>
+      execute("return document.querySelector('.source-text')?.getAttribute('aria-busy')==='false'"),
+    'native reading ready',
+  )
+  await execute(
+    "const reader=document.querySelector('.source-text');reader.scrollTop=(reader.scrollHeight-reader.clientHeight)*0.45;reader.dispatchEvent(new Event('scroll'));",
+  )
+  await waitButton('保存阅读位置')
+  await click('保存阅读位置')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.reading-progress')?.dataset.readingStatus==='saved'",
+      ),
+    'native reading position saved',
+  )
+  const sourceRecords = () =>
+    execute(`return (async()=>{const db=await new Promise((resolve,reject)=>{const request=indexedDB.open('repeaty');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
+    try{return await new Promise((resolve,reject)=>{const request=db.transaction('sources').objectStore('sources').getAll();request.onsuccess=()=>resolve(request.result.map(row=>row.value));request.onerror=()=>reject(request.error)})}finally{db.close()}})();`)
+  const plainReading = (await sourceRecords())[0].reading
+  assert.equal(plainReading.view, 'source')
+  assert.ok(plainReading.offset > 1000)
+  const plainScroll = await execute("return document.querySelector('.source-text').scrollTop")
+  await command(`/session/${session}`, undefined, 'DELETE')
+  session = undefined
+  await createSession()
+  await until(
+    () => execute("return document.querySelectorAll('.deck-title').length===1"),
+    'native app reopened with reading position',
+  )
+  await click('学习材料')
+  await until(
+    () =>
+      execute("return document.querySelector('.source-text')?.getAttribute('aria-busy')==='false'"),
+    'native plain reading restored',
+  )
+  assert.deepEqual((await sourceRecords())[0].reading, plainReading)
+  assert.ok(
+    Math.abs(
+      (await execute("return document.querySelector('.source-text').scrollTop")) - plainScroll,
+    ) < 60,
+  )
+  await click('阅读 Markdown 预览')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-markdown-preview')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native reading preview ready',
+  )
+  await execute(
+    "const reader=document.querySelector('.source-markdown-preview');reader.scrollTop=(reader.scrollHeight-reader.clientHeight)*0.63;reader.dispatchEvent(new Event('scroll'));",
+  )
+  await waitButton('保存阅读位置')
+  await click('保存阅读位置')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.reading-progress')?.dataset.readingStatus==='saved'",
+      ),
+    'native preview position saved',
+  )
+  const previewReading = (await sourceRecords())[0].reading
+  assert.equal(previewReading.view, 'preview')
+  assert.ok(previewReading.fraction > 0.2)
+  await command(`/session/${session}`, undefined, 'DELETE')
+  session = undefined
+  await createSession()
+  await until(
+    () => execute("return document.querySelectorAll('.deck-title').length===1"),
+    'native app reopened with preview position',
+  )
+  await click('学习材料')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-markdown-preview')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native preview restored',
+  )
+  assert.ok(
+    (await execute("return document.querySelector('.source-markdown-preview').scrollTop")) > 1000,
+  )
+  assert.deepEqual((await sourceRecords())[0].reading, previewReading)
+  assert.deepEqual(await libraryRecords(), confirmed)
+  await writeFile(
+    'test-results/native-reading-restored.png',
+    Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
+  )
+  console.log(
+    'Native reading positions: plain text and Markdown preview survive application exits without changing study records',
+  )
   console.log(
     'Native WebKit/Tauri: starter lifecycle, accounts, upstream, credentials, backup, LeetCode history and Anki import/update, source snapshots, excerpt review and native text export passed.',
   )

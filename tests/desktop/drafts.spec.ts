@@ -28,6 +28,10 @@ async function prepareSource(page: Page) {
   await previewSource(page)
   await saveSource(page)
   await selectSourceExcerpt(page)
+  // Settle the independently saved reading position before asserting that drafts
+  // leave every formal record unchanged.
+  await page.getByRole('button', { name: '保存阅读位置', exact: true }).click()
+  await expect(page.locator('.reading-progress')).toHaveAttribute('data-reading-status', 'saved')
   await page.getByRole('button', { name: '通过 MCP 制卡', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '通过 MCP 制卡', exact: true })
   await expect(dialog.getByRole('button', { name: '分享这段摘录' })).toBeDisabled()

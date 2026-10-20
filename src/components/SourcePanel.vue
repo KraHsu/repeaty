@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, reactive, ref, watch } from 'vue'
 import { FileText, Plus, Upload } from '@lucide/vue'
 import { t, locale, type DisplayMessage } from '../i18n'
 import type { Library } from '../core/model'
@@ -9,15 +9,17 @@ import {
   type SourceInput,
   type SourceExcerpt,
 } from '../core/source-data'
-import { sourceExcerpt } from '../core/sources'
+import { sourceExcerpt, recentSource } from '../core/sources'
+import type { ReadingProgress } from '../composables/useReadingProgress'
 import { createExportFile } from '@repeaty-platform'
 import AppModal from './AppModal.vue'
-import CardContent from './CardContent.vue'
+import SourceReader from './SourceReader.vue'
 
 const props = defineProps<{
   library: Library
   busy: boolean
   scope: string
+  reading: ReadingProgress
   canShare?: boolean
   actionError?: string
   read: (id: string, signal?: AbortSignal) => Promise<string>
@@ -30,7 +32,7 @@ const emit = defineEmits<{
   share: [excerpt: SourceExcerpt]
   clearNotice: []
 }>()
-const selectedId = ref(props.library.sources.at(-1)?.id ?? '')
+const selectedId = ref(recentSource(props.library.sources)?.id ?? '')
 const source = computed(() => props.library.sources.find((entry) => entry.id === selectedId.value))
 const linked = computed(() =>
   props.library.notes.filter((note) => note.excerpt?.sourceId === selectedId.value),
@@ -38,7 +40,6 @@ const linked = computed(() =>
 const text = ref(''),
   error = ref<DisplayMessage>(''),
   loading = ref(false),
-  preview = ref(false),
   excerpt = ref<SourceExcerpt>()
 const importing = ref(false),
   deleting = ref(false),
@@ -58,33 +59,39 @@ const pages = computed(() => Math.max(1, Math.ceil(filteredSources.value.length 
 const visibleSources = computed(() =>
   filteredSources.value.slice(page.value * pageSize, (page.value + 1) * pageSize),
 )
-watch([query, () => props.library.sources], () => {
+watch([query, () => props.library.sources.length], () => {
   page.value = 0
 })
 const form = reactive<SourceInput>({ title: '', url: '', format: 'markdown', content: '' })
 const fileInput = ref<HTMLInputElement>(),
-  reader = ref<HTMLTextAreaElement>()
+  reader = ref<InstanceType<typeof SourceReader>>()
 let controller: AbortController | undefined,
   fileGeneration = 0
+let readingLoad: Promise<void> = Promise.resolve()
 watch(
   () => props.library.sources,
   (sources) => {
-    if (!sources.some((entry) => entry.id === selectedId.value))
+    if (!sources.some((entry) => entry.id === selectedId.value)) {
       selectedId.value = sources.at(-1)?.id ?? ''
+      page.value = 0
+    }
   },
 )
-watch(() => source.value?.mediaId, load, { immediate: true })
+watch([() => source.value?.id, () => source.value?.mediaId], load, { immediate: true })
 onUnmounted(() => {
   controller?.abort()
   fileGeneration++
 })
-async function load() {
+function load() {
+  readingLoad = readSelected()
+  return readingLoad
+}
+async function readSelected() {
   controller?.abort()
   const current = new AbortController()
   controller = current
   text.value = ''
   excerpt.value = undefined
-  preview.value = false
   error.value = ''
   if (!source.value) {
     loading.value = false
@@ -99,19 +106,37 @@ async function load() {
     if (controller === current) loading.value = false
   }
 }
-function select() {
-  if (!source.value || !reader.value) return
+function select(sourceId: string, start: number, end: number) {
+  if (!source.value || source.value.id !== sourceId) return
   try {
-    excerpt.value = sourceExcerpt(
-      source.value,
-      text.value,
-      reader.value.selectionStart,
-      reader.value.selectionEnd,
-    )
+    excerpt.value = sourceExcerpt(source.value, text.value, start, end)
   } catch {
     excerpt.value = undefined
   }
 }
+async function resume(id: string) {
+  const scope = props.scope
+  openSource(id)
+  await nextTick()
+  await readingLoad
+  await nextTick()
+  if (scope === props.scope && source.value?.id === id) await reader.value?.resume()
+}
+function openSource(id: string) {
+  selectedId.value = id
+  const entry = props.library.sources.find((source) => source.id === id)
+  if (entry?.reading)
+    props.reading.record(
+      { sourceId: id, mediaId: entry.mediaId, scope: props.scope, position: entry.reading },
+      true,
+    )
+}
+function remember() {
+  const update = reader.value?.capture()
+  if (update) props.reading.record(update, true)
+}
+const readingError = computed(() => props.reading.pending.get(selectedId.value)?.error)
+const pendingReading = computed(() => props.reading.pending.has(selectedId.value))
 function openImport() {
   emit('clearNotice')
   fileGeneration++
@@ -224,20 +249,33 @@ async function download() {
         <label class="sr-only" for="source-search">{{ t('搜索材料') }}</label
         ><input id="source-search" v-model="query" type="search" :placeholder="t('搜索材料')" />
         <p v-if="!visibleSources.length" class="form-note">{{ t('没有找到材料。') }}</p>
-        <button
+        <div
           v-for="entry in visibleSources"
           :key="entry.id"
           class="source-list-item"
           :class="{ selected: entry.id === selectedId }"
-          :aria-pressed="entry.id === selectedId"
-          @click="selectedId = entry.id"
         >
-          <strong>{{ entry.title }}</strong
+          <button
+            class="source-list-title"
+            :aria-pressed="entry.id === selectedId"
+            @click="openSource(entry.id)"
+          >
+            <strong>{{ entry.title }}</strong></button
           ><span
             >{{ entry.format === 'markdown' ? 'Markdown' : t('纯文本') }} ·
             {{ new Date(entry.createdAt).toLocaleDateString(locale) }}</span
           >
-        </button>
+          <template v-if="entry.reading">
+            <span>{{
+              t('上次阅读 {date}', {
+                date: new Date(entry.reading.updatedAt).toLocaleString(locale),
+              })
+            }}</span>
+            <button class="text-button source-continue" @click="resume(entry.id)">
+              {{ t('继续阅读') }}
+            </button>
+          </template>
+        </div>
         <nav v-if="pages > 1" class="source-list-pages" :aria-label="t('材料列表分页')">
           <button type="button" class="text-button" :disabled="page === 0" @click="page--">
             {{ t('上一页') }}</button
@@ -276,33 +314,59 @@ async function download() {
           <button class="button secondary" @click="load">{{ t('重试') }}</button></template
         >
         <template v-else>
-          <div class="source-selection-tools">
-            <p class="form-note">
-              {{ t('选中原文中的文字，再点击「用摘录制卡」。每次最多 10000 个字符。') }}
+          <div
+            class="reading-progress"
+            :data-reading-status="
+              readingError
+                ? 'error'
+                : pendingReading
+                  ? 'pending'
+                  : source.reading
+                    ? 'saved'
+                    : 'empty'
+            "
+          >
+            <p v-if="readingError" class="import-warning" role="alert">{{ t(readingError) }}</p>
+            <p v-else class="form-note" role="status">
+              {{
+                t(
+                  pendingReading
+                    ? '正在保存阅读位置…'
+                    : source.reading
+                      ? '阅读位置已保存'
+                      : '阅读位置会自动保存。',
+                )
+              }}
             </p>
-            <button
-              v-if="source.format === 'markdown'"
-              class="text-button"
-              :aria-pressed="preview"
-              @click="preview = !preview"
-            >
-              {{ t(preview ? '返回原文选取摘录' : '阅读 Markdown 预览') }}
-            </button>
+            <div class="source-actions">
+              <button
+                v-if="readingError"
+                class="text-button"
+                :disabled="busy"
+                @click="reading.flush()"
+              >
+                {{ t('重试保存位置') }}
+              </button>
+              <button class="text-button" :disabled="busy || !reader?.ready" @click="remember">
+                {{ t('保存阅读位置') }}
+              </button>
+              <button
+                class="text-button"
+                :disabled="busy || !reader?.ready"
+                @click="reader?.restart()"
+              >
+                {{ t('从头阅读') }}
+              </button>
+            </div>
           </div>
-          <div v-if="preview" class="source-markdown-preview">
-            <CardContent :text="text" format="markdown" />
-          </div>
-          <textarea
-            v-else
+          <SourceReader
+            :key="source.id + ':' + source.mediaId"
             ref="reader"
-            class="source-text"
-            :value="text"
-            readonly
-            :aria-label="t('材料正文')"
+            :source="source"
+            :text="text"
+            :scope="scope"
             @select="select"
-            @keyup="select"
-            @mouseup="select"
-            @touchend="select"
+            @position="reading.record($event)"
           />
           <div class="source-excerpt-action">
             <span>{{
@@ -457,8 +521,7 @@ async function download() {
   justify-content: space-between;
   gap: 0.4rem;
 }
-.source-list input,
-.source-text {
+.source-list input {
   width: 100%;
   min-width: 0;
   border: 1px solid #d4decd;
@@ -467,8 +530,7 @@ async function download() {
   color: #293d33;
   padding: 11px 13px;
 }
-.source-list input:hover,
-.source-text:hover {
+.source-list input:hover {
   border-color: #a8bca2;
 }
 .source-list-item {
@@ -480,12 +542,32 @@ async function download() {
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 10px;
-  cursor: pointer;
   overflow-wrap: anywhere;
 }
 .source-list-item.selected {
   border-color: #67886d;
   background: #eef4e9;
+}
+.source-list-title {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+}
+.source-continue {
+  justify-self: start;
+}
+.reading-progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--line);
 }
 .source-list-item span {
   font-size: 0.9rem;
@@ -521,27 +603,6 @@ async function download() {
   gap: 0.8rem;
   align-items: center;
   flex-wrap: wrap;
-}
-.source-text {
-  width: 100%;
-  min-height: 28rem;
-  resize: vertical;
-  line-height: 1.8;
-  font-family: inherit;
-  font-size: 1rem;
-}
-.source-selection-tools {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  align-items: center;
-}
-.source-markdown-preview {
-  max-height: 36rem;
-  overflow: auto;
-}
-.source-markdown-preview :deep(.card-content) {
-  font-size: 1rem;
 }
 .source-excerpt-action {
   display: flex;
