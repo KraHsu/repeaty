@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, reactive, ref, shallowRef, watch } from 'vue'
 import { FileText, Plus, Upload } from '@lucide/vue'
-import { t, locale, type DisplayMessage } from '../i18n'
+import { t, locale, duration, type DisplayMessage } from '../i18n'
 import type { Library } from '../core/model'
 import {
   MAX_SOURCE_BYTES,
   MAX_SOURCE_CHARACTERS,
   characterBoundary,
+  READING_INTERVAL_DAYS,
   type SaveSourceExcerptInput,
   type SourceInput,
   type SourceExcerpt,
@@ -21,6 +22,7 @@ import {
   queuedSources,
   sourceQueueState,
   nextReadingDay,
+  nextReadingInterval,
   type SourceQueueView,
 } from '../core/source-queue'
 import type { ReadingProgress } from '../composables/useReadingProgress'
@@ -258,6 +260,8 @@ function remember() {
 const readingError = computed(() => props.reading.pending.get(selectedId.value)?.error)
 const pendingReading = computed(() => props.reading.pending.has(selectedId.value))
 const deferring = ref(false),
+  schedulingRead = ref(false),
+  resettingInterval = ref(false),
   arranging = ref(false),
   moving = ref(false),
   deferDate = ref('')
@@ -266,6 +270,11 @@ const deferOptions = computed(() => [
   { label: '3 天后', date: nextReadingDay(props.now, 3) },
   { label: '1 周后', date: nextReadingDay(props.now, 7) },
 ])
+const intervalPlan = computed(() => source.value && nextReadingInterval(source.value, props.now))
+watch([() => source.value?.id, () => source.value?.mediaId], () => {
+  schedulingRead.value = false
+  resettingInterval.value = false
+})
 const canMove = computed(
   () =>
     !props.busy &&
@@ -364,6 +373,15 @@ function openDefer() {
   deferDate.value = nextReadingDay(props.now)
   deferring.value = true
 }
+function openReadSchedule() {
+  if (!canMove.value || queueState.value === 'archived') return
+  emit('clearNotice')
+  schedulingRead.value = true
+}
+function openIntervalReset() {
+  emit('clearNotice')
+  resettingInterval.value = true
+}
 async function arrange(action: SourceQueueAction) {
   const current = source.value
   if (!current || props.busy || arranging.value || moving.value) return
@@ -386,10 +404,12 @@ async function arrange(action: SourceQueueAction) {
       props.reading.acknowledge(current.id, pending?.token)
       if (alive && props.scope === scope) {
         deferring.value = false
+        schedulingRead.value = false
+        resettingInterval.value = false
         if (
           started &&
           round.value === started &&
-          (action.type === 'defer' || action.type === 'archive')
+          (action.type === 'defer' || action.type === 'archive' || action.type === 'read')
         ) {
           showRound(advanceReadingRound(started, props.library.sources, today.value))
         } else if (action.type === 'priority') {
@@ -771,6 +791,14 @@ async function download() {
             </div>
             <div class="source-actions">
               <button
+                v-if="queueState !== 'archived'"
+                class="button primary"
+                :disabled="!canMove"
+                @click="openReadSchedule"
+              >
+                {{ t('读过，安排下次') }}
+              </button>
+              <button
                 v-if="queueState !== 'ready'"
                 class="button secondary"
                 :disabled="busy || arranging || moving"
@@ -799,6 +827,20 @@ async function download() {
           <p id="source-priority-help" class="form-note source-priority-help">
             {{ t('待阅读先按优先级、再按日期排序。') }}
           </p>
+          <div v-if="source.readingIntervalDays" class="source-interval-control">
+            <p class="form-note">
+              {{
+                t('上次间隔：{interval}', { interval: duration(source.readingIntervalDays, 'day') })
+              }}
+            </p>
+            <button
+              class="text-button"
+              :disabled="busy || arranging || moving"
+              @click="openIntervalReset"
+            >
+              {{ t('重置间隔') }}
+            </button>
+          </div>
           <p v-if="loading" role="status">{{ t('正在读取原文…') }}</p>
           <template v-else-if="error"
             ><p class="import-warning" role="alert">{{ t(error) }}</p>
@@ -1008,6 +1050,70 @@ async function download() {
           <button class="button primary" :disabled="busy || savingExcerpt">
             {{ t('保存摘录') }}
           </button>
+        </div>
+      </form>
+    </AppModal>
+    <AppModal
+      v-if="schedulingRead && source && intervalPlan"
+      :title="t('读过，安排下次')"
+      :busy="busy || arranging"
+      :error="actionError"
+      @close="schedulingRead = false"
+    >
+      <form class="source-defer-form" @submit.prevent="arrange({ type: 'read', ...intervalPlan })">
+        <p class="source-interval-summary">
+          {{ t('本次间隔：{interval}', { interval: duration(intervalPlan.intervalDays, 'day') }) }}
+        </p>
+        <p class="source-interval-date">
+          {{ t('下次阅读：{date}', { date: readingDate(intervalPlan.date) }) }}
+        </p>
+        <ol class="source-interval-steps" :aria-label="t('阅读间隔')">
+          <li
+            v-for="days in READING_INTERVAL_DAYS"
+            :key="days"
+            :aria-current="days === intervalPlan.intervalDays ? 'step' : undefined"
+          >
+            {{ duration(days, 'day') }}
+          </li>
+        </ol>
+        <p class="form-note">
+          {{ t('每次确认后依次使用 1、3、7、14、30 天，之后保持 30 天。') }}
+        </p>
+        <p class="form-note">{{ t('按本机日期安排，到这一天会自动加入待阅读列表。') }}</p>
+        <div class="form-actions">
+          <button
+            type="button"
+            class="button secondary"
+            :disabled="busy || arranging"
+            @click="schedulingRead = false"
+          >
+            {{ t('取消') }}
+          </button>
+          <button class="button primary" :disabled="busy || arranging || !canMove">
+            {{ t('保存阅读安排') }}
+          </button>
+        </div>
+      </form>
+    </AppModal>
+    <AppModal
+      v-if="resettingInterval && source"
+      :title="t('重置间隔')"
+      :busy="busy || arranging"
+      :error="actionError"
+      @close="resettingInterval = false"
+    >
+      <form class="source-defer-form" @submit.prevent="arrange({ type: 'reset-interval' })">
+        <p>{{ t('下次从 1 天开始，已安排的阅读日期保持不变。') }}</p>
+        <div class="form-actions">
+          <button
+            type="button"
+            class="button secondary"
+            :disabled="busy || arranging"
+            @click="resettingInterval = false"
+          >
+            {{ t('取消') }}
+          </button>
+          <button class="button primary" :disabled="busy || arranging">{{ t('重置间隔') }}</button>
         </div>
       </form>
     </AppModal>
@@ -1277,6 +1383,40 @@ async function download() {
 }
 .source-priority-help {
   margin: 0;
+}
+.source-interval-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+.source-interval-control p {
+  margin: 0;
+}
+.source-interval-summary {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+.source-interval-date {
+  font-size: 1rem;
+}
+.source-interval-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.source-interval-steps li {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.875rem;
+}
+.source-interval-steps li[aria-current='step'] {
+  border-color: #67886d;
+  background: #e7eee3;
 }
 .source-queue-empty {
   padding: 2rem 1rem;

@@ -247,13 +247,13 @@ it('retains reading arrangements in archives, JSON, rekeying, stored revisions a
   await repo.close()
 })
 
-it.each([7, 8, 9])(
+it.each([7, 8, 9, 10])(
   'migrates v%i libraries and backups without inventing priority or arrangements',
   async (version) => {
     const { library, asset } = sample()
     if (version >= 8)
       library.sources[0]!.queue = { state: 'active', availableOn: nextReadingDay(now) }
-    if (version === 9) library.sources[0]!.priority = 'high'
+    if (version >= 9) library.sources[0]!.priority = 'high'
     const old = { ...library, version }
     expect(migrateLibrary(old)).toEqual(library)
     const json = JSON.parse(await exportBackup(library, async () => asset.blob))

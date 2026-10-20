@@ -215,30 +215,26 @@ it('upgrades a v13 record database while preserving drafts, snapshots, media and
           { id: value.id, value, position, deckId: store === 'cards' ? 'deck' : undefined },
           value.id,
         )
-  await tx
-    .objectStore('meta')
-    .put(
-      {
-        revision: 7,
-        counts: Object.fromEntries(recordStores.map((store) => [store, library[store].length])),
-      },
-      'main',
-    )
+  await tx.objectStore('meta').put(
+    {
+      revision: 7,
+      counts: Object.fromEntries(recordStores.map((store) => [store, library[store].length])),
+    },
+    'main',
+  )
   await tx.objectStore('assets').put(asset.blob, asset.meta.id)
   await tx.objectStore('cardDrafts').put(draft, draft.id)
-  await tx
-    .objectStore('checkpoints')
-    .put(
-      {
-        id: 'before-upgrade',
-        revision: 7,
-        createdAt: now.toISOString(),
-        reason: '手动快照',
-        cards: library.cards.length,
-        notes: library.notes.length,
-      },
-      'before-upgrade',
-    )
+  await tx.objectStore('checkpoints').put(
+    {
+      id: 'before-upgrade',
+      revision: 7,
+      createdAt: now.toISOString(),
+      reason: '手动快照',
+      cards: library.cards.length,
+      notes: library.notes.length,
+    },
+    'before-upgrade',
+  )
   await tx.done
   old.close()
   const repo = createRepository(name)
