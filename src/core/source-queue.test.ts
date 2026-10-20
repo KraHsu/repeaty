@@ -205,10 +205,14 @@ it('orders by reading date with stable ties and leaves library order unchanged a
 it('uses calendar dates across midnight, UTC offsets and daylight-saving changes', () => {
   vi.stubEnv('TZ', 'America/Los_Angeles')
   expect(nextReadingDay(new Date('2026-03-07T12:00:00-08:00'))).toBe('2026-03-08')
+  expect(nextReadingDay(new Date('2026-03-07T23:30:00-08:00'), 3)).toBe('2026-03-10')
   expect(nextReadingDay(new Date('2026-11-01T00:30:00-07:00'))).toBe('2026-11-02')
+  expect(nextReadingDay(new Date('2026-10-31T23:30:00-07:00'), 7)).toBe('2026-11-07')
   expect(localDay(new Date('2026-10-20T02:00:00Z'))).toBe('2026-10-19')
   vi.stubEnv('TZ', 'Asia/Shanghai')
   expect(nextReadingDay(new Date('2026-12-31T23:59:00+08:00'))).toBe('2027-01-01')
+  expect(nextReadingDay(new Date('2026-12-31T23:59:00+08:00'), 3)).toBe('2027-01-03')
+  expect(nextReadingDay(new Date('2028-02-27T23:59:00+08:00'), 7)).toBe('2028-03-05')
   expect(localDay(new Date('2026-10-19T23:00:00Z'))).toBe('2026-10-20')
 })
 

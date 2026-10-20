@@ -1185,7 +1185,22 @@ try {
     () => execute("return !!document.querySelector('#source-reading-date')?.value"),
     'native reading date',
   )
+  assert.equal(await execute("return document.querySelectorAll('.source-defer-option').length"), 3)
+  await execute("document.querySelectorAll('.source-defer-option')[2].click()")
   const readingDate = await execute("return document.querySelector('#source-reading-date').value")
+  assert.equal(
+    readingDate,
+    await execute(
+      "const date=new Date();date.setDate(date.getDate()+7);return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`",
+    ),
+  )
+  assert.equal(
+    await execute(
+      "return document.querySelectorAll('.source-defer-option')[2].getAttribute('aria-pressed')",
+    ),
+    'true',
+  )
+  assert.equal((await sourceRecords())[0].queue.availableOn < readingDate, true)
   await click('保存阅读安排')
   await until(
     () =>
@@ -1307,7 +1322,14 @@ try {
     () => execute("return !!document.querySelector('#source-reading-date')?.value"),
     'native round date',
   )
+  await execute("document.querySelectorAll('.source-defer-option')[1].click()")
   const roundDate = await execute("return document.querySelector('#source-reading-date').value")
+  assert.equal(
+    await execute(
+      "return document.querySelectorAll('.source-defer-option')[1].querySelector('time').dateTime",
+    ),
+    roundDate,
+  )
   await click('保存阅读安排')
   await until(
     () =>

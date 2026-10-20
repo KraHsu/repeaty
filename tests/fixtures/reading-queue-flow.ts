@@ -69,23 +69,74 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
   await page.locator('.source-list-title').filter({ hasText: 'Queue A' }).click()
   await expect(page.locator('.source-text')).toHaveAttribute('aria-busy', 'false')
 
-  const { today, later } = await page.evaluate(() => {
-    const date = new Date()
+  const { today, tomorrow, later, week, custom } = await page.evaluate(() => {
+    const now = new Date()
     const key = (value: Date) =>
       `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
-    const today = key(date)
-    date.setDate(date.getDate() + 3)
-    return { today, later: key(date) }
+    const after = (days: number) => {
+      const date = new Date(now)
+      date.setDate(date.getDate() + days)
+      return key(date)
+    }
+    return {
+      today: key(now),
+      tomorrow: after(1),
+      later: after(3),
+      week: after(7),
+      custom: after(4),
+    }
   })
   await page.getByRole('button', { name: '稍后阅读', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '稍后阅读', exact: true })
+  const shortcuts = dialog.getByRole('group', { name: '快捷安排' })
+  const tomorrowButton = shortcuts.getByRole('button', { name: /^明天/ })
+  const laterButton = shortcuts.getByRole('button', { name: /^3 天后/ })
+  const weekButton = shortcuts.getByRole('button', { name: /^1 周后/ })
+  await expect(tomorrowButton).toHaveAttribute('aria-pressed', 'true')
+  await expect(dialog.getByLabel('下次阅读日期')).toHaveValue(tomorrow)
+  for (const [button, date] of [
+    [tomorrowButton, tomorrow],
+    [laterButton, later],
+    [weekButton, week],
+  ] as const) {
+    await expect(button.locator('time')).toHaveAttribute('datetime', date)
+    const displayed = await page.evaluate(
+      (date) => new Date(`${date}T12:00:00`).toLocaleDateString('zh-CN'),
+      date,
+    )
+    await expect(button.locator('time')).toHaveText(displayed)
+  }
+  // A preset selects a date; keyboard activation must not submit the form.
+  await weekButton.focus()
+  await weekButton.press('Space')
+  await expect(dialog.getByLabel('下次阅读日期')).toHaveValue(week)
+  await expect(weekButton).toHaveAttribute('aria-pressed', 'true')
+  await expect(tomorrowButton).toHaveAttribute('aria-pressed', 'false')
+  expect((await read()).sources.find((source) => source.id === first.id)!.queue?.availableOn).toBe(
+    today,
+  )
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: '稍后阅读', exact: true }).click()
+  await expect(dialog.getByLabel('下次阅读日期')).toHaveValue(tomorrow)
+  expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+  await page.screenshot({
+    path: info.outputPath('reading-shortcuts-zh.png'),
+    fullPage: true,
+    animations: 'disabled',
+  })
   await dialog.getByLabel('下次阅读日期').fill(today)
   await dialog.getByRole('button', { name: '保存阅读安排' }).click()
   await expect(dialog).toBeVisible()
   expect((await read()).sources.find((source) => source.id === first.id)!.queue?.availableOn).toBe(
     today,
   )
-  await dialog.getByLabel('下次阅读日期').fill(later)
+  await dialog.getByLabel('下次阅读日期').fill(custom)
+  await expect(shortcuts.locator('[aria-pressed="true"]')).toHaveCount(0)
+  await expect(dialog.getByLabel('下次阅读日期')).toHaveValue(custom)
+  await laterButton.click()
+  await expect(dialog.getByLabel('下次阅读日期')).toHaveValue(later)
+  await expect(laterButton).toHaveAttribute('aria-pressed', 'true')
   await dialog.getByRole('button', { name: '保存阅读安排' }).click()
   await expect(dialog).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Queue B', exact: true })).toBeVisible()
@@ -112,6 +163,32 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
   await expect(page.getByRole('option', { name: 'High', exact: true })).toHaveAttribute(
     'value',
     'high',
+  )
+  await page.getByRole('button', { name: 'Read later', exact: true }).click()
+  const englishDialog = page.getByRole('dialog', { name: 'Read later', exact: true })
+  const englishShortcuts = englishDialog.getByRole('group', { name: 'Quick schedule' })
+  await expect(englishShortcuts.getByRole('button', { name: /^Tomorrow/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await englishShortcuts.getByRole('button', { name: /^In 1 week/ }).click()
+  await expect(englishShortcuts.getByRole('button', { name: /^In 1 week/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(englishDialog.getByLabel('Next reading date')).toHaveValue(week)
+  await expect(englishShortcuts.getByRole('button', { name: /^In 3 days/ })).toBeVisible()
+  expect(
+    await englishDialog.evaluate((element) => element.scrollWidth <= element.clientWidth),
+  ).toBe(true)
+  await page.screenshot({
+    path: info.outputPath('reading-shortcuts-en.png'),
+    fullPage: true,
+    animations: 'disabled',
+  })
+  await englishDialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  expect((await read()).sources.find((source) => source.id === first.id)!.queue).toEqual(
+    planned.queue,
   )
   await page.getByLabel('Interface language').selectOption('zh-CN')
 
