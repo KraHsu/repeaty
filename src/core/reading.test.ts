@@ -127,13 +127,13 @@ it('round-trips positions through archive, JSON and rekeying, and migrates v6 wi
     now,
   )
   const json = await exportBackup(next, async () => asset.blob)
-  expect(JSON.parse(json).version).toBe(7)
+  expect(JSON.parse(json).version).toBe(8)
   for (const data of [
     parseBackup(json),
     await parseArchive((await exportArchive(next, async () => asset.blob))!),
   ]) {
     const restored = rekeyBackup(data)
-    expect(restored.library.version).toBe(7)
+    expect(restored.library.version).toBe(8)
     expect(restored.library.sources[0]!.reading).toEqual(next.sources[0]!.reading)
     expect(
       await readSource(
@@ -153,103 +153,106 @@ it('round-trips positions through archive, JSON and rekeying, and migrates v6 wi
   expect(parseBackup(JSON.stringify(oldJson)).library).toEqual(library)
 })
 
-it('upgrades normalized v9 records, checkpoints and pending drafts; reading write failures roll back', async () => {
-  const name = `reading-v9-${crypto.randomUUID()}`
-  const { library, source, asset, text } = sample()
-  const session = new DraftSession(),
-    scope = `local:${name}`
-  session.bindScope(scope)
-  const context = { library, revision: 7, scope }
-  session.share(context, sourceExcerpt(source, text, 0, 8), 'deck', source.mediaId, text)
-  const draft = session.prepare(context, {
-    selectionId: session.selection!.selectionId,
-    requestId: 'pending',
-    cards: [{ type: 'basic', front: 'Q', back: 'A' }],
-  }).drafts[0]!
-  const old = await openDB(name, 9, {
-    upgrade(db) {
-      for (const store of [
-        'workspace',
-        'assets',
-        'backups',
-        'meta',
-        'checkpoints',
-        'attemptSummaries',
-        'cardDrafts',
-        ...recordStores,
-      ])
-        db.createObjectStore(store)
-      const history = db.createObjectStore('history')
-      history.createIndex('revision', 'revision')
-      history.createIndex('store', 'store')
-    },
-  })
-  const tx = old.transaction(
-    [...recordStores, 'assets', 'meta', 'checkpoints', 'cardDrafts'],
-    'readwrite',
-  )
-  for (const store of recordStores)
-    for (const [position, value] of library[store].entries())
-      await tx.objectStore(store).put({ id: value.id, value, position }, value.id)
-  await tx.objectStore('meta').put(
-    {
-      revision: 7,
-      counts: Object.fromEntries(recordStores.map((store) => [store, library[store].length])),
-    },
-    'main',
-  )
-  await tx.objectStore('assets').put(asset.blob, asset.meta.id)
-  await tx.objectStore('cardDrafts').put(draft, draft.id)
-  await tx
-    .objectStore('checkpoints')
-    .put(
-      { id: 'v9', revision: 7, reason: 'test', createdAt: now.toISOString(), notes: 1, cards: 1 },
-      'v9',
+it.each([9, 10])(
+  'upgrades normalized v%s records, checkpoints and pending drafts; reading write failures roll back',
+  async (seedVersion) => {
+    const name = `reading-v${seedVersion}-${crypto.randomUUID()}`
+    const { library, source, asset, text } = sample()
+    const session = new DraftSession(),
+      scope = `local:${name}`
+    session.bindScope(scope)
+    const context = { library, revision: 7, scope }
+    session.share(context, sourceExcerpt(source, text, 0, 8), 'deck', source.mediaId, text)
+    const draft = session.prepare(context, {
+      selectionId: session.selection!.selectionId,
+      requestId: 'pending',
+      cards: [{ type: 'basic', front: 'Q', back: 'A' }],
+    }).drafts[0]!
+    const old = await openDB(name, seedVersion, {
+      upgrade(db) {
+        for (const store of [
+          'workspace',
+          'assets',
+          'backups',
+          'meta',
+          'checkpoints',
+          'attemptSummaries',
+          'cardDrafts',
+          ...recordStores,
+        ])
+          db.createObjectStore(store)
+        const history = db.createObjectStore('history')
+        history.createIndex('revision', 'revision')
+        history.createIndex('store', 'store')
+      },
+    })
+    const tx = old.transaction(
+      [...recordStores, 'assets', 'meta', 'checkpoints', 'cardDrafts'],
+      'readwrite',
     )
-  await tx.done
-  old.close()
-  const repo = createRepository(name),
-    loaded = await repo.load()
-  expect(loaded).toEqual({ library, revision: 7 })
-  expect(await repo.readCardDrafts()).toEqual([draft])
-  expect(await repo.getBackup('v9')).toEqual(library)
-  await expect(openDB(name, 9)).rejects.toMatchObject({ name: 'VersionError' })
-  const next = saveReadingPosition(
-    loaded.library,
-    source.id,
-    source.mediaId,
-    { offset: 100, fraction: 0, view: 'source' },
-    now,
-  )
-  await repo.save(next, 7)
-  const original = IDBObjectStore.prototype.put
-  const fail = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (
-    this: IDBObjectStore,
-    ...args: Parameters<typeof original>
-  ) {
-    if (this.name === 'sources')
-      throw new DOMException('Synthetic quota failure', 'QuotaExceededError')
-    return original.apply(this, args)
-  })
-  try {
-    await expect(
-      repo.save(
-        saveReadingPosition(
-          next,
-          source.id,
-          source.mediaId,
-          { offset: 300, fraction: 0, view: 'source' },
-          now,
+    for (const store of recordStores)
+      for (const [position, value] of library[store].entries())
+        await tx.objectStore(store).put({ id: value.id, value, position }, value.id)
+    await tx.objectStore('meta').put(
+      {
+        revision: 7,
+        counts: Object.fromEntries(recordStores.map((store) => [store, library[store].length])),
+      },
+      'main',
+    )
+    await tx.objectStore('assets').put(asset.blob, asset.meta.id)
+    await tx.objectStore('cardDrafts').put(draft, draft.id)
+    await tx
+      .objectStore('checkpoints')
+      .put(
+        { id: 'v9', revision: 7, reason: 'test', createdAt: now.toISOString(), notes: 1, cards: 1 },
+        'v9',
+      )
+    await tx.done
+    old.close()
+    const repo = createRepository(name),
+      loaded = await repo.load()
+    expect(loaded).toEqual({ library, revision: 7 })
+    expect(await repo.readCardDrafts()).toEqual([draft])
+    expect(await repo.getBackup('v9')).toEqual(library)
+    await expect(openDB(name, seedVersion)).rejects.toMatchObject({ name: 'VersionError' })
+    const next = saveReadingPosition(
+      loaded.library,
+      source.id,
+      source.mediaId,
+      { offset: 100, fraction: 0, view: 'source' },
+      now,
+    )
+    await repo.save(next, 7)
+    const original = IDBObjectStore.prototype.put
+    const fail = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (
+      this: IDBObjectStore,
+      ...args: Parameters<typeof original>
+    ) {
+      if (this.name === 'sources')
+        throw new DOMException('Synthetic quota failure', 'QuotaExceededError')
+      return original.apply(this, args)
+    })
+    try {
+      await expect(
+        repo.save(
+          saveReadingPosition(
+            next,
+            source.id,
+            source.mediaId,
+            { offset: 300, fraction: 0, view: 'source' },
+            now,
+          ),
+          8,
         ),
-        8,
-      ),
-    ).rejects.toMatchObject({ name: 'QuotaExceededError' })
-  } finally {
-    fail.mockRestore()
-  }
-  expect((await repo.load()).library).toEqual(next)
-  expect(await repo.readCardDrafts()).toEqual([draft])
-  await repo.save(await repo.getBackup('v9'), 8)
-  expect((await repo.load()).library.sources[0]!.reading).toBeUndefined()
-  await repo.close()
-})
+      ).rejects.toMatchObject({ name: 'QuotaExceededError' })
+    } finally {
+      fail.mockRestore()
+    }
+    expect((await repo.load()).library).toEqual(next)
+    expect(await repo.readCardDrafts()).toEqual([draft])
+    await repo.save(await repo.getBackup('v9'), 8)
+    expect((await repo.load()).library.sources[0]!.reading).toBeUndefined()
+    await repo.close()
+  },
+)

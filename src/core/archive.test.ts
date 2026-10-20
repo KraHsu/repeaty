@@ -38,7 +38,7 @@ async function rewrite(blob: Blob, omit: string, extra = false) {
 }
 
 describe('portable binary archives', () => {
-  it.each([3, 4, 5, 6])(
+  it.each([3, 4, 5, 6, 7])(
     'reads old archives with library v%s and no sources',
     async (libraryVersion) => {
       const library = fixture()
@@ -52,7 +52,8 @@ describe('portable binary archives', () => {
         let blob = await entry.getData(new BlobWriter())
         if (entry.filename === 'manifest.json') {
           const manifest = JSON.parse(await blob.text())
-          manifest.version = libraryVersion === 6 ? 3 : libraryVersion === 5 ? 2 : 1
+          manifest.version =
+            libraryVersion === 7 ? 4 : libraryVersion === 6 ? 3 : libraryVersion === 5 ? 2 : 1
           manifest.libraryVersion = libraryVersion
           delete manifest.counts.sources
           delete manifest.parts.sources

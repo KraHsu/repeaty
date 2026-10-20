@@ -32,7 +32,13 @@ import {
   removeSource,
   saveReadingPosition,
 } from '../core/sources'
-import type { SourceInput, SourceExcerpt, ReadingUpdate } from '../core/source-data'
+import type {
+  SourceInput,
+  SourceExcerpt,
+  ReadingUpdate,
+  SourceQueueUpdate,
+} from '../core/source-data'
+import { arrangeSource } from '../core/source-queue'
 import { saveSearch } from '../core/search'
 import type { TransferOptions } from '../core/archive'
 import { exportBackup, rekeyBackup, type BackupData } from '../core/backups'
@@ -219,6 +225,17 @@ export function useLibrary() {
         at,
       )
       if (next !== library.value) await commit(() => next)
+    },
+    async arrangeSource(update: SourceQueueUpdate) {
+      const target = repository
+      await savingDone
+      if (!ready.value || !update.scope || update.scope !== scope.value || target !== repository)
+        throw new LocalizedError(msg('学习库已变化，阅读安排未保存。'))
+      const at = new Date()
+      let next = arrangeSource(library.value, update.sourceId, update.mediaId, update.action, at)
+      if (update.position)
+        next = saveReadingPosition(next, update.sourceId, update.mediaId, update.position, at)
+      if (next !== library.value) await commit(() => next, { reason: '更改阅读安排前' })
     },
     localLearningSnapshot,
     readLearning(query: LearningQuery, expectedScope: string) {

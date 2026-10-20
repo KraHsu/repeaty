@@ -297,7 +297,7 @@ fn source_only_libraries_get_snapshots_and_sqlite_v2_upgrades_safely() {
         connection
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap(),
-        4
+        5
     );
 }
 
@@ -367,5 +367,78 @@ fn reading_positions_survive_sqlite_v3_upgrade_and_reject_invalid_offsets_atomic
     let previous = db.backup(snapshots[0]["id"].as_str().unwrap()).unwrap();
     assert!(previous["sources"][0].get("reading").is_none());
     db.commit(commit(2, &previous)).unwrap();
+    assert_eq!(db.load().unwrap()["library"], library);
+}
+
+#[test]
+fn reading_queue_upgrades_v4_and_retains_positions_excerpts_and_snapshots() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("queue.sqlite3");
+    let mut db = Database::open(&path).unwrap();
+    let text = "Reading 中文🙂\n\nMore context";
+    db.put_media("queue-text", "text/plain", text.as_bytes())
+        .unwrap();
+    let mut library = fixture();
+    library["media"] = json!([{"id":"queue-text","name":"reading.txt","type":"text/plain","size":text.len(),"createdAt":"2026-10-19T00:00:00Z"}]);
+    library["sources"] = json!([{"id":"queue-source","title":"Reading","url":"","format":"plain","mediaId":"queue-text","characters":text.encode_utf16().count(),"createdAt":"2026-10-19T00:00:00Z","reading":{"offset":8,"fraction":0,"view":"source","updatedAt":"2026-10-19T01:00:00Z"}}]);
+    library["notes"][0]["excerpt"] =
+        json!({"sourceId":"queue-source","start":0,"end":7,"quote":"Reading"});
+    db.commit(commit(0, &library)).unwrap();
+    drop(db);
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    connection.pragma_update(None, "user_version", 4).unwrap();
+    drop(connection);
+    let mut db = Database::open(&path).unwrap();
+    assert_eq!(db.load().unwrap()["library"], library);
+    let mut source = library["sources"][0].clone();
+    source["queue"] = json!({"state":"active","availableOn":"2026-10-21"});
+    db.commit(input(
+        1,
+        json!([{"store":"sources","id":"queue-source","position":0,"value":source}]),
+    ))
+    .unwrap();
+    let deferred = db.load().unwrap();
+    drop(db);
+    let mut db = Database::open(&path).unwrap();
+    assert_eq!(db.load().unwrap(), deferred);
+    for queue in [
+        json!({"state":"unknown","availableOn":"2026-10-21"}),
+        json!({"state":"active","availableOn":"2026-02-30"}),
+        json!({"state":"archived","availableOn":"2026-10-21T00:00:00Z"}),
+        json!({"state":"active"}),
+    ] {
+        let mut invalid = source.clone();
+        invalid["queue"] = queue;
+        let result = db.commit(input(
+            2,
+            json!([{"store":"sources","id":"queue-source","position":0,"value":invalid}]),
+        ));
+        assert_eq!(result.unwrap_err().0, StatusCode::BAD_REQUEST);
+        assert_eq!(db.load().unwrap(), deferred);
+    }
+    source["queue"]["state"] = json!("archived");
+    db.commit(input(
+        2,
+        json!([{"store":"sources","id":"queue-source","position":0,"value":source}]),
+    ))
+    .unwrap();
+    let archived = db.load().unwrap();
+    assert_eq!(
+        archived["library"]["sources"][0]["reading"],
+        library["sources"][0]["reading"]
+    );
+    for store in [
+        "notes",
+        "cards",
+        "reviews",
+        "media",
+        "practices",
+        "attempts",
+    ] {
+        assert_eq!(archived["library"][store], library[store]);
+    }
+    let snapshots = db.backups().unwrap();
+    let previous = db.backup(snapshots[0]["id"].as_str().unwrap()).unwrap();
+    db.commit(commit(3, &previous)).unwrap();
     assert_eq!(db.load().unwrap()["library"], library);
 }
