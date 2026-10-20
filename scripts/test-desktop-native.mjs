@@ -894,10 +894,15 @@ try {
   await click('通过 MCP 制卡')
   await waitButton('分享这段摘录')
   await click('分享这段摘录')
+  await until(
+    () => execute("return !!document.querySelector('.draft-queue')"),
+    'native second excerpt shared',
+  )
   const nextSelection = (
     await mcpRpc(draftMcp, 'tools/call', { name: 'repeaty_selected_excerpt', arguments: {} })
   ).result.structuredContent
-  await mcpRpc(draftMcp, 'tools/call', {
+  assert.equal(nextSelection.text, sourceQuote)
+  const unconfirmed = await mcpRpc(draftMcp, 'tools/call', {
     name: 'repeaty_propose_cards',
     arguments: {
       ...draftArguments,
@@ -906,6 +911,7 @@ try {
       cards: [draftArguments.cards[0]],
     },
   })
+  assert.equal(unconfirmed.result.isError, false)
   await until(
     () => execute("return document.querySelectorAll('.draft-list li').length===1"),
     'native unsaved draft',
