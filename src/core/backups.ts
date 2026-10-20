@@ -22,6 +22,7 @@ const packageSchema = z.object({
     z.literal(6),
     z.literal(7),
     z.literal(8),
+    z.literal(9),
   ]),
   library: z.unknown().transform((value) => migrateLibrary(value)),
   assets: z.array(
@@ -53,7 +54,7 @@ export async function exportBackup(
       binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
     assets.push({ id: meta.id, data: btoa(binary) })
   }
-  const result = JSON.stringify({ format: 'repeaty-backup', version: 8, library, assets })
+  const result = JSON.stringify({ format: 'repeaty-backup', version: 9, library, assets })
   if (new Blob([result]).size > MAX_BACKUP_BYTES)
     throw new LocalizedError(msg('JSON 备份超过 100 MB。'))
   return result

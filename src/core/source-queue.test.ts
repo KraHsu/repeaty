@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { fixture, now } from './test-fixtures'
 import { addSource, prepareSource, saveReadingPosition, sourceExcerpt } from './sources'
 import { arrangeSource, nextReadingDay, queuedSources, sourceQueueState } from './source-queue'
-import { sourceSchema } from './source-data'
+import { sourceSchema, type Source, type SourcePriority } from './source-data'
 import { localDay, migrateLibrary } from './model'
 import { createRepository, recordStores } from './storage'
 import { exportArchive, parseArchive } from './archive'
@@ -30,6 +30,86 @@ function sample() {
   return { library, source, asset, change }
 }
 afterEach(() => vi.unstubAllEnvs())
+
+it('changes only reading priority, defaults old sources to normal and preserves it through queue actions', () => {
+  const { library, source, change } = sample()
+  expect(change(library, { type: 'priority', priority: 'normal' })).toBe(library)
+  expect(library.sources[0]!.priority).toBeUndefined()
+  const high = change(library, { type: 'priority', priority: 'high' })
+  expect(high.sources[0]).toEqual({ ...library.sources[0], priority: 'high' })
+  expect(change(high, { type: 'priority', priority: 'high' })).toBe(high)
+  const later = change(high, { type: 'defer', date: nextReadingDay(now) })
+  const low = change(later, { type: 'priority', priority: 'low' })
+  expect(low.sources[0]).toEqual({ ...later.sources[0], priority: 'low' })
+  const archived = change(low, { type: 'archive' })
+  const restored = change(archived, { type: 'restore' })
+  const normal = change(restored, { type: 'priority', priority: 'normal' })
+  expect(normal.sources[0]!.priority).toBe('normal')
+  for (const next of [high, later, low, archived, restored, normal]) {
+    for (const store of recordStores.filter((store) => store !== 'sources'))
+      expect(next[store]).toBe(library[store])
+    expect(next.sources[0]!.reading).toEqual(library.sources[0]!.reading)
+    expect(next.sources[0]!.mediaId).toBe(source.mediaId)
+  }
+  expect(archived.sources[0]!.priority).toBe('low')
+  expect(restored.sources[0]!.priority).toBe('low')
+  for (const priority of ['', 'urgent', 0, null]) {
+    expect(() => sourceSchema.parse({ ...source, priority })).toThrow()
+    expect(() =>
+      change(library, { type: 'priority', priority: priority as SourcePriority }),
+    ).toThrow('阅读安排无效')
+  }
+})
+
+it('orders ready sources by priority then date without releasing future or archived high priority sources', () => {
+  const { source } = sample()
+  const sources: Source[] = [
+    { ...source, id: 'normal', createdAt: '2026-10-14T00:00:00Z' },
+    { ...source, id: 'high-new', priority: 'high', createdAt: '2026-10-17T00:00:00Z' },
+    { ...source, id: 'low', priority: 'low', createdAt: '2026-10-01T00:00:00Z' },
+    { ...source, id: 'high-old', priority: 'high', createdAt: '2026-10-16T00:00:00Z' },
+    { ...source, id: 'explicit-normal', priority: 'normal', createdAt: '2026-10-15T00:00:00Z' },
+    { ...source, id: 'high-tie', priority: 'high', createdAt: '2026-10-17T00:00:00Z' },
+    {
+      ...source,
+      id: 'future-high',
+      priority: 'high',
+      queue: { state: 'active', availableOn: '2026-10-21' },
+    },
+    {
+      ...source,
+      id: 'future-low',
+      priority: 'low',
+      queue: { state: 'active', availableOn: '2026-10-20' },
+    },
+    {
+      ...source,
+      id: 'archived-high',
+      priority: 'high',
+      queue: { state: 'archived', availableOn: '2026-10-01' },
+    },
+  ]
+  const original = structuredClone(sources)
+  const ready = ['high-old', 'high-new', 'high-tie', 'normal', 'explicit-normal', 'low']
+  expect(queuedSources(sources, 'ready', '2026-10-19').map((entry) => entry.id)).toEqual(ready)
+  expect(queuedSources(sources, 'all', '2026-10-19').map((entry) => entry.id)).toEqual([
+    ...ready,
+    'future-low',
+    'future-high',
+    'archived-high',
+  ])
+  expect(queuedSources(sources, 'ready', '2026-10-21').map((entry) => entry.id)).toEqual([
+    'high-old',
+    'high-new',
+    'high-tie',
+    'future-high',
+    'normal',
+    'explicit-normal',
+    'low',
+    'future-low',
+  ])
+  expect(sources).toEqual(original)
+})
 
 it('defers until the local date and archives or restores without changing snapshots, excerpts or study records', () => {
   const { library, source, change } = sample()
@@ -134,15 +214,20 @@ it('uses calendar dates across midnight, UTC offsets and daylight-saving changes
 
 it('retains reading arrangements in archives, JSON, rekeying, stored revisions and snapshot recovery', async () => {
   const { library, source, asset, change } = sample()
-  const archived = change(change(library, { type: 'defer', date: nextReadingDay(now) }), {
-    type: 'archive',
-  })
+  const archived = change(
+    change(change(library, { type: 'priority', priority: 'high' }), {
+      type: 'defer',
+      date: nextReadingDay(now),
+    }),
+    { type: 'archive' },
+  )
   for (const backup of [
     await parseArchive((await exportArchive(archived, async () => asset.blob))!),
     parseBackup(await exportBackup(archived, async () => asset.blob)),
   ]) {
     const restored = rekeyBackup(backup)
     expect(restored.library.sources[0]!.queue).toEqual(archived.sources[0]!.queue)
+    expect(restored.library.sources[0]!.priority).toBe('high')
     expect(restored.library.sources[0]!.reading).toEqual(archived.sources[0]!.reading)
     expect(restored.library.notes[0]!.excerpt).toEqual(archived.notes[0]!.excerpt)
     expect(restored.library.sources[0]!.mediaId).not.toBe(source.mediaId)
@@ -158,31 +243,39 @@ it('retains reading arrangements in archives, JSON, rekeying, stored revisions a
   await repo.close()
 })
 
-it('migrates v7 libraries and backups with reading positions but without inventing arrangements', async () => {
-  const { library, asset } = sample()
-  const old = { ...library, version: 7 }
-  expect(migrateLibrary(old)).toEqual(library)
-  const json = JSON.parse(await exportBackup(library, async () => asset.blob))
-  json.version = 7
-  json.library.version = 7
-  expect(parseBackup(JSON.stringify(json)).library).toEqual(library)
-  const input = new ZipReader(
-    new BlobReader((await exportArchive(library, async () => asset.blob))!),
-  )
-  const output = new BlobWriter(),
-    writer = new ZipWriter(output, { useWebWorkers: false })
-  for (const entry of await input.getEntries()) {
-    if (entry.directory) continue
-    let content = await entry.getData(new BlobWriter())
-    if (entry.filename === 'manifest.json') {
-      const manifest = JSON.parse(await content.text())
-      content = new Blob([JSON.stringify({ ...manifest, version: 4, libraryVersion: 7 })])
+it.each([7, 8])(
+  'migrates v%i libraries and backups without inventing priority or arrangements',
+  async (version) => {
+    const { library, asset } = sample()
+    if (version === 8)
+      library.sources[0]!.queue = { state: 'active', availableOn: nextReadingDay(now) }
+    const old = { ...library, version }
+    expect(migrateLibrary(old)).toEqual(library)
+    const json = JSON.parse(await exportBackup(library, async () => asset.blob))
+    json.version = version
+    json.library.version = version
+    expect(parseBackup(JSON.stringify(json)).library).toEqual(library)
+    const input = new ZipReader(
+      new BlobReader((await exportArchive(library, async () => asset.blob))!),
+    )
+    const output = new BlobWriter(),
+      writer = new ZipWriter(output, { useWebWorkers: false })
+    for (const entry of await input.getEntries()) {
+      if (entry.directory) continue
+      let content = await entry.getData(new BlobWriter())
+      if (entry.filename === 'manifest.json') {
+        const manifest = JSON.parse(await content.text())
+        content = new Blob([
+          JSON.stringify({ ...manifest, version: version - 3, libraryVersion: version }),
+        ])
+      }
+      await writer.add(entry.filename, new BlobReader(content))
     }
-    await writer.add(entry.filename, new BlobReader(content))
-  }
-  await writer.close()
-  await input.close()
-  const restored = (await parseArchive(await output.getData())).library
-  expect(restored).toEqual(library)
-  expect(restored.sources[0]!.queue).toBeUndefined()
-})
+    await writer.close()
+    await input.close()
+    const restored = (await parseArchive(await output.getData())).library
+    expect(restored).toEqual(library)
+    expect(restored.sources[0]!.queue).toEqual(library.sources[0]!.queue)
+    expect(restored.sources[0]!.priority).toBeUndefined()
+  },
+)

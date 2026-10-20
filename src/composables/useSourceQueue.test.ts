@@ -60,6 +60,39 @@ it('commits an arrangement and position together and refuses invalid snapshot or
   expect(await repository.getBackup(previous.id)).toEqual(library)
 })
 
+it('saves priority and current position atomically and preserves priority in later reading saves', async () => {
+  const { workspace, repository, library, input } = await setup()
+  const original = IDBObjectStore.prototype.put
+  const fail = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (
+    this: IDBObjectStore,
+    ...args: Parameters<typeof original>
+  ) {
+    if (this.name === 'sources')
+      throw new DOMException('Synthetic quota failure', 'QuotaExceededError')
+    return original.apply(this, args)
+  })
+  const priority = { ...input, action: { type: 'priority' as const, priority: 'high' as const } }
+  try {
+    await expect(workspace.arrangeSource(priority)).rejects.toThrow('存储空间不足')
+  } finally {
+    fail.mockRestore()
+  }
+  expect((await repository.load()).library).toEqual(library)
+  await workspace.arrangeSource(priority)
+  const saved = await repository.load()
+  expect(saved.library.sources[0]).toMatchObject({ priority: 'high', reading: input.position })
+  expect(saved.library.sources[0]!.queue).toBeUndefined()
+  await workspace.saveSourceReading(
+    { ...input, position: { ...input.position, offset: 300 } },
+    new Date(),
+  )
+  const next = (await repository.load()).library
+  expect(next.sources[0]!.priority).toBe('high')
+  expect(next.sources[0]!.reading!.offset).toBe(300)
+  expect(next.cards).toEqual(library.cards)
+  expect(next.reviews).toEqual(library.reviews)
+})
+
 it('rejects a delayed arrangement when the workspace switches before its write begins', async () => {
   const { workspace, library, input, name } = await setup()
   const other = createRepository(`${name}-other`)

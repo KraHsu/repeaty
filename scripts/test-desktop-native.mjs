@@ -1080,6 +1080,39 @@ try {
       "const nav=document.querySelector('.source-queue-filters');const button=[...nav.querySelectorAll('button')].find(button=>button.textContent.trim().startsWith(arguments[0]));if(!button)throw Error('Missing queue view');button.click();",
       label,
     )
+  async function setReadingPriority(priority) {
+    await until(
+      () =>
+        execute(
+          "return !!document.querySelector('.source-priority-control select') && !document.querySelector('.source-priority-control select').disabled",
+        ),
+      'native priority control available',
+    )
+    await execute(
+      "const select=document.querySelector('.source-priority-control select');select.value=arguments[0];select.dispatchEvent(new Event('change',{bubbles:true}));",
+      priority,
+    )
+    await until(
+      () =>
+        execute(
+          "return document.querySelector('.source-priority-control select')?.value===arguments[0] && !document.querySelector('.source-priority-control select').disabled",
+          priority,
+        ),
+      'native reading priority saved',
+    )
+    assert.equal((await sourceRecords())[0].priority, priority)
+  }
+  assert.equal(
+    await execute("return document.querySelector('.source-priority-control select').value"),
+    'normal',
+  )
+  await setReadingPriority('high')
+  assert.equal((await sourceRecords())[0].queue, undefined)
+  assert.deepEqual(await libraryRecords(), confirmed)
+  await writeFile(
+    'test-results/native-reading-priority.png',
+    Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
+  )
   await waitButton('归档材料')
   await click('归档材料')
   await until(
@@ -1088,6 +1121,7 @@ try {
   )
   const archivedSource = (await sourceRecords())[0]
   assert.equal(archivedSource.queue.state, 'archived')
+  assert.equal(archivedSource.priority, 'high')
   assert.equal(archivedSource.reading.view, 'preview')
   assert.equal(archivedSource.reading.offset, previewReading.offset)
   assert.deepEqual(await libraryRecords(), confirmed)
@@ -1110,6 +1144,10 @@ try {
         "return document.querySelector('.source-markdown-preview')?.getAttribute('aria-busy')==='false'",
       ),
     'native archived preview restored',
+  )
+  assert.equal(
+    await execute("return document.querySelector('.source-priority-control select').value"),
+    'high',
   )
   assert.ok(
     (await execute("return document.querySelector('.source-markdown-preview').scrollTop")) > 1000,
@@ -1144,6 +1182,7 @@ try {
     'native reading deferred',
   )
   assert.deepEqual((await sourceRecords())[0].queue, { state: 'active', availableOn: readingDate })
+  assert.equal((await sourceRecords())[0].priority, 'high')
   await command(`/session/${session}`, undefined, 'DELETE')
   session = undefined
   await createSession()
@@ -1165,13 +1204,19 @@ try {
     'native deferred position restored',
   )
   assert.deepEqual((await sourceRecords())[0].queue, { state: 'active', availableOn: readingDate })
+  assert.equal(
+    await execute("return document.querySelector('.source-priority-control select').value"),
+    'high',
+  )
+  await setReadingPriority('low')
+  assert.deepEqual((await sourceRecords())[0].queue, { state: 'active', availableOn: readingDate })
   assert.deepEqual(await libraryRecords(), confirmed)
   await writeFile(
     'test-results/native-reading-queue.png',
     Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
   )
   console.log(
-    'Native reading queue: archived and deferred materials survive application exits, retain positions, and preserve study records',
+    'Native reading priority and queue: changes persist across application exits, preserve dates, positions and study records',
   )
   console.log(
     'Native WebKit/Tauri: starter lifecycle, accounts, upstream, credentials, backup, LeetCode history and Anki import/update, source snapshots, excerpt review and native text export passed.',

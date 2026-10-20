@@ -25,10 +25,13 @@ export const sourceQueueSchema = z.object({
   state: z.enum(['active', 'archived']),
   availableOn: z.iso.date(),
 })
+export const sourcePrioritySchema = z.enum(['high', 'normal', 'low'])
+export type SourcePriority = z.infer<typeof sourcePrioritySchema>
 export const sourceQueueActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('defer'), date: z.iso.date() }),
   z.object({ type: z.literal('archive') }),
   z.object({ type: z.literal('restore') }),
+  z.object({ type: z.literal('priority'), priority: sourcePrioritySchema }),
 ])
 export type SourceQueueAction = z.infer<typeof sourceQueueActionSchema>
 export interface SourceQueueUpdate {
@@ -54,6 +57,7 @@ export const sourceSchema = z
     createdAt: z.iso.datetime(),
     reading: sourceReadingSchema.optional(),
     queue: sourceQueueSchema.optional(),
+    priority: sourcePrioritySchema.optional(),
   })
   .superRefine((source, context) => {
     if (

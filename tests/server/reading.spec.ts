@@ -19,7 +19,7 @@ test('account reading positions persist in SQLite and round-trip through backups
   )
 })
 
-test('account reading queues round-trip through SQLite and backups without changing card progress', async ({
+test('account reading priorities and queues round-trip through SQLite and backups without changing card progress', async ({
   page,
   request,
 }, info) => {
@@ -50,7 +50,13 @@ test('an unavailable service refuses to archive and retains the original reading
   await expect(
     page.getByRole('heading', { name: 'Account queue retry', exact: true }),
   ).toBeVisible()
+  await page.getByLabel('阅读优先级', { exact: true }).selectOption('high')
+  await expect(page.getByRole('alert')).toBeVisible()
+  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveValue('normal')
+  expect((await (await request.get('api/library', { headers })).json()).library).toEqual(before)
   reject = false
+  await page.getByLabel('阅读优先级', { exact: true }).selectOption('high')
+  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveValue('high')
   await page.getByRole('button', { name: '归档材料', exact: true }).click()
   await expect(page.getByRole('heading', { name: '暂无待阅读材料', exact: true })).toBeVisible()
 })

@@ -15,9 +15,10 @@ export function sourceQueueState(source: Source, today: string): SourceQueueStat
   return source.queue && source.queue.availableOn > today ? 'deferred' : 'ready'
 }
 
-/** Unscheduled snapshots are immediately available. Reading visits never reorder the queue. */
+/** Priority orders ready sources only; future dates and archives keep their eligibility. */
 export function queuedSources(sources: Source[], view: SourceQueueView, today: string, query = '') {
   const ranks = { ready: 0, deferred: 1, archived: 2 }
+  const priorities = { high: 0, normal: 1, low: 2 }
   const search = query.toLocaleLowerCase()
   return sources
     .filter(
@@ -28,11 +29,14 @@ export function queuedSources(sources: Source[], view: SourceQueueView, today: s
     .map((source) => ({
       source,
       rank: ranks[sourceQueueState(source, today)],
+      priority:
+        sourceQueueState(source, today) === 'ready' ? priorities[source.priority ?? 'normal'] : 0,
       date: source.queue?.availableOn ?? localDay(new Date(source.createdAt)),
     }))
     .sort(
       (a, b) =>
         a.rank - b.rank ||
+        a.priority - b.priority ||
         a.date.localeCompare(b.date) ||
         a.source.createdAt.localeCompare(b.source.createdAt) ||
         a.source.id.localeCompare(b.source.id),
@@ -57,9 +61,14 @@ export function arrangeSource(
   if (!source || source.mediaId !== mediaId)
     throw new LocalizedError(msg('材料已变化，请重新打开后继续阅读。'))
   const parsed = sourceQueueActionSchema.safeParse(input)
-  if (!parsed.success) throw new LocalizedError(msg('请选择有效的阅读日期。'))
+  if (!parsed.success) throw new LocalizedError(msg('阅读安排无效，请重新选择。'))
   const action = parsed.data,
     today = localDay(now)
+  if (action.type === 'priority') {
+    if ((source.priority ?? 'normal') === action.priority) return library
+    const next = sourceSchema.parse({ ...source, priority: action.priority })
+    return { ...library, sources: library.sources.map((entry) => (entry.id === id ? next : entry)) }
+  }
   if (action.type === 'defer' && action.date <= today)
     throw new LocalizedError(msg('请选择今天之后的阅读日期。'))
   const queue =
