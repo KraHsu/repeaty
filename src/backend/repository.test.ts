@@ -14,7 +14,7 @@ it('uses summaries on a capable service, reads complete bodies separately and se
   setApiTransport(async (path, init) => {
     const input = init.body ? JSON.parse(String(init.body)) : undefined
     calls.push({ path, body: input })
-    if (path === '/status') return Response.json({ apiVersion: 6, historyVersion: 1 })
+    if (path === '/status') return Response.json({ apiVersion: 7, historyVersion: 1 })
     if (path === '/auth/session') return Response.json({ user: { id: 'alice' } })
     expect(new Headers(init.headers).get('X-Repeaty-User')).toBe('alice')
     if (path === '/library/summary')
@@ -48,12 +48,12 @@ it('uses summaries on a capable service, reads complete bodies separately and se
   await expect(repo.getAttempt(library.attempts[0]!.id, 1)).rejects.toThrow('另一个页面')
 })
 
-it('reads an API v6 service without the optional summary endpoints', async () => {
+it('reads an API v7 service without the optional summary endpoints', async () => {
   const library = practiceHistoryFixture(3)
   const calls: string[] = []
   setApiTransport(async (path) => {
     calls.push(path)
-    if (path === '/status') return Response.json({ apiVersion: 6 })
+    if (path === '/status') return Response.json({ apiVersion: 7 })
     if (path === '/auth/session') return Response.json({ user: { id: 'alice' } })
     if (path === '/library') return Response.json({ revision: 1, library })
     throw new Error(`Unexpected path: ${path}`)
@@ -65,11 +65,11 @@ it('reads an API v6 service without the optional summary endpoints', async () =>
   expect(calls).toEqual(['/status', '/auth/session', '/library'])
 })
 
-it('rejects an API v5 service before reading or writing a library with reading queues', async () => {
+it('rejects an API v6 service before reading or writing a library with reading priorities', async () => {
   const calls: string[] = []
   setApiTransport(async (path) => {
     calls.push(path)
-    return Response.json({ apiVersion: 5 })
+    return Response.json({ apiVersion: 6 })
   })
   await expect(createServerRepository('https://old.example.test').load()).rejects.toThrow()
   expect(calls).toEqual(['/status'])
@@ -78,7 +78,7 @@ it('rejects an API v5 service before reading or writing a library with reading q
 it('rejects a mismatched body response instead of displaying another submission', async () => {
   const library = practiceHistoryFixture(3)
   setApiTransport(async (path) => {
-    if (path === '/status') return Response.json({ apiVersion: 6, historyVersion: 1 })
+    if (path === '/status') return Response.json({ apiVersion: 7, historyVersion: 1 })
     if (path === '/auth/session') return Response.json({ user: { id: 'alice' } })
     if (path === '/library/summary')
       return Response.json({

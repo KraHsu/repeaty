@@ -46,7 +46,8 @@
         },
         "required": ["state", "availableOn"],
         "additionalProperties": false
-      }
+      },
+      "priority": { "type": "string", "enum": ["high", "normal", "low"] }
     },
     "required": ["id", "title", "url", "format", "mediaId", "characters", "createdAt"],
     "additionalProperties": false

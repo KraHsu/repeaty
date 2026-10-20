@@ -297,7 +297,7 @@ fn source_only_libraries_get_snapshots_and_sqlite_v2_upgrades_safely() {
         connection
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap(),
-        5
+        6
     );
 }
 
@@ -441,4 +441,65 @@ fn reading_queue_upgrades_v4_and_retains_positions_excerpts_and_snapshots() {
     let previous = db.backup(snapshots[0]["id"].as_str().unwrap()).unwrap();
     db.commit(commit(3, &previous)).unwrap();
     assert_eq!(db.load().unwrap()["library"], library);
+}
+
+#[test]
+fn reading_priority_upgrades_v5_and_rolls_back_invalid_values_without_changing_learning() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("priority.sqlite3");
+    let mut db = Database::open(&path).unwrap();
+    let text = "Reading context 中文🙂";
+    db.put_media("priority-body", "text/plain", text.as_bytes())
+        .unwrap();
+    let mut library = fixture();
+    library["media"] = json!([{"id":"priority-body","name":"reading.txt","type":"text/plain","size":text.len(),"createdAt":"2026-10-20T00:00:00Z"}]);
+    library["sources"] = json!([{"id":"priority-source","title":"Reading","url":"","format":"plain","mediaId":"priority-body","characters":text.encode_utf16().count(),"createdAt":"2026-10-20T00:00:00Z","reading":{"offset":8,"fraction":0,"view":"source","updatedAt":"2026-10-20T01:00:00Z"},"queue":{"state":"active","availableOn":"2026-10-25"}}]);
+    library["notes"][0]["excerpt"] =
+        json!({"sourceId":"priority-source","start":0,"end":7,"quote":"Reading"});
+    db.commit(commit(0, &library)).unwrap();
+    db.backup_now(false).unwrap();
+    drop(db);
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    connection.pragma_update(None, "user_version", 5).unwrap();
+    drop(connection);
+    let mut db = Database::open(&path).unwrap();
+    assert_eq!(db.load().unwrap()["library"], library);
+    let snapshots = db.backups().unwrap();
+    let previous_id = snapshots[0]["id"].as_str().unwrap();
+    assert_eq!(db.backup(previous_id).unwrap(), library);
+    let mut source = library["sources"][0].clone();
+    for (revision, priority) in [(1, "high"), (2, "low"), (3, "normal")] {
+        source["priority"] = json!(priority);
+        db.commit(input(
+            revision,
+            json!([{"store":"sources","id":"priority-source","position":0,"value":source}]),
+        ))
+        .unwrap();
+        let saved = db.load().unwrap();
+        for invalid_priority in [json!("urgent"), json!(0), json!(null), json!("")] {
+            let mut invalid = source.clone();
+            invalid["priority"] = invalid_priority;
+            let error = db.commit(input(revision + 1, json!([{"store":"sources","id":"priority-source","position":0,"value":invalid}]))).unwrap_err();
+            assert_eq!(error.0, StatusCode::BAD_REQUEST);
+            assert_eq!(db.load().unwrap(), saved);
+        }
+    }
+    drop(db);
+    let mut db = Database::open(&path).unwrap();
+    let saved = db.load().unwrap();
+    assert_eq!(saved["library"]["sources"][0], source);
+    for store in STORES.iter().filter(|store| **store != "sources") {
+        assert_eq!(saved["library"][store], library[store]);
+    }
+    db.commit(commit(4, &db.backup(previous_id).unwrap()))
+        .unwrap();
+    assert_eq!(db.load().unwrap()["library"], library);
+    drop(db);
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    assert_eq!(
+        connection
+            .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+            .unwrap(),
+        6
+    );
 }

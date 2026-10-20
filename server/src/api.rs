@@ -208,7 +208,7 @@ async fn protect(
 }
 async fn status(State(state): State<AppState>) -> Json<Value> {
     Json(
-        json!({"edition":"server","version":env!("CARGO_PKG_VERSION"),"apiVersion":6,"historyVersion":1,"authenticationRequired":true,"registration":state.registration}),
+        json!({"edition":"server","version":env!("CARGO_PKG_VERSION"),"apiVersion":7,"historyVersion":1,"authenticationRequired":true,"registration":state.registration}),
     )
 }
 #[derive(Deserialize)]

@@ -127,13 +127,13 @@ it('round-trips positions through archive, JSON and rekeying, and migrates v6 wi
     now,
   )
   const json = await exportBackup(next, async () => asset.blob)
-  expect(JSON.parse(json).version).toBe(8)
+  expect(JSON.parse(json).version).toBe(9)
   for (const data of [
     parseBackup(json),
     await parseArchive((await exportArchive(next, async () => asset.blob))!),
   ]) {
     const restored = rekeyBackup(data)
-    expect(restored.library.version).toBe(8)
+    expect(restored.library.version).toBe(9)
     expect(restored.library.sources[0]!.reading).toEqual(next.sources[0]!.reading)
     expect(
       await readSource(
@@ -153,11 +153,13 @@ it('round-trips positions through archive, JSON and rekeying, and migrates v6 wi
   expect(parseBackup(JSON.stringify(oldJson)).library).toEqual(library)
 })
 
-it.each([9, 10])(
+it.each([9, 10, 11])(
   'upgrades normalized v%s records, checkpoints and pending drafts; reading write failures roll back',
   async (seedVersion) => {
     const name = `reading-v${seedVersion}-${crypto.randomUUID()}`
     const { library, source, asset, text } = sample()
+    if (seedVersion === 11)
+      library.sources[0]!.queue = { state: 'active', availableOn: '2026-10-25' }
     const session = new DraftSession(),
       scope = `local:${name}`
     session.bindScope(scope)

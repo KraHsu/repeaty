@@ -34,7 +34,14 @@ const countSchema = z.object({
 const manifestSchema = z
   .object({
     format: z.literal('repeaty-archive'),
-    version: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
+    version: z.union([
+      z.literal(1),
+      z.literal(2),
+      z.literal(3),
+      z.literal(4),
+      z.literal(5),
+      z.literal(6),
+    ]),
     libraryVersion: z.union([
       z.literal(3),
       z.literal(4),
@@ -42,26 +49,29 @@ const manifestSchema = z
       z.literal(6),
       z.literal(7),
       z.literal(8),
+      z.literal(9),
     ]),
     counts: countSchema,
     parts: countSchema,
   })
   .refine((manifest) =>
-    manifest.version === 5
-      ? manifest.libraryVersion === 8
-      : manifest.version === 4
-        ? manifest.libraryVersion === 7
-        : manifest.version === 3
-          ? manifest.libraryVersion === 6
-          : manifest.counts.sources === 0 &&
-            manifest.parts.sources === 0 &&
-            (manifest.version === 2
-              ? manifest.libraryVersion === 5
-              : manifest.libraryVersion < 5 &&
-                manifest.counts.practices === 0 &&
-                manifest.counts.attempts === 0 &&
-                manifest.parts.practices === 0 &&
-                manifest.parts.attempts === 0),
+    manifest.version === 6
+      ? manifest.libraryVersion === 9
+      : manifest.version === 5
+        ? manifest.libraryVersion === 8
+        : manifest.version === 4
+          ? manifest.libraryVersion === 7
+          : manifest.version === 3
+            ? manifest.libraryVersion === 6
+            : manifest.counts.sources === 0 &&
+              manifest.parts.sources === 0 &&
+              (manifest.version === 2
+                ? manifest.libraryVersion === 5
+                : manifest.libraryVersion < 5 &&
+                  manifest.counts.practices === 0 &&
+                  manifest.counts.attempts === 0 &&
+                  manifest.parts.practices === 0 &&
+                  manifest.parts.attempts === 0),
   )
 export interface TransferOptions {
   signal?: AbortSignal
@@ -162,7 +172,7 @@ export async function exportArchive(
     await add(
       'manifest.json',
       new Blob([
-        JSON.stringify({ format: 'repeaty-archive', version: 5, libraryVersion: 8, counts, parts }),
+        JSON.stringify({ format: 'repeaty-archive', version: 6, libraryVersion: 9, counts, parts }),
       ]),
       0,
     )
