@@ -8,8 +8,17 @@ import {
   MAX_SOURCE_CHARACTERS,
   type SourceInput,
   type SourceExcerpt,
+  type SourceQueueAction,
+  type SourceQueueUpdate,
 } from '../core/source-data'
 import { sourceExcerpt, recentSource } from '../core/sources'
+import { localDay } from '../core/model'
+import {
+  queuedSources,
+  sourceQueueState,
+  nextReadingDay,
+  type SourceQueueView,
+} from '../core/source-queue'
 import type { ReadingProgress } from '../composables/useReadingProgress'
 import { createExportFile } from '@repeaty-platform'
 import AppModal from './AppModal.vue'
@@ -20,11 +29,13 @@ const props = defineProps<{
   busy: boolean
   scope: string
   reading: ReadingProgress
+  now: Date
   canShare?: boolean
   actionError?: string
   read: (id: string, signal?: AbortSignal) => Promise<string>
   save: (input: SourceInput, scope: string) => Promise<boolean>
   remove: (id: string, scope: string) => Promise<boolean>
+  arrange: (update: SourceQueueUpdate) => Promise<boolean>
 }>()
 const emit = defineEmits<{
   create: [excerpt: SourceExcerpt, format: 'plain' | 'markdown']
@@ -32,7 +43,28 @@ const emit = defineEmits<{
   share: [excerpt: SourceExcerpt]
   clearNotice: []
 }>()
-const selectedId = ref(recentSource(props.library.sources)?.id ?? '')
+const today = computed(() => localDay(props.now))
+const view = ref<SourceQueueView>('ready')
+const queueViews = ['ready', 'deferred', 'archived', 'all'] as const
+const queueLabels = {
+  ready: '待阅读',
+  deferred: '稍后阅读',
+  archived: '已归档',
+  all: '全部材料',
+} as const
+const counts = computed(() =>
+  Object.fromEntries(
+    queueViews.map((value) => [
+      value,
+      props.library.sources.filter(
+        (entry) => value === 'all' || sourceQueueState(entry, today.value) === value,
+      ).length,
+    ]),
+  ),
+)
+const selectedId = ref(
+  recentSource(queuedSources(props.library.sources, 'ready', today.value))?.id ?? '',
+)
 const source = computed(() => props.library.sources.find((entry) => entry.id === selectedId.value))
 const linked = computed(() =>
   props.library.notes.filter((note) => note.excerpt?.sourceId === selectedId.value),
@@ -50,16 +82,13 @@ const query = ref(''),
   page = ref(0)
 const pageSize = 20
 const filteredSources = computed(() =>
-  props.library.sources
-    .filter((entry) => entry.title.toLocaleLowerCase().includes(query.value.toLocaleLowerCase()))
-    .slice()
-    .reverse(),
+  queuedSources(props.library.sources, view.value, today.value, query.value),
 )
 const pages = computed(() => Math.max(1, Math.ceil(filteredSources.value.length / pageSize)))
 const visibleSources = computed(() =>
   filteredSources.value.slice(page.value * pageSize, (page.value + 1) * pageSize),
 )
-watch([query, () => props.library.sources.length], () => {
+watch([query, view], () => {
   page.value = 0
 })
 const form = reactive<SourceInput>({ title: '', url: '', format: 'markdown', content: '' })
@@ -68,15 +97,12 @@ const fileInput = ref<HTMLInputElement>(),
 let controller: AbortController | undefined,
   fileGeneration = 0
 let readingLoad: Promise<void> = Promise.resolve()
-watch(
-  () => props.library.sources,
-  (sources) => {
-    if (!sources.some((entry) => entry.id === selectedId.value)) {
-      selectedId.value = sources.at(-1)?.id ?? ''
-      page.value = 0
-    }
-  },
-)
+watch(filteredSources, (sources) => {
+  if (!sources.some((entry) => entry.id === selectedId.value)) {
+    selectedId.value = sources[page.value * pageSize]?.id ?? sources[0]?.id ?? ''
+  }
+  page.value = Math.min(page.value, pages.value - 1)
+})
 watch([() => source.value?.id, () => source.value?.mediaId], load, { immediate: true })
 onUnmounted(() => {
   controller?.abort()
@@ -137,6 +163,49 @@ function remember() {
 }
 const readingError = computed(() => props.reading.pending.get(selectedId.value)?.error)
 const pendingReading = computed(() => props.reading.pending.has(selectedId.value))
+const deferring = ref(false),
+  arranging = ref(false),
+  deferDate = ref('')
+const queueState = computed(() =>
+  source.value ? sourceQueueState(source.value, today.value) : undefined,
+)
+function openDefer() {
+  emit('clearNotice')
+  deferDate.value = nextReadingDay(props.now)
+  deferring.value = true
+}
+async function arrange(action: SourceQueueAction) {
+  const current = source.value
+  if (!current || props.busy || arranging.value) return
+  const pending = props.reading.pending.get(current.id)
+  const position = reader.value?.ready ? reader.value.capture().position : pending?.update.position
+  const scope = props.scope
+  arranging.value = true
+  emit('clearNotice')
+  try {
+    if (
+      await props.arrange({
+        sourceId: current.id,
+        mediaId: current.mediaId,
+        scope,
+        action,
+        position,
+      })
+    ) {
+      props.reading.acknowledge(current.id, pending?.token)
+      if (props.scope === scope) deferring.value = false
+    }
+  } finally {
+    arranging.value = false
+  }
+}
+function readingDate(date: string) {
+  const [year, month, day] = date.split('-').map(Number)
+  const value = new Date(0)
+  value.setFullYear(year!, month! - 1, day!)
+  value.setHours(12, 0, 0, 0)
+  return value.toLocaleDateString(locale.value)
+}
 function openImport() {
   emit('clearNotice')
   fileGeneration++
@@ -189,6 +258,7 @@ async function save() {
   if (await props.save({ ...form }, props.scope)) {
     importing.value = false
     query.value = ''
+    view.value = 'ready'
     page.value = 0
     selectedId.value = props.library.sources.at(-1)?.id ?? ''
   }
@@ -244,168 +314,273 @@ async function download() {
       <h2>{{ t('还没有学习材料') }}</h2>
       <p>{{ t('导入文本或 Markdown，也可以直接粘贴。原文会保存在当前学习库中。') }}</p>
     </div>
-    <div v-else class="sources-layout">
-      <aside class="source-list">
-        <label class="sr-only" for="source-search">{{ t('搜索材料') }}</label
-        ><input id="source-search" v-model="query" type="search" :placeholder="t('搜索材料')" />
-        <p v-if="!visibleSources.length" class="form-note">{{ t('没有找到材料。') }}</p>
-        <div
-          v-for="entry in visibleSources"
-          :key="entry.id"
-          class="source-list-item"
-          :class="{ selected: entry.id === selectedId }"
+    <template v-else>
+      <nav class="source-queue-filters" :aria-label="t('阅读队列')">
+        <button
+          v-for="value in queueViews"
+          :key="value"
+          type="button"
+          :aria-pressed="view === value"
+          @click="view = value"
         >
-          <button
-            class="source-list-title"
-            :aria-pressed="entry.id === selectedId"
-            @click="openSource(entry.id)"
-          >
-            <strong>{{ entry.title }}</strong></button
-          ><span
-            >{{ entry.format === 'markdown' ? 'Markdown' : t('纯文本') }} ·
-            {{ new Date(entry.createdAt).toLocaleDateString(locale) }}</span
-          >
-          <template v-if="entry.reading">
-            <span>{{
-              t('上次阅读 {date}', {
-                date: new Date(entry.reading.updatedAt).toLocaleString(locale),
-              })
-            }}</span>
-            <button class="text-button source-continue" @click="resume(entry.id)">
-              {{ t('继续阅读') }}
-            </button>
-          </template>
-        </div>
-        <nav v-if="pages > 1" class="source-list-pages" :aria-label="t('材料列表分页')">
-          <button type="button" class="text-button" :disabled="page === 0" @click="page--">
-            {{ t('上一页') }}</button
-          ><span>{{ page + 1 }} / {{ pages }}</span
-          ><button type="button" class="text-button" :disabled="page + 1 >= pages" @click="page++">
-            {{ t('下一页') }}
-          </button>
-        </nav>
-      </aside>
-      <section v-if="source" class="source-reader">
-        <div class="source-reader-heading">
-          <div>
-            <h2>{{ source.title }}</h2>
-            <a v-if="source.url" :href="source.url" target="_blank" rel="noopener noreferrer">{{
-              source.url
-            }}</a>
-            <p class="form-note">
-              {{ t('保存于 {date}', { date: new Date(source.createdAt).toLocaleString(locale) }) }}
-            </p>
-          </div>
-          <div class="source-actions">
-            <button
-              class="button secondary"
-              :disabled="loading || !!error || exporting"
-              @click="download"
-            >
-              {{ t('导出原文') }}</button
-            ><button class="text-button danger" :disabled="busy || exporting" @click="openDelete">
-              {{ t('删除材料') }}
-            </button>
-          </div>
-        </div>
-        <p v-if="loading" role="status">{{ t('正在读取原文…') }}</p>
-        <template v-else-if="error"
-          ><p class="import-warning" role="alert">{{ t(error) }}</p>
-          <button class="button secondary" @click="load">{{ t('重试') }}</button></template
-        >
-        <template v-else>
+          {{ t(queueLabels[value]) }} <span>{{ counts[value] }}</span>
+        </button>
+      </nav>
+      <div class="sources-layout">
+        <aside class="source-list">
+          <label class="sr-only" for="source-search">{{ t('搜索材料') }}</label
+          ><input id="source-search" v-model="query" type="search" :placeholder="t('搜索材料')" />
+          <p v-if="!visibleSources.length" class="form-note">{{ t('没有找到材料。') }}</p>
           <div
-            class="reading-progress"
-            :data-reading-status="
-              readingError
-                ? 'error'
-                : pendingReading
-                  ? 'pending'
-                  : source.reading
-                    ? 'saved'
-                    : 'empty'
-            "
+            v-for="entry in visibleSources"
+            :key="entry.id"
+            class="source-list-item"
+            :class="{ selected: entry.id === selectedId }"
           >
-            <p v-if="readingError" class="import-warning" role="alert">{{ t(readingError) }}</p>
-            <p v-else class="form-note" role="status">
-              {{
-                t(
-                  pendingReading
-                    ? '正在保存阅读位置…'
-                    : source.reading
-                      ? '阅读位置已保存'
-                      : '阅读位置会自动保存。',
-                )
-              }}
-            </p>
+            <button
+              class="source-list-title"
+              :aria-pressed="entry.id === selectedId"
+              @click="openSource(entry.id)"
+            >
+              <strong>{{ entry.title }}</strong></button
+            ><span
+              >{{ entry.format === 'markdown' ? 'Markdown' : t('纯文本') }} ·
+              {{ new Date(entry.createdAt).toLocaleDateString(locale) }}</span
+            >
+            <span class="source-queue-state">{{
+              sourceQueueState(entry, today) === 'archived'
+                ? t('已归档')
+                : entry.queue
+                  ? t('安排于 {date}', { date: readingDate(entry.queue.availableOn) })
+                  : t('待阅读')
+            }}</span>
+            <template v-if="entry.reading">
+              <span>{{
+                t('上次阅读 {date}', {
+                  date: new Date(entry.reading.updatedAt).toLocaleString(locale),
+                })
+              }}</span>
+              <button class="text-button source-continue" @click="resume(entry.id)">
+                {{ t('继续阅读') }}
+              </button>
+            </template>
+          </div>
+          <nav v-if="pages > 1" class="source-list-pages" :aria-label="t('材料列表分页')">
+            <button type="button" class="text-button" :disabled="page === 0" @click="page--">
+              {{ t('上一页') }}</button
+            ><span>{{ page + 1 }} / {{ pages }}</span
+            ><button
+              type="button"
+              class="text-button"
+              :disabled="page + 1 >= pages"
+              @click="page++"
+            >
+              {{ t('下一页') }}
+            </button>
+          </nav>
+        </aside>
+        <section v-if="source" class="source-reader">
+          <div class="source-reader-heading">
+            <div>
+              <h2>{{ source.title }}</h2>
+              <a v-if="source.url" :href="source.url" target="_blank" rel="noopener noreferrer">{{
+                source.url
+              }}</a>
+              <p class="form-note">
+                {{
+                  t('保存于 {date}', { date: new Date(source.createdAt).toLocaleString(locale) })
+                }}
+              </p>
+            </div>
             <div class="source-actions">
               <button
-                v-if="readingError"
-                class="text-button"
-                :disabled="busy"
-                @click="reading.flush()"
+                class="button secondary"
+                :disabled="loading || !!error || exporting"
+                @click="download"
               >
-                {{ t('重试保存位置') }}
-              </button>
-              <button class="text-button" :disabled="busy || !reader?.ready" @click="remember">
-                {{ t('保存阅读位置') }}
-              </button>
-              <button
-                class="text-button"
-                :disabled="busy || !reader?.ready"
-                @click="reader?.restart()"
-              >
-                {{ t('从头阅读') }}
+                {{ t('导出原文') }}</button
+              ><button class="text-button danger" :disabled="busy || exporting" @click="openDelete">
+                {{ t('删除材料') }}
               </button>
             </div>
           </div>
-          <SourceReader
-            :key="source.id + ':' + source.mediaId"
-            ref="reader"
-            :source="source"
-            :text="text"
-            :scope="scope"
-            @select="select"
-            @position="reading.record($event)"
-          />
-          <div class="source-excerpt-action">
-            <span>{{
-              excerpt
-                ? t('已选 {count} 个字符', { count: excerpt.quote.length })
-                : t('尚未选取摘录')
-            }}</span
-            ><button
-              class="button primary"
-              :disabled="busy || !excerpt || !library.decks.length"
-              @click="excerpt && emit('create', excerpt, source.format)"
-            >
-              {{ t('用摘录制卡') }}
-            </button>
-            <button
-              v-if="canShare"
-              class="button secondary"
-              :disabled="busy || !excerpt || !library.decks.length"
-              @click="excerpt && emit('share', excerpt)"
-            >
-              {{ t('通过 MCP 制卡') }}
-            </button>
+          <div class="source-reading-actions">
+            <span class="form-note">{{
+              queueState === 'archived'
+                ? t('已归档')
+                : source.queue
+                  ? t('安排于 {date}', { date: readingDate(source.queue.availableOn) })
+                  : t('待阅读')
+            }}</span>
+            <div class="source-actions">
+              <button
+                v-if="queueState !== 'ready'"
+                class="button secondary"
+                :disabled="busy || arranging"
+                @click="arrange({ type: 'restore' })"
+              >
+                {{ t('加入待阅读') }}
+              </button>
+              <button
+                v-if="queueState !== 'archived'"
+                class="button secondary"
+                :disabled="busy || arranging"
+                @click="openDefer"
+              >
+                {{ t('稍后阅读') }}
+              </button>
+              <button
+                v-if="queueState !== 'archived'"
+                class="text-button"
+                :disabled="busy || arranging"
+                @click="arrange({ type: 'archive' })"
+              >
+                {{ t('归档材料') }}
+              </button>
+            </div>
           </div>
-          <p v-if="!library.decks.length" class="form-note">
-            {{ t('请先新建一个卡组，再用摘录制卡。') }}
-          </p>
-          <details v-if="linked.length" class="source-linked">
-            <summary>{{ t('关联笔记（{count}）', { count: linked.length }) }}</summary>
-            <ul>
-              <li v-for="note in linked" :key="note.id">
-                <button class="text-button" @click="emit('edit', note.id)">
-                  {{ note.front.slice(0, 120) }}
+          <p v-if="loading" role="status">{{ t('正在读取原文…') }}</p>
+          <template v-else-if="error"
+            ><p class="import-warning" role="alert">{{ t(error) }}</p>
+            <button class="button secondary" @click="load">{{ t('重试') }}</button></template
+          >
+          <template v-else>
+            <div
+              class="reading-progress"
+              :data-reading-status="
+                readingError
+                  ? 'error'
+                  : pendingReading
+                    ? 'pending'
+                    : source.reading
+                      ? 'saved'
+                      : 'empty'
+              "
+            >
+              <p v-if="readingError" class="import-warning" role="alert">{{ t(readingError) }}</p>
+              <p v-else class="form-note" role="status">
+                {{
+                  t(
+                    pendingReading
+                      ? '正在保存阅读位置…'
+                      : source.reading
+                        ? '阅读位置已保存'
+                        : '阅读位置会自动保存。',
+                  )
+                }}
+              </p>
+              <div class="source-actions">
+                <button
+                  v-if="readingError"
+                  class="text-button"
+                  :disabled="busy"
+                  @click="reading.flush()"
+                >
+                  {{ t('重试保存位置') }}
                 </button>
-              </li>
-            </ul>
-          </details>
-        </template>
-      </section>
-    </div>
+                <button class="text-button" :disabled="busy || !reader?.ready" @click="remember">
+                  {{ t('保存阅读位置') }}
+                </button>
+                <button
+                  class="text-button"
+                  :disabled="busy || !reader?.ready"
+                  @click="reader?.restart()"
+                >
+                  {{ t('从头阅读') }}
+                </button>
+              </div>
+            </div>
+            <SourceReader
+              :key="source.id + ':' + source.mediaId"
+              ref="reader"
+              :source="source"
+              :text="text"
+              :scope="scope"
+              @select="select"
+              @position="reading.record($event)"
+            />
+            <div class="source-excerpt-action">
+              <span>{{
+                excerpt
+                  ? t('已选 {count} 个字符', { count: excerpt.quote.length })
+                  : t('尚未选取摘录')
+              }}</span
+              ><button
+                class="button primary"
+                :disabled="busy || !excerpt || !library.decks.length"
+                @click="excerpt && emit('create', excerpt, source.format)"
+              >
+                {{ t('用摘录制卡') }}
+              </button>
+              <button
+                v-if="canShare"
+                class="button secondary"
+                :disabled="busy || !excerpt || !library.decks.length"
+                @click="excerpt && emit('share', excerpt)"
+              >
+                {{ t('通过 MCP 制卡') }}
+              </button>
+            </div>
+            <p v-if="!library.decks.length" class="form-note">
+              {{ t('请先新建一个卡组，再用摘录制卡。') }}
+            </p>
+            <details v-if="linked.length" class="source-linked">
+              <summary>{{ t('关联笔记（{count}）', { count: linked.length }) }}</summary>
+              <ul>
+                <li v-for="note in linked" :key="note.id">
+                  <button class="text-button" @click="emit('edit', note.id)">
+                    {{ note.front.slice(0, 120) }}
+                  </button>
+                </li>
+              </ul>
+            </details>
+          </template>
+        </section>
+        <section v-else class="empty-state source-queue-empty">
+          <FileText :size="32" />
+          <h2>{{ t(view === 'ready' && !query ? '暂无待阅读材料' : '选择一篇材料开始阅读') }}</h2>
+          <p>
+            {{
+              t(view === 'ready' && !query ? '切换到稍后阅读或已归档查看材料。' : '当前列表为空。')
+            }}
+          </p>
+        </section>
+      </div>
+    </template>
+    <AppModal
+      v-if="deferring && source"
+      :title="t('稍后阅读')"
+      :busy="busy || arranging"
+      :error="actionError"
+      @close="deferring = false"
+    >
+      <form class="source-defer-form" @submit.prevent="arrange({ type: 'defer', date: deferDate })">
+        <label for="source-reading-date">{{ t('下次阅读日期') }}</label>
+        <input
+          id="source-reading-date"
+          v-model="deferDate"
+          type="date"
+          required
+          :min="nextReadingDay(now)"
+          max="9999-12-31"
+          :disabled="busy || arranging"
+        />
+        <p class="form-note">{{ t('按本机日期安排，到这一天会自动加入待阅读列表。') }}</p>
+        <div class="form-actions">
+          <button
+            type="button"
+            class="button secondary"
+            :disabled="busy || arranging"
+            @click="deferring = false"
+          >
+            {{ t('取消') }}
+          </button>
+          <button class="button primary" :disabled="busy || arranging">
+            {{ t('保存阅读安排') }}
+          </button>
+        </div>
+      </form>
+    </AppModal>
     <AppModal
       v-if="importing"
       wide
@@ -502,6 +677,57 @@ async function download() {
 </template>
 
 <style scoped>
+.source-queue-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+.source-queue-filters button {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 1rem;
+}
+.source-queue-filters button[aria-pressed='true'] {
+  background: #e7eee3;
+  border-color: #67886d;
+}
+.source-queue-filters span {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.source-reading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.source-queue-empty {
+  padding: 2rem 1rem;
+}
+.source-defer-form {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem 1.75rem;
+}
+.source-defer-form input {
+  min-width: 0;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.65rem;
+  border: 1px solid #d4decd;
+  border-radius: 8px;
+  color: inherit;
+  background: #fafbf8;
+  font: inherit;
+}
 .sources-layout {
   display: grid;
   grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
@@ -646,7 +872,7 @@ async function download() {
     grid-template-columns: minmax(0, 1fr);
   }
   .source-list {
-    max-height: 14rem;
+    max-height: min(22rem, 45vh);
   }
   .source-reader {
     padding: 1rem;

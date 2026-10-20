@@ -1075,6 +1075,104 @@ try {
   console.log(
     'Native reading positions: plain text and Markdown preview survive application exits without changing study records',
   )
+  const queueView = (label) =>
+    execute(
+      "const nav=document.querySelector('.source-queue-filters');const button=[...nav.querySelectorAll('button')].find(button=>button.textContent.trim().startsWith(arguments[0]));if(!button)throw Error('Missing queue view');button.click();",
+      label,
+    )
+  await waitButton('归档材料')
+  await click('归档材料')
+  await until(
+    () => execute("return document.body.textContent.includes('暂无待阅读材料')"),
+    'native material archived',
+  )
+  const archivedSource = (await sourceRecords())[0]
+  assert.equal(archivedSource.queue.state, 'archived')
+  assert.equal(archivedSource.reading.view, 'preview')
+  assert.equal(archivedSource.reading.offset, previewReading.offset)
+  assert.deepEqual(await libraryRecords(), confirmed)
+  await command(`/session/${session}`, undefined, 'DELETE')
+  session = undefined
+  await createSession()
+  await until(
+    () => execute("return document.querySelectorAll('.deck-title').length===1"),
+    'native archived app reopened',
+  )
+  await click('学习材料')
+  await until(
+    () => execute("return document.body.textContent.includes('暂无待阅读材料')"),
+    'native archived material stays out of ready queue',
+  )
+  await queueView('已归档')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-markdown-preview')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native archived preview restored',
+  )
+  assert.ok(
+    (await execute("return document.querySelector('.source-markdown-preview').scrollTop")) > 1000,
+  )
+  await waitButton('加入待阅读')
+  await click('加入待阅读')
+  await until(
+    () => execute("return !document.querySelector('.source-reader')"),
+    'native archive view empty after restore',
+  )
+  await queueView('待阅读')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-markdown-preview')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native restored ready material',
+  )
+  await waitButton('稍后阅读')
+  await click('稍后阅读')
+  await until(
+    () => execute("return !!document.querySelector('#source-reading-date')?.value"),
+    'native reading date',
+  )
+  const readingDate = await execute("return document.querySelector('#source-reading-date').value")
+  await click('保存阅读安排')
+  await until(
+    () =>
+      execute(
+        "return !document.querySelector('dialog') && !document.querySelector('.source-reader')",
+      ),
+    'native reading deferred',
+  )
+  assert.deepEqual((await sourceRecords())[0].queue, { state: 'active', availableOn: readingDate })
+  await command(`/session/${session}`, undefined, 'DELETE')
+  session = undefined
+  await createSession()
+  await until(
+    () => execute("return document.querySelectorAll('.deck-title').length===1"),
+    'native deferred app reopened',
+  )
+  await click('学习材料')
+  await until(
+    () => execute("return document.body.textContent.includes('暂无待阅读材料')"),
+    'native deferred material stays out of ready queue',
+  )
+  await queueView('稍后阅读')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-markdown-preview')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native deferred position restored',
+  )
+  assert.deepEqual((await sourceRecords())[0].queue, { state: 'active', availableOn: readingDate })
+  assert.deepEqual(await libraryRecords(), confirmed)
+  await writeFile(
+    'test-results/native-reading-queue.png',
+    Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
+  )
+  console.log(
+    'Native reading queue: archived and deferred materials survive application exits, retain positions, and preserve study records',
+  )
   console.log(
     'Native WebKit/Tauri: starter lifecycle, accounts, upstream, credentials, backup, LeetCode history and Anki import/update, source snapshots, excerpt review and native text export passed.',
   )

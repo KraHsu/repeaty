@@ -102,6 +102,9 @@ export function useReadingProgress(workspace: ReturnType<typeof useLibrary>) {
     clearTimeout(timer)
     pending.clear()
   })
-  return { record, flush, clear, pending, savingId }
+  function acknowledge(sourceId: string, token: number | undefined) {
+    if (token !== undefined && pending.get(sourceId)?.token === token) pending.delete(sourceId)
+  }
+  return { record, flush, clear, acknowledge, pending, savingId }
 }
 export type ReadingProgress = ReturnType<typeof useReadingProgress>

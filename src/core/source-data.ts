@@ -21,6 +21,23 @@ export const readingPositionSchema = z
   })
   .refine((position) => position.view === 'preview' || position.fraction === 0)
 export const sourceReadingSchema = readingPositionSchema.extend({ updatedAt: z.iso.datetime() })
+export const sourceQueueSchema = z.object({
+  state: z.enum(['active', 'archived']),
+  availableOn: z.iso.date(),
+})
+export const sourceQueueActionSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('defer'), date: z.iso.date() }),
+  z.object({ type: z.literal('archive') }),
+  z.object({ type: z.literal('restore') }),
+])
+export type SourceQueueAction = z.infer<typeof sourceQueueActionSchema>
+export interface SourceQueueUpdate {
+  sourceId: string
+  mediaId: string
+  scope: string
+  action: SourceQueueAction
+  position?: ReadingPosition
+}
 export const sourceSchema = z
   .object({
     id,
@@ -36,6 +53,7 @@ export const sourceSchema = z
     characters: z.number().int().min(1).max(MAX_SOURCE_CHARACTERS),
     createdAt: z.iso.datetime(),
     reading: sourceReadingSchema.optional(),
+    queue: sourceQueueSchema.optional(),
   })
   .superRefine((source, context) => {
     if (
