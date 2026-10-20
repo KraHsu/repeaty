@@ -1,5 +1,16 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  'MCP 客户端': 'MCP client',
+  '通用 HTTP 客户端': 'Generic HTTP client',
+  '仅支持本地学习库。每次打开应用后需开启 MCP；切换学习库会关闭连接。':
+    'Local library only. Enable MCP each time you open Repeaty. Switching libraries closes the connection.',
+  '配置只需添加一次。关闭再开启 MCP 或重启 Repeaty 后，可沿用原配置。':
+    'Add the configuration once. It works again when you re-enable MCP or restart Repeaty.',
+  '将配置合并到 {file}，保留已有条目。': 'Merge this into {file}, keeping existing entries.',
+  '配置不包含访问密钥。客户端仅连接本机运行中的 Repeaty，不会自动启动应用或开启 MCP。':
+    'This configuration contains no access key. The client connects to Repeaty running on this computer. It does not launch the app or enable MCP.',
+  '无法生成客户端配置，请重试。': 'Cannot generate the client configuration. Try again.',
+
   '撤销最近一次阅读安排（刷新后清除）': 'Undo the last reading arrangement (cleared on reload)',
   出处路径: 'Source ancestry',
   '摘录出处不能形成循环或引用缺失材料。':

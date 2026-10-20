@@ -25,6 +25,9 @@ export async function stopMcp() {
   await invoke('mcp_stop')
   return refreshMcpStatus()
 }
+export type McpClient = 'codex' | 'claude-code' | 'claude-desktop' | 'http'
+export const mcpClientConfiguration = (client: McpClient) =>
+  invoke<string>('mcp_client_configuration', { client })
 export const mcpConfiguration = async () =>
   JSON.stringify(await invoke<unknown>('mcp_configuration'), null, 2)
 

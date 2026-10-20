@@ -596,7 +596,12 @@ async function restoreBackup() {
             )
           }}
         </p>
-        <span class="version">Repeaty {{ version }}</span>
+        <div class="version-links">
+          <span class="version">Repeaty {{ version }}</span>
+          <a href="https://github.com/KraHsu/repeaty" target="_blank" rel="noopener noreferrer">
+            GitHub
+          </a>
+        </div>
       </div>
     </aside>
 
