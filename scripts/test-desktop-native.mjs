@@ -1478,6 +1478,97 @@ try {
       ),
     'native root ready for deletion',
   )
+  await until(
+    () => execute("return document.querySelectorAll('.source-excerpt-list li').length===1"),
+    'native excerpt navigation list',
+  )
+  assert.ok(
+    await execute(
+      "return document.querySelector('.source-excerpt-list').textContent.includes('1 张关联卡片')",
+    ),
+  )
+  await waitButton('定位原文')
+  await click('定位原文')
+  await until(
+    () =>
+      execute(
+        "const area=document.querySelector('.source-text');return area?.selectionStart===arguments[0] && area.selectionEnd===arguments[1] && document.activeElement===area",
+        sourceText.lastIndexOf(sourceQuote),
+        sourceText.lastIndexOf(sourceQuote) + sourceQuote.length,
+      ),
+    'native exact source selection from list',
+  )
+  await waitButton('查看已有摘录')
+  await click('查看已有摘录')
+  assert.ok(
+    await execute("return document.querySelector('.source-excerpts h3')===document.activeElement"),
+  )
+  await writeFile(
+    'test-results/native-excerpt-navigation.png',
+    Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
+  )
+  await waitButton('打开摘录')
+  await click('打开摘录')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-reader h2')?.textContent==='Native independent excerpt' && document.querySelector('.source-text')?.value===arguments[0]",
+        sourceQuote,
+      ),
+    'native independent reader opened from source list',
+  )
+  await execute(
+    "[...document.querySelectorAll('.source-list-title')].find(button=>button.textContent.trim()==='Native source').click()",
+  )
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-reader h2')?.textContent==='Native source' && document.querySelector('.source-text')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native source returned after excerpt navigation',
+  )
+  await setReadingPriority('high')
+  await waitButton('开始一轮阅读')
+  await click('开始一轮阅读')
+  await until(
+    () =>
+      execute(
+        "return !!document.querySelector('.reading-round') && document.querySelector('.source-reader h2')?.textContent==='Native source' && document.querySelector('.source-text')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native navigation reading round',
+  )
+  const nativeRoundCounter = await execute(
+    "return document.querySelector('.reading-round strong').textContent",
+  )
+  await waitButton('打开摘录')
+  await click('打开摘录')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('dialog .source-original mark')?.textContent===arguments[0]",
+        sourceQuote,
+      ),
+    'native round excerpt opened in context',
+  )
+  await click('关闭')
+  assert.equal(
+    await execute("return document.querySelector('.reading-round strong').textContent"),
+    nativeRoundCounter,
+  )
+  assert.equal(
+    await execute("return document.querySelector('.source-reader h2').textContent"),
+    'Native source',
+  )
+  await waitButton('结束本轮')
+  await click('结束本轮')
+  await until(
+    () => execute("return !document.querySelector('.reading-round')"),
+    'native navigation round ended',
+  )
+  assert.deepEqual(await libraryRecords(), nativeChildRecords)
+  console.log(
+    'Native excerpt navigation: linked cards, exact selection, duplicate anchor, child reader and round context preserve learning records',
+  )
   await click('删除材料')
   await waitButton('确认删除')
   await click('确认删除')

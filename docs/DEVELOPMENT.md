@@ -123,6 +123,8 @@ Anki `.apkg` 在同源 Worker 中通过 sql.js 读取，HTML 用 parse5 作为�
 
 0.19.0 的独立摘录采用 `Source.kind` 与 `Source.origin`，正文沿用独立 Blob；创建操作与父材料位置原子保存。范围、原文类型、格式和正文一致性由前端与 Rust 分别验证，按来源逐份读取；仅位置与安排变化不触发前端正文重读。删除原文只解除出处，保留摘录、卡片与进度。[ADR 009](adr/009-independent-reading-excerpts.md)。
 
+0.20.0 增加 `core/source-navigation.ts` 与 `SourceExcerptList`：从现有出处建立按原文位置排序的列表并统计实际卡片，预览仅取当前原文，每页五条。精确重复按来源 ID 和 UTF-16 范围判断，定位通过 `SourceReader.locate` 切回原始文本并保留选区；打开摘录先保存位置，轮次内使用只读弹窗。导航检查作用域、快照和组件生命周期，失败不跳转。沿用 0.19.0 的全部数据版本与 API。[ADR 010](adr/010-source-excerpt-navigation.md)。
+
 桌面 MCP 的学习查询通过 Rust 本机 HTTP 监听和 IPC Channel 请求当前窗口的只读应用接口。`useLibrary.readLearning` 校验作用域与忙碌状态，`core/learning-reader.ts` 从已提交的内存视图投影有上限的结果；不绕过 IndexedDB，也不读取提交正文。授权仅存于本次进程，切库和重载撤销。查询沿用现有修订号，无存储或备份格式变更。[设计与验证](adr/002-desktop-mcp-bridge.md) · [客户端配置](MCP.md)。
 
 0.13.0 增加受选区授权限制的 `repeaty_selected_excerpt` 与 `repeaty_propose_cards`；0.14.0 将已接收草稿保存到独立 IndexedDB 表，写入成功后才返回回执。`core/draft-proposals.ts` 管理选区、批次重试与容量；`core/card-draft-data.ts` 校验持久记录与附件，`desktop/drafts.ts` 负责恢复与作用域代次检查。`DraftWorkbench` 复用 NoteEditor，明确保存编辑或确认调用 `saveExcerptNote`；确认时生成正式记录与消费草稿使用同一事务。辅助表不参与正式修订、检查点和备份，不持久化授权。[ADR 003](adr/003-mcp-card-drafts.md) · [ADR 004](adr/004-persistent-card-drafts.md)。
