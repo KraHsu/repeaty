@@ -40,6 +40,7 @@ import {
   AccountControls,
   createExportFile,
   connectLearningReader,
+  DraftWorkbench,
 } from '@repeaty-platform'
 import { canReviewCard, listenPluginPreferences } from './plugins'
 import type { BackupData } from './core/backups'
@@ -73,8 +74,10 @@ const offline = useOffline()
 const cards = computed(() => cardViews(library.value))
 const tab = ref<'overview' | 'cards' | 'history' | 'plugins' | 'data' | 'sources'>('overview')
 const historyCardId = ref('')
+const mcpSelection = ref<SourceExcerpt>()
 watch(workspace.scope, () => {
   historyCardId.value = ''
+  mcpSelection.value = undefined
   sourceDraft.value = undefined
   modal.value = null
   review.value = null
@@ -558,6 +561,13 @@ async function restoreBackup() {
           Repeaty<ChevronRight :size="14" /><strong>{{ review ? t('复习') : pageTitle }}</strong>
         </div>
         <div class="topbar-tools">
+          <component
+            v-if="DraftWorkbench"
+            :is="DraftWorkbench"
+            :workspace="workspace"
+            :selection="mcpSelection"
+            @close-selection="mcpSelection = undefined"
+          />
           <component v-if="AccountControls" :is="AccountControls" />
           <label class="language-picker"
             ><span class="sr-only">{{ t('界面语言') }}</span
@@ -886,11 +896,13 @@ async function restoreBackup() {
         :library="library"
         :busy="busy"
         :scope="workspace.scope.value"
+        :can-share="desktopEdition && !remoteWorkspace"
         :read="workspace.getSource"
         :save="saveSource"
         :remove="deleteSource"
         :action-error="notice?.error ? t(notice.text) : undefined"
         @create="createFromExcerpt"
+        @share="mcpSelection = $event"
         @edit="(id) => editCard(cards.find((card) => card.noteId === id))"
         @clear-notice="notice = null"
       />

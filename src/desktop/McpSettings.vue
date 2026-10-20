@@ -65,7 +65,7 @@ async function copy() {
       <span class="mcp-state" role="status">{{ t(mcpStatus.enabled ? '已开启' : '已关闭') }}</span>
     </div>
     <p class="form-note">
-      {{ t('允许本机的 AI 客户端查询待复习题目、学习统计和练习摘要。连接仅提供读取权限。') }}
+      {{ t('可查询待复习题目、学习统计和练习摘要。在材料中分享摘录后，还可接收制卡草稿。') }}
     </p>
     <p class="form-note">
       {{ t('仅支持本地学习库。退出应用或切换学习库后连接关闭，需要重新开启并更新客户端配置。') }}

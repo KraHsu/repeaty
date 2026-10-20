@@ -34,7 +34,6 @@ type SharedExcerpt = {
   mediaId: string
   deckId: string
   title: string
-  url: string
   format: 'plain' | 'markdown'
   excerpt: SourceExcerpt
 }
@@ -108,7 +107,6 @@ export class DraftSession {
       mediaId,
       deckId,
       title: source.title,
-      url: source.url,
       format: source.format,
       excerpt: verified,
     }
@@ -120,7 +118,6 @@ export class DraftSession {
     return {
       selectionId: selection.selectionId,
       title: selection.title,
-      url: selection.url,
       format: selection.format,
       text: selection.excerpt.quote,
       deck: {

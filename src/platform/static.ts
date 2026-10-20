@@ -2,6 +2,7 @@ import type { Component } from 'vue'
 import { createRepository } from '../core/storage'
 import type { LearningReader } from '../core/learning-reader'
 export const AccountControls: Component | undefined = undefined
+export const DraftWorkbench: Component | undefined = undefined
 export async function initializePlatform() {}
 export async function connectLearningReader(_reader: LearningReader): Promise<() => void> {
   return () => {}

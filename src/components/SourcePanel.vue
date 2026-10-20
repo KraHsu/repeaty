@@ -18,6 +18,7 @@ const props = defineProps<{
   library: Library
   busy: boolean
   scope: string
+  canShare?: boolean
   actionError?: string
   read: (id: string, signal?: AbortSignal) => Promise<string>
   save: (input: SourceInput, scope: string) => Promise<boolean>
@@ -26,6 +27,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   create: [excerpt: SourceExcerpt, format: 'plain' | 'markdown']
   edit: [noteId: string]
+  share: [excerpt: SourceExcerpt]
   clearNotice: []
 }>()
 const selectedId = ref(props.library.sources.at(-1)?.id ?? '')
@@ -314,6 +316,14 @@ async function download() {
               @click="excerpt && emit('create', excerpt, source.format)"
             >
               {{ t('用摘录制卡') }}
+            </button>
+            <button
+              v-if="canShare"
+              class="button secondary"
+              :disabled="busy || !excerpt || !library.decks.length"
+              @click="excerpt && emit('share', excerpt)"
+            >
+              {{ t('通过 MCP 制卡') }}
             </button>
           </div>
           <p v-if="!library.decks.length" class="form-note">

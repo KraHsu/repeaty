@@ -7,7 +7,7 @@ function example() {
   const text = 'private prefix\n选中的摘录🙂\nprivate suffix'
   const { source, asset } = prepareSource({
     title: 'Saved source',
-    url: '',
+    url: 'https://private.example/path?token=private-link',
     format: 'markdown',
     content: text,
   })
@@ -37,7 +37,7 @@ it('shares only the explicitly selected excerpt and never the rest of its snapsh
   const data = session.readSelection(context, {})
   expect(data).toMatchObject({ text: excerpt.quote, title: 'Saved source', deck: { id: 'deck' } })
   expect(JSON.stringify(data)).not.toMatch(
-    /private prefix|private suffix|mediaId|sourceId|start|end/,
+    /private prefix|private suffix|private-link|private.example|mediaId|sourceId|start|end/,
   )
   expect(() => session.readSelection(context, { sourceId: 'anything' })).toThrow(
     'invalid-arguments',
