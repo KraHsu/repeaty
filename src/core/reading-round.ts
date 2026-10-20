@@ -1,5 +1,5 @@
 import type { Source } from './source-data'
-import { queuedSources, sourceQueueState } from './source-queue'
+import { queuedSources, sourceQueueState, type SourceFilter } from './source-queue'
 
 /** A temporary snapshot of one pass through the ready queue, never part of the library. */
 export interface ReadingRound {
@@ -7,9 +7,13 @@ export interface ReadingRound {
   cursor: number
 }
 
-export function startReadingRound(sources: Source[], today: string): ReadingRound {
+export function startReadingRound(
+  sources: Source[],
+  today: string,
+  filter: SourceFilter = {},
+): ReadingRound {
   return {
-    entries: queuedSources(sources, 'ready', today).map((source) => ({
+    entries: queuedSources(sources, 'ready', today, filter).map((source) => ({
       sourceId: source.id,
       mediaId: source.mediaId,
     })),

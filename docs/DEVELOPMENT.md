@@ -129,6 +129,8 @@ Anki `.apkg` 在同源 Worker 中通过 sql.js 读取，HTML 用 parse5 作为�
 
 0.22.0 增加可选 `Source.readingIntervalDays`。`nextReadingInterval` 与 `arrangeSource` 负责固定阶梯、陈旧确认和重置，位置与安排继续在一个事务中保存。手动日期、归档及优先级保留阶梯；原文和摘录互不继承。[ADR 011](adr/011-progressive-reading-intervals.md)。
 
+0.23.0 的材料筛选复用 `core/source-queue.ts` 的 `SourceFilter` 和标题 / 类型 / 优先级匹配，四个队列的数量与列表使用同一条件。`startReadingRound` 可接收同一筛选，在开始时捕获全部符合条件的待阅读身份；后续只核对快照与可读状态，不重新应用筛选。「再读一轮」重新匹配原条件。界面清除筛选以显示主动打开或新保存的目标；筛选本身不写入库、快照或备份，数据与 API 版本沿用 0.22.0。
+
 桌面 MCP 的学习查询通过 Rust 本机 HTTP 监听和 IPC Channel 请求当前窗口的只读应用接口。`useLibrary.readLearning` 校验作用域与忙碌状态，`core/learning-reader.ts` 从已提交的内存视图投影有上限的结果；不绕过 IndexedDB，也不读取提交正文。授权仅存于本次进程，切库和重载撤销。查询沿用现有修订号，无存储或备份格式变更。[设计与验证](adr/002-desktop-mcp-bridge.md) · [客户端配置](MCP.md)。
 
 0.13.0 增加受选区授权限制的 `repeaty_selected_excerpt` 与 `repeaty_propose_cards`；0.14.0 将已接收草稿保存到独立 IndexedDB 表，写入成功后才返回回执。`core/draft-proposals.ts` 管理选区、批次重试与容量；`core/card-draft-data.ts` 校验持久记录与附件，`desktop/drafts.ts` 负责恢复与作用域代次检查。`DraftWorkbench` 复用 NoteEditor，明确保存编辑或确认调用 `saveExcerptNote`；确认时生成正式记录与消费草稿使用同一事务。辅助表不参与正式修订、检查点和备份，不持久化授权。[ADR 003](adr/003-mcp-card-drafts.md) · [ADR 004](adr/004-persistent-card-drafts.md)。
@@ -150,7 +152,7 @@ src/core/
   batch.ts           # CSV / TSV 校验与批量操作
   anki/              # .apkg 解析、HTML 转换、媒体比较与选择性导入更新
   source-data.ts     # 材料元数据、阅读安排与优先级、阅读与摘录位置
-  source-queue.ts    # 阅读排序、优先级、日期安排与归档
+  source-queue.ts    # 材料筛选、阅读排序、优先级、日期安排与归档
   reading-round.ts   # 临时阅读顺序、快照校验与逐篇推进
   sources.ts         # 原文快照、读取、阅读位置、摘录与独立删除
   card-draft-data.ts  # 待确认草稿与附件校验

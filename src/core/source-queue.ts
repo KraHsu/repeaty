@@ -5,11 +5,31 @@ import {
   sourceSchema,
   READING_INTERVAL_DAYS,
   type Source,
+  type SourcePriority,
   type SourceQueueAction,
 } from './source-data'
 
 export type SourceQueueState = 'ready' | 'deferred' | 'archived'
 export type SourceQueueView = SourceQueueState | 'all'
+
+/** A temporary list filter; original snapshots have no stored kind. */
+export interface SourceFilter {
+  query?: string
+  kind?: 'all' | 'original' | 'excerpt'
+  priority?: 'all' | SourcePriority
+}
+
+export function filterSources(sources: Source[], filter: SourceFilter = {}) {
+  const search = (filter.query ?? '').trim().toLocaleLowerCase()
+  return sources.filter(
+    (source) =>
+      (!filter.kind || filter.kind === 'all' || (source.kind ?? 'original') === filter.kind) &&
+      (!filter.priority ||
+        filter.priority === 'all' ||
+        (source.priority ?? 'normal') === filter.priority) &&
+      source.title.toLocaleLowerCase().includes(search),
+  )
+}
 
 export function sourceQueueState(source: Source, today: string): SourceQueueState {
   if (source.queue?.state === 'archived') return 'archived'
@@ -17,16 +37,16 @@ export function sourceQueueState(source: Source, today: string): SourceQueueStat
 }
 
 /** Priority orders ready sources only; future dates and archives keep their eligibility. */
-export function queuedSources(sources: Source[], view: SourceQueueView, today: string, query = '') {
+export function queuedSources(
+  sources: Source[],
+  view: SourceQueueView,
+  today: string,
+  filter: SourceFilter = {},
+) {
   const ranks = { ready: 0, deferred: 1, archived: 2 }
   const priorities = { high: 0, normal: 1, low: 2 }
-  const search = query.toLocaleLowerCase()
-  return sources
-    .filter(
-      (source) =>
-        (view === 'all' || sourceQueueState(source, today) === view) &&
-        source.title.toLocaleLowerCase().includes(search),
-    )
+  return filterSources(sources, filter)
+    .filter((source) => view === 'all' || sourceQueueState(source, today) === view)
     .map((source) => ({
       source,
       rank: ranks[sourceQueueState(source, today)],
