@@ -18,6 +18,7 @@ import {
   type CardView,
   renderCard,
 } from './model'
+import { sourceSchema } from './source-data'
 import { compileSearch } from './search'
 import { available } from './scheduler'
 import {
@@ -49,6 +50,7 @@ export const recordStores = [
   'savedSearches',
   'practices',
   'attempts',
+  'sources',
 ] as const
 export type RecordStore = (typeof recordStores)[number]
 type Entity = Library[RecordStore][number]
@@ -96,6 +98,7 @@ interface RepeatyDB extends DBSchema {
   practices: RecordTable
   attempts: RecordTable
   attemptSummaries: RecordTable
+  sources: RecordTable
 }
 const stores = [
   'workspace',
@@ -109,6 +112,7 @@ const stores = [
 ] as const
 type Transaction = IDBPTransaction<RepeatyDB, typeof stores, 'readwrite'>
 const schemas = {
+  sources: sourceSchema,
   decks: deckSchema,
   notes: noteSchema,
   cards: cardSchema,
@@ -137,7 +141,7 @@ export function createRepository(
   onBlocked?: () => void,
   options: { compactHistory?: boolean } = {},
 ) {
-  const database = openDB<RepeatyDB>(name, 7, {
+  const database = openDB<RepeatyDB>(name, 8, {
     async upgrade(db, _oldVersion, _newVersion, tx) {
       try {
         for (const store of stores)
@@ -258,7 +262,7 @@ export function createRepository(
     now: Date,
     force: boolean,
   ) {
-    if (!meta.counts.notes && !force) return false
+    if (!meta.counts.notes && !meta.counts.sources && !force) return false
     const entries = await tx.objectStore('checkpoints').getAll()
     const latest = entries.sort(newest)[0]
     if (
@@ -290,6 +294,7 @@ export function createRepository(
   async function migrate(tx: Transaction): Promise<Metadata> {
     const meta = await tx.objectStore('meta').get('main')
     if (meta) {
+      meta.counts.sources ??= 0
       meta.counts.practices ??= 0
       meta.counts.attempts ??= 0
       return meta
@@ -372,7 +377,7 @@ export function createRepository(
       // The frequent grading path validates only changed cards/reviews. Structural edits and
       // external restores still receive complete cross-reference validation at the boundary.
       const progressOnly =
-        ['decks', 'notes', 'media', 'savedSearches'].every(
+        ['decks', 'notes', 'media', 'savedSearches', 'sources'].every(
           (key) => previous[key as RecordStore] === library[key as RecordStore],
         ) &&
         library.cards.length === previous.cards.length &&

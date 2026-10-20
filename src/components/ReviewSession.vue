@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t, msg, type Message } from '../i18n'
 
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { defineAsyncComponent, computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ArrowLeft, Check, CornerDownLeft, RotateCcw } from '@lucide/vue'
 import {
   available,
@@ -17,6 +17,7 @@ import type { QuestionState } from '../plugins/types'
 import type { Assessment } from '../plugins/data'
 import type { Practice, Attempt } from '../core/practice-data'
 
+const SourceContext = defineAsyncComponent(() => import('./SourceContext.vue'))
 const props = defineProps<{
   library: Library
   deckId?: string
@@ -34,11 +35,16 @@ const props = defineProps<{
   undo: () => Promise<boolean>
   change: (ids: string[], action: 'suspend' | 'bury') => Promise<boolean>
   getMedia: (id: string) => Promise<Blob | undefined>
+  getSource: (id: string, signal?: AbortSignal) => Promise<string>
   getAttempt: (id: string, signal?: AbortSignal) => Promise<Attempt>
 }>()
 const emit = defineEmits<{ close: [] }>()
 const clock = ref(new Date())
 const revealed = ref(false)
+const sourceOpen = ref(false)
+const currentSource = computed(() =>
+  props.library.sources.find((source) => source.id === current.value?.excerpt?.sourceId),
+)
 const completed = ref(0)
 const feedback = ref<Message[]>([])
 const currentId = ref<string>()
@@ -78,6 +84,7 @@ const questionState = reactive<QuestionState>({ allowedGrades: [], busy: false }
 watch(
   currentId,
   () => {
+    sourceOpen.value = false
     questionState.allowedGrades = []
     questionState.suggestedGrade = undefined
     questionState.assessment = undefined
@@ -184,6 +191,7 @@ async function changeCurrent(action: 'suspend' | 'bury') {
     selectNext()
 }
 function keydown(event: KeyboardEvent) {
+  if (document.querySelector('dialog[open]')) return
   if (
     event.repeat ||
     event.ctrlKey ||
@@ -311,6 +319,17 @@ onUnmounted(() => {
             :get-media="getMedia"
             :state="questionState"
             :revealed="revealed"
+          />
+        </div>
+        <div v-if="revealed && currentSource" class="review-source">
+          <button type="button" class="text-button" @click="sourceOpen = true">
+            {{ t('查看原文') }} · {{ currentSource.title }}</button
+          ><SourceContext
+            v-if="sourceOpen"
+            :source="currentSource"
+            :excerpt="current.excerpt"
+            :read="getSource"
+            @close="sourceOpen = false"
           />
         </div>
         <div v-if="current.tags.length" class="tag-list">

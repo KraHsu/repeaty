@@ -14,7 +14,7 @@ export interface BackupData {
 }
 const packageSchema = z.object({
   format: z.literal('repeaty-backup'),
-  version: z.union([z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
+  version: z.union([z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)]),
   library: z.unknown().transform((value) => migrateLibrary(value)),
   assets: z.array(
     z.object({
@@ -45,7 +45,7 @@ export async function exportBackup(
       binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
     assets.push({ id: meta.id, data: btoa(binary) })
   }
-  const result = JSON.stringify({ format: 'repeaty-backup', version: 5, library, assets })
+  const result = JSON.stringify({ format: 'repeaty-backup', version: 6, library, assets })
   if (new Blob([result]).size > MAX_BACKUP_BYTES)
     throw new LocalizedError(msg('JSON 备份超过 100 MB。'))
   return result
@@ -89,6 +89,10 @@ export function rekeyBackup(data: BackupData): BackupData {
   return {
     library: {
       ...data.library,
+      sources: data.library.sources.map((source) => ({
+        ...source,
+        mediaId: ids.get(source.mediaId)!,
+      })),
       media: data.library.media.map((meta) => ({ ...meta, id: ids.get(meta.id)! })),
       notes: data.library.notes.map((note) => ({
         ...note,

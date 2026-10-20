@@ -14,7 +14,7 @@ it('uses summaries on a capable service, reads complete bodies separately and se
   setApiTransport(async (path, init) => {
     const input = init.body ? JSON.parse(String(init.body)) : undefined
     calls.push({ path, body: input })
-    if (path === '/status') return Response.json({ apiVersion: 3, historyVersion: 1 })
+    if (path === '/status') return Response.json({ apiVersion: 4, historyVersion: 1 })
     if (path === '/auth/session') return Response.json({ user: { id: 'alice' } })
     expect(new Headers(init.headers).get('X-Repeaty-User')).toBe('alice')
     if (path === '/library/summary')
@@ -53,7 +53,7 @@ it('continues to read an API v3 service without the optional summary endpoints',
   const calls: string[] = []
   setApiTransport(async (path) => {
     calls.push(path)
-    if (path === '/status') return Response.json({ apiVersion: 3 })
+    if (path === '/status') return Response.json({ apiVersion: 4 })
     if (path === '/auth/session') return Response.json({ user: { id: 'alice' } })
     if (path === '/library') return Response.json({ revision: 1, library })
     throw new Error(`Unexpected path: ${path}`)
@@ -68,7 +68,7 @@ it('continues to read an API v3 service without the optional summary endpoints',
 it('rejects a mismatched body response instead of displaying another submission', async () => {
   const library = practiceHistoryFixture(3)
   setApiTransport(async (path) => {
-    if (path === '/status') return Response.json({ apiVersion: 3, historyVersion: 1 })
+    if (path === '/status') return Response.json({ apiVersion: 4, historyVersion: 1 })
     if (path === '/auth/session') return Response.json({ user: { id: 'alice' } })
     if (path === '/library/summary')
       return Response.json({

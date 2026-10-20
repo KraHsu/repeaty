@@ -506,8 +506,134 @@ try {
     await execute(`return (async()=>{const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('repeaty');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
     try { const result={};for(const key of ['notes','cards','reviews','attempts'])result[key]=await new Promise((resolve,reject)=>{const r=db.transaction(key).objectStore(key).getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});return {notes:result.notes.filter(n=>n.id.startsWith('anki:')).length,cards:result.cards.length,reviews:result.reviews.length,attempts:result.attempts.length}}finally{db.close()}})();`)
   assert.deepEqual(updatedCounts, { notes: 5, cards: 7, reviews: 1, attempts: 1 })
+  await click('学习材料')
+  await until(
+    () => execute("return !!document.querySelector('.sources-page')"),
+    'native sources page',
+  )
+  await click('导入材料')
+  await until(
+    () => execute("return !!document.querySelector('#source-file')"),
+    'native source file input',
+  )
+  const sourceQuote = '原生摘录🙂'
+  const sourceText = '# Native source\n\n' + 'Context 中文\n'.repeat(3000) + sourceQuote + '\n'
+  await execute(
+    `const bytes=Uint8Array.from(atob(arguments[0]),c=>c.charCodeAt(0));
+    const transfer=new DataTransfer();transfer.items.add(new File([bytes],'Native source.md',{type:'text/markdown'}));
+    const input=document.querySelector('#source-file');input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));`,
+    Buffer.from(sourceText).toString('base64'),
+  )
+  await until(
+    () => execute("return document.querySelector('#source-content')?.value.includes('原生摘录')"),
+    'native UTF-8 source file',
+  )
+  await click('保存材料')
+  await until(
+    () =>
+      execute(
+        "return !document.querySelector('dialog') && document.querySelector('.source-text')?.value.includes('原生摘录')",
+      ),
+    'native source snapshot saved',
+  )
+  const exportingSource = click('导出原文')
+  const sourceChooser = await until(async () => {
+    const { stdout } = await exec(xdotool, ['search', '--onlyvisible', '--name', 'Save'])
+    return stdout.trim().split('\n').at(-1)
+  }, 'source save dialog')
+  await exec(xdotool, ['windowfocus', sourceChooser])
+  await exec(xdotool, ['key', '--clearmodifiers', 'ctrl+l', 'ctrl+a'])
+  await exec(xdotool, [
+    'type',
+    '--clearmodifiers',
+    join(directory, 'downloads', 'native-source.md'),
+  ])
+  await exec(xdotool, ['key', '--clearmodifiers', 'Return'])
+  await sleep(300)
+  await exec(xdotool, ['key', '--clearmodifiers', 'alt+s'])
+  await exportingSource
+  await until(async () => {
+    try {
+      return (
+        (await readFile(join(directory, 'downloads', 'native-source.md'), 'utf8')) === sourceText
+      )
+    } catch {
+      return false
+    }
+  }, 'native original text export')
+  await execute(
+    "const el=document.querySelector('.source-text');el.focus();el.setSelectionRange(arguments[0],arguments[1]);el.dispatchEvent(new Event('select',{bubbles:true}));",
+    sourceText.lastIndexOf(sourceQuote),
+    sourceText.lastIndexOf(sourceQuote) + sourceQuote.length,
+  )
+  await click('用摘录制卡')
+  await until(
+    () => execute("return !!document.querySelector('#card-front')"),
+    'native excerpt editor',
+  )
+  await fill('#card-front', 'Native source question')
+  assert.equal(await execute("return document.querySelector('#card-back').value"), sourceQuote)
+  await click('保存卡片')
+  await until(
+    () => execute("return !document.querySelector('dialog')"),
+    'native excerpt note saved',
+  )
+  await execute("document.querySelectorAll('.main-nav button')[1].click()")
+  await fill('.search-field input', 'Native source question')
+  await until(
+    () =>
+      execute(
+        "return document.querySelectorAll('tbody tr').length===1 && document.querySelector('tbody tr').textContent.includes('Native source question')",
+      ),
+    'native excerpt filter',
+  )
+  await execute(
+    "document.querySelector('.search-options').open=true;const select=document.querySelector('.study-form select');select.value='true';select.dispatchEvent(new Event('change',{bubbles:true}));",
+  )
+  await until(
+    () => execute("return document.querySelector('.study-form button')?.disabled === false"),
+    'native source practice ready',
+  )
+  await click('开始专项练习')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.card-question')?.textContent.includes('Native source question')",
+      ),
+    'native source review',
+  )
+  assert.equal(await execute("return !!document.querySelector('.review-source')"), false)
+  await click('显示答案')
+  await execute("document.querySelector('.review-source button').click()")
+  await until(
+    async () =>
+      (await execute("return document.querySelector('.source-original mark')?.textContent")) ===
+      sourceQuote,
+    'native excerpt anchor',
+  )
+  await writeFile(
+    'test-results/native-source-context.png',
+    Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
+  )
+  await execute("document.querySelector('dialog .form-actions button').click()")
+  await execute("document.querySelector('.grade-button.good').click()")
+  await until(
+    () => execute("return document.body.textContent.includes('本轮练习结束')"),
+    'native source rating saved',
+  )
+  await command(`/session/${session}/refresh`, {})
+  await until(
+    () => execute("return document.querySelectorAll('.deck-title').length===1"),
+    'native source restart',
+  )
+  await click('学习材料')
+  await until(
+    async () =>
+      (await execute("return document.querySelector('.source-text')?.value")) === sourceText,
+    'native snapshot after restart',
+  )
   console.log(
-    'Native WebKit/Tauri: starter lifecycle, accounts, upstream, credentials, backup, LeetCode history and Anki import/update with media comparison passed.',
+    'Native WebKit/Tauri: starter lifecycle, accounts, upstream, credentials, backup, LeetCode history and Anki import/update, source snapshots, excerpt review and native text export passed.',
   )
 } catch (error) {
   console.error(log.slice(-20).join(''))

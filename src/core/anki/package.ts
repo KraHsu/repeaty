@@ -73,7 +73,7 @@ function mediaType(name: string, data: Uint8Array): Media['type'] | undefined {
                         : type === 'audio/aac'
                           ? data[0] === 255 && ((data[1] ?? 0) & 0xf6) === 0xf0
                           : false
-  return valid && type && mediaTypes.includes(type) ? type : undefined
+  return valid && type && (mediaTypes as readonly string[]).includes(type) ? type : undefined
 }
 
 export async function parseAnkiPackage(

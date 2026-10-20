@@ -14,12 +14,14 @@ const kinds = [
   'savedSearches',
   'practices',
   'attempts',
+  'sources',
 ] as const
 const MB = 1024 * 1024
 export const MAX_ARCHIVE_BYTES = 2 * 1024 * MB
 const PART_BYTES = MB
 const MAX_PART_BYTES = 8 * MB
 const countSchema = z.object({
+  sources: z.number().int().min(0).max(10_000).default(0),
   decks: z.number().int().min(0).max(1000),
   notes: z.number().int().min(0).max(100_000),
   cards: z.number().int().min(0).max(200_000),
@@ -32,19 +34,23 @@ const countSchema = z.object({
 const manifestSchema = z
   .object({
     format: z.literal('repeaty-archive'),
-    version: z.union([z.literal(1), z.literal(2)]),
-    libraryVersion: z.union([z.literal(3), z.literal(4), z.literal(5)]),
+    version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+    libraryVersion: z.union([z.literal(3), z.literal(4), z.literal(5), z.literal(6)]),
     counts: countSchema,
     parts: countSchema,
   })
   .refine((manifest) =>
-    manifest.version === 2
-      ? manifest.libraryVersion === 5
-      : manifest.libraryVersion !== 5 &&
-        manifest.counts.practices === 0 &&
-        manifest.counts.attempts === 0 &&
-        manifest.parts.practices === 0 &&
-        manifest.parts.attempts === 0,
+    manifest.version === 3
+      ? manifest.libraryVersion === 6
+      : manifest.counts.sources === 0 &&
+        manifest.parts.sources === 0 &&
+        (manifest.version === 2
+          ? manifest.libraryVersion === 5
+          : manifest.libraryVersion < 5 &&
+            manifest.counts.practices === 0 &&
+            manifest.counts.attempts === 0 &&
+            manifest.parts.practices === 0 &&
+            manifest.parts.attempts === 0),
   )
 export interface TransferOptions {
   signal?: AbortSignal
@@ -145,7 +151,7 @@ export async function exportArchive(
     await add(
       'manifest.json',
       new Blob([
-        JSON.stringify({ format: 'repeaty-archive', version: 2, libraryVersion: 5, counts, parts }),
+        JSON.stringify({ format: 'repeaty-archive', version: 3, libraryVersion: 6, counts, parts }),
       ]),
       0,
     )

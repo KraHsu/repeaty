@@ -25,6 +25,8 @@ import {
   type AnkiSelection,
 } from '../core/anki/changes'
 import type { AnkiPackage } from '../core/anki/types'
+import { addSource, prepareSource, readSource, removeSource } from '../core/sources'
+import type { SourceInput, SourceExcerpt } from '../core/source-data'
 import { saveSearch } from '../core/search'
 import type { TransferOptions } from '../core/archive'
 import { exportBackup, rekeyBackup, type BackupData } from '../core/backups'
@@ -134,6 +136,26 @@ export function useLibrary() {
       throw new LocalizedError(msg('练习记录已变化，请重新打开题目后重试。'))
     return attempt
   }
+  async function getSource(id: string, signal?: AbortSignal) {
+    const target = repository,
+      expectedScope = scope.value
+    await savingDone
+    signal?.throwIfAborted()
+    const source = library.value.sources.find((entry) => entry.id === id)
+    if (!source || !expectedScope || expectedScope !== scope.value || target !== repository)
+      throw new LocalizedError(msg('材料已不存在，请刷新后重试。'))
+    const base = library.value
+    const content = await readSource(source, base, (id) => target.getMedia(id), signal)
+    signal?.throwIfAborted()
+    const current = library.value.sources.find((entry) => entry.id === source.id)
+    if (
+      target !== repository ||
+      expectedScope !== scope.value ||
+      current?.mediaId !== source.mediaId
+    )
+      throw new LocalizedError(msg('材料已不存在，请刷新后重试。'))
+    return content
+  }
   return {
     library,
     scope: readonly(scope),
@@ -144,6 +166,7 @@ export function useLibrary() {
     backupError: readonly(backupError),
     init,
     getAttempt,
+    getSource,
     async backupNow(force = false) {
       if (!ready.value || busy.value) return
       try {
@@ -241,6 +264,52 @@ export function useLibrary() {
             allowRemove,
           ),
         { assets, reason: id ? '编辑笔记前' : undefined },
+      )
+    },
+    async saveSource(input: SourceInput, expectedScope: string) {
+      if (!expectedScope || expectedScope !== scope.value)
+        throw new LocalizedError(msg('登录账户已变更，请刷新页面后重试。'))
+      const { source, asset } = prepareSource(input)
+      return commit((current) => addSource(current, source, asset), {
+        assets: [asset],
+        reason: '导入材料前',
+      })
+    },
+    deleteSource(id: string, expectedScope: string) {
+      if (!expectedScope || expectedScope !== scope.value)
+        return Promise.reject(new LocalizedError(msg('登录账户已变更，请刷新页面后重试。')))
+      return commit((current) => removeSource(current, id), { reason: '删除材料前' })
+    },
+    async saveExcerptNote(
+      input: NoteInput,
+      excerpt: SourceExcerpt,
+      expectedScope: string,
+      assets: MediaUpload[] = [],
+      allowRemove = false,
+    ) {
+      if (!expectedScope || expectedScope !== scope.value)
+        throw new LocalizedError(msg('登录账户已变更，请刷新页面后重试。'))
+      if (busy.value) throw new LocalizedError(msg('正在保存，请稍候。'))
+      busy.value = true
+      try {
+        const text = await getSource(excerpt.sourceId)
+        if (
+          text.slice(excerpt.start, excerpt.end) !== excerpt.quote ||
+          expectedScope !== scope.value
+        )
+          throw new LocalizedError(msg('摘录与原文不一致，请重新选取。'))
+      } finally {
+        busy.value = false
+      }
+      return commit(
+        (current) =>
+          saveNote(
+            { ...current, media: [...current.media, ...assets.map((asset) => asset.meta)] },
+            { ...input, excerpt },
+            undefined,
+            allowRemove,
+          ),
+        { assets, reason: '摘录制卡前' },
       )
     },
     deleteNotes(ids: Set<string>) {

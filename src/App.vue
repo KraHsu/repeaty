@@ -14,6 +14,7 @@ import {
   Database,
   Ellipsis,
   History,
+  FileText,
   Layers,
   LayoutGrid,
   Leaf,
@@ -31,6 +32,7 @@ import ReviewSession from './components/ReviewSession.vue'
 import NoteEditor from './components/NoteEditor.vue'
 import CollectionPanel from './components/CollectionPanel.vue'
 import ImportNotes from './components/ImportNotes.vue'
+import type { SourceInput, SourceExcerpt } from './core/source-data'
 import PluginPanel from './components/PluginPanel.vue'
 import { remoteWorkspace, desktopEdition } from './edition'
 import { ServerConnection, AccountControls, createExportFile } from '@repeaty-platform'
@@ -55,6 +57,7 @@ import {
   type StudySession,
 } from './core/model'
 import { blockedByLimit, dayKey, dueCards, weekActivity } from './core/scheduler'
+const SourcePanel = defineAsyncComponent(() => import('./components/SourcePanel.vue'))
 const PracticeHistoryPanel = defineAsyncComponent(
   () => import('./components/PracticeHistoryPanel.vue'),
 )
@@ -63,10 +66,13 @@ const workspace = useLibrary()
 const { library, ready, busy, loadError, backups, backupError } = workspace
 const offline = useOffline()
 const cards = computed(() => cardViews(library.value))
-const tab = ref<'overview' | 'cards' | 'history' | 'plugins' | 'data'>('overview')
+const tab = ref<'overview' | 'cards' | 'history' | 'plugins' | 'data' | 'sources'>('overview')
 const historyCardId = ref('')
 watch(workspace.scope, () => {
   historyCardId.value = ''
+  sourceDraft.value = undefined
+  modal.value = null
+  review.value = null
 })
 const selectedDeck = ref('')
 const searchQuery = ref('')
@@ -76,6 +82,7 @@ const review = ref<{ deckId?: string; study?: StudySession } | null>(null)
 const notice = ref<{ text: DisplayMessage; error: boolean } | null>(null)
 const modal = ref<'deck' | 'card' | 'confirm' | 'import' | 'bulkImport' | 'snapshot' | null>(null)
 const editingId = ref<string>()
+const sourceDraft = ref<Partial<NoteInput>>()
 const deckForm = reactive<DeckInput>({
   name: '',
   description: '',
@@ -116,6 +123,7 @@ const pageTitle = computed(
       data: t('数据与备份'),
       plugins: t('插件'),
       history: t('练习历史'),
+      sources: t('学习材料'),
     })[tab.value],
 )
 
@@ -171,6 +179,7 @@ function editDeck(deck?: Deck) {
   modal.value = 'deck'
 }
 function editCard(card?: CardView) {
+  sourceDraft.value = undefined
   notice.value = null
   if (!library.value.decks.length) {
     editDeck()
@@ -213,9 +222,30 @@ async function saveDeck() {
 }
 async function saveCard(input: NoteInput, assets: MediaUpload[], allowRemove: boolean) {
   return run(
-    () => workspace.saveNote(input, editingId.value, assets, allowRemove),
+    () =>
+      sourceDraft.value?.excerpt
+        ? workspace.saveExcerptNote(
+            input,
+            sourceDraft.value.excerpt,
+            workspace.scope.value,
+            assets,
+            allowRemove,
+          )
+        : workspace.saveNote(input, editingId.value, assets, allowRemove),
     '笔记与卡片已保存',
   )
+}
+async function saveSource(input: SourceInput, scope: string) {
+  return run(() => workspace.saveSource(input, scope), '材料已保存')
+}
+async function deleteSource(id: string, scope: string) {
+  return run(() => workspace.deleteSource(id, scope), '材料已删除')
+}
+function createFromExcerpt(excerpt: SourceExcerpt, format: 'plain' | 'markdown') {
+  notice.value = null
+  editingId.value = undefined
+  sourceDraft.value = { excerpt, back: excerpt.quote, format }
+  modal.value = 'card'
 }
 async function saveSearch(filter: SearchFilter, name: string, id?: string) {
   return run(() => workspace.saveSearch(filter, name, id), '常用筛选已保存')
@@ -438,6 +468,13 @@ async function restoreBackup() {
           }}<span class="nav-count">{{ library.cards.length }}</span>
         </button>
         <button
+          :class="{ active: tab === 'sources' && !review }"
+          :aria-current="tab === 'sources' && !review ? 'page' : undefined"
+          @click="navigate('sources')"
+        >
+          <FileText :size="19" />{{ t('学习材料') }}
+        </button>
+        <button
           v-if="desktopEdition || library.practices.length"
           :class="{ active: tab === 'history' && !review }"
           :aria-current="tab === 'history' && !review ? 'page' : undefined"
@@ -566,6 +603,7 @@ async function restoreBackup() {
         :workspace-scope="workspace.scope.value"
         :save-attempt="workspace.recordAttempt"
         :get-attempt="workspace.getAttempt"
+        :get-source="workspace.getSource"
         :finish-practice="
           (id, cardId, assessment) => run(() => workspace.finishPractice(id, cardId, assessment))
         "
@@ -832,6 +870,21 @@ async function restoreBackup() {
         @reveal="(id) => run(() => workspace.revealPracticeHistory(id, workspace.scope.value))"
       />
 
+      <SourcePanel
+        v-else-if="tab === 'sources'"
+        :key="workspace.scope.value"
+        :library="library"
+        :busy="busy"
+        :scope="workspace.scope.value"
+        :read="workspace.getSource"
+        :save="saveSource"
+        :remove="deleteSource"
+        :action-error="notice?.error ? t(notice.text) : undefined"
+        @create="createFromExcerpt"
+        @edit="(id) => editCard(cards.find((card) => card.noteId === id))"
+        @clear-notice="notice = null"
+      />
+
       <PluginPanel v-else-if="tab === 'plugins'" />
 
       <div v-else class="page data-page">
@@ -886,6 +939,9 @@ async function restoreBackup() {
             <span class="stat-icon sage"><ArrowDownToLine :size="22" /></span>
             <h2>{{ t('导出备份') }}</h2>
             <p>{{ t('导出全部学习数据，包含卡组、卡片、复习记录、图片和音频。') }}</p>
+            <p v-if="library.sources.length" class="form-note">
+              {{ t('学习材料和原文快照也包含在完整备份中。') }}
+            </p>
             <div class="backup-meta">
               {{
                 t('{p0} 个卡组 · {p1} 张卡片 · {p2} 次复习', {
@@ -1168,6 +1224,7 @@ async function restoreBackup() {
       ><NoteEditor
         :library="library"
         :note="editingNote"
+        :initial="sourceDraft"
         :deck-id="selectedDeck || undefined"
         :busy="busy"
         :get-media="workspace.getMedia"
@@ -1207,6 +1264,11 @@ async function restoreBackup() {
           })
         }}
       </p>
+      <p v-if="pendingSnapshot.sources.length" class="confirmation-text">
+        {{
+          t('还包含 {count} 份学习材料及其原文快照。', { count: pendingSnapshot.sources.length })
+        }}
+      </p>
       <div class="form-actions">
         <button class="button secondary" :disabled="busy" @click="modal = null">
           {{ t('取消') }}</button
@@ -1242,6 +1304,13 @@ async function restoreBackup() {
             p0: pendingBackup.library.decks.length,
             p1: pendingBackup.library.cards.length,
             p2: pendingBackup.library.reviews.length,
+          })
+        }}
+      </p>
+      <p v-if="pendingBackup.library.sources.length" class="confirmation-text">
+        {{
+          t('还包含 {count} 份学习材料及其原文快照。', {
+            count: pendingBackup.library.sources.length,
           })
         }}
       </p>

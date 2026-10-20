@@ -1,5 +1,69 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  导入材料前: 'Before importing a source',
+  删除材料前: 'Before deleting a source',
+  摘录制卡前: 'Before creating a card from an excerpt',
+
+  '学习材料和原文快照也包含在完整备份中。':
+    'Sources and their snapshots are included in full backups.',
+  '还包含 {count} 份学习材料及其原文快照。': 'Also includes {count} sources and their snapshots.',
+
+  关闭: 'Close',
+  显示原文与摘录位置: 'Show original text and excerpt position',
+  '摘录与原文不一致，请从备份恢复。':
+    'The excerpt does not match the source. Restore it from a backup.',
+  材料列表分页: 'Source list pages',
+  查看原文: 'View source',
+  原文快照: 'Source snapshot',
+  原文摘录: 'Source excerpt',
+  '关联笔记（{count}）': 'Linked notes ({count})',
+  '请先新建一个卡组，再用摘录制卡。': 'Create a deck before making cards from excerpts.',
+  用摘录制卡: 'Create card from excerpt',
+  尚未选取摘录: 'No excerpt selected',
+  '已选 {count} 个字符': '{count} characters selected',
+  材料正文: 'Source text',
+  '阅读 Markdown 预览': 'Read Markdown preview',
+  返回原文选取摘录: 'Select from original text',
+  '选中原文中的文字，再点击「用摘录制卡」。每次最多 10000 个字符。':
+    'Select text, then choose “Create card from excerpt”. Up to 10,000 characters per excerpt.',
+  '操作前会保存快照，可在「数据与备份」中恢复。':
+    'A snapshot is saved first. Restore it from Data & backups.',
+  '将删除「{title}」的原文快照，并解除 {count} 条笔记的来源关联。卡片内容和复习进度保留。':
+    'This deletes the snapshot of “{title}” and unlinks {count} notes. Card content and review progress are kept.',
+  '删除材料？': 'Delete this source?',
+  删除材料: 'Delete source',
+  导出原文: 'Export source',
+  材料已删除: 'Source deleted',
+  材料已保存: 'Source saved',
+  保存材料: 'Save source',
+  '支持 UTF-8 文本和 Markdown，文件最大 1 MB，正文最多 250000 个字符。':
+    'Supports UTF-8 text and Markdown. Up to 1 MB per file and 250,000 characters.',
+  粘贴正文: 'Paste text',
+  '来源链接（可选）': 'Source URL (optional)',
+  材料标题: 'Source title',
+  选择材料文件: 'Choose source file',
+  '无法读取文件，请使用 UTF-8 编码。': 'Cannot read the file. Use UTF-8 encoding.',
+  '请选择 UTF-8 的 .txt、.md 或 .markdown 文件。': 'Choose a UTF-8 .txt, .md or .markdown file.',
+  '正在读取原文…': 'Loading source…',
+  '保存于 {date}': 'Saved on {date}',
+  '没有找到材料。': 'No sources found.',
+  搜索材料: 'Search sources',
+  '导入文本或 Markdown，也可以直接粘贴。原文会保存在当前学习库中。':
+    'Import text or Markdown, or paste it directly. A snapshot is saved in this library.',
+  还没有学习材料: 'No sources yet',
+  导入材料: 'Import source',
+  '保存原文，选取摘录制作卡片。': 'Save a source and turn excerpts into cards.',
+  学习材料: 'Sources',
+  '摘录与原文不一致，请重新选取。': 'The excerpt no longer matches the source. Select it again.',
+
+  '原文快照缺失或损坏，请从备份恢复。':
+    'The source snapshot is missing or damaged. Restore it from a backup.',
+  '正文不能为空，且不能超过 250000 个字符。': 'Enter text of up to 250,000 characters.',
+  '文本或 Markdown 文件不能超过 1 MB。': 'Text and Markdown files must not exceed 1 MB.',
+  '请选取 1–10000 个字符作为摘录。': 'Select 1–10,000 characters for the excerpt.',
+  '请完整选中摘录中的字符。': 'Select complete characters in the excerpt.',
+  '材料已不存在，请刷新后重试。': 'This source no longer exists. Reload and try again.',
+
   新笔记: 'New notes',
   内容相同: 'Same content',
   内容不同: 'Different content',

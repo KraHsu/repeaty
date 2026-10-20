@@ -11,7 +11,7 @@ export function prepareMedia(file: File): MediaUpload {
     size: file.size,
     createdAt: new Date().toISOString(),
   })
-  if (!result.success)
+  if (!result.success || file.type.startsWith('text/'))
     throw new LocalizedError(
       msg('支持 PNG、JPEG、WebP、GIF 图片及 MP3、WAV、OGG、M4A、WebM、FLAC、AAC 音频。'),
     )
