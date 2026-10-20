@@ -1,5 +1,17 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  开始一轮阅读: 'Start a reading round',
+  本轮阅读: 'Reading round',
+  '第 {number} 篇，共 {total} 篇': 'Source {number} of {total}',
+  '本轮按开始时的顺序阅读。': 'This round keeps its starting order.',
+  下一篇: 'Next source',
+  完成本轮: 'Finish round',
+  结束本轮: 'End round',
+  本轮结束: 'Round finished',
+  '已到本轮末尾，阅读位置已保存。':
+    'You have reached the end of this round. Reading positions are saved.',
+  再读一轮: 'Start another round',
+  返回材料: 'Back to sources',
   阅读优先级: 'Reading priority',
   高: 'High',
   普通: 'Normal',

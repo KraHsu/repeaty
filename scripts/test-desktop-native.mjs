@@ -1218,6 +1218,143 @@ try {
   console.log(
     'Native reading priority and queue: changes persist across application exits, preserve dates, positions and study records',
   )
+  await waitButton('加入待阅读')
+  await click('加入待阅读')
+  await queueView('待阅读')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-markdown-preview')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native round source restored',
+  )
+  await setReadingPriority('high')
+  for (const title of ['Native round B', 'Native round C']) {
+    await waitButton('导入材料')
+    await click('导入材料')
+    await until(
+      () => execute("return !!document.querySelector('#source-title')"),
+      'native round import form',
+    )
+    await fill('#source-title', title)
+    await execute(
+      "const select=document.querySelector('#source-format');select.value='plain';select.dispatchEvent(new Event('change',{bubbles:true}));",
+    )
+    await fill('#source-content', 'Round context 中文🙂\n'.repeat(1000))
+    await click('保存材料')
+    await until(
+      () =>
+        execute(
+          "return !document.querySelector('dialog') && document.querySelector('.source-text')?.getAttribute('aria-busy')==='false'",
+        ),
+      'native round source imported',
+    )
+  }
+  await waitButton('开始一轮阅读')
+  await click('开始一轮阅读')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-reader h2')?.textContent==='Native source' && document.querySelector('.source-markdown-preview')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native round starts in priority order',
+  )
+  assert.ok(
+    await execute(
+      "return document.querySelector('.reading-round').textContent.includes('第 1 篇，共 3 篇')",
+    ),
+  )
+  await setReadingPriority('low')
+  await execute(
+    "const reader=document.querySelector('.source-markdown-preview');reader.scrollTop=(reader.scrollHeight-reader.clientHeight)*0.7;reader.dispatchEvent(new Event('scroll'));",
+  )
+  await waitButton('下一篇')
+  await click('下一篇')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-reader h2')?.textContent==='Native round B' && document.querySelector('.source-text')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native round advances after saving position',
+  )
+  const roundPosition = (await sourceRecords()).find(
+    (source) => source.title === 'Native source',
+  ).reading
+  assert.equal(roundPosition.view, 'preview')
+  assert.ok(
+    roundPosition.offset > previewReading.offset ||
+      roundPosition.fraction > previewReading.fraction,
+  )
+  await execute(
+    "const reader=document.querySelector('.source-text');reader.scrollTop=(reader.scrollHeight-reader.clientHeight)*0.4;reader.dispatchEvent(new Event('scroll'));",
+  )
+  await waitButton('稍后阅读')
+  await click('稍后阅读')
+  await until(
+    () => execute("return !!document.querySelector('#source-reading-date')?.value"),
+    'native round date',
+  )
+  const roundDate = await execute("return document.querySelector('#source-reading-date').value")
+  await click('保存阅读安排')
+  await until(
+    () =>
+      execute(
+        "return !document.querySelector('dialog') && document.querySelector('.source-reader h2')?.textContent==='Native round C' && document.querySelector('.source-text')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native round defers and advances',
+  )
+  await writeFile(
+    'test-results/native-reading-round.png',
+    Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
+  )
+  await waitButton('归档材料')
+  await click('归档材料')
+  await until(
+    () => execute("return !!document.querySelector('.reading-round-complete')"),
+    'native round finishes without repeating ready sources',
+  )
+  assert.deepEqual(await libraryRecords(), confirmed)
+  const roundSources = await sourceRecords()
+  assert.deepEqual(roundSources.find((source) => source.title === 'Native round B').queue, {
+    state: 'active',
+    availableOn: roundDate,
+  })
+  assert.equal(
+    roundSources.find((source) => source.title === 'Native round C').queue.state,
+    'archived',
+  )
+  await command(`/session/${session}`, undefined, 'DELETE')
+  session = undefined
+  await createSession()
+  await until(
+    () => execute("return document.querySelectorAll('.deck-title').length===1"),
+    'native round app reopened',
+  )
+  await click('学习材料')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-markdown-preview')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native round reading position survives exit',
+  )
+  assert.equal(await execute("return !!document.querySelector('.reading-round')"), false)
+  assert.deepEqual(
+    (await sourceRecords()).find((source) => source.title === 'Native source').reading,
+    roundPosition,
+  )
+  assert.deepEqual(await libraryRecords(), confirmed)
+  await waitButton('开始一轮阅读')
+  await click('开始一轮阅读')
+  await waitButton('完成本轮')
+  await click('完成本轮')
+  await until(
+    () => execute("return !!document.querySelector('.reading-round-complete')"),
+    'native single-source round completes',
+  )
+  console.log(
+    'Native reading round: fixed order, position save, defer, archive and application restart passed without changing study records',
+  )
   console.log(
     'Native WebKit/Tauri: starter lifecycle, accounts, upstream, credentials, backup, LeetCode history and Anki import/update, source snapshots, excerpt review and native text export passed.',
   )
