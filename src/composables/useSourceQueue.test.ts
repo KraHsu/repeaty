@@ -169,3 +169,46 @@ it.each(['arrangement', 'reading'] as const)(
     expect((await other.load()).revision).toBe(1)
   },
 )
+
+it('retains the last undo after failed or no-op batches, and clears it when replacing a library', async () => {
+  const { workspace, repository, input } = await setup()
+  await workspace.arrangeSource(input)
+  const undo = workspace.readingUndo.value
+  const targets = workspace.library.value.sources.map((source) => ({
+    id: source.id,
+    mediaId: source.mediaId,
+    before: sourceArrangement(source),
+  }))
+  await workspace.arrangeSources({ targets, action: { type: 'archive' }, scope: input.scope })
+  expect(workspace.readingUndo.value?.id).toBe(undo?.id)
+  await expect(
+    workspace.arrangeSources({
+      targets,
+      action: { type: 'priority', priority: 'high' },
+      scope: 'another-library',
+    }),
+  ).rejects.toThrow('学习库')
+  const original = IDBObjectStore.prototype.put
+  const fail = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (
+    this: IDBObjectStore,
+    ...args: Parameters<typeof original>
+  ) {
+    if (this.name === 'sources')
+      throw new DOMException('Synthetic full storage', 'QuotaExceededError')
+    return original.apply(this, args)
+  })
+  try {
+    await expect(workspace.undoReadingArrangement(input.scope)).rejects.toThrow('存储空间不足')
+  } finally {
+    fail.mockRestore()
+  }
+  expect(workspace.canUndoReading.value).toBe(true)
+  expect(workspace.readingUndo.value?.id).toBe(undo?.id)
+  expect((await repository.load()).library.sources[0]!.queue?.state).toBe('archived')
+  await workspace.undoReadingArrangement(input.scope)
+  expect((await repository.load()).library.sources[0]!.queue).toBeUndefined()
+  await workspace.arrangeSource(input)
+  const saved = (await repository.load()).library
+  await workspace.restoreSnapshot(saved)
+  expect(workspace.canUndoReading.value).toBe(false)
+})

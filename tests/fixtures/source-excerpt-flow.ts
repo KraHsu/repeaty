@@ -67,7 +67,7 @@ export async function sourceExcerptFlow(page: Page, read: () => Promise<Library>
   await expect(dialog).toHaveCount(0)
   await expect(page.getByRole('heading', { name: '独立摘录🙂', exact: true })).toBeVisible()
   await expect(page.locator('.source-text')).toHaveValue(sourceQuote)
-  await expect(page.getByRole('button', { name: '保存为摘录', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '保存为摘录', exact: true })).toBeDisabled()
   const first = await read()
   const root = first.sources.find((source) => !source.kind)!,
     child = first.sources.find((source) => source.kind === 'excerpt')!
@@ -171,7 +171,7 @@ export async function sourceExcerptFlow(page: Page, read: () => Promise<Library>
   await page.getByRole('button', { name: '确认删除', exact: true }).click()
   await expect(page.locator('.source-text')).toHaveValue(sourceQuote)
   await expect(page.getByText('原文已删除，摘录内容仍保留。', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: '保存为摘录', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '保存为摘录', exact: true })).toBeDisabled()
   const detached = await read()
   expect(detached.sources).toHaveLength(1)
   expect(detached.sources[0]!.kind).toBe('excerpt')

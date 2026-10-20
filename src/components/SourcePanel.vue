@@ -16,8 +16,15 @@ import {
   type SourceQueueUpdate,
   type SourcePriority,
   type ReadingUpdate,
+  type Source,
+  type SourceTarget,
+  type SourceBatchUpdate,
+  type SourceBatchAction,
 } from '../core/source-data'
 import { sourceExcerpt, recentSource } from '../core/sources'
+import { sourceArrangement } from '../core/reading-operations'
+import { sourceContextPath } from '../core/source-tree'
+import SourceBatchDialog from './SourceBatchDialog.vue'
 import { localDay } from '../core/model'
 import {
   filterSources,
@@ -49,6 +56,11 @@ const props = defineProps<{
   reading: ReadingProgress
   now: Date
   canShare?: boolean
+  autoStart?: boolean
+  canUndoReading: boolean
+  readingUndoId?: string
+  arrangeBatch: (update: SourceBatchUpdate) => Promise<boolean>
+  undoReading: () => Promise<boolean>
   actionError?: string
   read: (id: string, signal?: AbortSignal) => Promise<string>
   save: (input: SourceInput, scope: string) => Promise<boolean>
@@ -63,6 +75,8 @@ const emit = defineEmits<{
   edit: [noteId: string]
   share: [excerpt: SourceExcerpt]
   clearNotice: []
+  review: []
+  startHandled: []
 }>()
 const today = computed(() => localDay(props.now))
 const round = shallowRef<ReadingRound>()
@@ -153,6 +167,10 @@ const viewingExcerptId = ref('')
 const viewedExcerpt = computed(
   () => savedExcerpts.value.find((entry) => entry.source.id === viewingExcerptId.value)?.source,
 )
+const ancestry = computed(() =>
+  source.value ? sourceContextPath(props.library.sources, source.value).reverse() : [],
+)
+const ancestrySource = shallowRef<Source>()
 const viewedSelection = computed<SourceExcerpt | undefined>(() => {
   const child = viewedExcerpt.value
   if (!child?.origin || loading.value || error.value || !text.value) return undefined
@@ -186,6 +204,90 @@ const visibleSources = computed(() =>
 watch([query, kind, priority, view], () => {
   page.value = 0
 })
+type Selection = SourceTarget & { title: string }
+const selection = shallowRef(new Map<string, Selection>())
+const batchDraft = shallowRef<{ entries: Selection[]; scope: string }>()
+const savingBatch = ref(false)
+const undoing = ref(false)
+const roundUndo = shallowRef<{ id: string; before: ReadingRound; after: ReadingRound }>()
+function selectSources(entries: Source[]) {
+  const next = new Map(selection.value)
+  for (const source of entries)
+    next.set(source.id, {
+      id: source.id,
+      mediaId: source.mediaId,
+      title: source.title,
+      before: sourceArrangement(source),
+    })
+  selection.value = next
+}
+function toggleSelection(source: Source) {
+  if (!selection.value.has(source.id)) return selectSources([source])
+  const next = new Map(selection.value)
+  next.delete(source.id)
+  selection.value = next
+}
+watch([query, kind, priority, view], () => {
+  selection.value = new Map()
+})
+function openBatch() {
+  if (props.busy || moving.value || arranging.value || !selection.value.size || round.value) return
+  emit('clearNotice')
+  batchDraft.value = { entries: [...selection.value.values()], scope: props.scope }
+}
+async function saveBatch(action: SourceBatchAction) {
+  const draft = batchDraft.value
+  if (!draft || props.busy || savingBatch.value) return
+  const current = source.value,
+    target =
+      current &&
+      draft.entries.find((entry) => entry.id === current.id && entry.mediaId === current.mediaId),
+    pending = current && props.reading.pending.get(current.id)
+  const reading =
+    target && reader.value?.ready && !loading.value && !error.value
+      ? reader.value.capture()
+      : undefined
+  savingBatch.value = true
+  emit('clearNotice')
+  try {
+    const saved = await props.arrangeBatch({
+      targets: draft.entries,
+      action,
+      scope: draft.scope,
+      reading,
+    })
+    if (saved && alive && props.scope === draft.scope && batchDraft.value === draft) {
+      if (reading) props.reading.acknowledge(reading.sourceId, pending?.token)
+      batchDraft.value = undefined
+      selection.value = new Map()
+      roundUndo.value = undefined
+    }
+  } finally {
+    savingBatch.value = false
+  }
+}
+async function undoArrangement() {
+  if (!props.canUndoReading || props.busy || moving.value || arranging.value || undoing.value)
+    return
+  const scope = props.scope,
+    undoId = props.readingUndoId,
+    current = round.value,
+    previous = roundUndo.value
+  undoing.value = true
+  moving.value = true
+  emit('clearNotice')
+  try {
+    if ((await props.undoReading()) && alive && props.scope === scope) {
+      if (previous && previous.id === undoId && current === previous.after)
+        showRound(reconcileReadingRound(previous.before, props.library.sources, today.value))
+      roundUndo.value = undefined
+      selection.value = new Map()
+    }
+  } finally {
+    undoing.value = false
+    moving.value = false
+  }
+}
 const form = reactive<SourceInput>({ title: '', url: '', format: 'markdown', content: '' })
 const fileInput = ref<HTMLInputElement>(),
   reader = ref<InstanceType<typeof SourceReader>>()
@@ -216,6 +318,7 @@ async function readSelected() {
   text.value = ''
   originOpen.value = false
   viewingExcerptId.value = ''
+  ancestrySource.value = undefined
   navigationError.value = ''
   excerpt.value = undefined
   error.value = ''
@@ -241,7 +344,7 @@ function select(sourceId: string, start: number, end: number) {
   }
 }
 function openExcerpt() {
-  if (!source.value || source.value.kind === 'excerpt' || !excerpt.value || props.busy) return
+  if (!source.value || !excerpt.value || props.busy) return
   emit('clearNotice')
   const current = source.value,
     selected = excerpt.value,
@@ -380,6 +483,16 @@ async function beginRound(filter?: SourceFilter) {
     moving.value = false
   }
 }
+watch(
+  [() => props.autoStart, canMove],
+  () => {
+    if (!props.autoStart || round.value || !readyCount.value || (source.value && !canMove.value))
+      return
+    emit('startHandled')
+    void beginRound()
+  },
+  { immediate: true, flush: 'post' },
+)
 async function nextSource() {
   const current = round.value,
     scope = props.scope
@@ -438,7 +551,8 @@ function openIntervalReset() {
 async function arrange(action: SourceQueueAction) {
   const current = source.value
   if (!current || props.busy || arranging.value || moving.value) return
-  const started = round.value
+  const started = round.value,
+    undoId = props.readingUndoId
   const pending = props.reading.pending.get(current.id)
   const position = reader.value?.ready ? reader.value.capture().position : pending?.update.position
   const scope = props.scope
@@ -464,7 +578,11 @@ async function arrange(action: SourceQueueAction) {
           round.value === started &&
           (action.type === 'defer' || action.type === 'archive' || action.type === 'read')
         ) {
-          showRound(advanceReadingRound(started, props.library.sources, today.value))
+          const after = advanceReadingRound(started, props.library.sources, today.value)
+          showRound(after)
+          await nextTick()
+          if (props.readingUndoId && props.readingUndoId !== undoId)
+            roundUndo.value = { id: props.readingUndoId, before: started, after }
         } else if (action.type === 'priority') {
           const index = filteredSources.value.findIndex((entry) => entry.id === current.id)
           if (index >= 0) page.value = Math.floor(index / pageSize)
@@ -686,6 +804,15 @@ async function download() {
       </div>
       <div class="source-actions">
         <button
+          v-if="canUndoReading"
+          :title="t('撤销最近一次阅读安排（刷新后清除）')"
+          class="button secondary"
+          :disabled="busy || moving || arranging || undoing"
+          @click="undoArrangement"
+        >
+          {{ t('撤销阅读安排') }}
+        </button>
+        <button
           v-if="!round"
           class="button secondary"
           :disabled="busy || moving || arranging || !readyCount || (!!source && !canMove)"
@@ -806,6 +933,44 @@ async function download() {
           </p>
         </div>
       </section>
+      <section
+        v-if="!round && filteredSources.length"
+        class="source-selection-toolbar"
+        :aria-label="t('批量选择材料')"
+      >
+        <p role="status">{{ t('已选 {count} 篇材料', { count: selection.size }) }}</p>
+        <div class="source-actions">
+          <button
+            class="text-button"
+            :disabled="busy || moving || arranging"
+            @click="selectSources(visibleSources)"
+          >
+            {{ t('选择本页') }}
+          </button>
+          <button
+            class="text-button"
+            :disabled="busy || moving || arranging"
+            @click="selectSources(filteredSources)"
+          >
+            {{ t('选择全部筛选结果（{count}）', { count: filteredSources.length }) }}
+          </button>
+          <button
+            v-if="selection.size"
+            class="text-button"
+            :disabled="busy || moving || arranging"
+            @click="selection = new Map()"
+          >
+            {{ t('取消选择') }}
+          </button>
+          <button
+            class="button secondary"
+            :disabled="busy || moving || arranging || !selection.size"
+            @click="openBatch"
+          >
+            {{ t('批量安排') }}
+          </button>
+        </div>
+      </section>
       <div class="sources-layout" :class="{ 'round-layout': !!round }">
         <aside v-if="!round" class="source-list">
           <p v-if="!visibleSources.length" class="form-note">{{ t('没有找到材料。') }}</p>
@@ -815,6 +980,16 @@ async function download() {
             class="source-list-item"
             :class="{ selected: entry.id === selectedId }"
           >
+            <label class="source-selection">
+              <input
+                type="checkbox"
+                :checked="selection.has(entry.id)"
+                :disabled="busy || moving || arranging"
+                :aria-label="t('选择材料「{title}」', { title: entry.title })"
+                @change="toggleSelection(entry)"
+              />
+              <span>{{ t('选择') }}</span>
+            </label>
             <button
               class="source-list-title"
               :aria-pressed="entry.id === selectedId"
@@ -889,6 +1064,9 @@ async function download() {
             <button class="button secondary" :disabled="busy || moving" @click="stopRound">
               {{ t('返回材料') }}
             </button>
+            <button class="button secondary" :disabled="busy || moving" @click="emit('review')">
+              {{ t('去复习卡片') }}
+            </button>
           </div>
         </section>
         <section v-else-if="source" class="source-reader">
@@ -897,6 +1075,21 @@ async function download() {
               <span v-if="source.kind === 'excerpt'" class="source-kind-badge">{{
                 t('摘录')
               }}</span>
+              <nav v-if="ancestry.length > 1" class="source-ancestry" :aria-label="t('出处路径')">
+                <template v-for="entry in ancestry" :key="entry.source.id">
+                  <span v-if="entry.source.id === source.id" aria-current="page">{{
+                    entry.source.title
+                  }}</span>
+                  <button
+                    v-else
+                    class="text-button"
+                    :disabled="busy || moving"
+                    @click="ancestrySource = entry.source"
+                  >
+                    {{ entry.source.title }}
+                  </button>
+                </template>
+              </nav>
               <h2>{{ source.title }}</h2>
               <a v-if="source.url" :href="source.url" target="_blank" rel="noopener noreferrer">{{
                 source.url
@@ -1101,12 +1294,7 @@ async function download() {
                   ? t('已选 {count} 个字符', { count: excerpt.quote.length })
                   : t('尚未选取摘录')
               }}</span>
-              <button
-                v-if="source.kind !== 'excerpt'"
-                class="button secondary"
-                :disabled="busy || !excerpt"
-                @click="openExcerpt"
-              >
+              <button class="button secondary" :disabled="busy || !excerpt" @click="openExcerpt">
                 {{ t('保存为摘录') }}
               </button>
               <button
@@ -1181,12 +1369,29 @@ async function download() {
         </section>
       </div>
     </template>
+    <SourceBatchDialog
+      v-if="batchDraft"
+      :titles="batchDraft.entries.map((entry) => entry.title)"
+      :now="now"
+      :busy="busy || savingBatch"
+      :error="actionError"
+      :save="saveBatch"
+      @close="batchDraft = undefined"
+    />
+    <SourceContext
+      v-if="ancestrySource"
+      :source="ancestrySource"
+      :sources="library.sources"
+      :read="read"
+      @close="ancestrySource = undefined"
+    />
     <SourceContext
       v-if="viewedExcerpt"
       :key="viewedExcerpt.id"
       :source="viewedExcerpt"
       :origin="source"
       :excerpt="viewedSelection"
+      :sources="library.sources"
       :read="read"
       @close="viewingExcerptId = ''"
     />
@@ -1194,6 +1399,7 @@ async function download() {
       v-if="originOpen && original && source?.origin"
       :source="original"
       :excerpt="{ ...source.origin, quote: text }"
+      :sources="library.sources"
       :read="read"
       @close="originOpen = false"
     />
@@ -1489,6 +1695,56 @@ async function download() {
 </template>
 
 <style scoped>
+.source-selection-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafbf8;
+}
+.source-selection-toolbar p {
+  margin: 0;
+}
+.source-selection {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+.source-selection input {
+  width: 1.15rem;
+  height: 1.15rem;
+  min-height: 0;
+  margin: 0;
+  accent-color: #55765a;
+}
+.source-ancestry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  margin-bottom: 0.6rem;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+.source-ancestry > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.source-ancestry > * + *::before {
+  content: '/';
+  color: var(--muted);
+  padding-right: 0.75rem;
+}
+
 .source-duplicate {
   display: flex;
   flex-wrap: wrap;

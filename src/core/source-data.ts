@@ -3,6 +3,7 @@ import { z } from 'zod'
 export const MAX_SOURCE_BYTES = 1024 * 1024
 export const MAX_SOURCE_CHARACTERS = 250_000
 export const MAX_EXCERPT_CHARACTERS = 10_000
+export const MAX_SOURCE_DEPTH = 32
 const id = z.string().min(1).max(100)
 export function characterBoundary(text: string, offset: number) {
   const position = Math.max(0, Math.min(text.length, Math.trunc(offset)))

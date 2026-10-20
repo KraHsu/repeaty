@@ -13,7 +13,7 @@ import { queueView } from './reading-queue-flow'
 import { importReading, moveReading, readingText, saveReading } from './reading-flow'
 import { saveIndependentExcerpt, selectForExcerpt } from './source-excerpt-flow'
 
-async function restoreFilters(page: Page) {
+export async function restoreFilters(page: Page) {
   const content = 'Reading sentence 中文🙂\n'.repeat(300)
   const root = prepareSource({ title: 'Topic 原文', url: '', format: 'plain', content }, now)
   const other = prepareSource({ title: 'Other 原文', url: '', format: 'plain', content }, now)

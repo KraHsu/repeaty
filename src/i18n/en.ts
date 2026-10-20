@@ -1,5 +1,33 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  '撤销最近一次阅读安排（刷新后清除）': 'Undo the last reading arrangement (cleared on reload)',
+  出处路径: 'Source ancestry',
+  '摘录出处不能形成循环或引用缺失材料。':
+    'Excerpt ancestry cannot contain cycles or missing sources.',
+  '摘录层级不能超过 32 层。': 'Excerpts cannot be nested more than 32 levels deep.',
+  批量安排: 'Arrange selected sources',
+  批量操作: 'Batch action',
+  '将更改所选的 {count} 篇材料。': 'This will update the {count} selected sources.',
+  '以及另外 {count} 篇。': 'And {count} more.',
+  设置优先级: 'Set priority',
+  '整批保存后可撤销。卡片和复习进度保持不变。':
+    'You can undo this batch after saving. Cards and review progress are unchanged.',
+  确认批量安排: 'Apply to selected sources',
+  批量选择材料: 'Select sources',
+  '已选 {count} 篇材料': '{count} sources selected',
+  选择本页: 'Select this page',
+  '选择全部筛选结果（{count}）': 'Select all results ({count})',
+  取消选择: 'Clear selection',
+  '选择材料「{title}」': 'Select source “{title}”',
+  选择: 'Select',
+  撤销阅读安排: 'Undo reading arrangement',
+  阅读安排已撤销: 'Reading arrangement undone',
+  去复习卡片: 'Review flashcards',
+  今日阅读: 'Today’s reading',
+  '待阅读 {count} 篇': '{count} sources to read',
+  '{originals} 篇原文 · {excerpts} 篇摘录': '{originals} originals · {excerpts} excerpts',
+  开始今日阅读: 'Start today’s reading',
+  管理学习材料: 'Manage sources',
   撤销阅读安排前: 'Before undoing reading arrangements',
   '材料或阅读安排已变化，请重新选择。':
     'The materials or reading arrangements have changed. Select them again.',

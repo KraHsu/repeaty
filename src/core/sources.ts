@@ -64,7 +64,6 @@ export function prepareSourceExcerpt(
   title: string,
   now = new Date(),
 ) {
-  if (parent.kind === 'excerpt') throw new LocalizedError(msg('请从原文保存摘录。'))
   const selection = sourceExcerpt(parent, text, excerpt.start, excerpt.end)
   if (excerpt.sourceId !== parent.id || selection.quote !== excerpt.quote)
     throw new LocalizedError(msg('摘录与原文不一致，请重新选取。'))
@@ -195,7 +194,7 @@ export async function validateSourceOrigins(
   }
   for (const [id, children] of groups) {
     const parent = sources.get(id)
-    if (!parent || parent.kind === 'excerpt') throw invalid()
+    if (!parent) throw invalid()
     const original = await readSource(parent, library, getMedia)
     for (const child of children) {
       const origin = child.origin!

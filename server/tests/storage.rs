@@ -92,9 +92,9 @@ fn reading_intervals_upgrade_v7_and_preserve_snapshots_without_inventing_progres
         connection
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap(),
-        8
+        9
     );
-    connection.pragma_update(None, "user_version", 9).unwrap();
+    connection.pragma_update(None, "user_version", 10).unwrap();
     drop(connection);
     assert!(Database::open(&path).is_err());
     let connection = rusqlite::Connection::open(&path).unwrap();
@@ -102,7 +102,7 @@ fn reading_intervals_upgrade_v7_and_preserve_snapshots_without_inventing_progres
         connection
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap(),
-        9
+        10
     );
 }
 #[test]
@@ -388,7 +388,7 @@ fn source_only_libraries_get_snapshots_and_sqlite_v2_upgrades_safely() {
         connection
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap(),
-        8
+        9
     );
 }
 
@@ -591,7 +591,7 @@ fn reading_priority_upgrades_v5_and_rolls_back_invalid_values_without_changing_l
         connection
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap(),
-        8
+        9
     );
 }
 
@@ -653,9 +653,10 @@ fn independent_excerpts_survive_sqlite_v6_upgrade_and_validate_provenance_atomic
     db.commit(input(1, patches(&child))).unwrap();
     let saved = db.load().unwrap();
     assert_eq!(saved["library"]["sources"][1], child);
-    // A root cannot itself become an excerpt while retaining descendants.
+    // Missing ancestry is rejected without changing any existing descendant.
     let mut nested = library["sources"][0].clone();
     nested["kind"] = json!("excerpt");
+    nested["origin"] = json!({"sourceId":"missing","start":0,"end":text.encode_utf16().count()});
     assert!(
         db.commit(input(
             2,
@@ -716,6 +717,58 @@ fn independent_excerpts_survive_sqlite_v6_upgrade_and_validate_provenance_atomic
         connection
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap(),
-        8
+        9
+    );
+}
+
+#[test]
+fn nested_excerpts_validate_cycles_and_depth_and_survive_a_v8_upgrade() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("nested.sqlite3");
+    let mut db = Database::open(&path).unwrap();
+    let body = "Same🙂";
+    let mut library = json!({"version":12,"decks":[],"notes":[],"cards":[],"reviews":[],"media":[],"sources":[],"savedSearches":[],"practices":[],"attempts":[]});
+    for index in 0..34 {
+        let id = format!("level-{index}");
+        let media_id = format!("body-{index}");
+        db.put_media(&media_id, "text/plain", body.as_bytes())
+            .unwrap();
+        library["media"].as_array_mut().unwrap().push(json!({"id":media_id,"name":"text.txt","type":"text/plain","size":body.len(),"createdAt":"2026-10-20T00:00:00Z"}));
+        let mut source = json!({"id":id,"title":id,"url":"","format":"plain","mediaId":media_id,"characters":6,"createdAt":"2026-10-20T00:00:00Z"});
+        if index > 0 {
+            source["kind"] = json!("excerpt");
+            source["origin"] = json!({"sourceId":format!("level-{}", index-1),"start":0,"end":6});
+        }
+        library["sources"].as_array_mut().unwrap().push(source);
+    }
+    // Reject the whole 33-level tree; a 32-level tree is accepted.
+    assert!(db.commit(commit(0, &library)).is_err());
+    assert_eq!(db.load().unwrap()["revision"], 0);
+    library["sources"].as_array_mut().unwrap().pop();
+    library["media"].as_array_mut().unwrap().pop();
+    db.commit(commit(0, &library)).unwrap();
+    db.backup_now(false).unwrap();
+    let saved = db.load().unwrap();
+    let mut cyclic = library["sources"][0].clone();
+    cyclic["kind"] = json!("excerpt");
+    cyclic["origin"] = json!({"sourceId":"level-32","start":0,"end":6});
+    assert!(
+        db.commit(input(
+            1,
+            json!([{"store":"sources","id":"level-0","position":0,"value":cyclic}])
+        ))
+        .is_err()
+    );
+    assert_eq!(db.load().unwrap(), saved);
+    drop(db);
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    connection.pragma_update(None, "user_version", 8).unwrap();
+    drop(connection);
+    let mut db = Database::open(&path).unwrap();
+    assert_eq!(db.load().unwrap(), saved);
+    let backups = db.backups().unwrap();
+    assert_eq!(
+        db.backup(backups[0]["id"].as_str().unwrap()).unwrap(),
+        library
     );
 }

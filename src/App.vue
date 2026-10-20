@@ -38,6 +38,7 @@ import type {
   SaveSourceExcerptInput,
   SourceExcerpt,
   SourceQueueUpdate,
+  SourceBatchUpdate,
   ReadingUpdate,
 } from './core/source-data'
 import PluginPanel from './components/PluginPanel.vue'
@@ -59,6 +60,7 @@ import { useLibrary } from './composables/useLibrary'
 import { useReadingProgress } from './composables/useReadingProgress'
 import {
   colors,
+  localDay,
   cardViews,
   type CardView,
   type NoteInput,
@@ -70,6 +72,7 @@ import {
   type SearchFilter,
   type StudySession,
 } from './core/model'
+import { queuedSources } from './core/source-queue'
 import { blockedByLimit, dayKey, dueCards, weekActivity } from './core/scheduler'
 const SourcePanel = defineAsyncComponent(() => import('./components/SourcePanel.vue'))
 const PracticeHistoryPanel = defineAsyncComponent(
@@ -83,9 +86,11 @@ const offline = useOffline()
 const cards = computed(() => cardViews(library.value))
 const tab = ref<'overview' | 'cards' | 'history' | 'plugins' | 'data' | 'sources'>('overview')
 const historyCardId = ref('')
+const autoStartReading = ref(false)
 const mcpSelection = ref<SourceExcerpt>()
 watch(workspace.scope, () => {
   historyCardId.value = ''
+  autoStartReading.value = false
   mcpSelection.value = undefined
   sourceDraft.value = undefined
   modal.value = null
@@ -123,6 +128,12 @@ const confirmation = ref<{ title: string; message: DisplayMessage; action: () =>
 const upload = ref<HTMLInputElement>()
 const due = computed(() => dueCards(library.value, now.value, undefined, canReviewCard))
 const limited = computed(() => blockedByLimit(library.value, now.value, undefined, canReviewCard))
+const readyReading = computed(() =>
+  queuedSources(library.value.sources, 'ready', localDay(now.value)),
+)
+const readyExcerpts = computed(
+  () => readyReading.value.filter((source) => source.kind === 'excerpt').length,
+)
 const newCount = computed(() => due.value.filter((card) => card.schedule.state === 0).length)
 const todayReviews = computed(() =>
   library.value.reviews.filter((entry) => entry.studyDay === dayKey(now.value)),
@@ -176,6 +187,11 @@ function navigate(next: typeof tab.value) {
   searchQuery.value = ''
   filterState.value = 'all'
   historyCardId.value = ''
+  autoStartReading.value = false
+}
+function startReading() {
+  navigate('sources')
+  autoStartReading.value = true
 }
 function openHistory(card?: CardView) {
   navigate('history')
@@ -271,6 +287,12 @@ async function deleteSource(id: string, scope: string) {
 }
 async function arrangeSource(update: SourceQueueUpdate) {
   return run(() => workspace.arrangeSource(update), '阅读安排已保存')
+}
+async function arrangeSources(update: SourceBatchUpdate) {
+  return run(() => workspace.arrangeSources(update), '阅读安排已保存')
+}
+async function undoReading() {
+  return run(() => workspace.undoReadingArrangement(workspace.scope.value), '阅读安排已撤销')
 }
 async function saveReading(update: ReadingUpdate) {
   return run(() => workspace.saveSourceReading(update, new Date()))
@@ -750,6 +772,39 @@ async function restoreBackup() {
           </section>
         </div>
 
+        <section v-if="library.sources.length" class="daily-reading" :aria-label="t('今日阅读')">
+          <div>
+            <span class="daily-label">{{ t('今日阅读') }}</span>
+            <h2>
+              {{
+                readyReading.length
+                  ? t('待阅读 {count} 篇', { count: readyReading.length })
+                  : t('暂无待阅读材料')
+              }}
+            </h2>
+            <p>
+              {{
+                t('{originals} 篇原文 · {excerpts} 篇摘录', {
+                  originals: readyReading.length - readyExcerpts,
+                  excerpts: readyExcerpts,
+                })
+              }}
+            </p>
+          </div>
+          <div class="daily-reading-actions">
+            <button
+              v-if="readyReading.length"
+              class="button primary"
+              :disabled="busy"
+              @click="startReading"
+            >
+              {{ t('开始今日阅读') }}<ArrowRight :size="17" />
+            </button>
+            <button class="button secondary" :disabled="busy" @click="navigate('sources')">
+              {{ t('管理学习材料') }}
+            </button>
+          </div>
+        </section>
         <div class="stats-strip">
           <div>
             <span class="stat-icon sage"><Layers :size="19" /></span>
@@ -928,8 +983,15 @@ async function restoreBackup() {
         :save-excerpt="saveSourceExcerpt"
         :remove="deleteSource"
         :arrange="arrangeSource"
+        :arrange-batch="arrangeSources"
+        :undo-reading="undoReading"
+        :can-undo-reading="workspace.canUndoReading.value"
+        :reading-undo-id="workspace.readingUndo.value?.id"
+        :auto-start="autoStartReading"
         :save-reading="saveReading"
         :action-error="notice?.error ? t(notice.text) : undefined"
+        @start-handled="autoStartReading = false"
+        @review="startReview()"
         @create="createFromExcerpt"
         @share="mcpSelection = $event"
         @edit="(id) => editCard(cards.find((card) => card.noteId === id))"

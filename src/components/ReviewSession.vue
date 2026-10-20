@@ -331,6 +331,7 @@ onUnmounted(() => {
             v-if="sourceOpen"
             :source="currentSource"
             :origin="currentOrigin"
+            :sources="library.sources"
             :excerpt="current.excerpt"
             :read="getSource"
             @close="sourceOpen = false"

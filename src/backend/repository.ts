@@ -49,7 +49,7 @@ export function createServerRepository(source = location.origin) {
     scope: () => `${source}:${userId}`,
     async load(): Promise<Snapshot> {
       const status = await requestJson<{ apiVersion: number; historyVersion?: number }>('/status')
-      if (status.apiVersion !== 9) throw new ServerError('incompatible-version')
+      if (status.apiVersion !== 10) throw new ServerError('incompatible-version')
       compactHistory = status.historyVersion === 1
       if (!userId) userId = (await requestJson<{ user: { id: string } }>('/auth/session')).user.id
       const saved = await apiJson<Snapshot>(compactHistory ? '/library/summary' : '/library')
