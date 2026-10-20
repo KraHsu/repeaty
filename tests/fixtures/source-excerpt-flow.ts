@@ -223,7 +223,12 @@ export async function excerptDuringRound(page: Page, read: () => Promise<Library
   await page.getByRole('button', { name: '下一篇', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Next round excerpt', exact: true })).toBeVisible()
   await page.getByRole('button', { name: '稍后阅读', exact: true }).click()
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: /^1 周后/ })
+    .click()
   const date = await page.getByLabel('下次阅读日期').inputValue()
+  expect((await read()).sources.find((source) => source.kind === 'excerpt')!.queue).toBeUndefined()
   await page.getByRole('button', { name: '保存阅读安排', exact: true }).click()
   await expect(page.getByRole('heading', { name: '本轮结束', exact: true })).toBeVisible()
   const library = await read()

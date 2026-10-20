@@ -66,6 +66,7 @@ export async function readingRoundFlow(page: Page, read: () => Promise<Library>,
   await moveReading(page, 0.45)
   await page.getByRole('button', { name: '稍后阅读', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '稍后阅读', exact: true })
+  await dialog.getByRole('button', { name: /^3 天后/ }).click()
   const date = await dialog.getByLabel('下次阅读日期').inputValue()
   await dialog.getByRole('button', { name: '保存阅读安排', exact: true }).click()
   await expect(dialog).toHaveCount(0)

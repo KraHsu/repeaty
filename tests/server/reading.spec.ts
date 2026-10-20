@@ -44,9 +44,30 @@ test('a service failure prevents advancing or ending the round until its positio
     '第 1 篇，共 2 篇',
   )
   expect((await (await request.get('api/library', { headers })).json()).library).toEqual(before)
+  await page.getByRole('button', { name: '稍后阅读', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '稍后阅读', exact: true })
+  await dialog.getByRole('button', { name: /^1 周后/ }).click()
+  const date = await dialog.getByLabel('下次阅读日期').inputValue()
+  await dialog.getByRole('button', { name: '保存阅读安排', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toBeVisible()
+  await expect(dialog.getByLabel('下次阅读日期')).toHaveValue(date)
+  await expect(dialog.getByRole('button', { name: /^1 周后/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(page.getByRole('region', { name: '本轮阅读', exact: true })).toContainText(
+    '第 1 篇，共 2 篇',
+  )
+  expect((await (await request.get('api/library', { headers })).json()).library).toEqual(before)
   reject = false
-  await page.getByRole('button', { name: '下一篇', exact: true }).click()
+  await dialog.getByRole('button', { name: '保存阅读安排', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Remote B', exact: true })).toBeVisible()
+  expect(
+    (await (await request.get('api/library', { headers })).json()).library.sources.find(
+      (source: { title: string }) => source.title === 'Remote A',
+    ).queue,
+  ).toEqual({ state: 'active', availableOn: date })
   expect(
     (await (await request.get('api/library', { headers })).json()).library.sources.find(
       (source: { title: string }) => source.title === 'Remote A',

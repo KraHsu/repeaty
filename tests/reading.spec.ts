@@ -55,10 +55,28 @@ test('a failed next-source save retains the current round and position for retry
     '第 1 篇，共 2 篇',
   )
   expect(await read(page)).toEqual(before)
+  await page.getByRole('button', { name: '稍后阅读', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '稍后阅读', exact: true })
+  await dialog.getByRole('button', { name: /^3 天后/ }).click()
+  const date = await dialog.getByLabel('下次阅读日期').inputValue()
+  await dialog.getByRole('button', { name: '保存阅读安排', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toContainText('存储空间不足')
+  await expect(dialog.getByLabel('下次阅读日期')).toHaveValue(date)
+  await expect(dialog.getByRole('button', { name: /^3 天后/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(page.getByRole('heading', { name: 'Next A', exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: '本轮阅读', exact: true })).toContainText(
+    '第 1 篇，共 2 篇',
+  )
+  expect(await read(page)).toEqual(before)
   await page.evaluate(() => ((window as unknown as { failNext: boolean }).failNext = false))
-  await page.getByRole('button', { name: '下一篇', exact: true }).click()
+  await dialog.getByRole('button', { name: '保存阅读安排', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Next B', exact: true })).toBeVisible()
   const saved = (await read(page)).sources.find((source) => source.title === 'Next A')!
+  expect(saved.queue).toEqual({ state: 'active', availableOn: date })
   expect(saved.reading!.offset).toBeGreaterThan(
     before.sources.find((source) => source.id === saved.id)!.reading!.offset,
   )
