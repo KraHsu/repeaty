@@ -296,7 +296,7 @@ async function readWorkspace(page: Page): Promise<{ revision: number; library: L
             'attempts',
           ] as const
           const tx = db.transaction(['meta', ...stores])
-          const library = { version: 12, sources: [] } as unknown as Library
+          const library = { version: 13, sources: [] } as unknown as Library
           let revision = 0
           const metadata = tx.objectStore('meta').get('main')
           metadata.onsuccess = () => {

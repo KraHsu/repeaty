@@ -19,11 +19,17 @@ export function sourceArrangement(source: Source): SourceArrangement {
     ...(source.queue ? { queue: { ...source.queue } } : {}),
     ...(source.priority ? { priority: source.priority } : {}),
     ...(source.readingIntervalDays ? { readingIntervalDays: source.readingIntervalDays } : {}),
+    ...(source.adaptiveReading ? { adaptiveReading: { ...source.adaptiveReading } } : {}),
   }
 }
 const same = (a: SourceArrangement, b: SourceArrangement) =>
   a.priority === b.priority &&
   a.readingIntervalDays === b.readingIntervalDays &&
+  a.adaptiveReading?.intervalDays === b.adaptiveReading?.intervalDays &&
+  a.adaptiveReading?.factor === b.adaptiveReading?.factor &&
+  a.adaptiveReading?.lastReadOn === b.adaptiveReading?.lastReadOn &&
+  a.adaptiveReading?.readCount === b.adaptiveReading?.readCount &&
+  a.adaptiveReading?.feedback === b.adaptiveReading?.feedback &&
   a.queue?.state === b.queue?.state &&
   a.queue?.availableOn === b.queue?.availableOn
 const stale = () => new LocalizedError(msg('材料或阅读安排已变化，请重新选择。'))
@@ -101,7 +107,13 @@ export function undoReading(library: Library, undo: ReadingUndo): Library {
     sources: library.sources.map((source) => {
       const change = changes.get(source.id)
       if (!change) return source
-      const { queue: _queue, priority: _priority, readingIntervalDays: _interval, ...rest } = source
+      const {
+        queue: _queue,
+        priority: _priority,
+        readingIntervalDays: _interval,
+        adaptiveReading: _adaptive,
+        ...rest
+      } = source
       return sourceSchema.parse({ ...rest, ...change.before })
     }),
   }

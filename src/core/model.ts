@@ -237,7 +237,7 @@ export function variants(note: Pick<Note, 'type' | 'front'>): string[] {
 }
 
 const libraryContents = z.object({
-  version: z.literal(12),
+  version: z.literal(13),
   sources: z.array(sourceSchema).max(10_000),
   practices: z.array(practiceSchema).max(100_000),
   attempts: z.array(attemptSchema).max(500_000),
@@ -362,7 +362,7 @@ export const recordSchemas = {
 }
 export function emptyLibrary(): Library {
   return {
-    version: 12,
+    version: 13,
     sources: [],
     decks: [],
     notes: [],
@@ -525,32 +525,34 @@ export function migrateLibrary(value: unknown): Library {
       value.version === 9 ||
       value.version === 10 ||
       value.version === 11 ||
-      value.version === 12)
+      value.version === 12 ||
+      value.version === 13)
   )
     return librarySchema.parse(
-      value.version === 12
+      value.version === 13
         ? value
         : value.version === 6 ||
             value.version === 7 ||
             value.version === 8 ||
             value.version === 9 ||
             value.version === 10 ||
-            value.version === 11
-          ? { ...value, version: 12 }
+            value.version === 11 ||
+            value.version === 12
+          ? { ...value, version: 13 }
           : value.version === 5
-            ? { sources: [], ...value, version: 12 }
+            ? { sources: [], ...value, version: 13 }
             : {
                 sources: [],
                 practices: [],
                 attempts: [],
                 ...value,
-                version: 12,
+                version: 13,
               },
     )
   const old = legacySchema.parse(value)
   const seen = new Set<string>()
   return librarySchema.parse({
-    version: 12,
+    version: 13,
     sources: [],
     practices: [],
     attempts: [],

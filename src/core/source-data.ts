@@ -30,12 +30,29 @@ export const sourcePrioritySchema = z.enum(['high', 'normal', 'low'])
 export type SourcePriority = z.infer<typeof sourcePrioritySchema>
 export const READING_INTERVAL_DAYS = [1, 3, 7, 14, 30] as const
 export const sourceReadingIntervalSchema = z.literal(READING_INTERVAL_DAYS)
+export const readingFeedbackSchema = z.enum(['again', 'good', 'easy'])
+export type ReadingFeedback = z.infer<typeof readingFeedbackSchema>
+export const adaptiveIntervalSchema = z.number().int().min(1).max(365)
+export const adaptiveReadingSchema = z.object({
+  intervalDays: adaptiveIntervalSchema,
+  factor: z.number().finite().min(1.3).max(3),
+  lastReadOn: z.iso.date(),
+  readCount: z.number().int().min(1).max(1_000_000),
+  feedback: readingFeedbackSchema,
+})
 export const sourceQueueActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('defer'), date: z.iso.date() }),
   z.object({
     type: z.literal('read'),
     intervalDays: sourceReadingIntervalSchema,
     date: z.iso.date(),
+  }),
+  z.object({
+    type: z.literal('read-adaptive'),
+    feedback: readingFeedbackSchema,
+    intervalDays: adaptiveIntervalSchema,
+    date: z.iso.date(),
+    expectedReadCount: z.number().int().min(0).max(999_999),
   }),
   z.object({ type: z.literal('reset-interval') }),
   z.object({ type: z.literal('archive') }),
@@ -58,6 +75,7 @@ export interface SourceArrangement {
   queue?: Source['queue']
   priority?: SourcePriority
   readingIntervalDays?: Source['readingIntervalDays']
+  adaptiveReading?: Source['adaptiveReading']
 }
 export interface SourceTarget {
   id: string
@@ -110,6 +128,7 @@ export const sourceSchema = z
     queue: sourceQueueSchema.optional(),
     priority: sourcePrioritySchema.optional(),
     readingIntervalDays: sourceReadingIntervalSchema.optional(),
+    adaptiveReading: adaptiveReadingSchema.optional(),
     kind: z.literal('excerpt').optional(),
     origin: sourceOriginSchema.optional(),
   })
