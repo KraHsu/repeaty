@@ -34,6 +34,7 @@ import CollectionPanel from './components/CollectionPanel.vue'
 import ImportNotes from './components/ImportNotes.vue'
 import type {
   SourceInput,
+  SourceDetailsUpdate,
   SaveSourceExcerptInput,
   SourceExcerpt,
   SourceQueueUpdate,
@@ -258,6 +259,9 @@ async function saveCard(input: NoteInput, assets: MediaUpload[], allowRemove: bo
 }
 async function saveSource(input: SourceInput, scope: string) {
   return run(() => workspace.saveSource(input, scope), '材料已保存')
+}
+async function editSourceDetails(update: SourceDetailsUpdate) {
+  return run(() => workspace.editSourceDetails(update), '材料信息已保存')
 }
 async function saveSourceExcerpt(input: SaveSourceExcerptInput) {
   return run(() => workspace.saveSourceExcerpt(input), '摘录已保存')
@@ -920,6 +924,7 @@ async function restoreBackup() {
         :can-share="desktopEdition && !remoteWorkspace"
         :read="workspace.getSource"
         :save="saveSource"
+        :update-details="editSourceDetails"
         :save-excerpt="saveSourceExcerpt"
         :remove="deleteSource"
         :arrange="arrangeSource"

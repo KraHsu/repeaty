@@ -10,6 +10,7 @@ import {
   READING_INTERVAL_DAYS,
   type SaveSourceExcerptInput,
   type SourceInput,
+  type SourceDetailsUpdate,
   type SourceExcerpt,
   type SourceQueueAction,
   type SourceQueueUpdate,
@@ -51,6 +52,7 @@ const props = defineProps<{
   actionError?: string
   read: (id: string, signal?: AbortSignal) => Promise<string>
   save: (input: SourceInput, scope: string) => Promise<boolean>
+  updateDetails: (update: SourceDetailsUpdate) => Promise<boolean>
   saveExcerpt: (input: SaveSourceExcerptInput) => Promise<boolean>
   remove: (id: string, scope: string) => Promise<boolean>
   arrange: (update: SourceQueueUpdate) => Promise<boolean>
@@ -166,6 +168,8 @@ const originOpen = ref(false)
 const excerptDraft = shallowRef<{ input: SaveSourceExcerptInput; token?: number }>()
 const excerptTitle = ref(''),
   savingExcerpt = ref(false)
+const detailsDraft = ref<Omit<SourceDetailsUpdate, 'position'>>()
+const savingDetails = ref(false)
 const importing = ref(false),
   deleting = ref(false),
   exporting = ref(false),
@@ -545,6 +549,50 @@ function openImport() {
   importError.value = ''
   importing.value = true
 }
+function openDetails() {
+  const current = source.value
+  if (!current || props.busy || moving.value || arranging.value || savingDetails.value) return
+  emit('clearNotice')
+  detailsDraft.value = {
+    sourceId: current.id,
+    mediaId: current.mediaId,
+    scope: props.scope,
+    before: { title: current.title, url: current.url },
+    details: { title: current.title, url: current.url },
+  }
+}
+async function saveDetails() {
+  const draft = detailsDraft.value
+  if (!draft || props.busy || savingDetails.value) return
+  const current = source.value,
+    pending = props.reading.pending.get(draft.sourceId)
+  const position =
+    current?.id === draft.sourceId &&
+    current.mediaId === draft.mediaId &&
+    !loading.value &&
+    !error.value &&
+    reader.value?.ready
+      ? reader.value.capture().position
+      : pending?.update.mediaId === draft.mediaId
+        ? pending.update.position
+        : undefined
+  savingDetails.value = true
+  emit('clearNotice')
+  try {
+    const saved = await props.updateDetails({
+      ...draft,
+      before: { ...draft.before },
+      details: { ...draft.details },
+      position,
+    })
+    if (saved && alive && props.scope === draft.scope && detailsDraft.value === draft) {
+      props.reading.acknowledge(draft.sourceId, pending?.token)
+      detailsDraft.value = undefined
+    }
+  } finally {
+    savingDetails.value = false
+  }
+}
 function openDelete() {
   emit('clearNotice')
   deleting.value = true
@@ -862,6 +910,13 @@ async function download() {
             <div class="source-actions">
               <button
                 class="button secondary"
+                :disabled="busy || moving || arranging || exporting || savingDetails"
+                @click="openDetails"
+              >
+                {{ t('编辑材料信息') }}
+              </button>
+              <button
+                class="button secondary"
                 :disabled="loading || !!error || exporting"
                 @click="download"
               >
@@ -1143,6 +1198,47 @@ async function download() {
       @close="originOpen = false"
     />
     <AppModal
+      v-if="detailsDraft"
+      :title="t('编辑材料信息')"
+      :busy="busy || savingDetails"
+      :error="actionError"
+      @close="detailsDraft = undefined"
+    >
+      <form class="editor-form source-details-form" @submit.prevent="saveDetails">
+        <label for="source-details-title">{{ t('材料标题') }}</label>
+        <input
+          id="source-details-title"
+          v-model="detailsDraft.details.title"
+          required
+          maxlength="160"
+          :disabled="busy || savingDetails"
+        />
+        <label for="source-details-url">{{ t('来源链接（可选）') }}</label>
+        <input
+          id="source-details-url"
+          v-model="detailsDraft.details.url"
+          type="url"
+          maxlength="2048"
+          placeholder="https://"
+          :disabled="busy || savingDetails"
+        />
+        <p class="form-note">{{ t('操作前会保存快照，可在「数据与备份」中恢复。') }}</p>
+        <div class="form-actions">
+          <button
+            type="button"
+            class="button secondary"
+            :disabled="busy || savingDetails"
+            @click="detailsDraft = undefined"
+          >
+            {{ t('取消') }}
+          </button>
+          <button class="button primary" :disabled="busy || savingDetails">
+            {{ t('保存材料信息') }}
+          </button>
+        </div>
+      </form>
+    </AppModal>
+    <AppModal
       v-if="excerptDraft"
       wide
       :title="t('保存为摘录')"
@@ -1421,7 +1517,8 @@ async function download() {
 .source-excerpt-tools p {
   margin: 0;
 }
-.source-excerpt-form {
+.source-excerpt-form,
+.source-details-form {
   padding: 1.25rem 1.75rem;
   overflow: auto;
 }
@@ -1803,6 +1900,7 @@ async function download() {
   }
   .source-import-form,
   .source-excerpt-form,
+  .source-details-form,
   .source-delete {
     padding: 1rem;
   }

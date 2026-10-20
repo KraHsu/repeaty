@@ -1089,6 +1089,40 @@ try {
       label,
     )
   }
+  async function editNativeSourceDetails(title, url) {
+    await waitButton('编辑材料信息')
+    await click('编辑材料信息')
+    await until(
+      () => execute("return !!document.querySelector('#source-details-title')"),
+      'native source details editor opened',
+    )
+    await fill('#source-details-title', title)
+    await fill('#source-details-url', url)
+    await click('保存材料信息')
+    await until(
+      () =>
+        execute(
+          "return !document.querySelector('dialog') && document.querySelector('.source-reader h2')?.textContent===arguments[0]",
+          title,
+        ),
+      'native source details saved',
+    )
+  }
+  const nativeDetailsBefore = (await sourceRecords())[0]
+  await editNativeSourceDetails('Native renamed source🙂', 'https://example.org/native-source')
+  const nativeDetailsAfter = (await sourceRecords())[0]
+  assert.deepEqual(nativeDetailsAfter, {
+    ...nativeDetailsBefore,
+    title: 'Native renamed source🙂',
+    url: 'https://example.org/native-source',
+    reading: nativeDetailsAfter.reading,
+  })
+  assert.equal(
+    await execute("return document.querySelector('.source-reader-heading a').getAttribute('href')"),
+    'https://example.org/native-source',
+  )
+  assert.deepEqual(await libraryRecords(), confirmed)
+  await editNativeSourceDetails(nativeDetailsBefore.title, nativeDetailsBefore.url)
   async function setReadingPriority(priority) {
     await until(
       () =>
@@ -1825,6 +1859,51 @@ try {
     'excerpt',
   )
   assert.deepEqual(await libraryRecords(), nativeDetached)
+  const nativeChildBeforeDetails = (await sourceRecords()).find(
+    (source) => source.id === nativeChild.id,
+  )
+  await editNativeSourceDetails('Native renamed excerpt🙂', 'https://example.org/native-excerpt')
+  const nativeChildAfterDetails = (await sourceRecords()).find(
+    (source) => source.id === nativeChild.id,
+  )
+  assert.deepEqual(nativeChildAfterDetails, {
+    ...nativeChildBeforeDetails,
+    title: 'Native renamed excerpt🙂',
+    url: 'https://example.org/native-excerpt',
+    reading: nativeChildAfterDetails.reading,
+  })
+  await command(`/session/${session}`, undefined, 'DELETE')
+  session = undefined
+  await createSession()
+  await until(
+    () => execute("return document.querySelectorAll('.deck-title').length===1"),
+    'native source details app reopened',
+  )
+  await click('学习材料')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-reader h2')?.textContent==='Native renamed excerpt🙂' && document.querySelector('.source-text')?.value===arguments[0]",
+        sourceQuote,
+      ),
+    'native renamed excerpt and immutable body survived application exit',
+  )
+  assert.equal(
+    await execute("return document.querySelector('.source-reader-heading a').getAttribute('href')"),
+    'https://example.org/native-excerpt',
+  )
+  assert.deepEqual(
+    (await sourceRecords()).find((source) => source.id === nativeChild.id),
+    nativeChildAfterDetails,
+  )
+  assert.deepEqual(await libraryRecords(), nativeDetached)
+  await writeFile(
+    'test-results/native-source-details.png',
+    Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
+  )
+  console.log(
+    'Native source details: original and detached excerpt rename, links and actual restart retain snapshot identity, reading and learning records',
+  )
   console.log(
     'Native independent excerpts: exact origin, local card creation, priority, two application restarts and parent deletion passed without changing existing card progress',
   )
