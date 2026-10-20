@@ -19,10 +19,12 @@ import {
 import { sourceExcerpt, recentSource } from '../core/sources'
 import { localDay } from '../core/model'
 import {
+  filterSources,
   queuedSources,
   sourceQueueState,
   nextReadingDay,
   nextReadingInterval,
+  type SourceFilter,
   type SourceQueueView,
 } from '../core/source-queue'
 import type { ReadingProgress } from '../composables/useReadingProgress'
@@ -62,6 +64,7 @@ const emit = defineEmits<{
 }>()
 const today = computed(() => localDay(props.now))
 const round = shallowRef<ReadingRound>()
+const roundFilter = shallowRef<SourceFilter>()
 const roundEnded = computed(
   () => !!round.value && round.value.cursor === round.value.entries.length,
 )
@@ -75,16 +78,58 @@ const queueLabels = {
 } as const
 const priorityLabels = { high: '高', normal: '普通', low: '低' } as const
 const priorityBadges = { high: '高优先级', normal: '普通优先级', low: '低优先级' } as const
+const kindLabels = { all: '全部类型', original: '原文', excerpt: '摘录' } as const
+const query = ref(''),
+  kind = ref<NonNullable<SourceFilter['kind']>>('all'),
+  priority = ref<NonNullable<SourceFilter['priority']>>('all'),
+  page = ref(0)
+const filters = computed<SourceFilter>(() => ({
+  query: query.value,
+  kind: kind.value,
+  priority: priority.value,
+}))
+const hasFilters = computed(
+  () => !!query.value.trim() || kind.value !== 'all' || priority.value !== 'all',
+)
+const matchingSources = computed(() => filterSources(props.library.sources, filters.value))
+const readyCount = computed(
+  () =>
+    props.library.sources.filter((source) => sourceQueueState(source, today.value) === 'ready')
+      .length,
+)
 const counts = computed(() =>
   Object.fromEntries(
     queueViews.map((value) => [
       value,
-      props.library.sources.filter(
+      matchingSources.value.filter(
         (entry) => value === 'all' || sourceQueueState(entry, today.value) === value,
       ).length,
     ]),
   ),
 )
+const filteredReadyCount = computed(() =>
+  view.value === 'ready' || view.value === 'all' ? counts.value.ready : 0,
+)
+const roundFilterLabel = computed(() => {
+  const filter = roundFilter.value
+  if (!filter) return ''
+  return [
+    t(kindLabels[filter.kind ?? 'all']),
+    t(
+      !filter.priority || filter.priority === 'all'
+        ? '全部优先级'
+        : priorityBadges[filter.priority],
+    ),
+    filter.query?.trim(),
+  ]
+    .filter(Boolean)
+    .join(' · ')
+})
+function resetFilters() {
+  query.value = ''
+  kind.value = 'all'
+  priority.value = 'all'
+}
 const selectedId = ref(
   recentSource(queuedSources(props.library.sources, 'ready', today.value))?.id ?? '',
 )
@@ -126,17 +171,15 @@ const importing = ref(false),
   exporting = ref(false),
   readingFile = ref(false),
   importError = ref<DisplayMessage>('')
-const query = ref(''),
-  page = ref(0)
 const pageSize = 20
 const filteredSources = computed(() =>
-  queuedSources(props.library.sources, view.value, today.value, { query: query.value }),
+  queuedSources(props.library.sources, view.value, today.value, filters.value),
 )
 const pages = computed(() => Math.max(1, Math.ceil(filteredSources.value.length / pageSize)))
 const visibleSources = computed(() =>
   filteredSources.value.slice(page.value * pageSize, (page.value + 1) * pageSize),
 )
-watch([query, view], () => {
+watch([query, kind, priority, view], () => {
   page.value = 0
 })
 const form = reactive<SourceInput>({ title: '', url: '', format: 'markdown', content: '' })
@@ -221,7 +264,7 @@ async function saveExcerpt() {
     props.reading.acknowledge(draft.input.excerpt.sourceId, draft.token)
     excerptDraft.value = undefined
     if (!round.value) {
-      query.value = ''
+      resetFilters()
       view.value = 'ready'
       const child = props.library.sources.at(-1)
       selectedId.value = child?.id ?? ''
@@ -304,25 +347,31 @@ async function savePosition() {
   if (saved && alive && scope === props.scope) props.reading.acknowledge(current.id, pending?.token)
   return saved
 }
-async function beginRound() {
+async function beginRound(filter?: SourceFilter) {
   if (
     props.busy ||
     moving.value ||
     arranging.value ||
-    !counts.value.ready ||
+    !(filter ? filteredReadyCount.value : readyCount.value) ||
     (source.value && !canMove.value)
   )
     return
-  const scope = props.scope
+  const scope = props.scope,
+    chosen = filter && { ...filter }
   moving.value = true
   emit('clearNotice')
   try {
     if (source.value && !(await savePosition())) return
     if (!alive || props.scope !== scope) return
-    view.value = 'ready'
-    query.value = ''
+    const next = startReadingRound(props.library.sources, today.value, chosen)
+    if (!next.entries.length) return
+    if (!chosen) {
+      view.value = 'ready'
+      resetFilters()
+    }
     page.value = 0
-    showRound(startReadingRound(props.library.sources, today.value))
+    roundFilter.value = chosen
+    showRound(next)
   } finally {
     moving.value = false
   }
@@ -469,7 +518,7 @@ async function openExcerptSource(id: string) {
     if (!loading.value && !error.value && reader.value?.ready && !(await savePosition())) return
     if (!current()) return
     view.value = 'all'
-    query.value = ''
+    resetFilters()
     await nextTick()
     if (!current()) return
     await resume(id)
@@ -539,7 +588,7 @@ async function save() {
   if (props.busy || readingFile.value) return
   if (await props.save({ ...form }, props.scope)) {
     importing.value = false
-    query.value = ''
+    resetFilters()
     view.value = 'ready'
     page.value = 0
     selectedId.value = props.library.sources.at(-1)?.id ?? ''
@@ -591,8 +640,8 @@ async function download() {
         <button
           v-if="!round"
           class="button secondary"
-          :disabled="busy || moving || arranging || !counts.ready || (!!source && !canMove)"
-          @click="beginRound"
+          :disabled="busy || moving || arranging || !readyCount || (!!source && !canMove)"
+          @click="beginRound()"
         >
           {{ t('开始一轮阅读') }}
         </button>
@@ -621,6 +670,7 @@ async function download() {
             })
           }}</strong>
           <p class="form-note">{{ t('本轮按开始时的顺序阅读。') }}</p>
+          <p v-if="roundFilter" class="form-note reading-round-filter">{{ roundFilterLabel }}</p>
         </div>
         <div class="source-actions">
           <button class="button primary" :disabled="!canMove" @click="nextSource">
@@ -637,22 +687,79 @@ async function download() {
           :key="value"
           type="button"
           :aria-pressed="view === value"
-          :disabled="busy || moving || !!round"
+          :disabled="busy || moving || arranging || !!round"
           @click="view = value"
         >
           {{ t(queueLabels[value]) }} <span>{{ counts[value] }}</span>
         </button>
       </nav>
+      <section v-if="!round" class="source-filters" :aria-label="t('材料筛选')">
+        <div class="source-filter-fields">
+          <div class="source-filter-field source-search">
+            <label for="source-search">{{ t('搜索材料') }}</label>
+            <input
+              id="source-search"
+              v-model="query"
+              type="search"
+              :placeholder="t('搜索标题')"
+              :disabled="busy || moving || arranging"
+            />
+          </div>
+          <div class="source-filter-field">
+            <label for="source-kind-filter">{{ t('材料类型') }}</label>
+            <select id="source-kind-filter" v-model="kind" :disabled="busy || moving || arranging">
+              <option v-for="(label, value) in kindLabels" :key="value" :value="value">
+                {{ t(label) }}
+              </option>
+            </select>
+          </div>
+          <div class="source-filter-field">
+            <label for="source-priority-filter">{{ t('优先级筛选') }}</label>
+            <select
+              id="source-priority-filter"
+              v-model="priority"
+              :disabled="busy || moving || arranging"
+            >
+              <option value="all">{{ t('全部优先级') }}</option>
+              <option v-for="(label, value) in priorityBadges" :key="value" :value="value">
+                {{ t(label) }}
+              </option>
+            </select>
+          </div>
+        </div>
+        <div class="source-filter-footer">
+          <div class="source-actions">
+            <button
+              class="button secondary"
+              :disabled="
+                busy || moving || arranging || !filteredReadyCount || (!!source && !canMove)
+              "
+              aria-describedby="source-filter-count"
+              @click="beginRound(filters)"
+            >
+              {{ t('阅读筛选结果') }}
+            </button>
+            <button
+              v-if="hasFilters"
+              class="text-button"
+              :disabled="busy || moving || arranging"
+              @click="resetFilters"
+            >
+              {{ t('清除筛选') }}
+            </button>
+          </div>
+          <p id="source-filter-count" class="form-note" role="status">
+            {{
+              t('本列表 {count} 篇，其中 {ready} 篇待阅读。', {
+                count: filteredSources.length,
+                ready: filteredReadyCount,
+              })
+            }}
+          </p>
+        </div>
+      </section>
       <div class="sources-layout" :class="{ 'round-layout': !!round }">
         <aside v-if="!round" class="source-list">
-          <label class="sr-only" for="source-search">{{ t('搜索材料') }}</label
-          ><input
-            id="source-search"
-            v-model="query"
-            type="search"
-            :placeholder="t('搜索材料')"
-            :disabled="!!round || moving"
-          />
           <p v-if="!visibleSources.length" class="form-note">{{ t('没有找到材料。') }}</p>
           <div
             v-for="entry in visibleSources"
@@ -722,11 +829,12 @@ async function download() {
           <FileText :size="32" />
           <h2>{{ t('本轮结束') }}</h2>
           <p>{{ t('已到本轮末尾，阅读位置已保存。') }}</p>
+          <p v-if="roundFilter" class="form-note reading-round-filter">{{ roundFilterLabel }}</p>
           <div class="source-actions">
             <button
               class="button primary"
-              :disabled="busy || moving || !counts.ready"
-              @click="beginRound"
+              :disabled="busy || moving || !(roundFilter ? filteredReadyCount : readyCount)"
+              @click="beginRound(roundFilter)"
             >
               {{ t('再读一轮') }}
             </button>
@@ -993,10 +1101,26 @@ async function download() {
         </section>
         <section v-else class="empty-state source-queue-empty">
           <FileText :size="32" />
-          <h2>{{ t(view === 'ready' && !query ? '暂无待阅读材料' : '选择一篇材料开始阅读') }}</h2>
+          <h2>
+            {{
+              t(
+                hasFilters
+                  ? '没有匹配的材料'
+                  : view === 'ready'
+                    ? '暂无待阅读材料'
+                    : '选择一篇材料开始阅读',
+              )
+            }}
+          </h2>
           <p>
             {{
-              t(view === 'ready' && !query ? '切换到稍后阅读或已归档查看材料。' : '当前列表为空。')
+              t(
+                hasFilters
+                  ? '更换关键词或调整筛选条件。'
+                  : view === 'ready'
+                    ? '切换到稍后阅读或已归档查看材料。'
+                    : '当前列表为空。',
+              )
             }}
           </p>
         </section>
@@ -1332,6 +1456,52 @@ async function download() {
 .reading-round-complete .source-actions {
   justify-content: center;
 }
+.reading-round-filter {
+  overflow-wrap: anywhere;
+}
+.source-filters {
+  padding: 1rem;
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.source-filter-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+.source-filter-field {
+  display: grid;
+  min-width: 0;
+  gap: 0.5rem;
+}
+.source-filter-fields label {
+  font-size: 1rem;
+}
+.source-filter-fields input,
+.source-filter-fields select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #d4decd;
+  border-radius: 8px;
+  background: #fafbf8;
+  color: inherit;
+  font: inherit;
+}
+.source-filter-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-top: 1rem;
+}
+.source-filter-footer p {
+  margin: 0;
+}
 .source-queue-filters {
   display: flex;
   flex-wrap: wrap;
@@ -1497,18 +1667,6 @@ async function download() {
   justify-content: space-between;
   gap: 0.4rem;
 }
-.source-list input {
-  width: 100%;
-  min-width: 0;
-  border: 1px solid #d4decd;
-  border-radius: 8px;
-  background: #fafbf8;
-  color: #293d33;
-  padding: 11px 13px;
-}
-.source-list input:hover {
-  border-color: #a8bca2;
-}
 .source-list-item {
   text-align: left;
   display: grid;
@@ -1640,6 +1798,9 @@ async function download() {
   }
 }
 @media (max-width: 720px) {
+  .source-filter-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .source-import-form,
   .source-excerpt-form,
   .source-delete {

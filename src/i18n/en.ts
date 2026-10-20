@@ -1,6 +1,18 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
   开始一轮阅读: 'Start a reading round',
+  材料筛选: 'Source filters',
+  搜索标题: 'Search titles',
+  材料类型: 'Source type',
+  全部类型: 'All types',
+  原文: 'Original',
+  优先级筛选: 'Filter by priority',
+  全部优先级: 'All priorities',
+  阅读筛选结果: 'Read filtered sources',
+  清除筛选: 'Clear filters',
+  '本列表 {count} 篇，其中 {ready} 篇待阅读。':
+    '{count} sources in this list · {ready} ready to read',
+  没有匹配的材料: 'No matching sources',
   本轮阅读: 'Reading round',
   '第 {number} 篇，共 {total} 篇': 'Source {number} of {total}',
   '本轮按开始时的顺序阅读。': 'This round keeps its starting order.',

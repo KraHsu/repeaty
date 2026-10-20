@@ -1644,6 +1644,104 @@ try {
     'native source returned after excerpt navigation',
   )
   await setReadingPriority('high')
+  await execute(`
+    for (const [selector,value] of [['#source-kind-filter','excerpt'],['#source-priority-filter','high']]) {
+      const select=document.querySelector(selector);select.value=value;select.dispatchEvent(new Event('change',{bubbles:true}));
+    }
+  `)
+  await fill('#source-search', 'Native independent')
+  await until(
+    () =>
+      execute(
+        "return document.querySelectorAll('.source-list-title').length===1 && document.querySelector('.source-reader h2')?.textContent==='Native independent excerpt' && document.querySelector('.source-text')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native filters reveal the high priority excerpt',
+  )
+  await waitButton('阅读筛选结果')
+  await click('阅读筛选结果')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.reading-round strong')?.textContent.includes('第 1 篇，共 1 篇') && document.querySelector('.source-text')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native filtered round contains only the matching excerpt',
+  )
+  assert.equal(await execute("return !!document.querySelector('.source-filters')"), false)
+  await click('完成本轮')
+  await until(
+    () => execute("return !!document.querySelector('.reading-round-complete')"),
+    'native filtered round finished',
+  )
+  await waitButton('再读一轮')
+  await click('再读一轮')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-reader h2')?.textContent==='Native independent excerpt' && document.querySelector('.source-text')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native next round retains the excerpt filter',
+  )
+  await click('结束本轮')
+  await until(
+    () => execute("return !!document.querySelector('#source-kind-filter')"),
+    'native filter restored after ending round',
+  )
+  assert.equal(
+    await execute("return document.querySelector('#source-kind-filter').value"),
+    'excerpt',
+  )
+  assert.equal(
+    await execute("return document.querySelector('#source-priority-filter').value"),
+    'high',
+  )
+  assert.equal(
+    await execute("return document.querySelector('#source-search').value"),
+    'Native independent',
+  )
+  await fill('#source-search', 'Native source')
+  await execute(
+    "const select=document.querySelector('#source-kind-filter');select.value='original';select.dispatchEvent(new Event('change',{bubbles:true}));",
+  )
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-reader h2')?.textContent==='Native source' && document.querySelector('.source-text')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native parent-only filter opens the original',
+  )
+  await waitButton('打开摘录')
+  await click('打开摘录')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-reader h2')?.textContent==='Native independent excerpt' && document.querySelector('.source-text')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native explicit navigation reveals the filtered-out child',
+  )
+  assert.equal(await execute("return document.querySelector('#source-kind-filter').value"), 'all')
+  assert.equal(
+    await execute("return document.querySelector('#source-priority-filter').value"),
+    'all',
+  )
+  assert.equal(await execute("return document.querySelector('#source-search').value"), '')
+  await execute(
+    "[...document.querySelectorAll('.source-list-title')].find(button=>button.textContent.trim()==='Native source').click()",
+  )
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-reader h2')?.textContent==='Native source' && document.querySelector('.source-text')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native original restored after filtered round',
+  )
+  assert.deepEqual(await libraryRecords(), nativeChildRecords)
+  await writeFile(
+    'test-results/native-reading-filters.png',
+    Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
+  )
+  console.log(
+    'Native reading filters: combined type, priority and title, finite excerpt round, scoped restart and explicit source navigation preserve learning records',
+  )
   await waitButton('开始一轮阅读')
   await click('开始一轮阅读')
   await until(
