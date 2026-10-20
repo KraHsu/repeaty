@@ -11,6 +11,7 @@
     "allow-mcp-start",
     "allow-mcp-stop",
     "allow-mcp-configuration",
+    "allow-mcp-client-configuration",
     "core:default",
     "allow-desktop-config",
     "allow-set-endpoint",

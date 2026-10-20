@@ -8,6 +8,7 @@ fn main() {
             "mcp_start",
             "mcp_stop",
             "mcp_configuration",
+            "mcp_client_configuration",
             "export_begin",
             "export_write",
             "export_finish",
