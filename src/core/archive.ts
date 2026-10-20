@@ -34,23 +34,25 @@ const countSchema = z.object({
 const manifestSchema = z
   .object({
     format: z.literal('repeaty-archive'),
-    version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
-    libraryVersion: z.union([z.literal(3), z.literal(4), z.literal(5), z.literal(6)]),
+    version: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+    libraryVersion: z.union([z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7)]),
     counts: countSchema,
     parts: countSchema,
   })
   .refine((manifest) =>
-    manifest.version === 3
-      ? manifest.libraryVersion === 6
-      : manifest.counts.sources === 0 &&
-        manifest.parts.sources === 0 &&
-        (manifest.version === 2
-          ? manifest.libraryVersion === 5
-          : manifest.libraryVersion < 5 &&
-            manifest.counts.practices === 0 &&
-            manifest.counts.attempts === 0 &&
-            manifest.parts.practices === 0 &&
-            manifest.parts.attempts === 0),
+    manifest.version === 4
+      ? manifest.libraryVersion === 7
+      : manifest.version === 3
+        ? manifest.libraryVersion === 6
+        : manifest.counts.sources === 0 &&
+          manifest.parts.sources === 0 &&
+          (manifest.version === 2
+            ? manifest.libraryVersion === 5
+            : manifest.libraryVersion < 5 &&
+              manifest.counts.practices === 0 &&
+              manifest.counts.attempts === 0 &&
+              manifest.parts.practices === 0 &&
+              manifest.parts.attempts === 0),
   )
 export interface TransferOptions {
   signal?: AbortSignal
@@ -151,7 +153,7 @@ export async function exportArchive(
     await add(
       'manifest.json',
       new Blob([
-        JSON.stringify({ format: 'repeaty-archive', version: 3, libraryVersion: 6, counts, parts }),
+        JSON.stringify({ format: 'repeaty-archive', version: 4, libraryVersion: 7, counts, parts }),
       ]),
       0,
     )

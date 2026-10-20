@@ -4,20 +4,54 @@ export const MAX_SOURCE_BYTES = 1024 * 1024
 export const MAX_SOURCE_CHARACTERS = 250_000
 export const MAX_EXCERPT_CHARACTERS = 10_000
 const id = z.string().min(1).max(100)
-export const sourceSchema = z.object({
-  id,
-  title: z.string().trim().min(1).max(160),
-  url: z
-    .string()
-    .trim()
-    .max(2048)
-    .regex(/^(?:https?:\/\/[^\s]+)?$/)
-    .default(''),
-  format: z.enum(['plain', 'markdown']),
-  mediaId: id,
-  characters: z.number().int().min(1).max(MAX_SOURCE_CHARACTERS),
-  createdAt: z.iso.datetime(),
-})
+export function characterBoundary(text: string, offset: number) {
+  const position = Math.max(0, Math.min(text.length, Math.trunc(offset)))
+  return position > 0 &&
+    /[\uDC00-\uDFFF]/.test(text[position] ?? '') &&
+    /[\uD800-\uDBFF]/.test(text[position - 1]!)
+    ? position - 1
+    : position
+}
+/** Offsets address the immutable snapshot; preview fractions address one rendered block. */
+export const readingPositionSchema = z
+  .object({
+    offset: z.number().int().nonnegative().max(MAX_SOURCE_CHARACTERS),
+    fraction: z.number().finite().min(0).max(1),
+    view: z.enum(['source', 'preview']),
+  })
+  .refine((position) => position.view === 'preview' || position.fraction === 0)
+export const sourceReadingSchema = readingPositionSchema.extend({ updatedAt: z.iso.datetime() })
+export const sourceSchema = z
+  .object({
+    id,
+    title: z.string().trim().min(1).max(160),
+    url: z
+      .string()
+      .trim()
+      .max(2048)
+      .regex(/^(?:https?:\/\/[^\s]+)?$/)
+      .default(''),
+    format: z.enum(['plain', 'markdown']),
+    mediaId: id,
+    characters: z.number().int().min(1).max(MAX_SOURCE_CHARACTERS),
+    createdAt: z.iso.datetime(),
+    reading: sourceReadingSchema.optional(),
+  })
+  .superRefine((source, context) => {
+    if (
+      source.reading &&
+      (source.reading.offset > source.characters ||
+        (source.format !== 'markdown' && source.reading.view === 'preview'))
+    )
+      context.addIssue({ code: 'custom', message: '阅读位置与材料不匹配。' })
+  })
+export type ReadingPosition = z.infer<typeof readingPositionSchema>
+export interface ReadingUpdate {
+  sourceId: string
+  mediaId: string
+  scope: string
+  position: ReadingPosition
+}
 /** UTF-16 offsets refer to one immutable snapshot, not the external document. */
 export const excerptSchema = z
   .object({

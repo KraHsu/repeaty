@@ -297,6 +297,75 @@ fn source_only_libraries_get_snapshots_and_sqlite_v2_upgrades_safely() {
         connection
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap(),
-        3
+        4
     );
+}
+
+#[test]
+fn reading_positions_survive_sqlite_v3_upgrade_and_reject_invalid_offsets_atomically() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("reading.sqlite3");
+    let mut db = Database::open(&path).unwrap();
+    let text = "# Material\n\n中文段落🙂\n\nMore text";
+    let mut library = fixture();
+    library["media"] = json!([]);
+    library["sources"] = json!([]);
+    for (id, mime, format) in [
+        ("markdown", "text/markdown", "markdown"),
+        ("plain", "text/plain", "plain"),
+    ] {
+        db.put_media(id, mime, text.as_bytes()).unwrap();
+        library["media"].as_array_mut().unwrap().push(json!({"id":id,"name":"reading.txt","type":mime,"size":text.len(),"createdAt":"2026-10-19T00:00:00.000Z"}));
+        library["sources"].as_array_mut().unwrap().push(json!({"id":id,"title":"Reading","url":"","format":format,"mediaId":id,"characters":text.encode_utf16().count(),"createdAt":"2026-10-19T00:00:00.000Z"}));
+    }
+    db.commit(commit(0, &library)).unwrap();
+    drop(db);
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    connection.pragma_update(None, "user_version", 3).unwrap();
+    drop(connection);
+    let mut db = Database::open(&path).unwrap();
+    assert_eq!(db.load().unwrap()["library"], library);
+    assert_eq!(db.load().unwrap()["revision"], 1);
+    let mut marked = library["sources"][0].clone();
+    marked["reading"] = json!({"offset":12,"fraction":0.25,"view":"preview","updatedAt":"2026-10-19T01:00:00.000Z"});
+    db.commit(input(
+        1,
+        json!([{"store":"sources","id":"markdown","position":0,"value":marked}]),
+    ))
+    .unwrap();
+    let saved = db.load().unwrap();
+    for (index, reading) in [
+        (
+            0,
+            json!({"offset":text.encode_utf16().count()+1,"fraction":0,"view":"source","updatedAt":"2026-10-19T01:00:00.000Z"}),
+        ),
+        (
+            0,
+            json!({"offset":1,"fraction":0.2,"view":"source","updatedAt":"2026-10-19T01:00:00.000Z"}),
+        ),
+        (
+            1,
+            json!({"offset":1,"fraction":0,"view":"preview","updatedAt":"2026-10-19T01:00:00.000Z"}),
+        ),
+        (
+            0,
+            json!({"offset":1,"fraction":1.2,"view":"preview","updatedAt":"2026-10-19T01:00:00.000Z"}),
+        ),
+    ] {
+        let mut invalid = library["sources"][index].clone();
+        invalid["reading"] = reading;
+        let result = db.commit(input(
+            2,
+            json!([{"store":"sources","id":invalid["id"],"position":index,"value":invalid}]),
+        ));
+        assert_eq!(result.unwrap_err().0, StatusCode::BAD_REQUEST);
+        assert_eq!(db.load().unwrap(), saved);
+    }
+    assert_eq!(saved["library"]["cards"], library["cards"]);
+    assert_eq!(saved["library"]["reviews"], library["reviews"]);
+    let snapshots = db.backups().unwrap();
+    let previous = db.backup(snapshots[0]["id"].as_str().unwrap()).unwrap();
+    assert!(previous["sources"][0].get("reading").is_none());
+    db.commit(commit(2, &previous)).unwrap();
+    assert_eq!(db.load().unwrap()["library"], library);
 }

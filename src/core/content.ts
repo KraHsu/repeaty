@@ -82,3 +82,30 @@ markdown.renderer.rules.math_block = (tokens, index) => formula(tokens[index]!.c
 export function renderMarkdown(text: string): string {
   return markdown.render(text)
 }
+
+/** Wrap top-level blocks with source offsets; ordinary card rendering stays unchanged. */
+export function renderReadingMarkdown(text: string): string {
+  const lines = [0]
+  for (let index = 0; index < text.length; index++) if (text[index] === '\n') lines.push(index + 1)
+  const tokens = markdown.parse(text, {})
+  const blocks: string[] = []
+  for (let index = 0; index < tokens.length;) {
+    const token = tokens[index]!
+    let end = index + 1
+    if (token.nesting === 1)
+      while (
+        end < tokens.length &&
+        !(tokens[end]!.level === token.level && tokens[end]!.nesting === -1)
+      )
+        end++
+    if (token.nesting === 1 && end < tokens.length) end++
+    const html = markdown.renderer.render(tokens.slice(index, end), markdown.options, {})
+    blocks.push(
+      token.map
+        ? `<div class="reading-block" data-reading-offset="${lines[token.map[0]] ?? 0}" data-reading-end="${lines[token.map[1]] ?? text.length}">${html}</div>`
+        : html,
+    )
+    index = end
+  }
+  return blocks.join('')
+}

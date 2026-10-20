@@ -144,7 +144,7 @@ export function createRepository(
   onBlocked?: () => void,
   options: { compactHistory?: boolean } = {},
 ) {
-  const database = openDB<RepeatyDB>(name, 9, {
+  const database = openDB<RepeatyDB>(name, 10, {
     async upgrade(db, _oldVersion, _newVersion, tx) {
       try {
         for (const store of stores)
