@@ -410,16 +410,15 @@ export function renderCard(card: Card, note: Note): CardView {
   if (note.type === 'cloze') {
     const target = Number(card.variant.split(':')[1])
     let answer = front
-    for (const item of clozes(note.front)) {
+    const deletions = clozes(note.front)
+    for (const item of deletions) {
       front = front.replace(item.raw, () =>
         item.number === target ? `[${item.hint || '…'}]` : item.answer,
       )
       answer = answer.replace(item.raw, () => item.answer)
     }
     cloze = {
-      answers: clozes(note.front)
-        .filter((item) => item.number === target)
-        .map((item) => item.answer),
+      answers: deletions.filter((item) => item.number === target).map((item) => item.answer),
       context: answer,
       extra: note.back,
     }
@@ -443,6 +442,26 @@ export function renderCard(card: Card, note: Note): CardView {
 export function cardViews(library: Library): CardView[] {
   const notes = new Map(library.notes.map((note) => [note.id, note]))
   return library.cards.map((card) => renderCard(card, notes.get(card.noteId)!))
+}
+/** For UI consumers of immutable snapshots: reuse unchanged rendered cards. */
+export function createCardViewReader() {
+  const cache = new WeakMap<Card, { note: Note; view: CardView }>()
+  let previousNotes: Library['notes'] | undefined,
+    notes = new Map<string, Note>()
+  return (library: Library) => {
+    if (previousNotes !== library.notes) {
+      previousNotes = library.notes
+      notes = new Map(library.notes.map((note) => [note.id, note]))
+    }
+    return library.cards.map((card) => {
+      const note = notes.get(card.noteId)!,
+        prior = cache.get(card)
+      if (prior?.note === note) return prior.view
+      const view = renderCard(card, note)
+      cache.set(card, { note, view })
+      return view
+    })
+  }
 }
 export function pruneMedia(library: Library): Library {
   const used = new Set([

@@ -82,8 +82,12 @@ export function useLibrary() {
   let revision = 0
   let repository: ReturnType<typeof createRepository> | ReturnType<typeof createServerRepository>
   let savingDone: Promise<void> = Promise.resolve()
+  let backupRead = 0
   async function refreshBackups() {
-    backups.value = await repository.listBackups()
+    const target = repository,
+      request = ++backupRead
+    const entries = await target.listBackups()
+    if (target === repository && request === backupRead) backups.value = entries
   }
   async function init() {
     if (busy.value) return
@@ -114,7 +118,12 @@ export function useLibrary() {
   }
   async function commit(
     update: (current: Library) => Library,
-    options: { assets?: MediaUpload[]; reason?: string; consumeCardDraft?: string } = {},
+    options: {
+      assets?: MediaUpload[]
+      reason?: string
+      consumeCardDraft?: string
+      backgroundMetadata?: boolean
+    } = {},
   ) {
     if (busy.value) throw new LocalizedError(msg('正在保存，请稍候。'))
     if (!ready.value) throw new LocalizedError(msg('本地数据库尚未准备好。'))
@@ -128,12 +137,16 @@ export function useLibrary() {
       library.value = saved.library
       revision = saved.revision
       // The transaction is durable. A later metadata read must not invite a second write.
-      try {
-        await refreshBackups()
-        if (backupError.value === backupListWarning) backupError.value = ''
-      } catch {
-        backupError.value = backupListWarning
-      }
+      const target = repository
+      const metadata = refreshBackups()
+        .then(() => {
+          if (target === repository && backupError.value === backupListWarning)
+            backupError.value = ''
+        })
+        .catch(() => {
+          if (target === repository) backupError.value = backupListWarning
+        })
+      if (!options.backgroundMetadata) await metadata
     } catch (error) {
       if (error instanceof ZodError)
         throw new LocalizedError(msg('内容格式不正确：{p0}', { p0: validationMessage(error) }))
@@ -633,17 +646,19 @@ export function useLibrary() {
       assessment?: Assessment,
       practiceId?: string,
     ) {
-      return commit((current) =>
-        reviewCard(
-          current,
-          id,
-          grade,
-          new Date(),
-          filtered ? 'filtered' : 'normal',
-          assessment,
-          canReviewCard,
-          practiceId,
-        ),
+      return commit(
+        (current) =>
+          reviewCard(
+            current,
+            id,
+            grade,
+            new Date(),
+            filtered ? 'filtered' : 'normal',
+            assessment,
+            canReviewCard,
+            practiceId,
+          ),
+        { backgroundMetadata: true },
       )
     },
     saveSearch(filter: SearchFilter, name: string, id?: string) {
@@ -656,7 +671,7 @@ export function useLibrary() {
       }))
     },
     undo() {
-      return commit(undoReview)
+      return commit(undoReview, { backgroundMetadata: true })
     },
     async restore(data: BackupData) {
       const next = rekeyBackup(data)

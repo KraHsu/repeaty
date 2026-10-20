@@ -1,8 +1,56 @@
 import { t } from '../i18n'
 import MarkdownIt from 'markdown-it'
 import katex from 'katex'
+import hljs from 'highlight.js/lib/common'
 
-const markdown = new MarkdownIt({ html: false, breaks: true, linkify: false })
+const markdown = new MarkdownIt({
+  html: false,
+  breaks: true,
+  linkify: false,
+  highlight(code, language) {
+    // Explicit languages only: auto-detection is costly and surprising on prose.
+    if (!language || code.length > 100_000 || !hljs.getLanguage(language.toLowerCase())) return ''
+    return hljs.highlight(code, { language: language.toLowerCase(), ignoreIllegals: true }).value
+  },
+})
+// CommonMark treats punctuation before ** followed by Chinese as an opening
+// delimiter. Accept it as a closer and render the separating space the user
+// would otherwise have to type. Tokenize in place: code, URLs, math, escaped
+// markers, stored text and reading-source offsets stay untouched.
+markdown.inline.ruler.before('emphasis', 'cjk_strong_spacing', (state, silent) => {
+  if (silent || !state.src.startsWith('**', state.pos)) return false
+  const scanned = state.scanDelims(state.pos, true)
+  const before = state.src[state.pos - 1] ?? '',
+    after = state.src[state.pos + 2] ?? ''
+  if (
+    scanned.length !== 2 ||
+    scanned.can_close ||
+    !/[\p{P}\p{S}]/u.test(before) ||
+    !/[\p{L}\p{N}]/u.test(after) ||
+    !(/[\u3000-\u303f\uff00-\uffef]/u.test(before) || /\p{Script=Han}/u.test(after)) ||
+    !state.delimiters.some(
+      (delimiter) => delimiter.marker === 42 && delimiter.open && delimiter.length >= 2,
+    )
+  )
+    return false
+  for (let i = 0; i < 2; i++) {
+    const token = state.push('text', '', 0)
+    token.content = '*'
+    token.meta = { cjkSpacing: true }
+    state.delimiters.push({
+      marker: 42,
+      length: 2,
+      token: state.tokens.length - 1,
+      end: -1,
+      open: false,
+      close: true,
+    })
+  }
+  state.pos += 2
+  return true
+})
+markdown.renderer.rules.strong_close = (tokens, index, options, _env, renderer) =>
+  renderer.renderToken(tokens, index, options) + (tokens[index]!.meta?.cjkSpacing ? ' ' : '')
 // Attachments are stored locally; Markdown images never trigger remote requests.
 markdown.renderer.rules.image = (tokens, index) =>
   `<span class="media-placeholder">${markdown.utils.escapeHtml(t('[图片：{name} · 请使用附件]', { name: tokens[index]!.content }))}</span>`

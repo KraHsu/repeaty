@@ -460,11 +460,20 @@ export function createRepository(
         )
           continue
         const before = maps.get(store)!
+        // The normal grading operation appends reviews. Verify the immutable
+        // prefix once, then validate/diff only the appended rows. Imported or
+        // edited history still takes the complete validation path below.
+        const append =
+          store === 'reviews' &&
+          progressOnly &&
+          library.reviews.length > previous.reviews.length &&
+          previous.reviews.every((review, index) => review === library.reviews[index])
         const seen = new Set<string>()
-        const values: Entity[] = []
-        for (let position = 0; position < library[store].length; position++) {
+        const values: Entity[] = append ? [...previous.reviews] : []
+        for (let position = values.length; position < library[store].length; position++) {
           const value = library[store][position]!
-          if (seen.has(value.id)) throw new Error(`${store}: duplicate ID`)
+          if (seen.has(value.id) || (append && before.has(value.id)))
+            throw new Error(`${store}: duplicate ID`)
           seen.add(value.id)
           const prior = before.get(value.id)
           const same =
@@ -509,7 +518,7 @@ export function createRepository(
               row: { id: value.id, value: normalized, position, deckId },
             })
         }
-        for (const id of before.keys()) if (!seen.has(id)) patches.push({ store, id })
+        if (!append) for (const id of before.keys()) if (!seen.has(id)) patches.push({ store, id })
         ;(next[store] as Entity[]) = values
       }
       const hasHistory =
