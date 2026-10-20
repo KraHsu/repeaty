@@ -20,7 +20,7 @@ test('desktop reading positions and previews survive restart and native backup r
   )
 })
 
-test('desktop reading queues archive and defer with backups and local dates', async ({
+test('desktop reading priorities order ready sources and persist through archive, defer and backups', async ({
   page,
 }, info) => {
   await readingQueueFlow(

@@ -10,6 +10,7 @@ import {
   type SourceExcerpt,
   type SourceQueueAction,
   type SourceQueueUpdate,
+  type SourcePriority,
 } from '../core/source-data'
 import { sourceExcerpt, recentSource } from '../core/sources'
 import { localDay } from '../core/model'
@@ -52,6 +53,8 @@ const queueLabels = {
   archived: '已归档',
   all: '全部材料',
 } as const
+const priorityLabels = { high: '高', normal: '普通', low: '低' } as const
+const priorityBadges = { high: '高优先级', normal: '普通优先级', low: '低优先级' } as const
 const counts = computed(() =>
   Object.fromEntries(
     queueViews.map((value) => [
@@ -193,11 +196,24 @@ async function arrange(action: SourceQueueAction) {
       })
     ) {
       props.reading.acknowledge(current.id, pending?.token)
-      if (props.scope === scope) deferring.value = false
+      if (props.scope === scope) {
+        deferring.value = false
+        if (action.type === 'priority') {
+          const index = filteredSources.value.findIndex((entry) => entry.id === current.id)
+          if (index >= 0) page.value = Math.floor(index / pageSize)
+        }
+      }
     }
   } finally {
     arranging.value = false
   }
+}
+function changePriority(event: Event) {
+  const select = event.target as HTMLSelectElement
+  const priority = select.value as SourcePriority
+  // Show the persisted value until the transaction succeeds, including on failure.
+  select.value = source.value?.priority ?? 'normal'
+  return arrange({ type: 'priority', priority })
 }
 function readingDate(date: string) {
   const [year, month, day] = date.split('-').map(Number)
@@ -354,6 +370,12 @@ async function download() {
                   ? t('安排于 {date}', { date: readingDate(entry.queue.availableOn) })
                   : t('待阅读')
             }}</span>
+            <span
+              v-if="entry.priority && entry.priority !== 'normal'"
+              class="source-priority-badge"
+            >
+              {{ t(priorityBadges[entry.priority]) }}
+            </span>
             <template v-if="entry.reading">
               <span>{{
                 t('上次阅读 {date}', {
@@ -412,6 +434,20 @@ async function download() {
                   ? t('安排于 {date}', { date: readingDate(source.queue.availableOn) })
                   : t('待阅读')
             }}</span>
+            <div class="source-priority-control">
+              <label for="source-reading-priority">{{ t('阅读优先级') }}</label>
+              <select
+                id="source-reading-priority"
+                :value="source.priority ?? 'normal'"
+                :disabled="busy || arranging"
+                aria-describedby="source-priority-help"
+                @change="changePriority"
+              >
+                <option v-for="(label, value) in priorityLabels" :key="value" :value="value">
+                  {{ t(label) }}
+                </option>
+              </select>
+            </div>
             <div class="source-actions">
               <button
                 v-if="queueState !== 'ready'"
@@ -439,6 +475,9 @@ async function download() {
               </button>
             </div>
           </div>
+          <p id="source-priority-help" class="form-note source-priority-help">
+            {{ t('待阅读先按优先级、再按日期排序。') }}
+          </p>
           <p v-if="loading" role="status">{{ t('正在读取原文…') }}</p>
           <template v-else-if="error"
             ><p class="import-warning" role="alert">{{ t(error) }}</p>
@@ -709,6 +748,26 @@ async function download() {
   justify-content: space-between;
   gap: 0.6rem;
 }
+.source-priority-control {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 1rem;
+}
+.source-priority-control select {
+  min-height: 44px;
+  min-width: 6rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d4decd;
+  border-radius: 8px;
+  color: inherit;
+  background: #fafbf8;
+  font: inherit;
+}
+.source-priority-help {
+  margin: 0;
+}
 .source-queue-empty {
   padding: 2rem 1rem;
 }
@@ -798,6 +857,14 @@ async function download() {
 .source-list-item span {
   font-size: 0.9rem;
   color: var(--muted);
+}
+.source-list-item .source-priority-badge {
+  justify-self: start;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: #354d3d;
+  background: #f4f7ef;
 }
 .source-reader {
   min-width: 0;
