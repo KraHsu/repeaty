@@ -3,6 +3,7 @@ import { localDay, type Library } from './model'
 import {
   sourceQueueActionSchema,
   sourceSchema,
+  READING_INTERVAL_DAYS,
   type Source,
   type SourceQueueAction,
 } from './source-data'
@@ -50,6 +51,19 @@ export function nextReadingDay(now: Date, days = 1) {
   return localDay(date)
 }
 
+/** Only a confirmed read advances this ladder; custom dates keep its last step. */
+export function nextReadingInterval(source: Source, now: Date) {
+  const index =
+    source.readingIntervalDays === undefined
+      ? 0
+      : Math.min(
+          READING_INTERVAL_DAYS.indexOf(source.readingIntervalDays) + 1,
+          READING_INTERVAL_DAYS.length - 1,
+        )
+  const intervalDays = READING_INTERVAL_DAYS[index]!
+  return { intervalDays, date: nextReadingDay(now, intervalDays) }
+}
+
 export function arrangeSource(
   library: Library,
   id: string,
@@ -69,14 +83,40 @@ export function arrangeSource(
     const next = sourceSchema.parse({ ...source, priority: action.priority })
     return { ...library, sources: library.sources.map((entry) => (entry.id === id ? next : entry)) }
   }
-  if (action.type === 'defer' && action.date <= today)
+  if (action.type === 'reset-interval') {
+    if (source.readingIntervalDays === undefined) return library
+    const { readingIntervalDays: _interval, ...rest } = source
+    const next = sourceSchema.parse(rest)
+    return { ...library, sources: library.sources.map((entry) => (entry.id === id ? next : entry)) }
+  }
+  if (action.type === 'read') {
+    const plan = nextReadingInterval(source, now)
+    if (
+      source.queue?.state === 'archived' ||
+      action.intervalDays !== plan.intervalDays ||
+      action.date !== plan.date
+    )
+      throw new LocalizedError(msg('阅读安排已变化，请重新确认下次日期。'))
+  }
+  if ((action.type === 'defer' || action.type === 'read') && action.date <= today)
     throw new LocalizedError(msg('请选择今天之后的阅读日期。'))
   const queue =
     action.type === 'archive'
       ? { state: 'archived' as const, availableOn: source.queue?.availableOn ?? today }
-      : { state: 'active' as const, availableOn: action.type === 'defer' ? action.date : today }
-  if (source.queue?.state === queue.state && source.queue.availableOn === queue.availableOn)
+      : {
+          state: 'active' as const,
+          availableOn: action.type === 'defer' || action.type === 'read' ? action.date : today,
+        }
+  if (
+    source.queue?.state === queue.state &&
+    source.queue.availableOn === queue.availableOn &&
+    (action.type !== 'read' || source.readingIntervalDays === action.intervalDays)
+  )
     return library
-  const next = sourceSchema.parse({ ...source, queue })
+  const next = sourceSchema.parse({
+    ...source,
+    queue,
+    ...(action.type === 'read' ? { readingIntervalDays: action.intervalDays } : {}),
+  })
   return { ...library, sources: library.sources.map((entry) => (entry.id === id ? next : entry)) }
 }

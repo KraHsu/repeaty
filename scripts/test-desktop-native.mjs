@@ -1246,6 +1246,100 @@ try {
   console.log(
     'Native reading priority and queue: changes persist across application exits, preserve dates, positions and study records',
   )
+  await waitButton('读过，安排下次')
+  await click('读过，安排下次')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-interval-steps [aria-current]')?.textContent.trim()==='1天'",
+      ),
+    'native first reading interval preview',
+  )
+  await click('取消')
+  assert.equal((await sourceRecords())[0].readingIntervalDays, undefined)
+  for (const days of [1, 3]) {
+    await waitButton('读过，安排下次')
+    await click('读过，安排下次')
+    await until(
+      () =>
+        execute(
+          "return document.querySelector('.source-interval-steps [aria-current]')?.textContent.trim()===arguments[0]",
+          `${days}天`,
+        ),
+      'native progressive interval preview',
+    )
+    await click('保存阅读安排')
+    await until(
+      () => execute("return !document.querySelector('dialog')"),
+      'native reading interval saved',
+    )
+    await waitButton('读过，安排下次')
+    assert.equal((await sourceRecords())[0].readingIntervalDays, days)
+  }
+  const intervalSource = (await sourceRecords())[0]
+  assert.equal(
+    intervalSource.queue.availableOn,
+    await execute(
+      "const date=new Date();date.setDate(date.getDate()+3);return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`",
+    ),
+  )
+  await command(`/session/${session}`, undefined, 'DELETE')
+  session = undefined
+  await createSession()
+  await until(
+    () => execute("return document.querySelectorAll('.deck-title').length===1"),
+    'native reading interval app reopened',
+  )
+  await click('学习材料')
+  await queueView('稍后阅读')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-markdown-preview')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native interval reader restored',
+  )
+  assert.equal((await sourceRecords())[0].readingIntervalDays, 3)
+  assert.deepEqual((await sourceRecords())[0].queue, intervalSource.queue)
+  assert.equal((await sourceRecords())[0].reading.offset, intervalSource.reading.offset)
+  await waitButton('重置间隔')
+  await click('重置间隔')
+  await until(
+    () => execute("return !!document.querySelector('dialog')"),
+    'native interval reset confirmation',
+  )
+  await click('取消')
+  assert.equal((await sourceRecords())[0].readingIntervalDays, 3)
+  await click('重置间隔')
+  await until(
+    () => execute("return !!document.querySelector('dialog')"),
+    'native interval reset reopened',
+  )
+  await execute("document.querySelector('dialog .button.primary').click()")
+  await until(
+    () => execute("return !document.querySelector('dialog')"),
+    'native reading interval reset',
+  )
+  assert.equal((await sourceRecords())[0].readingIntervalDays, undefined)
+  assert.deepEqual((await sourceRecords())[0].queue, intervalSource.queue)
+  await waitButton('读过，安排下次')
+  await click('读过，安排下次')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-interval-steps [aria-current]')?.textContent.trim()==='1天'",
+      ),
+    'native interval starts again at one day',
+  )
+  await writeFile(
+    'test-results/native-reading-interval.png',
+    Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
+  )
+  await click('取消')
+  assert.deepEqual(await libraryRecords(), confirmed)
+  console.log(
+    'Native reading intervals: confirmed progression, cancel, actual restart and reset preserve dates, positions and study records',
+  )
   await waitButton('加入待阅读')
   await click('加入待阅读')
   await queueView('待阅读')

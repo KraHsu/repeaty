@@ -181,6 +181,6 @@ it('upgrades a real v7 database and keeps existing checkpoints, while old client
   const { sources: _sources, ...v5 } = library
   expect(migrateLibrary({ ...v5, version: 5 })).toEqual(library)
   expect(() => librarySchema.parse(v5)).toThrow()
-  expect(emptyLibrary().version).toBe(10)
+  expect(emptyLibrary().version).toBe(11)
   await repo.close()
 })

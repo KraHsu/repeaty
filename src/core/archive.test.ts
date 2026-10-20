@@ -38,7 +38,7 @@ async function rewrite(blob: Blob, omit: string, extra = false) {
 }
 
 describe('portable binary archives', () => {
-  it.each([3, 4, 5, 6, 7, 8, 9])(
+  it.each([3, 4, 5, 6, 7, 8, 9, 10])(
     'reads old archives with library v%s and no sources',
     async (libraryVersion) => {
       const library = fixture()

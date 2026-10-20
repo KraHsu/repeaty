@@ -21,6 +21,8 @@ export const en = {
   低优先级: 'Low priority',
   '待阅读先按优先级、再按日期排序。': 'To read is sorted by priority, then by date.',
   '阅读安排无效，请重新选择。': 'Invalid reading arrangement. Choose again.',
+  '阅读安排已变化，请重新确认下次日期。':
+    'The reading schedule has changed. Confirm the next date again.',
   导入材料前: 'Before importing a source',
   删除材料前: 'Before deleting a source',
   摘录制卡前: 'Before creating a card from an excerpt',
@@ -1068,6 +1070,8 @@ export const en = {
   '请选择今天之后的阅读日期。': 'Choose a date after today.',
   更改阅读安排前: 'Before changing the reading schedule',
   阅读安排已保存: 'Reading schedule saved',
+  '修改已保存，但暂时无法读取快照列表。':
+    'Your changes were saved, but the snapshot list could not be loaded.',
   阅读队列: 'Reading queue',
   待阅读: 'To read',
   稍后阅读: 'Read later',
@@ -1081,6 +1085,16 @@ export const en = {
   '3 天后': 'In 3 days',
   '1 周后': 'In 1 week',
   保存阅读安排: 'Save reading schedule',
+  '读过，安排下次': 'Read and schedule next',
+  '上次间隔：{interval}': 'Last interval: {interval}',
+  '本次间隔：{interval}': 'Next interval: {interval}',
+  '下次阅读：{date}': 'Next reading: {date}',
+  阅读间隔: 'Reading intervals',
+  重置间隔: 'Reset interval',
+  '下次从 1 天开始，已安排的阅读日期保持不变。':
+    'Start again at 1 day next time. The currently scheduled date stays the same.',
+  '每次确认后依次使用 1、3、7、14、30 天，之后保持 30 天。':
+    'The intervals are 1, 3, 7, 14 and 30 days. Further reads stay at 30 days.',
   '按本机日期安排，到这一天会自动加入待阅读列表。':
     'The material returns to your to-read list on this date, using your local time.',
   '安排于 {date}': 'Scheduled for {date}',
