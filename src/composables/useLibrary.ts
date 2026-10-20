@@ -157,6 +157,18 @@ export function useLibrary() {
       throw new LocalizedError(msg('材料已不存在，请刷新后重试。'))
     return content
   }
+  function localLearningSnapshot(expectedScope: string) {
+    if (
+      remoteWorkspace.value ||
+      !ready.value ||
+      busy.value ||
+      !expectedScope ||
+      expectedScope !== scope.value ||
+      !expectedScope.startsWith('local:')
+    )
+      throw new LearningQueryError('library-unavailable')
+    return { library: library.value, revision, scope: expectedScope }
+  }
   return {
     library,
     scope: readonly(scope),
@@ -168,16 +180,9 @@ export function useLibrary() {
     init,
     getAttempt,
     getSource,
+    localLearningSnapshot,
     readLearning(query: LearningQuery, expectedScope: string) {
-      if (
-        remoteWorkspace.value ||
-        !ready.value ||
-        busy.value ||
-        !expectedScope ||
-        expectedScope !== scope.value ||
-        !expectedScope.startsWith('local:')
-      )
-        throw new LearningQueryError('library-unavailable')
+      localLearningSnapshot(expectedScope)
       return readLearning(library.value, revision, query, new Date(), canReviewCard)
     },
     async backupNow(force = false) {
