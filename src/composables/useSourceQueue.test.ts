@@ -93,28 +93,35 @@ it('saves priority and current position atomically and preserves priority in lat
   expect(next.reviews).toEqual(library.reviews)
 })
 
-it('rejects a delayed arrangement when the workspace switches before its write begins', async () => {
-  const { workspace, library, input, name } = await setup()
-  const other = createRepository(`${name}-other`)
-  repositories.push(other)
-  await other.load()
-  await other.save(library, 0, {
-    assets: [
-      {
-        meta: library.media[0]!,
-        blob: new Blob(['Reading context\n'.repeat(100)], { type: 'text/plain' }),
-      },
-    ],
-  })
-  factory.mockResolvedValueOnce(other)
-  const rejected = expect(workspace.arrangeSource(input)).rejects.toThrow()
-  await workspace.init()
-  await rejected
-  expect(workspace.scope.value).toBe(other.scope())
-  expect((await other.load()).library).toEqual(library)
-  const original = createRepository(name)
-  repositories.push(original)
-  expect((await original.load()).library).toEqual(library)
-  await expect(workspace.arrangeSource(input)).rejects.toThrow()
-  expect((await other.load()).revision).toBe(1)
-})
+it.each(['arrangement', 'reading'] as const)(
+  'rejects a delayed %s update when the workspace switches before its write begins',
+  async (operation) => {
+    const { workspace, library, input, name } = await setup()
+    const other = createRepository(`${name}-other`)
+    repositories.push(other)
+    await other.load()
+    await other.save(library, 0, {
+      assets: [
+        {
+          meta: library.media[0]!,
+          blob: new Blob(['Reading context\n'.repeat(100)], { type: 'text/plain' }),
+        },
+      ],
+    })
+    factory.mockResolvedValueOnce(other)
+    const update = () =>
+      operation === 'arrangement'
+        ? workspace.arrangeSource(input)
+        : workspace.saveSourceReading(input, new Date())
+    const rejected = expect(update()).rejects.toThrow()
+    await workspace.init()
+    await rejected
+    expect(workspace.scope.value).toBe(other.scope())
+    expect((await other.load()).library).toEqual(library)
+    const original = createRepository(name)
+    repositories.push(original)
+    expect((await original.load()).library).toEqual(library)
+    await expect(update()).rejects.toThrow()
+    expect((await other.load()).revision).toBe(1)
+  },
+)
