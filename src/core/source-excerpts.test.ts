@@ -58,20 +58,22 @@ it('saves an independent lazy snapshot without a deck, preserving exact Unicode 
   const next = addSource(library, exact.source, exact.asset)
   expect(await readSource(exact.source, next, async () => exact.asset.blob)).toBe(selection2.quote)
   librarySchema.parse(next)
-  expect(() =>
-    prepareSourceExcerpt(
-      child.source,
-      'Same🙂',
-      sourceExcerpt(child.source, 'Same🙂', 0, 6),
-      'Nested',
-    ),
-  ).toThrow('请从原文')
+  const nested = prepareSourceExcerpt(
+    child.source,
+    'Same🙂',
+    sourceExcerpt(child.source, 'Same🙂', 1, 6),
+    'Nested',
+  )
+  const nestedLibrary = addSource(library, nested.source, nested.asset)
+  librarySchema.parse(nestedLibrary)
+  expect(nested.source.origin).toEqual({ sourceId: child.source.id, start: 1, end: 6 })
+  expect(nested.source.mediaId).not.toBe(child.source.mediaId)
   expect(() =>
     prepareSourceExcerpt(root.source, text, { ...selection, quote: 'Fake🙂' }, 'Forged'),
   ).toThrow('不一致')
 })
 
-it('rejects invalid or nested provenance, including self references, mismatched formats and lengths', () => {
+it('rejects invalid provenance, including self references, mismatched formats and lengths', () => {
   const { library, root, child } = sample()
   const origin = child.source.origin!
   const invalid = [
@@ -86,12 +88,7 @@ it('rejects invalid or nested provenance, including self references, mismatched 
   ]
   for (const source of invalid)
     expect(() => librarySchema.parse({ ...library, sources: [root.source, source] })).toThrow()
-  expect(() =>
-    librarySchema.parse({
-      ...library,
-      sources: [{ ...root.source, kind: 'excerpt' }, child.source],
-    }),
-  ).toThrow()
+  librarySchema.parse({ ...library, sources: [{ ...root.source, kind: 'excerpt' }, child.source] })
 })
 
 it('arranges excerpts independently and adds them only to the next reading round', () => {

@@ -3,6 +3,7 @@ import { z } from 'zod'
 export const MAX_SOURCE_BYTES = 1024 * 1024
 export const MAX_SOURCE_CHARACTERS = 250_000
 export const MAX_EXCERPT_CHARACTERS = 10_000
+export const MAX_SOURCE_DEPTH = 32
 const id = z.string().min(1).max(100)
 export function characterBoundary(text: string, offset: number) {
   const position = Math.max(0, Math.min(text.length, Math.trunc(offset)))
@@ -49,6 +50,26 @@ export interface SourceQueueUpdate {
   action: SourceQueueAction
   position?: ReadingPosition
 }
+export type SourceBatchAction = Extract<
+  SourceQueueAction,
+  { type: 'priority' | 'defer' | 'archive' | 'restore' }
+>
+export interface SourceArrangement {
+  queue?: Source['queue']
+  priority?: SourcePriority
+  readingIntervalDays?: Source['readingIntervalDays']
+}
+export interface SourceTarget {
+  id: string
+  mediaId: string
+  before: SourceArrangement
+}
+export interface SourceBatchUpdate {
+  targets: SourceTarget[]
+  action: SourceBatchAction
+  scope: string
+  reading?: ReadingUpdate
+}
 export const sourceOriginSchema = z
   .object({
     sourceId: id,
@@ -59,16 +80,28 @@ export const sourceOriginSchema = z
     (origin) => origin.end > origin.start && origin.end - origin.start <= MAX_EXCERPT_CHARACTERS,
   )
 export type SourceOrigin = z.infer<typeof sourceOriginSchema>
+export const sourceDetailsSchema = z.strictObject({
+  title: z.string().trim().min(1).max(160),
+  url: z
+    .string()
+    .trim()
+    .max(2048)
+    .regex(/^(?:https?:\/\/[^\s]+)?$/)
+    .default(''),
+})
+export type SourceDetails = z.infer<typeof sourceDetailsSchema>
+export interface SourceDetailsUpdate {
+  sourceId: string
+  mediaId: string
+  scope: string
+  before: SourceDetails
+  details: SourceDetails
+  position?: ReadingPosition
+}
 export const sourceSchema = z
   .object({
     id,
-    title: z.string().trim().min(1).max(160),
-    url: z
-      .string()
-      .trim()
-      .max(2048)
-      .regex(/^(?:https?:\/\/[^\s]+)?$/)
-      .default(''),
+    ...sourceDetailsSchema.shape,
     format: z.enum(['plain', 'markdown']),
     mediaId: id,
     characters: z.number().int().min(1).max(MAX_SOURCE_CHARACTERS),

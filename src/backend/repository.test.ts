@@ -14,7 +14,7 @@ it('uses summaries on a capable service, reads complete bodies separately and se
   setApiTransport(async (path, init) => {
     const input = init.body ? JSON.parse(String(init.body)) : undefined
     calls.push({ path, body: input })
-    if (path === '/status') return Response.json({ apiVersion: 9, historyVersion: 1 })
+    if (path === '/status') return Response.json({ apiVersion: 10, historyVersion: 1 })
     if (path === '/auth/session') return Response.json({ user: { id: 'alice' } })
     expect(new Headers(init.headers).get('X-Repeaty-User')).toBe('alice')
     if (path === '/library/summary')
@@ -53,7 +53,7 @@ it('reads an API v9 service without the optional summary endpoints', async () =>
   const calls: string[] = []
   setApiTransport(async (path) => {
     calls.push(path)
-    if (path === '/status') return Response.json({ apiVersion: 9 })
+    if (path === '/status') return Response.json({ apiVersion: 10 })
     if (path === '/auth/session') return Response.json({ user: { id: 'alice' } })
     if (path === '/library') return Response.json({ revision: 1, library })
     throw new Error(`Unexpected path: ${path}`)
@@ -69,7 +69,7 @@ it('rejects an API v8 service before reading or writing a library with reading i
   const calls: string[] = []
   setApiTransport(async (path) => {
     calls.push(path)
-    return Response.json({ apiVersion: 8 })
+    return Response.json({ apiVersion: 9 })
   })
   await expect(createServerRepository('https://old.example.test').load()).rejects.toThrow()
   expect(calls).toEqual(['/status'])
@@ -78,7 +78,7 @@ it('rejects an API v8 service before reading or writing a library with reading i
 it('rejects a mismatched body response instead of displaying another submission', async () => {
   const library = practiceHistoryFixture(3)
   setApiTransport(async (path) => {
-    if (path === '/status') return Response.json({ apiVersion: 9, historyVersion: 1 })
+    if (path === '/status') return Response.json({ apiVersion: 10, historyVersion: 1 })
     if (path === '/auth/session') return Response.json({ user: { id: 'alice' } })
     if (path === '/library/summary')
       return Response.json({

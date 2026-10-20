@@ -2,6 +2,7 @@ import { LocalizedError, msg } from '../i18n'
 import { mediaSchema, pruneMedia, type Library, type MediaUpload } from './model'
 import {
   sourceSchema,
+  sourceDetailsSchema,
   excerptSchema,
   MAX_SOURCE_BYTES,
   MAX_SOURCE_CHARACTERS,
@@ -10,6 +11,7 @@ import {
   type SourceExcerpt,
   type ReadingPosition,
   type SourceOrigin,
+  type SourceDetails,
 } from './source-data'
 
 const invalid = () => new LocalizedError(msg('原文快照缺失或损坏，请从备份恢复。'))
@@ -62,7 +64,6 @@ export function prepareSourceExcerpt(
   title: string,
   now = new Date(),
 ) {
-  if (parent.kind === 'excerpt') throw new LocalizedError(msg('请从原文保存摘录。'))
   const selection = sourceExcerpt(parent, text, excerpt.start, excerpt.end)
   if (excerpt.sourceId !== parent.id || selection.quote !== excerpt.quote)
     throw new LocalizedError(msg('摘录与原文不一致，请重新选取。'))
@@ -135,6 +136,30 @@ export function addSource(library: Library, source: Source, asset: MediaUpload):
     media: [...library.media, asset.meta],
   }
 }
+/** Metadata edits keep the immutable body and references; stale forms cannot overwrite them. */
+export function editSourceDetails(
+  library: Library,
+  id: string,
+  mediaId: string,
+  before: SourceDetails,
+  input: SourceDetails,
+): Library {
+  const source = library.sources.find((source) => source.id === id)
+  if (
+    !source ||
+    source.mediaId !== mediaId ||
+    source.title !== before.title ||
+    source.url !== before.url
+  )
+    throw new LocalizedError(msg('材料信息已变化，请重新打开编辑。'))
+  const details = sourceDetailsSchema.parse(input)
+  if (source.title === details.title && source.url === details.url) return library
+  const next = sourceSchema.parse({ ...source, ...details })
+  return {
+    ...library,
+    sources: library.sources.map((source) => (source.id === id ? next : source)),
+  }
+}
 export function removeSource(library: Library, id: string): Library {
   if (!library.sources.some((source) => source.id === id))
     throw new LocalizedError(msg('材料已不存在，请刷新后重试。'))
@@ -169,7 +194,7 @@ export async function validateSourceOrigins(
   }
   for (const [id, children] of groups) {
     const parent = sources.get(id)
-    if (!parent || parent.kind === 'excerpt') throw invalid()
+    if (!parent) throw invalid()
     const original = await readSource(parent, library, getMedia)
     for (const child of children) {
       const origin = child.origin!

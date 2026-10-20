@@ -4,6 +4,7 @@ import { createEmptyCard, type Card as FsrsCard } from 'ts-fsrs'
 import { scheduleSchema, librarySchema as legacySchema } from './legacy'
 import { pluginDataSchema, assessmentSchema } from '../plugins/data'
 import { sourceSchema, excerptSchema, MAX_SOURCE_BYTES } from './source-data'
+import { validateSourceHierarchy } from './source-tree'
 import { practiceSchema, attemptSchema, attemptSummarySchema } from './practice-data'
 
 export { scheduleSchema } from './legacy'
@@ -236,7 +237,7 @@ export function variants(note: Pick<Note, 'type' | 'front'>): string[] {
 }
 
 const libraryContents = z.object({
-  version: z.literal(11),
+  version: z.literal(12),
   sources: z.array(sourceSchema).max(10_000),
   practices: z.array(practiceSchema).max(100_000),
   attempts: z.array(attemptSchema).max(500_000),
@@ -282,15 +283,11 @@ export function validateLibraryReferences(
       problem('来源正文缺失或格式不正确')
     if (source.origin) {
       const parent = sources.get(source.origin.sourceId)
-      if (
-        !parent ||
-        parent.kind === 'excerpt' ||
-        source.format !== parent.format ||
-        source.origin.end > parent.characters
-      )
+      if (!parent || source.format !== parent.format || source.origin.end > parent.characters)
         problem('摘录与来源不匹配')
     }
   }
+  validateSourceHierarchy(library.sources, problem)
   const cardVariants = new Map<string, string[]>()
   for (const card of library.cards) {
     if (!notes.has(card.noteId)) problem('卡片所属笔记不存在')
@@ -365,7 +362,7 @@ export const recordSchemas = {
 }
 export function emptyLibrary(): Library {
   return {
-    version: 11,
+    version: 12,
     sources: [],
     decks: [],
     notes: [],
@@ -527,31 +524,33 @@ export function migrateLibrary(value: unknown): Library {
       value.version === 8 ||
       value.version === 9 ||
       value.version === 10 ||
-      value.version === 11)
+      value.version === 11 ||
+      value.version === 12)
   )
     return librarySchema.parse(
-      value.version === 11
+      value.version === 12
         ? value
         : value.version === 6 ||
             value.version === 7 ||
             value.version === 8 ||
             value.version === 9 ||
-            value.version === 10
-          ? { ...value, version: 11 }
+            value.version === 10 ||
+            value.version === 11
+          ? { ...value, version: 12 }
           : value.version === 5
-            ? { sources: [], ...value, version: 11 }
+            ? { sources: [], ...value, version: 12 }
             : {
                 sources: [],
                 practices: [],
                 attempts: [],
                 ...value,
-                version: 11,
+                version: 12,
               },
     )
   const old = legacySchema.parse(value)
   const seen = new Set<string>()
   return librarySchema.parse({
-    version: 11,
+    version: 12,
     sources: [],
     practices: [],
     attempts: [],

@@ -15,7 +15,7 @@ export interface SavedExcerpt {
 /** The root snapshot and existing references are enough; no child body reads are needed. */
 export function excerptsForSource(library: Library, sourceId: string): SavedExcerpt[] {
   const root = library.sources.find((source) => source.id === sourceId)
-  if (!root || root.kind === 'excerpt') return []
+  if (!root) return []
   const entries = new Map<string, SavedExcerpt>()
   for (const source of library.sources)
     if (source.kind === 'excerpt' && source.origin?.sourceId === sourceId)

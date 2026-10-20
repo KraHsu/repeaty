@@ -2,38 +2,32 @@
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { t, locale, type DisplayMessage } from '../i18n'
 import type { Source, SourceExcerpt } from '../core/source-data'
+import { sourceContextPath } from '../core/source-tree'
 import AppModal from './AppModal.vue'
 import CardContent from './CardContent.vue'
 
 const props = defineProps<{
   source: Source
   origin?: Source
+  sources?: Source[]
   excerpt?: SourceExcerpt
   read: (id: string, signal?: AbortSignal) => Promise<string>
 }>()
 const emit = defineEmits<{ close: [] }>()
-const originOpen = ref(false)
-const original = computed(() =>
-  props.origin?.id === props.source.origin?.sourceId ? props.origin : undefined,
+const level = ref(0)
+const path = computed(() =>
+  sourceContextPath(
+    props.sources ?? [props.source, ...(props.origin ? [props.origin] : [])],
+    props.source,
+    props.excerpt,
+  ),
 )
-const shown = computed(() => (originOpen.value && original.value ? original.value : props.source))
-const selected = computed(() => {
-  const anchor = props.source.origin,
-    excerpt = props.excerpt
-  if (!originOpen.value || !original.value || !anchor || !excerpt) return excerpt
-  return {
-    sourceId: original.value.id,
-    start: anchor.start + excerpt.start,
-    end: anchor.start + excerpt.end,
-    quote: excerpt.quote,
-  }
+const current = computed(() => path.value[Math.min(level.value, path.value.length - 1)]!)
+const shown = computed(() => current.value.source)
+const selected = computed(() => current.value.excerpt)
+watch([() => props.source.id, () => props.source.mediaId], () => {
+  level.value = 0
 })
-watch(
-  () => props.source.id,
-  () => {
-    originOpen.value = false
-  },
-)
 const highlight = ref<HTMLElement>()
 const text = ref(''),
   error = ref<DisplayMessage>(''),
@@ -49,7 +43,8 @@ async function load() {
   error.value = ''
   text.value = ''
   try {
-    text.value = await props.read(shown.value.id, current.signal)
+    const body = await props.read(shown.value.id, current.signal)
+    if (!current.signal.aborted) text.value = body
   } catch (issue) {
     if (!current.signal.aborted) error.value = issue as Error
   } finally {
@@ -72,15 +67,26 @@ const matches = computed(
 <template>
   <AppModal wide :title="shown.title" @close="emit('close')">
     <div class="source-context">
-      <button
-        v-if="original"
-        type="button"
-        class="text-button source-origin-toggle"
-        :aria-pressed="originOpen"
-        @click="originOpen = !originOpen"
-      >
-        {{ t(originOpen ? '返回摘录' : '查看出处') }}
-      </button>
+      <nav v-if="path.length > 2" class="source-context-path" :aria-label="t('出处路径')">
+        <button
+          v-for="(entry, index) in [...path].reverse()"
+          :key="entry.source.id"
+          type="button"
+          class="text-button"
+          :aria-current="entry.source.id === shown.id ? 'page' : undefined"
+          @click="level = path.length - 1 - index"
+        >
+          {{ entry.source.title }}
+        </button>
+      </nav>
+      <div v-if="path.length > 1" class="source-context-navigation">
+        <button v-if="level < path.length - 1" type="button" class="text-button" @click="level++">
+          {{ t('查看出处') }}
+        </button>
+        <button v-if="level > 0" type="button" class="text-button" @click="level = 0">
+          {{ t('返回摘录') }}
+        </button>
+      </div>
       <p class="form-note">
         {{ t('保存于 {date}', { date: new Date(shown.createdAt).toLocaleString(locale) }) }}
       </p>
@@ -140,8 +146,24 @@ const matches = computed(
   min-width: 0;
   overflow-y: auto;
 }
-.source-origin-toggle {
-  justify-self: start;
+.source-context-path,
+.source-context-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+.source-context-path {
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #dfe5d8;
+}
+.source-context-path button {
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.source-context-path [aria-current] {
+  font-weight: 700;
+  color: #35573c;
 }
 .source-context > * {
   min-width: 0;

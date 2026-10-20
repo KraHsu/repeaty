@@ -1089,6 +1089,40 @@ try {
       label,
     )
   }
+  async function editNativeSourceDetails(title, url) {
+    await waitButton('编辑材料信息')
+    await click('编辑材料信息')
+    await until(
+      () => execute("return !!document.querySelector('#source-details-title')"),
+      'native source details editor opened',
+    )
+    await fill('#source-details-title', title)
+    await fill('#source-details-url', url)
+    await click('保存材料信息')
+    await until(
+      () =>
+        execute(
+          "return !document.querySelector('dialog') && document.querySelector('.source-reader h2')?.textContent===arguments[0]",
+          title,
+        ),
+      'native source details saved',
+    )
+  }
+  const nativeDetailsBefore = (await sourceRecords())[0]
+  await editNativeSourceDetails('Native renamed source🙂', 'https://example.org/native-source')
+  const nativeDetailsAfter = (await sourceRecords())[0]
+  assert.deepEqual(nativeDetailsAfter, {
+    ...nativeDetailsBefore,
+    title: 'Native renamed source🙂',
+    url: 'https://example.org/native-source',
+    reading: nativeDetailsAfter.reading,
+  })
+  assert.equal(
+    await execute("return document.querySelector('.source-reader-heading a').getAttribute('href')"),
+    'https://example.org/native-source',
+  )
+  assert.deepEqual(await libraryRecords(), confirmed)
+  await editNativeSourceDetails(nativeDetailsBefore.title, nativeDetailsBefore.url)
   async function setReadingPriority(priority) {
     await until(
       () =>
@@ -1825,6 +1859,217 @@ try {
     'excerpt',
   )
   assert.deepEqual(await libraryRecords(), nativeDetached)
+  const nativeChildBeforeDetails = (await sourceRecords()).find(
+    (source) => source.id === nativeChild.id,
+  )
+  await editNativeSourceDetails('Native renamed excerpt🙂', 'https://example.org/native-excerpt')
+  const nativeChildAfterDetails = (await sourceRecords()).find(
+    (source) => source.id === nativeChild.id,
+  )
+  assert.deepEqual(nativeChildAfterDetails, {
+    ...nativeChildBeforeDetails,
+    title: 'Native renamed excerpt🙂',
+    url: 'https://example.org/native-excerpt',
+    reading: nativeChildAfterDetails.reading,
+  })
+  await command(`/session/${session}`, undefined, 'DELETE')
+  session = undefined
+  await createSession()
+  await until(
+    () => execute("return document.querySelectorAll('.deck-title').length===1"),
+    'native source details app reopened',
+  )
+  await click('学习材料')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-reader h2')?.textContent==='Native renamed excerpt🙂' && document.querySelector('.source-text')?.value===arguments[0]",
+        sourceQuote,
+      ),
+    'native renamed excerpt and immutable body survived application exit',
+  )
+  assert.equal(
+    await execute("return document.querySelector('.source-reader-heading a').getAttribute('href')"),
+    'https://example.org/native-excerpt',
+  )
+  assert.deepEqual(
+    (await sourceRecords()).find((source) => source.id === nativeChild.id),
+    nativeChildAfterDetails,
+  )
+  assert.deepEqual(await libraryRecords(), nativeDetached)
+  await writeFile(
+    'test-results/native-source-details.png',
+    Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
+  )
+  console.log(
+    'Native source details: original and detached excerpt rename, links and actual restart retain snapshot identity, reading and learning records',
+  )
+  const nativeCoreLearning = await libraryRecords()
+  async function saveNativeNested(title, end) {
+    await execute(
+      "const reader=document.querySelector('.source-text');reader.focus();reader.setSelectionRange(0,arguments[0]);reader.dispatchEvent(new Event('select',{bubbles:true}));",
+      end,
+    )
+    await waitButton('保存为摘录')
+    await click('保存为摘录')
+    await until(
+      () => execute("return !!document.querySelector('#excerpt-title')"),
+      'native nested excerpt editor',
+    )
+    await fill('#excerpt-title', title)
+    await click('保存摘录')
+    await until(
+      () =>
+        execute(
+          "return !document.querySelector('dialog') && document.querySelector('.source-reader h2')?.textContent===arguments[0] && document.querySelector('.source-text')?.getAttribute('aria-busy')==='false'",
+          title,
+        ),
+      'native nested excerpt saved',
+    )
+  }
+  await saveNativeNested('Native nested A', sourceQuote.length)
+  await saveNativeNested('Native nested B', 4)
+  const nativeNested = await sourceRecords()
+  const nativeNestedA = nativeNested.find((source) => source.title === 'Native nested A')
+  const nativeNestedB = nativeNested.find((source) => source.title === 'Native nested B')
+  assert.equal(nativeNestedA.origin.sourceId, nativeChild.id)
+  assert.equal(nativeNestedB.origin.sourceId, nativeNestedA.id)
+  assert.equal(
+    await execute(
+      "return document.querySelector('.source-ancestry').textContent.replace(/\\s+/g,'')",
+    ),
+    'Native renamed excerpt🙂Native nested ANative nested B'.replace(/\s+/g, ''),
+  )
+  await click('查看出处')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('dialog h2')?.textContent==='Native nested A' && !!document.querySelector('dialog .source-original mark')",
+      ),
+    'native immediate excerpt provenance',
+  )
+  await execute(
+    "[...document.querySelectorAll('dialog button')].find(button=>button.textContent.trim()==='查看出处').click()",
+  )
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('dialog h2')?.textContent==='Native renamed excerpt🙂' && document.querySelector('.source-original mark')?.textContent===arguments[0]",
+        sourceQuote.slice(0, 4),
+      ),
+    'native ancestor offsets',
+  )
+  await click('关闭')
+  await fill('#source-search', 'Native nested')
+  await click('选择本页')
+  await waitButton('批量安排')
+  await click('批量安排')
+  await until(
+    () => execute("return !!document.querySelector('#source-batch-action')"),
+    'native batch editor',
+  )
+  await execute(
+    "const select=document.querySelector('#source-batch-action');select.value='archive';select.dispatchEvent(new Event('change',{bubbles:true}));",
+  )
+  await click('确认批量安排')
+  await until(
+    () =>
+      execute(
+        "return !document.querySelector('dialog') && !document.querySelector('.source-reader')",
+      ),
+    'native batch archived',
+  )
+  let nativeArranged = await sourceRecords()
+  assert.equal(
+    nativeArranged
+      .filter((source) => source.title.startsWith('Native nested'))
+      .every((source) => source.queue.state === 'archived'),
+    true,
+  )
+  await waitButton('撤销阅读安排')
+  await click('撤销阅读安排')
+  await until(
+    () => execute("return document.querySelectorAll('.source-list-title').length===2"),
+    'native batch undone',
+  )
+  nativeArranged = await sourceRecords()
+  for (const previous of [nativeNestedA, nativeNestedB]) {
+    const current = nativeArranged.find((source) => source.id === previous.id)
+    assert.deepEqual(current.queue, previous.queue)
+    assert.deepEqual(current.origin, previous.origin)
+  }
+  await click('选择本页')
+  await click('批量安排')
+  await until(
+    () => execute("return !!document.querySelector('#source-batch-priority')"),
+    'native batch priority',
+  )
+  await execute(
+    "const select=document.querySelector('#source-batch-priority');select.value='high';select.dispatchEvent(new Event('change',{bubbles:true}));",
+  )
+  await click('确认批量安排')
+  await until(
+    () => execute("return !document.querySelector('dialog')"),
+    'native batch priority persisted',
+  )
+  await click('学习概览')
+  await waitButton('开始今日阅读')
+  await click('开始今日阅读')
+  await until(
+    () =>
+      execute(
+        "return !!document.querySelector('.reading-round') && document.querySelector('.source-reader h2')?.textContent==='Native renamed excerpt🙂' && document.querySelector('.source-text')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native daily reading starts with priority order',
+  )
+  await click('归档材料')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-reader h2')?.textContent==='Native nested A' && document.querySelector('.source-text')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native daily round advances',
+  )
+  await click('撤销阅读安排')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-reader h2')?.textContent==='Native renamed excerpt🙂'",
+      ),
+    'native undo restores reading round cursor',
+  )
+  await waitButton('结束本轮')
+  await click('结束本轮')
+  await until(
+    () => execute("return !document.querySelector('.reading-round')"),
+    'native daily round exited',
+  )
+  const nativeCoreSources = await sourceRecords()
+  assert.deepEqual(await libraryRecords(), nativeCoreLearning)
+  await command(`/session/${session}`, undefined, 'DELETE')
+  session = undefined
+  await createSession()
+  await until(
+    () => execute("return !!document.querySelector('.daily-reading')"),
+    'native daily reading survives actual exit',
+  )
+  assert.deepEqual(await sourceRecords(), nativeCoreSources)
+  assert.deepEqual(await libraryRecords(), nativeCoreLearning)
+  await click('学习材料')
+  await until(
+    () => execute("return !!document.querySelector('.source-reader')"),
+    'native core material page after restart',
+  )
+  assert.equal(
+    await execute(
+      "return [...document.querySelectorAll('button')].some(button=>button.textContent.trim()==='撤销阅读安排')",
+    ),
+    false,
+  )
+  console.log(
+    'Native incremental core: three-level excerpts, ancestry offsets, batch archive / priority / undo, daily entry and cursor undo passed through an actual application restart without changing existing learning records',
+  )
+
   console.log(
     'Native independent excerpts: exact origin, local card creation, priority, two application restarts and parent deletion passed without changing existing card progress',
   )
