@@ -68,7 +68,7 @@ impl Database {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         let version: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 3 {
+        if version > 4 {
             return Err(Error::invalid());
         }
         let tx = connection.transaction()?;
@@ -102,7 +102,7 @@ impl Database {
             };
             tx.execute_batch(&format!("CREATE TABLE IF NOT EXISTS {store} (id TEXT PRIMARY KEY, position INTEGER NOT NULL CHECK(position>=0), data TEXT NOT NULL CHECK(json_valid(data)){relation}); CREATE INDEX IF NOT EXISTS {store}_position ON {store}(position);"))?;
         }
-        tx.execute_batch("CREATE INDEX IF NOT EXISTS notes_deck ON notes(deck_id); CREATE INDEX IF NOT EXISTS cards_note ON cards(note_id); CREATE INDEX IF NOT EXISTS reviews_card ON reviews(card_id); CREATE INDEX IF NOT EXISTS practices_card ON practices(card_id); CREATE INDEX IF NOT EXISTS attempts_practice ON attempts(practice_id); PRAGMA user_version=3;")?;
+        tx.execute_batch("CREATE INDEX IF NOT EXISTS notes_deck ON notes(deck_id); CREATE INDEX IF NOT EXISTS cards_note ON cards(note_id); CREATE INDEX IF NOT EXISTS reviews_card ON reviews(card_id); CREATE INDEX IF NOT EXISTS practices_card ON practices(card_id); CREATE INDEX IF NOT EXISTS attempts_practice ON attempts(practice_id); PRAGMA user_version=4;")?;
         tx.commit()?;
         let schemas: HashMap<String, Value> =
             serde_json::from_str(include_str!("../schema/entities.json"))?;
@@ -135,7 +135,7 @@ impl Database {
         Ok(json!({"revision":current,"library":library}))
     }
     fn library_history(db: &Connection, summary: bool) -> Result<Value> {
-        let mut library = json!({"version":6});
+        let mut library = json!({"version":7});
         for store in STORES {
             let data = if store == "attempts" && summary {
                 "json_remove(data,'$.code','$.result.detail')"
@@ -351,6 +351,13 @@ impl Database {
         {
             return Ok(());
         }
+        let bad_reading: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sources WHERE json_extract(data,'$.reading.offset') > json_extract(data,'$.characters') OR (json_extract(data,'$.reading.view')='preview' AND json_extract(data,'$.format')<>'markdown') OR (json_extract(data,'$.reading.view')='source' AND json_extract(data,'$.reading.fraction')<>0))",
+            [], |row| row.get(0),
+        )?;
+        if bad_reading {
+            return Err(Error::invalid());
+        }
         let bad: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM sources s LEFT JOIN media m ON m.id=s.media_id WHERE m.id IS NULL OR json_extract(m.data,'$.type') <> CASE json_extract(s.data,'$.format') WHEN 'markdown' THEN 'text/markdown' ELSE 'text/plain' END OR json_extract(m.data,'$.size') > 1048576) OR EXISTS(SELECT 1 FROM notes n LEFT JOIN sources s ON s.id=json_extract(n.data,'$.excerpt.sourceId') WHERE json_extract(n.data,'$.excerpt.sourceId') IS NOT NULL AND (s.id IS NULL OR json_extract(n.data,'$.excerpt.end') > json_extract(s.data,'$.characters'))) OR EXISTS(SELECT 1 FROM notes n, json_each(n.data,'$.frontMedia') a JOIN media m ON m.id=a.value WHERE json_extract(m.data,'$.type') LIKE 'text/%') OR EXISTS(SELECT 1 FROM notes n, json_each(n.data,'$.backMedia') a JOIN media m ON m.id=a.value WHERE json_extract(m.data,'$.type') LIKE 'text/%')", [], |row| row.get(0))?;
         if bad {
             return Err(Error::invalid());
@@ -488,7 +495,7 @@ impl Database {
             })
             .optional()?
             .ok_or_else(Error::missing)?;
-        let mut library = json!({"version":6});
+        let mut library = json!({"version":7});
         for store in STORES {
             let mut rows = BTreeMap::<String, (i64, Value)>::new();
             let mut stmt = self

@@ -49,6 +49,7 @@ import type { AnkiImportPlan, AnkiSelection } from './core/anki/changes'
 import type { CardAction } from './core/scheduler'
 import { useOffline } from './composables/useOffline'
 import { useLibrary } from './composables/useLibrary'
+import { useReadingProgress } from './composables/useReadingProgress'
 import {
   colors,
   cardViews,
@@ -69,6 +70,7 @@ const PracticeHistoryPanel = defineAsyncComponent(
 )
 
 const workspace = useLibrary()
+const readingProgress = useReadingProgress(workspace)
 const { library, ready, busy, loadError, backups, backupError } = workspace
 const offline = useOffline()
 const cards = computed(() => cardViews(library.value))
@@ -408,6 +410,7 @@ async function openSnapshot(id: string) {
 async function restoreSnapshot() {
   const data = pendingSnapshot.value
   if (data && (await run(() => workspace.restoreSnapshot(data), '快照已恢复'))) {
+    readingProgress.clear()
     modal.value = null
     selectedDeck.value = ''
     pendingSnapshot.value = undefined
@@ -443,6 +446,7 @@ async function importData(event: Event) {
 async function restoreBackup() {
   const data = pendingBackup.value
   if (data && (await run(() => workspace.restore(data), '备份已恢复'))) {
+    readingProgress.clear()
     modal.value = null
     pendingBackup.value = undefined
     selectedDeck.value = ''
@@ -896,6 +900,7 @@ async function restoreBackup() {
         :library="library"
         :busy="busy"
         :scope="workspace.scope.value"
+        :reading="readingProgress"
         :can-share="desktopEdition && !remoteWorkspace"
         :read="workspace.getSource"
         :save="saveSource"

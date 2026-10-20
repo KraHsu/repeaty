@@ -1030,4 +1030,16 @@ export const en = {
   确认并保存卡片: 'Confirm and save card',
   '材料或学习库已变化，请重新选取摘录。':
     'The source or library has changed. Please select the excerpt again.',
+  '学习库已变化，阅读位置未保存。': 'The library has changed. Your reading position was not saved.',
+  '材料已变化，请重新打开后继续阅读。': 'The material has changed. Reopen it to continue reading.',
+  '阅读位置与材料不匹配。': 'The reading position does not match this material.',
+  材料阅读预览: 'Reading preview',
+  '上次阅读 {date}': 'Last read {date}',
+  继续阅读: 'Continue reading',
+  '正在保存阅读位置…': 'Saving reading position…',
+  阅读位置已保存: 'Reading position saved',
+  '阅读位置会自动保存。': 'Your reading position is saved automatically.',
+  重试保存位置: 'Retry saving position',
+  保存阅读位置: 'Save reading position',
+  从头阅读: 'Read from beginning',
 } as const

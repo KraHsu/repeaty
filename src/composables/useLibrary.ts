@@ -25,8 +25,14 @@ import {
   type AnkiSelection,
 } from '../core/anki/changes'
 import type { AnkiPackage } from '../core/anki/types'
-import { addSource, prepareSource, readSource, removeSource } from '../core/sources'
-import type { SourceInput, SourceExcerpt } from '../core/source-data'
+import {
+  addSource,
+  prepareSource,
+  readSource,
+  removeSource,
+  saveReadingPosition,
+} from '../core/sources'
+import type { SourceInput, SourceExcerpt, ReadingUpdate } from '../core/source-data'
 import { saveSearch } from '../core/search'
 import type { TransferOptions } from '../core/archive'
 import { exportBackup, rekeyBackup, type BackupData } from '../core/backups'
@@ -200,6 +206,20 @@ export function useLibrary() {
     init,
     getAttempt,
     getSource,
+    async saveSourceReading(update: ReadingUpdate, at: Date) {
+      const target = repository
+      await savingDone
+      if (!ready.value || !update.scope || update.scope !== scope.value || target !== repository)
+        throw new LocalizedError(msg('学习库已变化，阅读位置未保存。'))
+      const next = saveReadingPosition(
+        library.value,
+        update.sourceId,
+        update.mediaId,
+        update.position,
+        at,
+      )
+      if (next !== library.value) await commit(() => next)
+    },
     localLearningSnapshot,
     readLearning(query: LearningQuery, expectedScope: string) {
       localLearningSnapshot(expectedScope)

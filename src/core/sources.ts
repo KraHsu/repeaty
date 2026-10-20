@@ -8,6 +8,7 @@ import {
   type Source,
   type SourceInput,
   type SourceExcerpt,
+  type ReadingPosition,
 } from './source-data'
 
 const invalid = () => new LocalizedError(msg('原文快照缺失或损坏，请从备份恢复。'))
@@ -115,4 +116,37 @@ export function removeSource(library: Library, id: string): Library {
       note.excerpt?.sourceId === id ? { ...note, excerpt: undefined } : note,
     ),
   })
+}
+
+export function sameReadingPosition(a: ReadingPosition | undefined, b: ReadingPosition) {
+  return a?.offset === b.offset && a.view === b.view && a.fraction === b.fraction
+}
+export function saveReadingPosition(
+  library: Library,
+  id: string,
+  mediaId: string,
+  position: ReadingPosition,
+  now = new Date(),
+): Library {
+  const source = library.sources.find((source) => source.id === id)
+  if (!source || source.mediaId !== mediaId)
+    throw new LocalizedError(msg('材料已变化，请重新打开后继续阅读。'))
+  const next = sourceSchema.parse({
+    ...source,
+    reading: { ...position, updatedAt: now.toISOString() },
+  })
+  if (
+    sameReadingPosition(source.reading, next.reading!) &&
+    source.reading?.updatedAt === next.reading!.updatedAt
+  )
+    return library
+  return { ...library, sources: library.sources.map((entry) => (entry.id === id ? next : entry)) }
+}
+
+export function recentSource(sources: Source[]) {
+  return (
+    sources
+      .filter((source) => source.reading)
+      .sort((a, b) => b.reading!.updatedAt.localeCompare(a.reading!.updatedAt))[0] ?? sources.at(-1)
+  )
 }
