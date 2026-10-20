@@ -21,6 +21,8 @@ export const en = {
   低优先级: 'Low priority',
   '待阅读先按优先级、再按日期排序。': 'To read is sorted by priority, then by date.',
   '阅读安排无效，请重新选择。': 'Invalid reading arrangement. Choose again.',
+  '阅读安排已变化，请重新确认下次日期。':
+    'The reading schedule has changed. Confirm the next date again.',
   导入材料前: 'Before importing a source',
   删除材料前: 'Before deleting a source',
   摘录制卡前: 'Before creating a card from an excerpt',

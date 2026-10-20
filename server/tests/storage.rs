@@ -15,6 +15,97 @@ fn input(revision: i64, patches: Value) -> Commit {
     serde_json::from_value(json!({"expectedRevision":revision,"patches":patches})).unwrap()
 }
 #[test]
+fn reading_intervals_upgrade_v7_and_preserve_snapshots_without_inventing_progress() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("intervals.sqlite3");
+    let mut db = Database::open(&path).unwrap();
+    let text = "Reading context 中文🙂";
+    db.put_media("interval-body", "text/plain", text.as_bytes())
+        .unwrap();
+    let mut library = fixture();
+    library["media"] = json!([{"id":"interval-body","name":"reading.txt","type":"text/plain","size":text.len(),"createdAt":"2026-10-20T00:00:00Z"}]);
+    library["sources"] = json!([{"id":"interval-source","title":"Reading","url":"","format":"plain","mediaId":"interval-body","characters":text.encode_utf16().count(),"createdAt":"2026-10-20T00:00:00Z","priority":"high","reading":{"offset":8,"fraction":0,"view":"source","updatedAt":"2026-10-20T01:00:00Z"},"queue":{"state":"active","availableOn":"2026-10-25"}}]);
+    db.commit(commit(0, &library)).unwrap();
+    db.backup_now(false).unwrap();
+    drop(db);
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    connection.pragma_update(None, "user_version", 7).unwrap();
+    drop(connection);
+    let mut db = Database::open(&path).unwrap();
+    assert_eq!(db.load().unwrap()["library"], library);
+    let snapshots = db.backups().unwrap();
+    let previous = snapshots[0]["id"].as_str().unwrap();
+    assert_eq!(db.backup(previous).unwrap(), library);
+    let mut source = library["sources"][0].clone();
+    for (index, days) in [1, 3, 7, 14, 30].iter().enumerate() {
+        let revision = index as i64 + 1;
+        source["readingIntervalDays"] = json!(days);
+        db.commit(input(
+            revision,
+            json!([{"store":"sources","id":"interval-source","position":0,"value":source}]),
+        ))
+        .unwrap();
+        let saved = db.load().unwrap();
+        assert_eq!(saved["library"]["sources"][0], source);
+        for store in [
+            "notes",
+            "cards",
+            "reviews",
+            "practices",
+            "attempts",
+            "media",
+        ] {
+            assert_eq!(saved["library"][store], library[store]);
+        }
+        for days in [json!(0), json!(2), json!(31), json!("1"), json!(null)] {
+            let mut invalid = source.clone();
+            invalid["readingIntervalDays"] = days;
+            assert_eq!(
+                db.commit(input(
+                    revision + 1,
+                    json!([{"store":"sources","id":"interval-source","position":0,"value":invalid}])
+                ))
+                .unwrap_err()
+                .0,
+                StatusCode::BAD_REQUEST
+            );
+            assert_eq!(db.load().unwrap(), saved);
+        }
+    }
+    drop(db);
+    let mut db = Database::open(&path).unwrap();
+    assert_eq!(db.load().unwrap()["library"]["sources"][0], source);
+    source
+        .as_object_mut()
+        .unwrap()
+        .remove("readingIntervalDays");
+    db.commit(input(
+        6,
+        json!([{"store":"sources","id":"interval-source","position":0,"value":source}]),
+    ))
+    .unwrap();
+    assert_eq!(db.load().unwrap()["library"], library);
+    assert_eq!(db.backup(previous).unwrap(), library);
+    drop(db);
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    assert_eq!(
+        connection
+            .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+            .unwrap(),
+        8
+    );
+    connection.pragma_update(None, "user_version", 9).unwrap();
+    drop(connection);
+    assert!(Database::open(&path).is_err());
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    assert_eq!(
+        connection
+            .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+            .unwrap(),
+        9
+    );
+}
+#[test]
 fn history_bodies_are_paged_with_byte_limits_without_losing_unicode_or_order() {
     let mut db = Database::open(std::path::Path::new(":memory:")).unwrap();
     let mut library = fixture();
@@ -297,7 +388,7 @@ fn source_only_libraries_get_snapshots_and_sqlite_v2_upgrades_safely() {
         connection
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap(),
-        7
+        8
     );
 }
 
@@ -500,7 +591,7 @@ fn reading_priority_upgrades_v5_and_rolls_back_invalid_values_without_changing_l
         connection
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap(),
-        7
+        8
     );
 }
 
@@ -625,6 +716,6 @@ fn independent_excerpts_survive_sqlite_v6_upgrade_and_validate_provenance_atomic
         connection
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap(),
-        7
+        8
     );
 }
