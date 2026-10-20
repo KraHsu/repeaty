@@ -60,6 +60,7 @@ import { readLearning, LearningQueryError, type LearningQuery } from '../core/le
 import type { CardDraft } from '../core/card-draft-data'
 
 export function useLibrary() {
+  const backupListWarning = '修改已保存，但暂时无法读取快照列表。'
   const library = shallowRef(emptyLibrary())
   const scope = ref('')
   const ready = ref(false),
@@ -114,7 +115,13 @@ export function useLibrary() {
       const saved = await repository.save(update(library.value), revision, options)
       library.value = saved.library
       revision = saved.revision
-      await refreshBackups()
+      // The transaction is durable. A later metadata read must not invite a second write.
+      try {
+        await refreshBackups()
+        if (backupError.value === backupListWarning) backupError.value = ''
+      } catch {
+        backupError.value = backupListWarning
+      }
     } catch (error) {
       if (error instanceof ZodError)
         throw new LocalizedError(msg('内容格式不正确：{p0}', { p0: validationMessage(error) }))

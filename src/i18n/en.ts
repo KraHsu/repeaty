@@ -1070,6 +1070,8 @@ export const en = {
   '请选择今天之后的阅读日期。': 'Choose a date after today.',
   更改阅读安排前: 'Before changing the reading schedule',
   阅读安排已保存: 'Reading schedule saved',
+  '修改已保存，但暂时无法读取快照列表。':
+    'Your changes were saved, but the snapshot list could not be loaded.',
   阅读队列: 'Reading queue',
   待阅读: 'To read',
   稍后阅读: 'Read later',
