@@ -28,9 +28,86 @@ export const test = base.extend<{ native: void; emptyWorkspace: void }>({
       // Only this test harness emulates IPC over intercepted URLs. Production uses invoke().
       await context.addInitScript(() => {
         let exporting: { filename: string; chunks: Uint8Array[] } | undefined
+        let callbackId = 0,
+          mcpEnabled = false,
+          mcpAvailable = false,
+          mcpScope = '',
+          mcpEpoch = 0,
+          mcpSequence = 0,
+          mcpKey = 0,
+          requestId = 0
+        let channel: { onmessage(request: unknown): void } | undefined
+        const pending = new Map<string, (value: unknown) => void>()
+        const status = () => ({
+          enabled: mcpEnabled,
+          available: mcpAvailable,
+          url: mcpEnabled ? 'http://127.0.0.1:43123/mcp' : null,
+        })
+        Object.defineProperty(window, '__repeatyTestMcpCall', {
+          value: (tool: string, args: Record<string, unknown>, scope = mcpScope) => {
+            if (!mcpEnabled || !channel) throw new Error('not-enabled')
+            const id = `test-read-${++requestId}`
+            return new Promise((resolve) => {
+              pending.set(id, resolve)
+              channel!.onmessage({ id, scope, query: { tool, arguments: args } })
+            })
+          },
+        })
         Object.defineProperty(window, '__TAURI_INTERNALS__', {
           value: {
+            transformCallback: () => ++callbackId,
+            unregisterCallback: () => {},
             invoke: async (command: string, args: Record<string, unknown>) => {
+              if (command === 'mcp_attach') {
+                channel = args.onRequest as typeof channel
+                mcpEnabled = false
+                mcpSequence = 0
+                return 'test-attachment'
+              }
+              if (command === 'mcp_workspace') {
+                const workspace = args.workspace as {
+                  scope: string
+                  scopeEpoch: number
+                  sequence: number
+                  available: boolean
+                }
+                if (workspace.sequence <= mcpSequence) return
+                if (workspace.scope !== mcpScope || workspace.scopeEpoch !== mcpEpoch)
+                  mcpEnabled = false
+                mcpScope = workspace.scope
+                mcpEpoch = workspace.scopeEpoch
+                mcpSequence = workspace.sequence
+                mcpAvailable = workspace.available && mcpScope.startsWith('local:')
+                return
+              }
+              if (command === 'mcp_status') return status()
+              if (command === 'mcp_start') {
+                if (!mcpAvailable) throw 'library-unavailable'
+                mcpEnabled = true
+                mcpKey++
+                return status()
+              }
+              if (command === 'mcp_stop') {
+                mcpEnabled = false
+                return status()
+              }
+              if (command === 'mcp_configuration') {
+                if (!mcpEnabled) throw 'library-unavailable'
+                return {
+                  mcpServers: {
+                    repeaty: {
+                      type: 'http',
+                      url: status().url,
+                      headers: { Authorization: `Bearer test-key-${mcpKey}` },
+                    },
+                  },
+                }
+              }
+              if (command === 'mcp_reply') {
+                pending.get(args.id as string)?.(args.reply)
+                pending.delete(args.id as string)
+                return
+              }
               if (command === 'export_begin') {
                 exporting = { filename: args.filename as string, chunks: [] }
                 return 'test-export'

@@ -970,4 +970,26 @@ export const en = {
   '查看 {title} 的练习历史': 'View practice history for {title}',
   '有一次提交未取得编号，自动评分暂不可用。请先核对并关联 LeetCode 提交记录。':
     'One attempt has no confirmed submission ID, so automatic rating is unavailable. Check and link the attempt on LeetCode first.',
+  桌面设置: 'Desktop settings',
+  'MCP 连接': 'MCP connection',
+  '允许本机的 AI 客户端查询待复习题目、学习统计和练习摘要。连接仅提供读取权限。':
+    'Let an AI client on this computer read due questions, study statistics, and practice summaries. Access is read-only.',
+  '仅支持本地学习库。退出应用或切换学习库后连接关闭，需要重新开启并更新客户端配置。':
+    'Available for the local library. Quitting the app or switching libraries closes the connection. Enable it again and update your client configuration to reconnect.',
+  '学习库正在处理数据，查询暂不可用。':
+    'The library is processing data. Queries are temporarily unavailable.',
+  '开启 MCP': 'Enable MCP',
+  '关闭 MCP': 'Disable MCP',
+  显示连接配置: 'Show connection configuration',
+  隐藏连接配置: 'Hide connection configuration',
+  客户端连接配置: 'Client configuration',
+  '配置包含本次连接的访问密钥。只交给你信任的客户端；关闭连接后密钥失效。':
+    'This configuration includes the access key for this connection. Share it only with a trusted client. Disabling the connection revokes the key.',
+  复制配置: 'Copy configuration',
+  已复制: 'Copied',
+  'MCP 连接不可用，请重新打开应用。': 'MCP is unavailable. Please reopen the app.',
+  '无法读取 MCP 状态，请重新打开设置。': 'Cannot read MCP status. Please reopen settings.',
+  '无法更新 MCP 连接，请重试。': 'Cannot update the MCP connection. Please try again.',
+  'MCP 连接已关闭，请重新开启。': 'The MCP connection is closed. Enable it to reconnect.',
+  '未能复制，请选中配置后手动复制。': 'Copy failed. Select the configuration and copy it manually.',
 } as const

@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod exports;
+mod mcp;
 mod plugins;
 use tauri_plugin_dialog::DialogExt;
 mod upstream;
@@ -13,6 +14,85 @@ struct Desktop {
     upstream: Mutex<Upstream>,
     plugins: Plugins,
     exports: Mutex<exports::Exporter>,
+    mcp: Arc<mcp::Mcp>,
+}
+fn main_window(window: &tauri::WebviewWindow) -> Result<(), String> {
+    if window.label() == "main" {
+        Ok(())
+    } else {
+        Err("library-unavailable".into())
+    }
+}
+#[tauri::command]
+fn mcp_attach(
+    window: tauri::WebviewWindow,
+    state: State<'_, Desktop>,
+    on_request: tauri::ipc::Channel<mcp::BridgeRequest>,
+) -> Result<String, String> {
+    main_window(&window)?;
+    Ok(state.mcp.attach(Arc::new(move |request| {
+        on_request.send(request).map_err(|_| ())
+    })))
+}
+#[tauri::command]
+fn mcp_workspace(
+    window: tauri::WebviewWindow,
+    state: State<'_, Desktop>,
+    attachment: String,
+    workspace: mcp::Workspace,
+) -> Result<(), String> {
+    main_window(&window)?;
+    state
+        .mcp
+        .workspace(&attachment, workspace)
+        .map_err(str::to_owned)
+}
+#[tauri::command]
+fn mcp_reply(
+    window: tauri::WebviewWindow,
+    state: State<'_, Desktop>,
+    id: String,
+    scope: String,
+    reply: mcp::Reply,
+) -> Result<(), String> {
+    main_window(&window)?;
+    state.mcp.reply(&id, &scope, reply).map_err(str::to_owned)
+}
+#[tauri::command]
+fn mcp_status(
+    window: tauri::WebviewWindow,
+    state: State<'_, Desktop>,
+) -> Result<mcp::Status, String> {
+    main_window(&window)?;
+    Ok(state.mcp.status())
+}
+#[tauri::command]
+async fn mcp_start(
+    window: tauri::WebviewWindow,
+    state: State<'_, Desktop>,
+) -> Result<mcp::Status, String> {
+    main_window(&window)?;
+    let upstream = state.upstream.lock().await;
+    if !upstream.config.endpoint.is_empty() {
+        return Err("library-unavailable".into());
+    }
+    state.mcp.start().await.map_err(str::to_owned)
+}
+#[tauri::command]
+fn mcp_stop(
+    window: tauri::WebviewWindow,
+    state: State<'_, Desktop>,
+) -> Result<mcp::Status, String> {
+    main_window(&window)?;
+    Ok(state.mcp.stop())
+}
+#[tauri::command]
+fn mcp_configuration(
+    window: tauri::WebviewWindow,
+    state: State<'_, Desktop>,
+) -> Result<serde_json::Value, String> {
+    main_window(&window)?;
+    state.mcp.configuration().map_err(str::to_owned)
 }
 #[tauri::command]
 async fn desktop_config(state: State<'_, Desktop>) -> Result<Config, String> {
@@ -20,7 +100,9 @@ async fn desktop_config(state: State<'_, Desktop>) -> Result<Config, String> {
 }
 #[tauri::command]
 async fn set_endpoint(state: State<'_, Desktop>, endpoint: String) -> Result<(), String> {
-    state.upstream.lock().await.set_endpoint(&endpoint)
+    state.upstream.lock().await.set_endpoint(&endpoint)?;
+    state.mcp.detach();
+    Ok(())
 }
 #[tauri::command]
 async fn upstream_request(state: State<'_, Desktop>, request: Request) -> Result<Response, String> {
@@ -108,6 +190,7 @@ fn main() {
             }
             app.manage(Desktop {
                 exports: Mutex::new(exports::Exporter::default()),
+                mcp: Arc::new(mcp::Mcp::default()),
                 upstream: Mutex::new(Upstream::open(&directory.join("desktop.json"))?),
                 plugins: Plugins::new(vec![Arc::new(
                     repeaty_leetcode_local::leetcode::LeetCode::open(
@@ -132,10 +215,22 @@ fn main() {
                     let _ = external(url.as_str());
                     tauri::webview::NewWindowResponse::Deny
                 })
+                .on_page_load(|window, payload| {
+                    if payload.event() == tauri::webview::PageLoadEvent::Started {
+                        window.state::<Desktop>().mcp.detach();
+                    }
+                })
                 .build()?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            mcp_attach,
+            mcp_workspace,
+            mcp_reply,
+            mcp_status,
+            mcp_start,
+            mcp_stop,
+            mcp_configuration,
             export_begin,
             export_write,
             export_finish,

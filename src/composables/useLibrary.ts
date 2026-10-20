@@ -42,6 +42,7 @@ import { remoteWorkspace } from '../edition'
 import type { createServerRepository } from '../backend/repository'
 import type { createRepository, BackupSummary } from '../core/storage'
 import { createWorkspaceRepository } from '@repeaty-platform'
+import { readLearning, LearningQueryError, type LearningQuery } from '../core/learning-reader'
 
 export function useLibrary() {
   const library = shallowRef(emptyLibrary())
@@ -167,6 +168,18 @@ export function useLibrary() {
     init,
     getAttempt,
     getSource,
+    readLearning(query: LearningQuery, expectedScope: string) {
+      if (
+        remoteWorkspace.value ||
+        !ready.value ||
+        busy.value ||
+        !expectedScope ||
+        expectedScope !== scope.value ||
+        !expectedScope.startsWith('local:')
+      )
+        throw new LearningQueryError('library-unavailable')
+      return readLearning(library.value, revision, query, new Date(), canReviewCard)
+    },
     async backupNow(force = false) {
       if (!ready.value || busy.value) return
       try {

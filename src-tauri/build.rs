@@ -1,6 +1,13 @@
 fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
+            "mcp_attach",
+            "mcp_workspace",
+            "mcp_reply",
+            "mcp_status",
+            "mcp_start",
+            "mcp_stop",
+            "mcp_configuration",
             "export_begin",
             "export_write",
             "export_finish",

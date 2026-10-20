@@ -23,3 +23,4 @@ export async function createWorkspaceRepository(onBlocked: () => void) {
 }
 
 export { createExportFile } from '../desktop/exports'
+export { connectLearningReader } from '../desktop/mcp'

@@ -35,7 +35,12 @@ import ImportNotes from './components/ImportNotes.vue'
 import type { SourceInput, SourceExcerpt } from './core/source-data'
 import PluginPanel from './components/PluginPanel.vue'
 import { remoteWorkspace, desktopEdition } from './edition'
-import { ServerConnection, AccountControls, createExportFile } from '@repeaty-platform'
+import {
+  ServerConnection,
+  AccountControls,
+  createExportFile,
+  connectLearningReader,
+} from '@repeaty-platform'
 import { canReviewCard, listenPluginPreferences } from './plugins'
 import type { BackupData } from './core/backups'
 import type { BatchEdit } from './core/batch'
@@ -128,10 +133,14 @@ const pageTitle = computed(
 )
 
 let stopPluginPreferences: (() => void) | undefined
+let stopLearningReader: (() => void) | undefined
 let ticker: ReturnType<typeof setInterval>
 let backupTicker: ReturnType<typeof setInterval>
 onMounted(() => {
   stopPluginPreferences = listenPluginPreferences()
+  void connectLearningReader(workspace).then((stop) => {
+    stopLearningReader = stop
+  })
   void workspace.init()
   backupTicker = setInterval(() => {
     void workspace.backupNow()
@@ -142,6 +151,7 @@ onMounted(() => {
 })
 onUnmounted(() => {
   stopPluginPreferences?.()
+  stopLearningReader?.()
   clearInterval(ticker)
   clearInterval(backupTicker)
   void workspace.close()

@@ -4,6 +4,13 @@
   "description": "Only the bundled main window may use Repeaty's native commands.",
   "windows": ["main"],
   "permissions": [
+    "allow-mcp-attach",
+    "allow-mcp-workspace",
+    "allow-mcp-reply",
+    "allow-mcp-status",
+    "allow-mcp-start",
+    "allow-mcp-stop",
+    "allow-mcp-configuration",
     "core:default",
     "allow-desktop-config",
     "allow-set-endpoint",

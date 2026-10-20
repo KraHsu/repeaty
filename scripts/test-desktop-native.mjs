@@ -88,8 +88,66 @@ const fill = (selector, value) =>
     selector,
     value,
   )
-const invoke = (name, args = {}) =>
-  execute('return window.__TAURI_INTERNALS__.invoke(arguments[0],arguments[1]);', name, args)
+const waitButton = (text) =>
+  until(
+    () =>
+      execute(
+        "return [...document.querySelectorAll('button')].some(b=>b.textContent.trim()===arguments[0]&&!b.disabled)",
+        text,
+      ),
+    text,
+  )
+const invoke = async (name, args = {}) => {
+  const result = await execute(
+    'return window.__TAURI_INTERNALS__.invoke(arguments[0],arguments[1]).then(value=>({ok:true,value}),error=>({ok:false,error:String(error)}));',
+    name,
+    args,
+  )
+  if (!result.ok) throw new Error(`${name}: ${result.error}`)
+  return result.value
+}
+let mcpRequestId = 0
+async function mcpRpc(configuration, method, params) {
+  const response = await fetch(configuration.url, {
+    method: 'POST',
+    headers: {
+      ...configuration.headers,
+      Accept: 'application/json, text/event-stream',
+      'Content-Type': 'application/json',
+      'MCP-Protocol-Version': '2025-11-25',
+    },
+    body: JSON.stringify({ jsonrpc: '2.0', id: ++mcpRequestId, method, params }),
+    signal: AbortSignal.timeout(10_000),
+  })
+  assert.equal(response.status, 200)
+  return response.json()
+}
+async function revokedMcp(configuration) {
+  try {
+    const response = await fetch(configuration.url, {
+      method: 'POST',
+      headers: configuration.headers,
+      signal: AbortSignal.timeout(3000),
+    })
+    return response.status === 401
+  } catch {
+    return true // A closed listener also revokes the old connection.
+  }
+}
+const libraryRecords = () =>
+  execute(`return new Promise((resolve,reject)=>{
+  const request=indexedDB.open('repeaty');
+  request.onerror=()=>reject(request.error);
+  request.onsuccess=async()=>{
+    const db=request.result;
+    try {
+      const records={};
+      for(const name of ['notes','cards','reviews','practices','attempts'])
+        records[name]=await new Promise((ok,fail)=>{const r=db.transaction(name).objectStore(name).getAll();r.onsuccess=()=>ok(r.result);r.onerror=()=>fail(r.error)});
+      resolve(records);
+    }catch(error){reject(error)}finally{db.close()}
+  };
+});`)
 try {
   await until(async () => {
     const r = await fetch(`http://127.0.0.1:${servicePort}/api/status`, {
@@ -125,6 +183,85 @@ try {
   console.log('Starter deck loaded')
   assert.deepEqual(await invoke('desktop_config'), { endpoint: '' })
   assert.equal(await execute("return document.body.textContent.includes('桌面版')"), true)
+  // A real external HTTP client -> Rust -> IPC Channel -> WebView IndexedDB
+  // projection -> Rust response. This is not the Chromium IPC fixture.
+  await until(async () => (await invoke('mcp_status')).available, 'local MCP reader ready')
+  assert.equal((await invoke('mcp_status')).enabled, false)
+  const beforeMcp = await libraryRecords()
+  await click('设置')
+  await waitButton('开启 MCP')
+  await click('开启 MCP')
+  await until(async () => (await invoke('mcp_status')).enabled, 'MCP enabled')
+  await waitButton('显示连接配置')
+  await click('显示连接配置')
+  await until(
+    () => execute("return !!document.querySelector('#mcp-configuration')"),
+    'MCP configuration',
+  )
+  const mcp = JSON.parse(await execute("return document.querySelector('#mcp-configuration').value"))
+    .mcpServers.repeaty
+  assert.equal((await fetch(mcp.url, { method: 'POST' })).status, 401)
+  assert.equal(
+    (
+      await fetch(mcp.url, {
+        method: 'POST',
+        headers: { ...mcp.headers, Origin: 'https://untrusted.example' },
+      })
+    ).status,
+    403,
+  )
+  const initialized = await mcpRpc(mcp, 'initialize', {
+    protocolVersion: '2025-11-25',
+    capabilities: {},
+    clientInfo: { name: 'repeaty-native-test', version: '1' },
+  })
+  assert.equal(initialized.result.serverInfo.name, 'repeaty')
+  const mcpTools = await mcpRpc(mcp, 'tools/list', {})
+  assert.equal(mcpTools.result.tools.length, 3)
+  assert.ok(mcpTools.result.tools.every((tool) => tool.annotations.readOnlyHint))
+  const stats = (await mcpRpc(mcp, 'tools/call', { name: 'repeaty_study_stats', arguments: {} }))
+    .result.structuredContent
+  assert.equal(stats.totals.cards, beforeMcp.cards.length)
+  const questions = (
+    await mcpRpc(mcp, 'tools/call', {
+      name: 'repeaty_due_cards',
+      arguments: { limit: 1, revision: stats.revision },
+    })
+  ).result.structuredContent
+  assert.equal(questions.items.length, 1)
+  assert.equal(typeof questions.items[0].question, 'string')
+  assert.ok(!Object.hasOwn(questions.items[0], 'back'))
+  assert.ok(!Object.hasOwn(questions.items[0], 'cloze'))
+  const history = (
+    await mcpRpc(mcp, 'tools/call', { name: 'repeaty_practice_history', arguments: {} })
+  ).result.structuredContent
+  assert.equal(history.total, 0)
+  const stale = await mcpRpc(mcp, 'tools/call', {
+    name: 'repeaty_due_cards',
+    arguments: { revision: stats.revision + 1 },
+  })
+  assert.equal(stale.result.isError, true)
+  assert.equal(stale.result.structuredContent.code, 'library-changed')
+  assert.deepEqual(await libraryRecords(), beforeMcp)
+  await click('隐藏连接配置')
+  await mkdir('test-results', { recursive: true })
+  await command(`/session/${session}/screenshot`).then((png) =>
+    writeFile('test-results/native-mcp-settings.png', Buffer.from(png, 'base64')),
+  )
+  await click('关闭 MCP')
+  await until(async () => !(await invoke('mcp_status')).enabled, 'MCP disabled')
+  assert.equal(await revokedMcp(mcp), true)
+  await waitButton('开启 MCP')
+  await click('开启 MCP')
+  await until(async () => (await invoke('mcp_status')).enabled, 'MCP re-enabled')
+  const restartedMcp = (await invoke('mcp_configuration')).mcpServers.repeaty
+  assert.notEqual(restartedMcp.headers.Authorization, mcp.headers.Authorization)
+  await command(`/session/${session}/refresh`, {})
+  await until(async () => (await invoke('mcp_status')).available, 'MCP reader after reload')
+  assert.equal((await invoke('mcp_status')).enabled, false)
+  assert.equal(await revokedMcp(restartedMcp), true)
+  assert.deepEqual(await libraryRecords(), beforeMcp)
+  console.log('Native MCP protocol, read projections, token revocation and reload passed')
   // Real Rust IPC writes a fake local credential. No LeetCode network call is made.
   await invoke('local_plugin', {
     id: 'leetcode',
@@ -218,6 +355,10 @@ try {
     () => execute("return !!document.querySelector('#upstream-endpoint')"),
     'settings dialog',
   )
+  await waitButton('开启 MCP')
+  await click('开启 MCP')
+  await until(async () => (await invoke('mcp_status')).enabled, 'MCP before upstream switch')
+  const beforeUpstreamMcp = (await invoke('mcp_configuration')).mcpServers.repeaty
   await fill('#upstream-endpoint', `http://127.0.0.1:${servicePort}`)
   await click('保存并重新打开')
   await until(
@@ -232,6 +373,10 @@ try {
     () => execute("return document.querySelectorAll('.deck-title').length===1"),
     'new account starter',
   )
+  assert.equal((await invoke('mcp_status')).enabled, false)
+  assert.equal((await invoke('mcp_status')).available, false)
+  assert.equal(await revokedMcp(beforeUpstreamMcp), true)
+  await assert.rejects(invoke('mcp_start'))
   assert.equal(
     await execute(
       "return JSON.stringify([localStorage,sessionStorage,document.cookie]).includes('native-test-session')",
