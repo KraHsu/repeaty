@@ -1104,4 +1104,18 @@ export const en = {
     'Saved excerpts will remain, with their links to this original removed.',
   '选中原文中的文字，保存为摘录或直接制卡。每次最多 10000 个字符。':
     'Select text to save an excerpt or make a card. Up to 10,000 characters per selection.',
+  本篇摘录: 'Excerpts from this source',
+  '本篇摘录（{count}）': 'Excerpts from this source ({count})',
+  '按原文位置排列，包含稍后阅读和已归档的摘录。':
+    'In source order, including deferred and archived excerpts.',
+  '{count} 张关联卡片': '{count} linked cards',
+  当前选区: 'Current selection',
+  定位原文: 'Locate in source',
+  '定位「{title}」的原文': 'Locate “{title}” in source',
+  打开摘录: 'Open excerpt',
+  '打开摘录「{title}」': 'Open excerpt “{title}”',
+  本篇摘录分页: 'Excerpt pages',
+  '第 {page} 页，共 {pages} 页': 'Page {page} of {pages}',
+  '这段原文已有 {count} 份摘录。': 'Existing excerpts for this selection: {count}.',
+  查看已有摘录: 'Show saved excerpts',
 } as const

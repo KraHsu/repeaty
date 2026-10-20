@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { t } from '../i18n'
-import type { Source, ReadingPosition, ReadingUpdate } from '../core/source-data'
+import type { Source, SourceOrigin, ReadingPosition, ReadingUpdate } from '../core/source-data'
+import { sourceExcerpt } from '../core/sources'
 import { renderReadingMarkdown } from '../core/content'
 import {
   TextareaPosition,
@@ -89,6 +90,24 @@ async function restart() {
   await restore({ offset: 0, fraction: 0, view: preview.value ? 'preview' : 'source' }, true)
   if (alive) emit('position', update())
 }
+async function locate(origin: SourceOrigin) {
+  if (!alive || origin.sourceId !== props.source.id) return false
+  const selection = sourceExcerpt(props.source, props.text, origin.start, origin.end)
+  mirror?.dispose()
+  mirror = undefined
+  preview.value = false
+  const sequence = restoreSequence + 1
+  await restore({ offset: selection.start, fraction: 0, view: 'source' }, true)
+  if (!alive || sequence !== restoreSequence || preview.value || !reader.value) return false
+  reader.value.focus({ preventScroll: true })
+  reader.value.setSelectionRange(selection.start, selection.end)
+  // Selecting a long range can scroll to its end; keep the start visible instead.
+  ;(mirror ??= new TextareaPosition(reader.value)).restore(selection.start)
+  observeReader()
+  emit('select', props.source.id, selection.start, selection.end)
+  emit('position', update())
+  return true
+}
 function observeReader() {
   observer?.disconnect()
   if (reader.value) observer?.observe(reader.value)
@@ -109,7 +128,7 @@ onUnmounted(() => {
   observer?.disconnect()
   mirror?.dispose()
 })
-defineExpose({ resume, restart, capture: update, ready: computed(() => !restoring.value) })
+defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !restoring.value) })
 </script>
 
 <template>

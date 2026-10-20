@@ -34,6 +34,8 @@ import { createExportFile } from '@repeaty-platform'
 import AppModal from './AppModal.vue'
 import SourceReader from './SourceReader.vue'
 import SourceContext from './SourceContext.vue'
+import SourceExcerptList from './SourceExcerptList.vue'
+import { excerptsForSource, matchingExcerpts } from '../core/source-navigation'
 
 const props = defineProps<{
   library: Library
@@ -95,6 +97,24 @@ const text = ref(''),
 const original = computed(() =>
   props.library.sources.find((entry) => entry.id === source.value?.origin?.sourceId),
 )
+const savedExcerpts = computed(() => excerptsForSource(props.library, selectedId.value))
+const duplicates = computed(() => matchingExcerpts(savedExcerpts.value, excerpt.value))
+const excerptList = ref<InstanceType<typeof SourceExcerptList>>()
+const viewingExcerptId = ref('')
+const viewedExcerpt = computed(
+  () => savedExcerpts.value.find((entry) => entry.source.id === viewingExcerptId.value)?.source,
+)
+const viewedSelection = computed<SourceExcerpt | undefined>(() => {
+  const child = viewedExcerpt.value
+  if (!child?.origin || loading.value || error.value || !text.value) return undefined
+  return {
+    sourceId: child.id,
+    start: 0,
+    end: child.characters,
+    quote: text.value.slice(child.origin.start, child.origin.end),
+  }
+})
+const navigationError = ref<DisplayMessage>('')
 const originOpen = ref(false)
 const excerptDraft = shallowRef<{ input: SaveSourceExcerptInput; token?: number }>()
 const excerptTitle = ref(''),
@@ -146,6 +166,8 @@ async function readSelected() {
   controller = current
   text.value = ''
   originOpen.value = false
+  viewingExcerptId.value = ''
+  navigationError.value = ''
   excerpt.value = undefined
   error.value = ''
   if (!source.value) {
@@ -381,6 +403,58 @@ function changePriority(event: Event) {
   // Show the persisted value until the transaction succeeds, including on failure.
   select.value = source.value?.priority ?? 'normal'
   return arrange({ type: 'priority', priority })
+}
+async function locateExcerpt(id: string) {
+  const entry = savedExcerpts.value.find((entry) => entry.source.id === id)
+  if (!entry || !canMove.value) return
+  emit('clearNotice')
+  navigationError.value = ''
+  moving.value = true
+  try {
+    await reader.value?.locate(entry.origin)
+  } catch (issue) {
+    if (alive) navigationError.value = issue as Error
+  } finally {
+    moving.value = false
+  }
+}
+async function openExcerptSource(id: string) {
+  const entry = savedExcerpts.value.find((entry) => entry.source.id === id),
+    parent = source.value,
+    scope = props.scope
+  if (!entry || !parent || props.busy || moving.value || arranging.value) return
+  emit('clearNotice')
+  navigationError.value = ''
+  if (round.value) {
+    viewingExcerptId.value = id
+    return
+  }
+  moving.value = true
+  const current = () =>
+    alive &&
+    props.scope === scope &&
+    !round.value &&
+    source.value?.id === parent.id &&
+    source.value.mediaId === parent.mediaId &&
+    savedExcerpts.value.some(
+      (candidate) =>
+        candidate.source.id === id && candidate.source.mediaId === entry.source.mediaId,
+    )
+  try {
+    if (!loading.value && !error.value && reader.value?.ready && !(await savePosition())) return
+    if (!current()) return
+    view.value = 'all'
+    query.value = ''
+    await nextTick()
+    if (!current()) return
+    await resume(id)
+    if (alive && props.scope === scope && selectedId.value === id) {
+      const index = filteredSources.value.findIndex((source) => source.id === id)
+      page.value = Math.max(0, Math.floor(index / pageSize))
+    }
+  } finally {
+    moving.value = false
+  }
 }
 function readingDate(date: string) {
   const [year, month, day] = date.split('-').map(Number)
@@ -800,6 +874,17 @@ async function download() {
                 </button>
               </div>
             </div>
+            <p v-if="duplicates.length" class="source-duplicate" role="status">
+              <span>{{ t('这段原文已有 {count} 份摘录。', { count: duplicates.length }) }}</span>
+              <button
+                type="button"
+                class="text-button"
+                :disabled="busy || moving"
+                @click="excerptList?.showMatches()"
+              >
+                {{ t('查看已有摘录') }}
+              </button>
+            </p>
             <div class="source-excerpt-action">
               <span>{{
                 excerpt
@@ -844,6 +929,20 @@ async function download() {
               </ul>
             </details>
           </template>
+          <p v-if="navigationError" class="import-warning" role="alert">{{ t(navigationError) }}</p>
+          <SourceExcerptList
+            v-if="savedExcerpts.length"
+            :key="source.id + ':' + source.mediaId"
+            ref="excerptList"
+            :entries="savedExcerpts"
+            :text="loading || error ? '' : text"
+            :selection="excerpt"
+            :today="today"
+            :busy="busy || moving || arranging"
+            :can-locate="canMove"
+            @locate="locateExcerpt"
+            @open="openExcerptSource"
+          />
         </section>
         <section v-else class="empty-state source-queue-empty">
           <FileText :size="32" />
@@ -856,6 +955,15 @@ async function download() {
         </section>
       </div>
     </template>
+    <SourceContext
+      v-if="viewedExcerpt"
+      :key="viewedExcerpt.id"
+      :source="viewedExcerpt"
+      :origin="source"
+      :excerpt="viewedSelection"
+      :read="read"
+      @close="viewingExcerptId = ''"
+    />
     <SourceContext
       v-if="originOpen && original && source?.origin"
       :source="original"
@@ -1034,6 +1142,17 @@ async function download() {
 </template>
 
 <style scoped>
+.source-duplicate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-left: 3px solid #67886d;
+  background: #f4f7ef;
+}
+
 .source-kind-badge {
   display: inline-block;
   justify-self: start;
