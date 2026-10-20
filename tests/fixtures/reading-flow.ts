@@ -108,6 +108,9 @@ export async function readingFlow(page: Page, read: () => Promise<Library>, info
   await expect(page.getByRole('button', { name: 'Continue reading', exact: true })).toHaveCount(2)
   await expect(page.getByRole('status').filter({ hasText: 'Reading position saved' })).toBeVisible()
   await page.getByLabel('Interface language').selectOption('zh-CN')
+  // Capture the state being exported after focus and layout changes settle.
+  await saveReading(page)
+  const backedUp = (await read()).sources.find((source) => source.id === markdown.id)!.reading!
 
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
   const download = page.waitForEvent('download')
@@ -115,7 +118,7 @@ export async function readingFlow(page: Page, read: () => Promise<Library>, info
   const bytes = await readFile((await (await download).path())!)
   const archive = await parseArchive(new Blob([bytes]))
   expect(archive.library.sources.find((source) => source.id === markdown.id)!.reading).toEqual(
-    resumed,
+    backedUp,
   )
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await expect(page.locator('.source-markdown-preview')).toHaveAttribute('aria-busy', 'false')
@@ -133,7 +136,7 @@ export async function readingFlow(page: Page, read: () => Promise<Library>, info
   await page.getByRole('button', { name: '替换并恢复', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   expect((await read()).sources.find((source) => source.id === markdown.id)!.reading).toEqual(
-    resumed,
+    backedUp,
   )
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await expect(page.locator('.source-markdown-preview')).toHaveAttribute('aria-busy', 'false')
