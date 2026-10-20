@@ -1,0 +1,266 @@
+{
+  "date": "2026-10-20",
+  "baselineCommit": "3e52bfe200e7c2c3e31e11ea67a43ccbc9e7386a",
+  "optimizedCommit": "ee00645cf2a164c12fea91eacb538280975311bb",
+  "method": "Same production Vue/IndexedDB review harness, isolated Chromium contexts, reload after seeding, 4x CPU slowdown, three runs, eight alternating Again/Good ratings per run; click to next question including two animation frames. Excludes network downloads and backend latency.",
+  "datasets": [
+    {
+      "cards": 1000,
+      "before": {
+        "environment": {
+          "os": "linux 7.0.0-34-generic",
+          "cpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+          "browser": "156.0.8078.4",
+          "node": "v24.18.0"
+        },
+        "runs": 3,
+        "median": {
+          "cards": 1000,
+          "reviews": 10000,
+          "cpuSlowdown": 4,
+          "startupMs": 248.69999980926514,
+          "clickToNextMedianMs": 71.39999997615814,
+          "clickToNextMaxMs": 83.40000009536743,
+          "longTasks": 2,
+          "longestTaskMs": 87
+        },
+        "samples": [
+          {
+            "cards": 1000,
+            "reviews": 10000,
+            "cpuSlowdown": 4,
+            "startupMs": 254.29999995231628,
+            "clickToNextMedianMs": 66.89999997615814,
+            "clickToNextMaxMs": 100.30000019073486,
+            "samplesMs": [
+              100.30000019073486, 63.200000047683716, 66.59999990463257, 67.20000004768372, 81.5,
+              64, 82, 64.30000019073486
+            ],
+            "longTasks": 1,
+            "longestTaskMs": 87
+          },
+          {
+            "cards": 1000,
+            "reviews": 10000,
+            "cpuSlowdown": 4,
+            "startupMs": 247.79999995231628,
+            "clickToNextMedianMs": 71.39999997615814,
+            "clickToNextMaxMs": 83.40000009536743,
+            "samplesMs": [
+              83.40000009536743, 64.70000004768372, 82.59999990463257, 75.79999995231628,
+              80.29999995231628, 64.5, 67, 62.799999952316284
+            ],
+            "longTasks": 2,
+            "longestTaskMs": 86
+          },
+          {
+            "cards": 1000,
+            "reviews": 10000,
+            "cpuSlowdown": 4,
+            "startupMs": 248.69999980926514,
+            "clickToNextMedianMs": 72.25,
+            "clickToNextMaxMs": 83.39999985694885,
+            "samplesMs": [
+              83.39999985694885, 79.20000004768372, 64.29999995231628, 79.90000009536743,
+              65.29999995231628, 63.700000047683716, 64.70000004768372, 81.40000009536743
+            ],
+            "longTasks": 2,
+            "longestTaskMs": 90
+          }
+        ]
+      },
+      "after": {
+        "environment": {
+          "os": "linux 7.0.0-34-generic",
+          "cpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+          "browser": "156.0.8078.4",
+          "node": "v24.18.0"
+        },
+        "runs": 3,
+        "median": {
+          "cards": 1000,
+          "reviews": 10000,
+          "cpuSlowdown": 4,
+          "startupMs": 259.09999990463257,
+          "clickToNextMedianMs": 51.200000047683716,
+          "clickToNextMaxMs": 66.60000014305115,
+          "longTasks": 1,
+          "longestTaskMs": 80
+        },
+        "samples": [
+          {
+            "cards": 1000,
+            "reviews": 10000,
+            "cpuSlowdown": 4,
+            "startupMs": 286.19999980926514,
+            "clickToNextMedianMs": 52.950000047683716,
+            "clickToNextMaxMs": 65.5,
+            "samplesMs": [
+              65.5, 63.89999985694885, 54.299999952316284, 53.700000047683716, 50.200000047683716,
+              52.200000047683716, 48.30000019073486, 50.10000014305115
+            ],
+            "longTasks": 1,
+            "longestTaskMs": 78
+          },
+          {
+            "cards": 1000,
+            "reviews": 10000,
+            "cpuSlowdown": 4,
+            "startupMs": 249.40000009536743,
+            "clickToNextMedianMs": 48.85000002384186,
+            "clickToNextMaxMs": 66.60000014305115,
+            "samplesMs": [
+              66.60000014305115, 54.90000009536743, 54.69999980926514, 42.799999952316284, 50, 46.5,
+              47.700000047683716, 46.40000009536743
+            ],
+            "longTasks": 1,
+            "longestTaskMs": 80
+          },
+          {
+            "cards": 1000,
+            "reviews": 10000,
+            "cpuSlowdown": 4,
+            "startupMs": 259.09999990463257,
+            "clickToNextMedianMs": 51.200000047683716,
+            "clickToNextMaxMs": 69.39999985694885,
+            "samplesMs": [
+              67.10000014305115, 69.39999985694885, 53.59999990463257, 45.39999985694885,
+              47.799999952316284, 55.10000014305115, 44.799999952316284, 48.80000019073486
+            ],
+            "longTasks": 2,
+            "longestTaskMs": 81
+          }
+        ]
+      }
+    },
+    {
+      "cards": 10000,
+      "before": {
+        "environment": {
+          "os": "linux 7.0.0-34-generic",
+          "cpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+          "browser": "156.0.8078.4",
+          "node": "v24.18.0"
+        },
+        "runs": 3,
+        "median": {
+          "cards": 10000,
+          "reviews": 100000,
+          "cpuSlowdown": 4,
+          "startupMs": 1443.0999999046326,
+          "clickToNextMedianMs": 372.10000002384186,
+          "clickToNextMaxMs": 427.10000014305115,
+          "longTasks": 29,
+          "longestTaskMs": 470
+        },
+        "samples": [
+          {
+            "cards": 10000,
+            "reviews": 100000,
+            "cpuSlowdown": 4,
+            "startupMs": 1443.0999999046326,
+            "clickToNextMedianMs": 386.85000014305115,
+            "clickToNextMaxMs": 428.7000000476837,
+            "samplesMs": [
+              428.7000000476837, 414.39999985694885, 407, 394.60000014305115, 376.30000019073486,
+              379.10000014305115, 376.7999999523163, 375
+            ],
+            "longTasks": 29,
+            "longestTaskMs": 567
+          },
+          {
+            "cards": 10000,
+            "reviews": 100000,
+            "cpuSlowdown": 4,
+            "startupMs": 1413,
+            "clickToNextMedianMs": 372.10000002384186,
+            "clickToNextMaxMs": 397.5,
+            "samplesMs": [
+              397.5, 382.09999990463257, 376.40000009536743, 360.10000014305115, 367.7999999523163,
+              365.80000019073486, 364.69999980926514, 379.89999985694885
+            ],
+            "longTasks": 29,
+            "longestTaskMs": 470
+          },
+          {
+            "cards": 10000,
+            "reviews": 100000,
+            "cpuSlowdown": 4,
+            "startupMs": 1453.7999999523163,
+            "clickToNextMedianMs": 356.10000002384186,
+            "clickToNextMaxMs": 427.10000014305115,
+            "samplesMs": [
+              427.10000014305115, 362.90000009536743, 358.7000000476837, 355.40000009536743,
+              353.69999980926514, 353.19999980926514, 356.7999999523163, 352.2999999523163
+            ],
+            "longTasks": 29,
+            "longestTaskMs": 411
+          }
+        ]
+      },
+      "after": {
+        "environment": {
+          "os": "linux 7.0.0-34-generic",
+          "cpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+          "browser": "156.0.8078.4",
+          "node": "v24.18.0"
+        },
+        "runs": 3,
+        "median": {
+          "cards": 10000,
+          "reviews": 100000,
+          "cpuSlowdown": 4,
+          "startupMs": 1372.8999998569489,
+          "clickToNextMedianMs": 230.70000004768372,
+          "clickToNextMaxMs": 288.90000009536743,
+          "longTasks": 22,
+          "longestTaskMs": 373
+        },
+        "samples": [
+          {
+            "cards": 10000,
+            "reviews": 100000,
+            "cpuSlowdown": 4,
+            "startupMs": 1372.8999998569489,
+            "clickToNextMedianMs": 229.29999995231628,
+            "clickToNextMaxMs": 268,
+            "samplesMs": [
+              268, 239, 233.70000004768372, 229, 226.20000004768372, 228.90000009536743,
+              229.59999990463257, 228.70000004768372
+            ],
+            "longTasks": 23,
+            "longestTaskMs": 357
+          },
+          {
+            "cards": 10000,
+            "reviews": 100000,
+            "cpuSlowdown": 4,
+            "startupMs": 1370.7999999523163,
+            "clickToNextMedianMs": 231.14999997615814,
+            "clickToNextMaxMs": 339.60000014305115,
+            "samplesMs": [
+              339.60000014305115, 244, 232.90000009536743, 231.29999995231628, 221.09999990463257,
+              227.10000014305115, 231, 226.5
+            ],
+            "longTasks": 22,
+            "longestTaskMs": 376
+          },
+          {
+            "cards": 10000,
+            "reviews": 100000,
+            "cpuSlowdown": 4,
+            "startupMs": 1382.3999998569489,
+            "clickToNextMedianMs": 230.70000004768372,
+            "clickToNextMaxMs": 288.90000009536743,
+            "samplesMs": [
+              288.90000009536743, 236.79999995231628, 231.5, 229.90000009536743, 227.20000004768372,
+              228.79999995231628, 232.70000004768372, 228.39999985694885
+            ],
+            "longTasks": 21,
+            "longestTaskMs": 373
+          }
+        ]
+      }
+    }
+  ]
+}
