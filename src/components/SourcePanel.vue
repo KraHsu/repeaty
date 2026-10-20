@@ -130,7 +130,7 @@ const query = ref(''),
   page = ref(0)
 const pageSize = 20
 const filteredSources = computed(() =>
-  queuedSources(props.library.sources, view.value, today.value, query.value),
+  queuedSources(props.library.sources, view.value, today.value, { query: query.value }),
 )
 const pages = computed(() => Math.max(1, Math.ceil(filteredSources.value.length / pageSize)))
 const visibleSources = computed(() =>

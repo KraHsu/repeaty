@@ -185,7 +185,7 @@ it('orders by reading date with stable ties and leaves library order unchanged a
     'archived',
   ])
   expect(queuedSources(sources, 'deferred', today)).toEqual([deferred])
-  expect(queuedSources(sources, 'archived', today, 'MATERIAL')).toEqual([archived])
+  expect(queuedSources(sources, 'archived', today, { query: 'MATERIAL' })).toEqual([archived])
   const visited = saveReadingPosition(
     { ...library, sources },
     source.id,
