@@ -119,13 +119,11 @@ test('changing priority across list pages keeps the current material and support
   }
   const archive = (await exportArchive(library, async (id) => assets.get(id)))!
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
-  await page
-    .getByLabel('导入备份文件')
-    .setInputFiles({
-      name: 'pages.repeaty',
-      mimeType: 'application/zip',
-      buffer: Buffer.from(await archive.arrayBuffer()),
-    })
+  await page.getByLabel('导入备份文件').setInputFiles({
+    name: 'pages.repeaty',
+    mimeType: 'application/zip',
+    buffer: Buffer.from(await archive.arrayBuffer()),
+  })
   await page.getByRole('button', { name: '替换并恢复', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
