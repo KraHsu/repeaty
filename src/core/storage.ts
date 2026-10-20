@@ -18,7 +18,8 @@ import {
   type CardView,
   renderCard,
 } from './model'
-import { sourceSchema } from './source-data'
+import { sourceSchema, type Source } from './source-data'
+import { validateSourceOrigins } from './sources'
 import { cardDraftSchema, MAX_DRAFTS, type CardDraft } from './card-draft-data'
 import { compileSearch } from './search'
 import { available } from './scheduler'
@@ -144,7 +145,7 @@ export function createRepository(
   onBlocked?: () => void,
   options: { compactHistory?: boolean } = {},
 ) {
-  const database = openDB<RepeatyDB>(name, 12, {
+  const database = openDB<RepeatyDB>(name, 13, {
     async upgrade(db, _oldVersion, _newVersion, tx) {
       try {
         for (const store of stores)
@@ -526,6 +527,31 @@ export function createRepository(
         validateLibraryReferences(next, (message) => {
           throw new Error(message)
         })
+      const contentChanged = new Set(
+        patches
+          .filter((patch) => {
+            if (patch.store !== 'sources' || !patch.row) return false
+            const previous = maps.get('sources')!.get(patch.id)?.value as Source | undefined
+            const source = patch.row.value as Source
+            return (
+              !previous ||
+              previous.mediaId !== source.mediaId ||
+              previous.format !== source.format ||
+              previous.characters !== source.characters ||
+              previous.kind !== source.kind ||
+              JSON.stringify(previous.origin) !== JSON.stringify(source.origin)
+            )
+          })
+          .map((patch) => patch.id),
+      )
+      if (contentChanged.size) {
+        const assets = new Map((options.assets ?? []).map((asset) => [asset.meta.id, asset.blob]))
+        await validateSourceOrigins(
+          next,
+          contentChanged,
+          async (id) => assets.get(id) ?? (await database).get('assets', id),
+        )
+      }
       const db = await database
       const tx = db.transaction(stores, 'readwrite')
       try {

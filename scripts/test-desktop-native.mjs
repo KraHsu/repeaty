@@ -1368,6 +1368,161 @@ try {
   console.log(
     'Native reading round: fixed order, position save, defer, archive and application restart passed without changing study records',
   )
+  await waitButton('返回材料')
+  await click('返回材料')
+  await waitButton('返回原文选取摘录')
+  await click('返回原文选取摘录')
+  await until(
+    () =>
+      execute("return document.querySelector('.source-text')?.getAttribute('aria-busy')==='false'"),
+    'native original ready for independent extraction',
+  )
+  await selectDraftExcerpt()
+  await waitButton('保存为摘录')
+  await click('保存为摘录')
+  await until(
+    () => execute("return !!document.querySelector('#excerpt-title')"),
+    'native excerpt form',
+  )
+  assert.equal(await execute("return document.querySelector('#excerpt-body').value"), sourceQuote)
+  await fill('#excerpt-title', 'Native independent excerpt')
+  await click('保存摘录')
+  await until(
+    () =>
+      execute(
+        "return !document.querySelector('dialog') && document.querySelector('.source-reader h2')?.textContent==='Native independent excerpt' && document.querySelector('.source-text')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native independent excerpt saved',
+  )
+  const nativeChild = (await sourceRecords()).find((source) => source.kind === 'excerpt')
+  const nativeRoot = (await sourceRecords()).find((source) => source.title === 'Native source')
+  assert.deepEqual(nativeChild.origin, {
+    sourceId: nativeRoot.id,
+    start: sourceText.lastIndexOf(sourceQuote),
+    end: sourceText.lastIndexOf(sourceQuote) + sourceQuote.length,
+  })
+  assert.deepEqual(await libraryRecords(), confirmed)
+  await setReadingPriority('high')
+  await click('用此摘录制卡')
+  await until(
+    () => execute("return !!document.querySelector('#card-front')"),
+    'native independent card editor',
+  )
+  await fill('#card-front', 'Native independent excerpt question')
+  assert.equal(await execute("return document.querySelector('#card-back').value"), sourceQuote)
+  await click('保存卡片')
+  await until(
+    () => execute("return !document.querySelector('dialog')"),
+    'native independent card saved',
+  )
+  const nativeChildRecords = await libraryRecords()
+  assert.equal(nativeChildRecords.cards.length, confirmed.cards.length + 1)
+  assert.deepEqual(nativeChildRecords.reviews, confirmed.reviews)
+  assert.ok(
+    nativeChildRecords.notes.some(
+      (row) =>
+        row.value.front === 'Native independent excerpt question' &&
+        row.value.excerpt.sourceId === nativeChild.id,
+    ),
+  )
+  await command(`/session/${session}`, undefined, 'DELETE')
+  session = undefined
+  await createSession()
+  await until(
+    () => execute("return document.querySelectorAll('.deck-title').length===1"),
+    'native independent excerpt app reopened',
+  )
+  await click('学习材料')
+  await until(
+    () => execute("return !!document.querySelector('.source-list-title')"),
+    'native excerpt list reopened',
+  )
+  await execute(
+    "[...document.querySelectorAll('.source-list-title')].find(button=>button.textContent.trim()==='Native independent excerpt').click()",
+  )
+  await until(
+    () =>
+      execute("return document.querySelector('.source-text')?.value===arguments[0]", sourceQuote),
+    'native independent body survived exit',
+  )
+  const reopenedChild = (await sourceRecords()).find((source) => source.id === nativeChild.id)
+  assert.deepEqual(reopenedChild.origin, nativeChild.origin)
+  assert.equal(reopenedChild.priority, 'high')
+  await click('查看出处')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-original mark')?.textContent===arguments[0]",
+        sourceQuote,
+      ),
+    'native independent origin highlight',
+  )
+  assert.equal(
+    await execute(
+      "return document.querySelector('.source-original mark').previousSibling.textContent.length",
+    ),
+    sourceText.lastIndexOf(sourceQuote),
+  )
+  await writeFile(
+    'test-results/native-independent-excerpt.png',
+    Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
+  )
+  await click('关闭')
+  await execute(
+    "[...document.querySelectorAll('.source-list-title')].find(button=>button.textContent.trim()==='Native source').click()",
+  )
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-reader h2')?.textContent==='Native source' && document.querySelector('.source-text, .source-markdown-preview')?.getAttribute('aria-busy')==='false'",
+      ),
+    'native root ready for deletion',
+  )
+  await click('删除材料')
+  await waitButton('确认删除')
+  await click('确认删除')
+  await until(
+    () =>
+      execute(
+        "return !document.querySelector('dialog') && document.body.textContent.includes('原文已删除，摘录内容仍保留。')",
+      ),
+    'native independent excerpt survived parent deletion',
+  )
+  assert.equal(
+    (await sourceRecords()).find((source) => source.id === nativeChild.id).origin ?? null,
+    null,
+  )
+  const nativeDetached = await libraryRecords()
+  assert.deepEqual(nativeDetached.cards, nativeChildRecords.cards)
+  assert.deepEqual(nativeDetached.reviews, nativeChildRecords.reviews)
+  assert.ok(
+    nativeDetached.notes.some(
+      (row) =>
+        row.value.front === 'Native independent excerpt question' &&
+        row.value.excerpt.sourceId === nativeChild.id,
+    ),
+  )
+  await command(`/session/${session}`, undefined, 'DELETE')
+  session = undefined
+  await createSession()
+  await until(
+    () => execute("return document.querySelectorAll('.deck-title').length===1"),
+    'native detached excerpt app reopened',
+  )
+  await click('学习材料')
+  await until(
+    () =>
+      execute("return document.querySelector('.source-text')?.value===arguments[0]", sourceQuote),
+    'native detached body survived second exit',
+  )
+  assert.equal(
+    (await sourceRecords()).find((source) => source.id === nativeChild.id).kind,
+    'excerpt',
+  )
+  assert.deepEqual(await libraryRecords(), nativeDetached)
+  console.log(
+    'Native independent excerpts: exact origin, local card creation, priority, two application restarts and parent deletion passed without changing existing card progress',
+  )
   console.log(
     'Native WebKit/Tauri: starter lifecycle, accounts, upstream, credentials, backup, LeetCode history and Anki import/update, source snapshots, excerpt review and native text export passed.',
   )

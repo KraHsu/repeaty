@@ -6,6 +6,8 @@ import type { Library } from '../core/model'
 import {
   MAX_SOURCE_BYTES,
   MAX_SOURCE_CHARACTERS,
+  characterBoundary,
+  type SaveSourceExcerptInput,
   type SourceInput,
   type SourceExcerpt,
   type SourceQueueAction,
@@ -31,6 +33,7 @@ import {
 import { createExportFile } from '@repeaty-platform'
 import AppModal from './AppModal.vue'
 import SourceReader from './SourceReader.vue'
+import SourceContext from './SourceContext.vue'
 
 const props = defineProps<{
   library: Library
@@ -42,6 +45,7 @@ const props = defineProps<{
   actionError?: string
   read: (id: string, signal?: AbortSignal) => Promise<string>
   save: (input: SourceInput, scope: string) => Promise<boolean>
+  saveExcerpt: (input: SaveSourceExcerptInput) => Promise<boolean>
   remove: (id: string, scope: string) => Promise<boolean>
   arrange: (update: SourceQueueUpdate) => Promise<boolean>
   saveReading: (update: ReadingUpdate) => Promise<boolean>
@@ -88,6 +92,13 @@ const text = ref(''),
   error = ref<DisplayMessage>(''),
   loading = ref(false),
   excerpt = ref<SourceExcerpt>()
+const original = computed(() =>
+  props.library.sources.find((entry) => entry.id === source.value?.origin?.sourceId),
+)
+const originOpen = ref(false)
+const excerptDraft = shallowRef<{ input: SaveSourceExcerptInput; token?: number }>()
+const excerptTitle = ref(''),
+  savingExcerpt = ref(false)
 const importing = ref(false),
   deleting = ref(false),
   exporting = ref(false),
@@ -134,6 +145,7 @@ async function readSelected() {
   const current = new AbortController()
   controller = current
   text.value = ''
+  originOpen.value = false
   excerpt.value = undefined
   error.value = ''
   if (!source.value) {
@@ -156,6 +168,49 @@ function select(sourceId: string, start: number, end: number) {
   } catch {
     excerpt.value = undefined
   }
+}
+function openExcerpt() {
+  if (!source.value || source.value.kind === 'excerpt' || !excerpt.value || props.busy) return
+  emit('clearNotice')
+  const current = source.value,
+    selected = excerpt.value,
+    title = selected.quote.replace(/\s+/gu, ' ').trim()
+  excerptTitle.value = title.slice(0, characterBoundary(title, 160))
+  excerptDraft.value = {
+    input: {
+      title: excerptTitle.value,
+      excerpt: { ...selected },
+      mediaId: current.mediaId,
+      scope: props.scope,
+      position: reader.value?.ready ? reader.value.capture().position : undefined,
+    },
+    token: props.reading.pending.get(current.id)?.token,
+  }
+}
+async function saveExcerpt() {
+  const draft = excerptDraft.value
+  if (!draft || props.busy || savingExcerpt.value) return
+  savingExcerpt.value = true
+  try {
+    if (!(await props.saveExcerpt({ ...draft.input, title: excerptTitle.value }))) return
+    if (!alive || props.scope !== draft.input.scope || excerptDraft.value !== draft) return
+    props.reading.acknowledge(draft.input.excerpt.sourceId, draft.token)
+    excerptDraft.value = undefined
+    if (!round.value) {
+      query.value = ''
+      view.value = 'ready'
+      const child = props.library.sources.at(-1)
+      selectedId.value = child?.id ?? ''
+      const index = filteredSources.value.findIndex((entry) => entry.id === child?.id)
+      page.value = Math.max(0, Math.floor(index / pageSize))
+    }
+  } finally {
+    savingExcerpt.value = false
+  }
+}
+function createFromWholeExcerpt() {
+  if (!source.value || source.value.kind !== 'excerpt' || !text.value || props.busy) return
+  emit('create', sourceExcerpt(source.value, text.value, 0, text.value.length), source.value.format)
 }
 async function resume(id: string) {
   const scope = props.scope
@@ -517,6 +572,7 @@ async function download() {
               >{{ entry.format === 'markdown' ? 'Markdown' : t('纯文本') }} ·
               {{ new Date(entry.createdAt).toLocaleDateString(locale) }}</span
             >
+            <span v-if="entry.kind === 'excerpt'" class="source-kind-badge">{{ t('摘录') }}</span>
             <span class="source-queue-state">{{
               sourceQueueState(entry, today) === 'archived'
                 ? t('已归档')
@@ -583,6 +639,9 @@ async function download() {
         <section v-else-if="source" class="source-reader">
           <div class="source-reader-heading">
             <div>
+              <span v-if="source.kind === 'excerpt'" class="source-kind-badge">{{
+                t('摘录')
+              }}</span>
               <h2>{{ source.title }}</h2>
               <a v-if="source.url" :href="source.url" target="_blank" rel="noopener noreferrer">{{
                 source.url
@@ -721,13 +780,41 @@ async function download() {
               @select="select"
               @position="reading.record($event)"
             />
+            <div v-if="source.kind === 'excerpt'" class="source-excerpt-tools">
+              <p v-if="!original" class="form-note">{{ t('原文已删除，摘录内容仍保留。') }}</p>
+              <div class="source-actions">
+                <button
+                  v-if="original"
+                  class="button secondary"
+                  :disabled="busy"
+                  @click="originOpen = true"
+                >
+                  {{ t('查看出处') }}
+                </button>
+                <button
+                  class="button primary"
+                  :disabled="busy || !library.decks.length"
+                  @click="createFromWholeExcerpt"
+                >
+                  {{ t('用此摘录制卡') }}
+                </button>
+              </div>
+            </div>
             <div class="source-excerpt-action">
               <span>{{
                 excerpt
                   ? t('已选 {count} 个字符', { count: excerpt.quote.length })
                   : t('尚未选取摘录')
-              }}</span
-              ><button
+              }}</span>
+              <button
+                v-if="source.kind !== 'excerpt'"
+                class="button secondary"
+                :disabled="busy || !excerpt"
+                @click="openExcerpt"
+              >
+                {{ t('保存为摘录') }}
+              </button>
+              <button
                 class="button primary"
                 :disabled="busy || !excerpt || !library.decks.length"
                 @click="excerpt && emit('create', excerpt, source.format)"
@@ -769,6 +856,48 @@ async function download() {
         </section>
       </div>
     </template>
+    <SourceContext
+      v-if="originOpen && original && source?.origin"
+      :source="original"
+      :excerpt="{ ...source.origin, quote: text }"
+      :read="read"
+      @close="originOpen = false"
+    />
+    <AppModal
+      v-if="excerptDraft"
+      wide
+      :title="t('保存为摘录')"
+      :busy="busy || savingExcerpt"
+      :error="actionError"
+      @close="excerptDraft = undefined"
+    >
+      <form class="editor-form source-excerpt-form" @submit.prevent="saveExcerpt">
+        <label for="excerpt-title">{{ t('摘录标题') }}</label>
+        <input
+          id="excerpt-title"
+          v-model="excerptTitle"
+          required
+          maxlength="160"
+          :disabled="busy || savingExcerpt"
+        />
+        <label for="excerpt-body">{{ t('选中的原文') }}</label>
+        <textarea id="excerpt-body" :value="excerptDraft.input.excerpt.quote" readonly rows="8" />
+        <p class="form-note">{{ t('摘录会加入待阅读列表，可单独阅读和制卡。') }}</p>
+        <div class="form-actions">
+          <button
+            type="button"
+            class="button secondary"
+            :disabled="busy || savingExcerpt"
+            @click="excerptDraft = undefined"
+          >
+            {{ t('取消') }}
+          </button>
+          <button class="button primary" :disabled="busy || savingExcerpt">
+            {{ t('保存摘录') }}
+          </button>
+        </div>
+      </form>
+    </AppModal>
     <AppModal
       v-if="deferring && source"
       :title="t('稍后阅读')"
@@ -885,6 +1014,12 @@ async function download() {
             )
           }}
         </p>
+        <p
+          v-if="library.sources.some((entry) => entry.origin?.sourceId === source!.id)"
+          class="form-note"
+        >
+          {{ t('由此保存的摘录仍保留，出处关联会解除。') }}
+        </p>
         <p class="form-note">{{ t('操作前会保存快照，可在「数据与备份」中恢复。') }}</p>
         <div class="form-actions">
           <button class="button secondary" :disabled="busy" @click="deleting = false">
@@ -899,6 +1034,34 @@ async function download() {
 </template>
 
 <style scoped>
+.source-kind-badge {
+  display: inline-block;
+  justify-self: start;
+  margin-bottom: 0.4rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 5px;
+  color: #526149;
+  background: #edf0e7;
+  font-size: 0.875rem;
+}
+.source-excerpt-tools {
+  display: grid;
+  gap: 0.75rem;
+}
+.source-excerpt-tools p {
+  margin: 0;
+}
+.source-excerpt-form {
+  padding: 1.25rem 1.75rem;
+  overflow: auto;
+}
+.source-excerpt-form textarea {
+  min-height: 10rem;
+  max-height: 35vh;
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+
 .reading-round {
   position: sticky;
   top: 0.75rem;
@@ -1160,6 +1323,7 @@ async function download() {
 }
 @media (max-width: 720px) {
   .source-import-form,
+  .source-excerpt-form,
   .source-delete {
     padding: 1rem;
   }

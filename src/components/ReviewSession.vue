@@ -45,6 +45,9 @@ const sourceOpen = ref(false)
 const currentSource = computed(() =>
   props.library.sources.find((source) => source.id === current.value?.excerpt?.sourceId),
 )
+const currentOrigin = computed(() =>
+  props.library.sources.find((source) => source.id === currentSource.value?.origin?.sourceId),
+)
 const completed = ref(0)
 const feedback = ref<Message[]>([])
 const currentId = ref<string>()
@@ -327,6 +330,7 @@ onUnmounted(() => {
           ><SourceContext
             v-if="sourceOpen"
             :source="currentSource"
+            :origin="currentOrigin"
             :excerpt="current.excerpt"
             :read="getSource"
             @close="sourceOpen = false"

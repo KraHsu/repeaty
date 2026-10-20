@@ -41,6 +41,16 @@ export interface SourceQueueUpdate {
   action: SourceQueueAction
   position?: ReadingPosition
 }
+export const sourceOriginSchema = z
+  .object({
+    sourceId: id,
+    start: z.number().int().min(0).max(MAX_SOURCE_CHARACTERS),
+    end: z.number().int().positive().max(MAX_SOURCE_CHARACTERS),
+  })
+  .refine(
+    (origin) => origin.end > origin.start && origin.end - origin.start <= MAX_EXCERPT_CHARACTERS,
+  )
+export type SourceOrigin = z.infer<typeof sourceOriginSchema>
 export const sourceSchema = z
   .object({
     id,
@@ -58,6 +68,8 @@ export const sourceSchema = z
     reading: sourceReadingSchema.optional(),
     queue: sourceQueueSchema.optional(),
     priority: sourcePrioritySchema.optional(),
+    kind: z.literal('excerpt').optional(),
+    origin: sourceOriginSchema.optional(),
   })
   .superRefine((source, context) => {
     if (
@@ -66,6 +78,14 @@ export const sourceSchema = z
         (source.format !== 'markdown' && source.reading.view === 'preview'))
     )
       context.addIssue({ code: 'custom', message: '阅读位置与材料不匹配。' })
+    if (
+      (source.kind === 'excerpt' && source.characters > MAX_EXCERPT_CHARACTERS) ||
+      (source.origin &&
+        (source.kind !== 'excerpt' ||
+          source.origin.sourceId === source.id ||
+          source.origin.end - source.origin.start !== source.characters))
+    )
+      context.addIssue({ code: 'custom', message: '摘录与来源不匹配。' })
   })
 export type ReadingPosition = z.infer<typeof readingPositionSchema>
 export interface ReadingUpdate {
@@ -95,4 +115,11 @@ export interface SourceInput {
   url: string
   format: Source['format']
   content: string
+}
+export interface SaveSourceExcerptInput {
+  excerpt: SourceExcerpt
+  title: string
+  mediaId: string
+  scope: string
+  position?: ReadingPosition
 }
