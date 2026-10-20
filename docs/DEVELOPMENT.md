@@ -44,7 +44,7 @@ CI 使用两个 Chromium worker，禁止提交 `test.only`，失败时保留浏�
 
 ## 大数据量存储
 
-纯前端版的 IndexedDB v10 将卡组、笔记、卡片、复习记录、练习、提交、材料元数据、媒体元数据和常用筛选分别存储，图片、音频和材料原文保存为独立 Blob。提交另有不含代码与裁判详情的摘要索引，首次升级时从原记录建立。完整提交、摘要和修订号在同一事务中更新；旧标签页不能覆盖新数据。首次打开自动迁移旧数据库，迁移校验失败时保留原记录。v9 起另有桌面本地库使用的 `cardDrafts` 辅助表，网页版本不提供草稿入口；v10 沿用该表，阅读位置保存在材料记录中。
+纯前端版的 IndexedDB v11 将卡组、笔记、卡片、复习记录、练习、提交、材料元数据、媒体元数据和常用筛选分别存储，图片、音频和材料原文保存为独立 Blob。提交另有不含代码与裁判详情的摘要索引，首次升级时从原记录建立。完整提交、摘要和修订号在同一事务中更新；旧标签页不能覆盖新数据。首次打开自动迁移旧数据库，迁移校验失败时保留原记录。v9 起另有桌面本地库使用的 `cardDrafts` 辅助表，网页版本不提供草稿入口；v10 起的阅读位置、v11 的日期安排与归档状态保存在材料记录中，沿用原表。
 
 启动时读取题面、调度状态和历史摘要，提交代码与裁判详情在展开时读取，收起后释放视图中的正文。提交、判题状态和评分只校验变化记录及引用关系；导入、编辑等结构变化继续执行完整校验。两处历史入口每页显示 20 次练习，查看往次代码须成功读取后才记为查看答案。
 
@@ -56,11 +56,11 @@ CI 使用两个 Chromium worker，禁止提交 `test.only`，失败时保留浏�
 
 `npm run benchmark -- --history --runs 3` 另测 2 万次练习、6 万份代码下的加载、堆内存、历史筛选、提交、评分与流式导出。先建立数据，再重载页面测量，逐轮输出原始值和中位数。[基准方法、结果与限制](PERFORMANCE.md)。
 
-带后端版使用 SQLite：九个实体表按记录保存 JSON 字段，附件放入独立 BLOB 表，引用使用外键与索引。请求只发送变更记录；服务在一个事务中检查修订号、记录格式和引用，写入增量历史与新记录。SQLite 数据库版本使用 `PRAGMA user_version`，当前为 4，学习数据版本为 7，后端 API 为 v5。实体 JSON Schema 从前端 Zod 模型生成并由 CI 检查一致性，Rust 另行检查跨记录引用和附件大小。它不是把整个学习库保存成一份 JSON 文件。
+带后端版使用 SQLite：九个实体表按记录保存 JSON 字段，附件放入独立 BLOB 表，引用使用外键与索引。请求只发送变更记录；服务在一个事务中检查修订号、记录格式和引用，写入增量历史与新记录。SQLite 数据库版本使用 `PRAGMA user_version`，当前为 5，学习数据版本为 8，后端 API 为 v6。实体 JSON Schema 从前端 Zod 模型生成并由 CI 检查一致性，Rust 另行检查跨记录引用和附件大小。它不是把整个学习库保存成一份 JSON 文件。
 
-媒体先上传，之后与学习记录的引用一起提交；同一 ID 的内容不可改写，防止破坏旧快照。上传失败不提交学习记录，未引用上传保留一天再清理。客户端失去写入响应时不会自动重试覆盖，修订冲突要求刷新。支持 `historyVersion: 1` 的 API v5 服务提供 `/library/summary` 与 `/library/attempts`，代码单独按编号或批次读取；请求绑定账户与修订号。没有摘要能力的 API v5 服务读取完整库；API v4 及更早服务需先升级。搜索仍使用内存中的题面和摘要；单次结构化提交上限 64 MiB，媒体独立上传。详情见[后端部署](SELF_HOSTING.md)。
+媒体先上传，之后与学习记录的引用一起提交；同一 ID 的内容不可改写，防止破坏旧快照。上传失败不提交学习记录，未引用上传保留一天再清理。客户端失去写入响应时不会自动重试覆盖，修订冲突要求刷新。支持 `historyVersion: 1` 的 API v6 服务提供 `/library/summary` 与 `/library/attempts`，代码单独按编号或批次读取；请求绑定账户与修订号。没有摘要能力的 API v6 服务读取完整库；API v5 及更早服务需先升级。搜索仍使用内存中的题面和摘要；单次结构化提交上限 64 MiB，媒体独立上传。详情见[后端部署](SELF_HOSTING.md)。
 
-`.repeaty` 导出按修订号分批读取完整提交，批次之间检查版本与记录顺序，库发生变化时中止导出。JSON 导出与快照恢复按需载入完整记录。当前学习数据为 v7、`.repeaty` 容器为 v4，摘要不属于备份格式，不会替代已保存的代码。
+`.repeaty` 导出按修订号分批读取完整提交，批次之间检查版本与记录顺序，库发生变化时中止导出。JSON 导出与快照恢复按需载入完整记录。当前学习数据为 v8、`.repeaty` 容器为 v5，摘要不属于备份格式，不会替代已保存的代码。
 
 ## 离线启动与部署
 
@@ -115,17 +115,19 @@ Anki `.apkg` 在同源 Worker 中通过 sql.js 读取，HTML 用 parse5 作为�
 
 0.15.0 的阅读位置保存在可选 `Source.reading` 字段中，以 UTF-16 位置和 Markdown 块内比例定位，避免保存视口像素。`SourceReader` 处理滚动与恢复，根组件中的 `useReadingProgress` 合并连续移动，停留 700ms 后调用 `useLibrary.saveSourceReading`，复用原事务与修订检查；保存失败保留待处理位置供重试。切库、恢复和删除会清理旧任务。它不改变笔记、卡片、评分或 FSRS 状态。[ADR 005](adr/005-reading-positions.md)。
 
+0.16.0 增加可选 `Source.queue`，保存 active / archived 与 `availableOn` 本机日期。`core/source-queue.ts` 负责可读状态、日期排序、延后与恢复；到期只改变筛选结果，不写库。`useLibrary.arrangeSource` 在同一事务中保存当前位置和安排，并创建操作前快照；界面确认成功后只移除已包含的待保存位置，较新的滚动仍保留。卡片与 FSRS 不使用材料的归档或延后状态。[ADR 006](adr/006-reading-queue.md)。
+
 桌面 MCP 的学习查询通过 Rust 本机 HTTP 监听和 IPC Channel 请求当前窗口的只读应用接口。`useLibrary.readLearning` 校验作用域与忙碌状态，`core/learning-reader.ts` 从已提交的内存视图投影有上限的结果；不绕过 IndexedDB，也不读取提交正文。授权仅存于本次进程，切库和重载撤销。查询沿用现有修订号，无存储或备份格式变更。[设计与验证](adr/002-desktop-mcp-bridge.md) · [客户端配置](MCP.md)。
 
 0.13.0 增加受选区授权限制的 `repeaty_selected_excerpt` 与 `repeaty_propose_cards`；0.14.0 将已接收草稿保存到独立 IndexedDB 表，写入成功后才返回回执。`core/draft-proposals.ts` 管理选区、批次重试与容量；`core/card-draft-data.ts` 校验持久记录与附件，`desktop/drafts.ts` 负责恢复与作用域代次检查。`DraftWorkbench` 复用 NoteEditor，明确保存编辑或确认调用 `saveExcerptNote`；确认时生成正式记录与消费草稿使用同一事务。辅助表不参与正式修订、检查点和备份，不持久化授权。[ADR 003](adr/003-mcp-card-drafts.md) · [ADR 004](adr/004-persistent-card-drafts.md)。
 
-当前数据格式为 Library v7、IndexedDB v10、SQLite v4、HTTP API v5、`.repeaty` v4 和 JSON 备份 v7。0.15.0 为阅读位置升级版本门槛，防止旧客户端写回时丢失字段；记录表结构不变。Library v6 升级时保留材料，不补写阅读位置；更早版本补空材料列表。原 ID、FSRS 状态、记录、检查点与待确认草稿保留；旧客户端拒绝写入新版本数据库。旧 `.repeaty` v1–v3 和 JSON 备份仍可恢复。服务端校验来源、快照和摘录引用，按材料逐份读取正文验证位置，避免批量恢复时同时缓存全部原文。
+当前数据格式为 Library v8、IndexedDB v11、SQLite v5、HTTP API v6、`.repeaty` v5 和 JSON 备份 v8。0.16.0 为阅读安排升级版本门槛，防止旧客户端写回时丢失字段；记录表结构不变。Library v7 升级时保留阅读位置，没有安排的材料默认可读；v6 保留材料且不补写位置，更早版本补空材料列表。原 ID、FSRS 状态、记录、检查点与待确认草稿保留；旧客户端拒绝写入新版本数据库。旧 `.repeaty` v1–v4 和 JSON 备份仍可恢复。服务端校验来源、快照和摘录引用，按材料逐份读取正文验证位置，避免批量恢复时同时缓存全部原文。
 
 Anki 集成只规划导入，不计划提供 Repeaty → Anki 导出。尚未实现 Anki 进度迁移、自定义字段 / HTML 模板、所见即所得富文本编辑器、图片遮挡、嵌套挖空、FSRS 参数训练。
 
 ```text
 src/core/
-  model.ts           # v7 笔记 / 卡片 / 媒体 / 练习模型与卡片生成
+  model.ts           # v8 笔记 / 卡片 / 媒体 / 练习模型与卡片生成
   practice-data.ts   # 练习、代码提交与结果 Schema
   practice.ts        # 提交状态、幂等与练习完成
   legacy.ts          # 冻结的 v1 校验模型
@@ -135,7 +137,8 @@ src/core/
   search.ts          # 组合搜索、常用筛选及专项练习队列
   batch.ts           # CSV / TSV 校验与批量操作
   anki/              # .apkg 解析、HTML 转换、媒体比较与选择性导入更新
-  source-data.ts     # 材料元数据、阅读位置与摘录位置
+  source-data.ts     # 材料元数据、阅读安排、阅读与摘录位置
+  source-queue.ts    # 日期队列、延后、归档与恢复
   sources.ts         # 原文快照、读取、阅读位置、摘录与独立删除
   card-draft-data.ts  # 待确认草稿与附件校验
   draft-proposals.ts # 选区授权、批次与重试

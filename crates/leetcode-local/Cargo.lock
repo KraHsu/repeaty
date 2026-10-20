@@ -853,7 +853,7 @@ dependencies = [
 
 [[package]]
 name = "repeaty-leetcode-local"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "axum",
  "reqwest",
