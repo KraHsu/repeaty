@@ -137,14 +137,17 @@ export function useLibrary() {
       library.value = saved.library
       revision = saved.revision
       // The transaction is durable. A later metadata read must not invite a second write.
-      const target = repository
+      const target = repository,
+        metadataScope = scope.value,
+        metadataRequest = backupRead + 1
+      const ownsMetadata = () =>
+        target === repository && metadataScope === scope.value && metadataRequest === backupRead
       const metadata = refreshBackups()
         .then(() => {
-          if (target === repository && backupError.value === backupListWarning)
-            backupError.value = ''
+          if (ownsMetadata() && backupError.value === backupListWarning) backupError.value = ''
         })
         .catch(() => {
-          if (target === repository) backupError.value = backupListWarning
+          if (ownsMetadata()) backupError.value = backupListWarning
         })
       if (!options.backgroundMetadata) await metadata
     } catch (error) {

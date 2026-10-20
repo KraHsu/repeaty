@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { t } from '../i18n'
+defineProps<{ embedded?: boolean }>()
 import {
   installedPlugins,
   pluginEnabled,
@@ -10,15 +11,20 @@ import {
 </script>
 
 <template>
-  <div class="page plugins-page">
+  <div :class="embedded ? 'settings-plugins' : 'page plugins-page'">
     <header class="page-heading">
       <div>
-        <h1>{{ t('插件') }}</h1>
-        <p>{{ t('开启或关闭此部署已安装的题目插件。') }}</p>
+        <h2 v-if="embedded">{{ t('插件') }}</h2>
+        <h1 v-else>{{ t('插件') }}</h1>
+        <p>{{ t('管理此部署已安装的插件。') }}</p>
       </div>
     </header>
     <p class="plugin-management-note">
-      {{ t('关闭插件后，相关题目暂停出现在复习队列中，内容和进度保留。开关仅影响当前浏览器。') }}
+      {{
+        t(
+          '关闭题目插件会暂停相关题目，关闭显示插件会隐藏其界面。内容和进度保留，开关仅影响当前浏览器。',
+        )
+      }}
     </p>
     <p v-if="pluginPreferenceError" class="import-warning" role="alert">
       {{ t(pluginPreferenceError) }}

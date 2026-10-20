@@ -2,7 +2,12 @@ import { computed, defineAsyncComponent, ref } from 'vue'
 import installations from '@repeaty-plugins'
 import { desktopEdition } from '../edition'
 import type { CardView } from '../core/model'
-import type { PluginInstallation, QuestionPlugin } from './types'
+import {
+  isQuestionPlugin,
+  type PluginInstallation,
+  type QuestionPlugin,
+  type ReviewPanelPlugin,
+} from './types'
 
 const flashcard: QuestionPlugin = {
   id: 'flashcard',
@@ -83,7 +88,17 @@ export function listenPluginPreferences() {
 export const enabledEditorPlugins = computed(() =>
   installedPlugins
     .map(({ plugin }) => plugin)
-    .filter((plugin) => pluginEnabled(plugin.id) && plugin.editor),
+    .filter(
+      (plugin): plugin is QuestionPlugin =>
+        isQuestionPlugin(plugin) && pluginEnabled(plugin.id) && !!plugin.editor,
+    ),
+)
+export const enabledReviewPanels = computed(() =>
+  installedPlugins
+    .map(({ plugin }) => plugin)
+    .filter(
+      (plugin): plugin is ReviewPanelPlugin => 'reviewPanel' in plugin && pluginEnabled(plugin.id),
+    ),
 )
 const unavailable: QuestionPlugin = {
   id: 'unavailable',
@@ -96,12 +111,15 @@ const unavailable: QuestionPlugin = {
 export function questionPlugin(card: Pick<CardView, 'type' | 'plugin'>): QuestionPlugin {
   if (card.type !== 'plugin') return flashcard
   return (
-    installedPlugins.find(
-      ({ plugin }) =>
-        plugin.id === card.plugin?.id &&
-        plugin.version === card.plugin.version &&
-        pluginEnabled(plugin.id),
-    )?.plugin ?? unavailable
+    installedPlugins
+      .map(({ plugin }) => plugin)
+      .filter(isQuestionPlugin)
+      .find(
+        (plugin) =>
+          plugin.id === card.plugin?.id &&
+          plugin.version === card.plugin.version &&
+          pluginEnabled(plugin.id),
+      ) ?? unavailable
   )
 }
 export function canReviewCard(card: Pick<CardView, 'type' | 'plugin'>) {

@@ -27,6 +27,8 @@ export function offlinePlugin(): Plugin {
           'manifest.en.webmanifest',
           'example.csv',
           'example.en.csv',
+          'skills/repeaty-cards/SKILL.md',
+          'skills/repeaty-cards/example.csv',
         ]
         const assets = [
           ...new Set([

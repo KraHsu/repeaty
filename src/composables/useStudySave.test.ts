@@ -12,7 +12,11 @@ it('shows the next card after its durable save without waiting for metadata; an 
   try {
     await first.save(fixture(), 0)
     await second.save(fixture({ front: 'Second workspace' }), 0)
-    factory.mockResolvedValueOnce(first).mockResolvedValueOnce(second)
+    let connectSecond!: (value: typeof second) => void
+    const connecting = new Promise<typeof second>((resolve) => {
+      connectSecond = resolve
+    })
+    factory.mockResolvedValueOnce(first).mockReturnValueOnce(connecting)
     const workspace = useLibrary()
     await workspace.init()
     let reject!: (error: Error) => void
@@ -23,10 +27,13 @@ it('shows the next card after its durable save without waiting for metadata; an 
     await workspace.review(workspace.library.value.cards[0]!.id, 3)
     expect(workspace.busy.value).toBe(false)
     expect((await first.load()).library.reviews).toHaveLength(1)
-    await workspace.init()
-    reject(new Error('late metadata failure'))
+    const changing = workspace.init()
+    reject(new Error('late metadata failure during endpoint switch'))
     await Promise.resolve()
     await Promise.resolve()
+    expect(workspace.backupError.value).toBe('')
+    connectSecond(second)
+    await changing
     expect(workspace.library.value.notes[0]!.front).toBe('Second workspace')
     expect(workspace.backupError.value).toBe('')
     expect(workspace.library.value.reviews).toHaveLength(0)

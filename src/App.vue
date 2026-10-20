@@ -2,7 +2,16 @@
 import { version } from '../package.json'
 import { t, msg, locale, setLocale, type DisplayMessage } from './i18n'
 
-import { computed, defineAsyncComponent, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import {
+  computed,
+  defineAsyncComponent,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  reactive,
+  ref,
+  watch,
+} from 'vue'
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -23,9 +32,9 @@ import {
   Puzzle,
   Repeat2,
   ShieldCheck,
+  Settings as SettingsIcon,
   Sparkles,
   Trash2,
-  X,
 } from '@lucide/vue'
 import AppModal from './components/AppModal.vue'
 import ReviewSession from './components/ReviewSession.vue'
@@ -41,7 +50,16 @@ import type {
   SourceBatchUpdate,
   ReadingUpdate,
 } from './core/source-data'
-import PluginPanel from './components/PluginPanel.vue'
+import NotificationCenter from './components/NotificationCenter.vue'
+import DeckStatus from './components/DeckStatus.vue'
+import { deckStudyCounts } from './core/deck-status'
+import { listenPreferences } from './preferences'
+import {
+  clearNotifications,
+  notify,
+  dismissNotificationContext,
+  dismissInfoNotifications,
+} from './notifications'
 import { remoteWorkspace, desktopEdition } from './edition'
 import {
   ServerConnection,
@@ -49,6 +67,7 @@ import {
   createExportFile,
   connectLearningReader,
   DraftWorkbench,
+  PlatformSettings,
 } from '@repeaty-platform'
 import { canReviewCard, listenPluginPreferences } from './plugins'
 import type { BackupData } from './core/backups'
@@ -61,7 +80,7 @@ import { useReadingProgress } from './composables/useReadingProgress'
 import {
   colors,
   localDay,
-  cardViews,
+  createCardViewReader,
   type CardView,
   type NoteInput,
   type MediaUpload,
@@ -79,13 +98,17 @@ const MixedSession = defineAsyncComponent(() => import('./components/MixedSessio
 const PracticeHistoryPanel = defineAsyncComponent(
   () => import('./components/PracticeHistoryPanel.vue'),
 )
+const SettingsPage = defineAsyncComponent(() => import('./components/SettingsPage.vue'))
 
 const workspace = useLibrary()
 const readingProgress = useReadingProgress(workspace)
 const { library, ready, busy, loadError, backups, backupError } = workspace
 const offline = useOffline()
-const cards = computed(() => cardViews(library.value))
-const tab = ref<'overview' | 'cards' | 'history' | 'plugins' | 'data' | 'sources'>('overview')
+const readViews = createCardViewReader()
+const cards = computed(() => readViews(library.value))
+const tab = ref<'overview' | 'cards' | 'history' | 'plugins' | 'data' | 'sources' | 'settings'>(
+  'overview',
+)
 const historyCardId = ref('')
 const autoStartReading = ref(false)
 const mcpSelection = ref<SourceExcerpt>()
@@ -97,6 +120,8 @@ watch(workspace.scope, () => {
   modal.value = null
   review.value = null
   mixed.value = null
+  reviewEditTarget.value = undefined
+  clearNotifications()
 })
 const selectedDeck = ref('')
 const searchQuery = ref('')
@@ -107,6 +132,12 @@ const mixed = ref<{ cardsPerReading: number } | null>(null)
 const mixedRatio = ref(3)
 const mixedReader = ref<InstanceType<typeof SourcePanel>>()
 const notice = ref<{ text: DisplayMessage; error: boolean } | null>(null)
+watch(notice, (entry) => {
+  if (entry) notify(entry.text, entry.error ? 'error' : 'info')
+})
+const activeReview = ref<InstanceType<typeof ReviewSession>>()
+const reviewEditTarget = ref<{ id: string; noteId: string; scope: string }>()
+let reviewEditorOwner: InstanceType<typeof ReviewSession> | undefined
 const modal = ref<
   'deck' | 'card' | 'confirm' | 'import' | 'bulkImport' | 'snapshot' | 'mixed' | null
 >(null)
@@ -164,6 +195,7 @@ const sourceBindings = computed(() => ({
 const reviewBindings = computed(() => ({
   library: library.value,
   busy: busy.value,
+  editing: modal.value === 'card' && !!reviewEditTarget.value,
   submit: submitReview,
   undo: undoReview,
   change: changeCards,
@@ -191,17 +223,20 @@ const pageTitle = computed(
       cards: currentDeck.value?.name ?? t('全部卡片'),
       data: t('数据与备份'),
       plugins: t('插件'),
+      settings: t('设置'),
       history: t('练习历史'),
       sources: t('学习材料'),
     })[tab.value],
 )
 
 let stopPluginPreferences: (() => void) | undefined
+let stopPreferences: (() => void) | undefined
 let stopLearningReader: (() => void) | undefined
 let ticker: ReturnType<typeof setInterval>
 let backupTicker: ReturnType<typeof setInterval>
 onMounted(() => {
   stopPluginPreferences = listenPluginPreferences()
+  stopPreferences = listenPreferences()
   void connectLearningReader(workspace).then((stop) => {
     stopLearningReader = stop
   })
@@ -214,6 +249,7 @@ onMounted(() => {
   }, 10_000)
 })
 onUnmounted(() => {
+  stopPreferences?.()
   stopPluginPreferences?.()
   stopLearningReader?.()
   clearInterval(ticker)
@@ -270,6 +306,7 @@ function editDeck(deck?: Deck) {
   modal.value = 'deck'
 }
 function editCard(card?: CardView) {
+  reviewEditTarget.value = undefined
   sourceDraft.value = undefined
   notice.value = null
   if (!library.value.decks.length) {
@@ -279,6 +316,14 @@ function editCard(card?: CardView) {
   editingId.value = card?.noteId
   modal.value = 'card'
 }
+function editReviewCard(card: CardView) {
+  editCard(card)
+  reviewEditorOwner = activeReview.value
+  reviewEditTarget.value = { id: card.id, noteId: card.noteId, scope: workspace.scope.value }
+}
+watch(modal, (value) => {
+  if (value !== 'card') reviewEditTarget.value = undefined
+})
 function openImport() {
   notice.value = null
   if (!library.value.decks.length) {
@@ -288,6 +333,7 @@ function openImport() {
   modal.value = 'bulkImport'
 }
 async function run(action: () => Promise<void>, message?: string) {
+  dismissInfoNotifications()
   try {
     await action()
     now.value = new Date()
@@ -312,7 +358,9 @@ async function saveDeck() {
   }
 }
 async function saveCard(input: NoteInput, assets: MediaUpload[], allowRemove: boolean) {
-  return run(
+  const target = reviewEditTarget.value
+  const owner = reviewEditorOwner
+  const saved = await run(
     () =>
       sourceDraft.value?.excerpt
         ? workspace.saveExcerptNote(
@@ -325,6 +373,16 @@ async function saveCard(input: NoteInput, assets: MediaUpload[], allowRemove: bo
         : workspace.saveNote(input, editingId.value, assets, allowRemove),
     '笔记与卡片已保存',
   )
+  if (
+    saved &&
+    target?.scope === workspace.scope.value &&
+    reviewEditTarget.value === target &&
+    owner === activeReview.value
+  ) {
+    await nextTick()
+    owner?.restart(target.id, target.noteId)
+  }
+  return saved
 }
 async function saveSource(input: SourceInput, scope: string) {
   return run(() => workspace.saveSource(input, scope), '材料已保存')
@@ -385,7 +443,10 @@ async function batchEdit(ids: string[], edit: BatchEdit) {
   return run(() => workspace.editNotes(new Set(ids), edit), '笔记已批量更新')
 }
 async function undoReview() {
-  return run(workspace.undo, '已撤销上次评分')
+  const id = library.value.reviews.at(-1)?.id
+  const saved = await run(workspace.undo, '已撤销上次评分')
+  if (saved && id) dismissNotificationContext(id)
+  return saved
 }
 function confirmDeleteDeck(deck: Deck) {
   notice.value = null
@@ -439,8 +500,20 @@ function deckDue(id: string) {
   return due.value.filter((card) => card.deckId === id).length
 }
 function deckCards(id: string) {
-  return cards.value.filter((card) => card.deckId === id).length
+  return deckCounts.value.get(id) ?? 0
 }
+const deckCounts = computed(() => {
+  const notes = new Map(library.value.notes.map((note) => [note.id, note.deckId])),
+    counts = new Map<string, number>()
+  for (const card of library.value.cards) {
+    const deck = notes.get(card.noteId)!
+    counts.set(deck, (counts.get(deck) ?? 0) + 1)
+  }
+  return counts
+})
+const deckStates = computed(() =>
+  deckStudyCounts(library.value, now.value, due.value, cards.value, canReviewCard),
+)
 const transfer = ref<{ label: string; percent: number }>()
 let transferController: AbortController | undefined
 const filePicker = (
@@ -673,7 +746,13 @@ async function restoreBackup() {
             :selection="mcpSelection"
             @close-selection="mcpSelection = undefined"
           />
-          <component v-if="AccountControls" :is="AccountControls" />
+          <component
+            v-if="AccountControls && (!desktopEdition || remoteWorkspace)"
+            :is="AccountControls"
+          />
+          <button class="text-button settings-entry" @click="navigate('settings')">
+            <SettingsIcon :size="18" />{{ t('设置') }}
+          </button>
           <label class="language-picker"
             ><span class="sr-only">{{ t('界面语言') }}</span
             ><select
@@ -694,18 +773,15 @@ async function restoreBackup() {
           }}</span>
         </div>
       </header>
-      <div
-        v-if="notice"
-        :class="['notice', { error: notice.error }]"
-        :role="notice.error ? 'alert' : 'status'"
-      >
-        <span>{{ t(notice.text) }}</span
-        ><button class="icon-button" :aria-label="t('关闭提示')" @click="notice = null">
-          <X :size="16" />
-        </button>
-      </div>
+      <NotificationCenter />
 
-      <section v-if="loadError" class="empty-state">
+      <SettingsPage
+        v-if="tab === 'plugins' || tab === 'settings'"
+        :key="tab"
+        :initial-tab="tab === 'plugins' ? 'plugins' : 'general'"
+        :platform-settings="PlatformSettings"
+      />
+      <section v-else-if="loadError" class="empty-state">
         <Database :size="36" />
         <h1>{{ t(remoteWorkspace ? '无法连接服务' : '本地存储暂不可用') }}</h1>
         <p role="alert">{{ t(loadError) }}</p>
@@ -734,10 +810,12 @@ async function restoreBackup() {
         <template #card="{ item, done, activity }">
           <ReviewSession
             :key="item.key"
+            ref="activeReview"
             v-bind="reviewBindings"
             :mixed-card-id="item.id"
             @step="done"
             @activity="activity"
+            @edit="editReviewCard"
             @close="mixed = null"
           />
         </template>
@@ -758,10 +836,12 @@ async function restoreBackup() {
       </MixedSession>
       <ReviewSession
         v-else-if="review"
+        ref="activeReview"
         v-bind="reviewBindings"
         :deck-id="review.deckId"
         :study="review.study"
         @close="review = null"
+        @edit="editReviewCard"
       />
 
       <div v-else-if="tab === 'overview'" class="page dashboard">
@@ -960,6 +1040,7 @@ async function restoreBackup() {
               </div>
               <button class="deck-title" @click="openDeck(deck)">{{ deck.name }}</button>
               <p v-if="deck.description">{{ deck.description }}</p>
+              <DeckStatus :status="deckStates.get(deck.id)!" compact />
               <div class="deck-card-bottom">
                 <span
                   >{{ t('{p0} 张卡片', { p0: deckCards(deck.id) })
@@ -1035,6 +1116,7 @@ async function restoreBackup() {
             </button>
           </div>
         </header>
+        <DeckStatus v-if="currentDeck" :status="deckStates.get(currentDeck.id)!" />
         <CollectionPanel
           :query-cards="workspace.queryCards"
           v-model:deck-id="selectedDeck"
@@ -1076,8 +1158,6 @@ async function restoreBackup() {
         @edit="(id) => editCard(cards.find((card) => card.noteId === id))"
         @clear-notice="notice = null"
       />
-
-      <PluginPanel v-else-if="tab === 'plugins'" />
 
       <div v-else class="page data-page">
         <header class="page-heading">

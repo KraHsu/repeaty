@@ -1,5 +1,64 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  设置分类: 'Settings categories',
+  通用: 'General',
+  界面: 'Appearance',
+  偏好语言: 'Preferred language',
+  'AI 制卡': 'AI card authoring',
+  弹出通知: 'Pop-up notifications',
+  信息通知: 'Information',
+  警告通知: 'Warnings',
+  错误通知: 'Errors',
+  '界面、通知与插件。设置保存在当前浏览器或桌面应用中。':
+    'Appearance, notifications and plugins. Settings stay in this browser or desktop app.',
+  '关闭弹出后，通知改为在页面内显示。警告和错误仍需手动关闭。':
+    'When pop-ups are off, messages appear within the page. Warnings and errors still need to be dismissed.',
+  '保存成功和一般提示，5 秒后自动关闭。':
+    'Save confirmations and general messages. Dismissed after 5 seconds.',
+  '需要留意的情况，手动关闭。': 'Situations that need attention. Dismiss manually.',
+  '操作失败和保存错误，手动关闭。': 'Failed actions and save errors. Dismiss manually.',
+  '设置已生效，但未能保存；下次打开时可能恢复默认设置。':
+    'Settings applied, but could not be saved. Defaults may return next time.',
+  '管理此部署已安装的插件。': 'Manage plugins installed in this deployment.',
+  '关闭题目插件会暂停相关题目，关闭显示插件会隐藏其界面。内容和进度保留，开关仅影响当前浏览器。':
+    'Disabling a question plugin pauses its questions; disabling a display plugin hides its interface. Content and progress stay intact. Switches apply to this browser.',
+  答题历史: 'Review history',
+  '在当前卡片上方显示最近的评分，虚线圆表示本次作答。':
+    'Show recent ratings above the current card. A dashed circle marks this attempt.',
+  当前卡片的答题历史: 'Review history for this card',
+  本次作答: 'Current attempt',
+  显示最近几次评分: 'Number of recent ratings',
+  '可显示 1–50 次，仅统计当前卡片已保存的评分。': 'Show 1–50 ratings saved for this card.',
+  翻面后才显示历史: 'Show history after revealing the answer',
+  更多操作: 'More actions',
+  编辑: 'Edit',
+  卡组学习状态: 'Deck study status',
+  今日可学: 'Available today',
+  新卡: 'New',
+  '未学 {new} 张 · 稍后到期 {future} 张': '{new} unstudied · {future} due later',
+  '另有 {count} 张已达今日额度': '{count} more blocked by today’s limits',
+  '暂停 {suspended} 张 · 今日暂缓 {buried} 张': '{suspended} suspended · {buried} buried today',
+  '不用 MCP，也可以让 AI 帮忙制卡': 'Make cards with AI, without MCP',
+  '复制制卡说明，连同学习材料发给 GPT 网页或其他 AI 聊天工具。':
+    'Copy the instructions and share them with your material in GPT on the web or another AI chat.',
+  '将生成的 CSV 复制或保存为文件，在卡组中选择「批量导入」。':
+    'Copy the CSV or save it as a file, then choose Bulk import in a deck.',
+  '检查预览和答案，再确认导入。': 'Check the preview and answers before importing.',
+  '只分享本次制卡需要的材料。无需提供账户、Cookie、完整备份或学习进度。':
+    'Share only the material needed for these cards. No accounts, cookies, full backups or study progress are required.',
+  '正在加载说明…': 'Loading instructions…',
+  '未能加载制卡说明，请重新打开此页面。':
+    'Could not load the instructions. Please reopen this page.',
+  复制制卡说明: 'Copy instructions',
+  '下载 SKILL.md': 'Download SKILL.md',
+  '制卡说明（可直接粘贴到 AI 聊天中）': 'Instructions (paste into an AI chat)',
+  制卡说明已复制: 'Instructions copied',
+  '未能复制，请在下方选中说明并手动复制。':
+    'Could not copy. Select the instructions below and copy them manually.',
+  '制卡说明未能下载，请复制下方内容。':
+    'Could not download the instructions. Copy the text below instead.',
+  '使用支持 skill 的工具时，将 SKILL.md 放入 repeaty-cards 文件夹，再安装到工具的技能目录。':
+    'For tools that support skills, put SKILL.md in a repeaty-cards folder and install it in the tool’s skills directory.',
   间隔方式: 'Interval method',
   固定递增: 'Fixed progression',
   自适应: 'Adaptive',
