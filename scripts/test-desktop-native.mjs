@@ -1075,11 +1075,20 @@ try {
   console.log(
     'Native reading positions: plain text and Markdown preview survive application exits without changing study records',
   )
-  const queueView = (label) =>
-    execute(
+  const queueView = async (label) => {
+    await until(
+      () =>
+        execute(
+          "const nav=document.querySelector('.source-queue-filters');const button=nav && [...nav.querySelectorAll('button')].find(button=>button.textContent.trim().startsWith(arguments[0]));return !!button && !button.disabled;",
+          label,
+        ),
+      'native reading queue available',
+    )
+    await execute(
       "const nav=document.querySelector('.source-queue-filters');const button=[...nav.querySelectorAll('button')].find(button=>button.textContent.trim().startsWith(arguments[0]));if(!button)throw Error('Missing queue view');button.click();",
       label,
     )
+  }
   async function setReadingPriority(priority) {
     await until(
       () =>
@@ -1088,6 +1097,7 @@ try {
         ),
       'native priority control available',
     )
+    const title = await execute("return document.querySelector('.source-reader h2').textContent")
     await execute(
       "const select=document.querySelector('.source-priority-control select');select.value=arguments[0];select.dispatchEvent(new Event('change',{bubbles:true}));",
       priority,
@@ -1100,7 +1110,10 @@ try {
         ),
       'native reading priority saved',
     )
-    assert.equal((await sourceRecords())[0].priority, priority)
+    assert.equal(
+      (await sourceRecords()).find((source) => source.title === title).priority,
+      priority,
+    )
   }
   assert.equal(
     await execute("return document.querySelector('.source-priority-control select').value"),
