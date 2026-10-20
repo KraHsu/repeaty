@@ -22,7 +22,9 @@ const props = defineProps<{
   library: Library
   note?: Note
   initial?: Partial<NoteInput>
+  initialUploads?: MediaUpload[]
   draft?: boolean
+  saveDraft?: (input: NoteInput, uploads: MediaUpload[]) => Promise<boolean>
   deckId?: string
   busy: boolean
   getMedia: (id: string) => Promise<Blob | undefined>
@@ -44,8 +46,8 @@ const form = reactive<NoteInput>({
   front: props.note?.front ?? props.initial?.front ?? '',
   back: props.note?.back ?? props.initial?.back ?? '',
   tags: [...(props.note?.tags ?? props.initial?.tags ?? [])],
-  frontMedia: [...(props.note?.frontMedia ?? [])],
-  backMedia: [...(props.note?.backMedia ?? [])],
+  frontMedia: [...(props.note?.frontMedia ?? props.initial?.frontMedia ?? [])],
+  backMedia: [...(props.note?.backMedia ?? props.initial?.backMedia ?? [])],
 })
 const pluginChoices = enabledEditorPlugins
 const selectedPluginId = ref(props.note?.plugin?.id ?? pluginChoices.value[0]?.id)
@@ -53,7 +55,7 @@ const selectedPlugin = computed(() =>
   pluginChoices.value.find((plugin) => plugin.id === selectedPluginId.value),
 )
 const tagsText = ref(form.tags.join(', ')),
-  uploads = ref<MediaUpload[]>([]),
+  uploads = ref<MediaUpload[]>(props.initialUploads ?? []),
   error = ref<DisplayMessage>(''),
   allowRemove = ref(false)
 const media = computed(() => [...props.library.media, ...uploads.value.map((item) => item.meta)])
@@ -189,6 +191,23 @@ async function save(continueAdding = false) {
     } else emit('close')
   }
 }
+async function keepDraft() {
+  if (props.busy || !props.saveDraft) return
+  const tags = [
+    ...new Set(
+      tagsText.value
+        .split(/[,，]/)
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+    ),
+  ]
+  if (tags.length > 20 || tags.some((tag) => tag.length > 40)) {
+    error.value = '最多 20 个标签，每个不超过 40 字。'
+    return
+  }
+  error.value = ''
+  if (await props.saveDraft({ ...form, tags }, uploads.value)) emit('close')
+}
 </script>
 <template>
   <form
@@ -203,6 +222,7 @@ async function save(continueAdding = false) {
           {{ t('已保存 {p0} 条笔记。', { p0: savedCount }) }}
         </p>
         <p v-if="error" class="import-warning" role="alert">{{ t(error) }}</p>
+        <p v-if="saveDraft" class="form-note">{{ t('尚未完成时可先保存草稿，下次继续编辑。') }}</p>
         <details v-if="form.excerpt" class="source-note-excerpt">
           <summary>
             {{ t('原文摘录') }} ·
@@ -218,7 +238,7 @@ async function save(continueAdding = false) {
                 v-for="(label, key) in noteTypes"
                 :key="key"
                 :value="key"
-                :disabled="key === 'plugin' && !pluginChoices.length"
+                :disabled="key === 'plugin' && (draft || !pluginChoices.length)"
               >
                 {{ t(label) }}
               </option>
@@ -264,7 +284,7 @@ async function save(continueAdding = false) {
             }}
           </p>
           <button
-            v-if="pluginChoices.some((plugin) => plugin.id === 'leetcode')"
+            v-if="!draft && pluginChoices.some((plugin) => plugin.id === 'leetcode')"
             type="button"
             class="text-button plugin-shortcut"
             @click="selectLeetCode"
@@ -400,6 +420,15 @@ async function save(continueAdding = false) {
         </label>
       </div>
       <div class="form-actions editor-actions">
+        <button
+          v-if="saveDraft"
+          type="button"
+          class="button secondary"
+          :disabled="busy"
+          @click="keepDraft"
+        >
+          {{ t('保存草稿') }}
+        </button>
         <button
           v-if="!note && !initial?.excerpt"
           type="button"

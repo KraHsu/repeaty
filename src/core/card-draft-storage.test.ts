@@ -176,6 +176,14 @@ it('rolls back the entire received batch when its second draft cannot be stored'
   await repo.close()
 })
 
+it('retains deck identifiers up to the existing note limit', async () => {
+  const { repo, proposal } = await setup()
+  const draft = { ...proposal.drafts[0]!, deckId: 'd'.repeat(150) }
+  await repo.addCardDrafts([draft])
+  expect((await repo.readCardDrafts())[0]!.deckId).toBe(draft.deckId)
+  await repo.close()
+})
+
 it('isolates local databases, enforces capacity across writers, and keeps malformed records intact', async () => {
   const { name, repo, proposal } = await setup()
   const other = createRepository(`other-${crypto.randomUUID()}`)

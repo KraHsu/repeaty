@@ -12,7 +12,7 @@ export const cardDraftSchema = z
     selectionId: z.uuid(),
     scope: z.string().startsWith('local:').max(512),
     mediaId: id,
-    deckId: id,
+    deckId: z.string().min(1).max(150),
     title: z.string().min(1).max(160),
     format: z.enum(['plain', 'markdown']),
     excerpt: excerptSchema,

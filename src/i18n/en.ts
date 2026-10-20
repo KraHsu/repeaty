@@ -1008,8 +1008,18 @@ export const en = {
   停止分享: 'Stop sharing',
   '在 MCP 客户端请求生成卡片草稿。收到后会显示在这里。':
     'Ask your MCP client to create card drafts. They will appear here when received.',
-  '草稿在关闭、重载应用或切换学习库后清空。确认保存后，卡片才会进入学习库和备份。':
-    'Unconfirmed drafts are cleared when you close or reload the app, or switch libraries. Once saved, cards become part of your library and backups.',
+  '待确认草稿保存在本机，重启后可继续处理。草稿不进入复习或备份；确认保存卡片后才会加入。':
+    'Drafts are saved on this device so you can continue after restarting. They enter reviews and backups only after you confirm and save them as cards.',
+  保存草稿: 'Save draft',
+  '尚未完成时可先保存草稿，下次继续编辑。': 'Save an unfinished draft to continue editing later.',
+  重新读取草稿: 'Reload drafts',
+  '无法读取制卡草稿，已有草稿未被覆盖。请重试或重新打开应用。':
+    'Cannot load card drafts. Existing drafts have not been overwritten. Try again or reopen the app.',
+  '存储空间不足，草稿未保存。请释放空间后重试。':
+    'Not enough storage to save drafts. Free some space and try again.',
+  '无法保存制卡草稿，请重试。': 'Cannot save card drafts. Please try again.',
+  '待确认草稿已达 50 条，请先保存或丢弃一些草稿。':
+    'You have reached the limit of 50 drafts. Save or discard some drafts first.',
   '还没有待确认的草稿。': 'No drafts awaiting review.',
   待确认草稿: 'Drafts awaiting review',
   '材料或卡组已不存在，请丢弃草稿后重新选取。':
