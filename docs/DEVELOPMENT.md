@@ -131,6 +131,8 @@ Anki `.apkg` 在同源 Worker 中通过 sql.js 读取，HTML 用 parse5 作为�
 
 0.23.0 的材料筛选复用 `core/source-queue.ts` 的 `SourceFilter` 和标题 / 类型 / 优先级匹配，四个队列的数量与列表使用同一条件。`startReadingRound` 可接收同一筛选，在开始时捕获全部符合条件的待阅读身份；后续只核对快照与可读状态，不重新应用筛选。「再读一轮」重新匹配原条件。界面清除筛选以显示主动打开或新保存的目标；筛选本身不写入库、快照或备份，数据与 API 版本沿用 0.22.0。
 
+0.24.0 通过 `sourceDetailsSchema` 复用既有标题和 URL 字段，`editSourceDetails` 只接受这两个字段，并校验来源 / 快照 ID 与打开表单时的原信息。`useLibrary.editSourceDetails` 等待已有保存，校验库作用域，再把信息与可用阅读位置一起提交，复用操作前快照。正文、媒体、出处、队列和学习记录继续保留，原文与摘录不联动改名或改链接。筛选照常刷新，轮次不重新匹配成员；迟到响应不能在新的材料页重开弹窗。沿用 0.22.0 的数据、API 和备份格式，不增加端点；IndexedDB 的纯信息修改不重读正文，服务仍执行既有来源校验。
+
 桌面 MCP 的学习查询通过 Rust 本机 HTTP 监听和 IPC Channel 请求当前窗口的只读应用接口。`useLibrary.readLearning` 校验作用域与忙碌状态，`core/learning-reader.ts` 从已提交的内存视图投影有上限的结果；不绕过 IndexedDB，也不读取提交正文。授权仅存于本次进程，切库和重载撤销。查询沿用现有修订号，无存储或备份格式变更。[设计与验证](adr/002-desktop-mcp-bridge.md) · [客户端配置](MCP.md)。
 
 0.13.0 增加受选区授权限制的 `repeaty_selected_excerpt` 与 `repeaty_propose_cards`；0.14.0 将已接收草稿保存到独立 IndexedDB 表，写入成功后才返回回执。`core/draft-proposals.ts` 管理选区、批次重试与容量；`core/card-draft-data.ts` 校验持久记录与附件，`desktop/drafts.ts` 负责恢复与作用域代次检查。`DraftWorkbench` 复用 NoteEditor，明确保存编辑或确认调用 `saveExcerptNote`；确认时生成正式记录与消费草稿使用同一事务。辅助表不参与正式修订、检查点和备份，不持久化授权。[ADR 003](adr/003-mcp-card-drafts.md) · [ADR 004](adr/004-persistent-card-drafts.md)。
