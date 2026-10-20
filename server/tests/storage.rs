@@ -297,7 +297,7 @@ fn source_only_libraries_get_snapshots_and_sqlite_v2_upgrades_safely() {
         connection
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap(),
-        6
+        7
     );
 }
 
@@ -500,6 +500,131 @@ fn reading_priority_upgrades_v5_and_rolls_back_invalid_values_without_changing_l
         connection
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap(),
-        6
+        7
+    );
+}
+
+#[test]
+fn independent_excerpts_survive_sqlite_v6_upgrade_and_validate_provenance_atomically() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("excerpts.sqlite3");
+    let mut db = Database::open(&path).unwrap();
+    let text = "Same🙂\nSame🙂\nLong original";
+    let quote = "Same🙂";
+    let mut library = fixture();
+    library["notes"][0]["frontMedia"] = json!([]);
+    library["notes"][0]["backMedia"] = json!([]);
+    library["media"] = json!([{"id":"root-body","name":"original.md","type":"text/markdown","size":text.len(),"createdAt":"2026-10-20T00:00:00Z"}]);
+    library["sources"] = json!([{"id":"root","title":"Original","url":"https://example.org/reading","format":"markdown","mediaId":"root-body","characters":text.encode_utf16().count(),"createdAt":"2026-10-20T00:00:00Z","priority":"high","queue":{"state":"active","availableOn":"2026-10-25"},"reading":{"offset":7,"fraction":0,"view":"source","updatedAt":"2026-10-20T01:00:00Z"}}]);
+    db.put_media("root-body", "text/markdown", text.as_bytes())
+        .unwrap();
+    db.commit(commit(0, &library)).unwrap();
+    db.backup_now(false).unwrap();
+    drop(db);
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    connection.pragma_update(None, "user_version", 6).unwrap();
+    drop(connection);
+    let mut db = Database::open(&path).unwrap();
+    assert_eq!(db.load().unwrap()["library"], library);
+    assert!(
+        db.load().unwrap()["library"]["sources"][0]
+            .get("kind")
+            .is_none()
+    );
+    db.put_media("child-body", "text/markdown", quote.as_bytes())
+        .unwrap();
+    let media = json!({"id":"child-body","name":"excerpt.md","type":"text/markdown","size":quote.len(),"createdAt":"2026-10-20T00:00:00Z"});
+    let child = json!({"id":"child","title":"Excerpt","url":"https://example.org/reading","format":"markdown","mediaId":"child-body","characters":6,"createdAt":"2026-10-20T00:00:00Z","kind":"excerpt","origin":{"sourceId":"root","start":7,"end":13}});
+    let patches = |source: &Value| {
+        json!([
+            {"store":"media","id":"child-body","position":1,"value":media},
+            {"store":"sources","id":"child","position":1,"value":source}
+        ])
+    };
+    for (field, value) in [
+        ("origin", json!({"sourceId":"missing","start":7,"end":13})),
+        ("origin", json!({"sourceId":"child","start":0,"end":6})),
+        ("origin", json!({"sourceId":"root","start":6,"end":12})),
+        ("origin", json!({"sourceId":"root","start":7,"end":12})),
+        ("origin", json!({"sourceId":"root","start":7,"end":10000})),
+        ("kind", json!(null)),
+        ("characters", json!(10001)),
+        ("format", json!("plain")),
+    ] {
+        let mut invalid = child.clone();
+        invalid[field] = value;
+        assert_eq!(
+            db.commit(input(1, patches(&invalid))).unwrap_err().0,
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(db.load().unwrap()["library"], library);
+    }
+    db.commit(input(1, patches(&child))).unwrap();
+    let saved = db.load().unwrap();
+    assert_eq!(saved["library"]["sources"][1], child);
+    // A root cannot itself become an excerpt while retaining descendants.
+    let mut nested = library["sources"][0].clone();
+    nested["kind"] = json!("excerpt");
+    assert!(
+        db.commit(input(
+            2,
+            json!([{"store":"sources","id":"root","position":0,"value":nested}])
+        ))
+        .is_err()
+    );
+    assert!(
+        db.commit(input(2, json!([{"store":"sources","id":"root"}])))
+            .is_err()
+    );
+    // Changing a parent's snapshot must also revalidate existing children.
+    db.put_media(
+        "replacement",
+        "text/markdown",
+        "x".repeat(text.encode_utf16().count()).as_bytes(),
+    )
+    .unwrap();
+    let mut replacement = library["sources"][0].clone();
+    replacement["mediaId"] = json!("replacement");
+    let replacement_media = json!({"id":"replacement","name":"changed.md","type":"text/markdown","size":text.encode_utf16().count(),"createdAt":"2026-10-20T00:00:00Z"});
+    assert!(
+        db.commit(input(
+            2,
+            json!([
+                {"store":"media","id":"replacement","position":2,"value":replacement_media},
+                {"store":"sources","id":"root","position":0,"value":replacement}
+            ])
+        ))
+        .is_err()
+    );
+    assert_eq!(db.load().unwrap(), saved);
+    let mut note = library["notes"][0].clone();
+    note["excerpt"] = json!({"sourceId":"child","start":0,"end":6,"quote":quote});
+    let mut detached = child.clone();
+    detached.as_object_mut().unwrap().remove("origin");
+    db.commit(input(
+        2,
+        json!([
+            {"store":"notes","id":note["id"],"position":0,"value":note},
+            {"store":"sources","id":"child","position":0,"value":detached},
+            {"store":"sources","id":"root"},
+            {"store":"media","id":"child-body","position":0,"value":media},
+            {"store":"media","id":"root-body"}
+        ]),
+    ))
+    .unwrap();
+    drop(db);
+    let mut db = Database::open(&path).unwrap();
+    let after = db.load().unwrap();
+    assert_eq!(after["library"]["sources"], json!([detached]));
+    assert_eq!(after["library"]["notes"][0]["excerpt"]["sourceId"], "child");
+    assert_eq!(after["library"]["cards"], library["cards"]);
+    assert_eq!(after["library"]["reviews"], library["reviews"]);
+    assert_eq!(db.media("child-body").unwrap().1, quote.as_bytes());
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    assert_eq!(
+        connection
+            .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+            .unwrap(),
+        7
     );
 }

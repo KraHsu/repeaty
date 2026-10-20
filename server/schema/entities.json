@@ -47,7 +47,18 @@
         "required": ["state", "availableOn"],
         "additionalProperties": false
       },
-      "priority": { "type": "string", "enum": ["high", "normal", "low"] }
+      "priority": { "type": "string", "enum": ["high", "normal", "low"] },
+      "kind": { "type": "string", "const": "excerpt" },
+      "origin": {
+        "type": "object",
+        "properties": {
+          "sourceId": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "start": { "type": "integer", "minimum": 0, "maximum": 250000 },
+          "end": { "type": "integer", "exclusiveMinimum": 0, "maximum": 250000 }
+        },
+        "required": ["sourceId", "start", "end"],
+        "additionalProperties": false
+      }
     },
     "required": ["id", "title", "url", "format", "mediaId", "characters", "createdAt"],
     "additionalProperties": false

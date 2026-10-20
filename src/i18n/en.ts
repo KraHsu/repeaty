@@ -1084,4 +1084,8 @@ export const en = {
   '切换到稍后阅读或已归档查看材料。': 'Check Read later or Archived to find your materials.',
   选择一篇材料开始阅读: 'Choose something to read',
   '当前列表为空。': 'This list is empty.',
+  '学习库已变化，摘录未保存。': 'The library has changed. Your excerpt was not saved.',
+  '请从原文保存摘录。': 'Save excerpts from the original material.',
+  保存摘录前: 'Before saving an excerpt',
+  '摘录与来源不匹配。': 'The excerpt does not match its source.',
 } as const

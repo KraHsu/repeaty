@@ -9,6 +9,7 @@ import {
   type SourceInput,
   type SourceExcerpt,
   type ReadingPosition,
+  type SourceOrigin,
 } from './source-data'
 
 const invalid = () => new LocalizedError(msg('原文快照缺失或损坏，请从备份恢复。'))
@@ -18,6 +19,14 @@ export function prepareSource(
 ): { source: Source; asset: MediaUpload } {
   // Textarea selections use LF and UTF-16 offsets on every platform.
   const content = input.content.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n')
+  return prepareSnapshot(input, content, now)
+}
+function prepareSnapshot(
+  input: Omit<SourceInput, 'content'>,
+  content: string,
+  now: Date,
+  origin?: SourceOrigin,
+): { source: Source; asset: MediaUpload } {
   if (!content.trim() || content.length > MAX_SOURCE_CHARACTERS)
     throw new LocalizedError(msg('正文不能为空，且不能超过 250000 个字符。'))
   const blob = new Blob([content], {
@@ -28,11 +37,14 @@ export function prepareSource(
   const timestamp = now.toISOString(),
     mediaId = crypto.randomUUID()
   const source = sourceSchema.parse({
-    ...input,
+    title: input.title,
+    url: input.url,
+    format: input.format,
     id: crypto.randomUUID(),
     mediaId,
     characters: content.length,
     createdAt: timestamp,
+    ...(origin ? { kind: 'excerpt', origin } : {}),
   })
   const meta = mediaSchema.parse({
     id: mediaId,
@@ -42,6 +54,23 @@ export function prepareSource(
     createdAt: timestamp,
   })
   return { source, asset: { meta, blob } }
+}
+export function prepareSourceExcerpt(
+  parent: Source,
+  text: string,
+  excerpt: SourceExcerpt,
+  title: string,
+  now = new Date(),
+) {
+  if (parent.kind === 'excerpt') throw new LocalizedError(msg('请从原文保存摘录。'))
+  const selection = sourceExcerpt(parent, text, excerpt.start, excerpt.end)
+  if (excerpt.sourceId !== parent.id || selection.quote !== excerpt.quote)
+    throw new LocalizedError(msg('摘录与原文不一致，请重新选取。'))
+  return prepareSnapshot({ title, url: parent.url, format: parent.format }, selection.quote, now, {
+    sourceId: parent.id,
+    start: selection.start,
+    end: selection.end,
+  })
 }
 export async function readSource(
   source: Source,
@@ -111,11 +140,43 @@ export function removeSource(library: Library, id: string): Library {
     throw new LocalizedError(msg('材料已不存在，请刷新后重试。'))
   return pruneMedia({
     ...library,
-    sources: library.sources.filter((source) => source.id !== id),
+    sources: library.sources
+      .filter((source) => source.id !== id)
+      .map((source) =>
+        source.origin?.sourceId === id ? { ...source, origin: undefined } : source,
+      ),
     notes: library.notes.map((note) =>
       note.excerpt?.sourceId === id ? { ...note, excerpt: undefined } : note,
     ),
   })
+}
+
+/** Verify changed extraction snapshots one parent at a time; never cache all source bodies. */
+export async function validateSourceOrigins(
+  library: Library,
+  changed: Set<string>,
+  getMedia: (id: string) => Promise<Blob | undefined>,
+) {
+  const sources = new Map(library.sources.map((source) => [source.id, source]))
+  const groups = new Map<string, Source[]>()
+  for (const source of library.sources) {
+    const origin = source.origin
+    if (origin && (changed.has(source.id) || changed.has(origin.sourceId))) {
+      const group = groups.get(origin.sourceId)
+      if (group) group.push(source)
+      else groups.set(origin.sourceId, [source])
+    }
+  }
+  for (const [id, children] of groups) {
+    const parent = sources.get(id)
+    if (!parent || parent.kind === 'excerpt') throw invalid()
+    const original = await readSource(parent, library, getMedia)
+    for (const child of children) {
+      const origin = child.origin!
+      const text = await readSource(child, library, getMedia)
+      if (text !== sourceExcerpt(parent, original, origin.start, origin.end).quote) throw invalid()
+    }
+  }
 }
 
 export function sameReadingPosition(a: ReadingPosition | undefined, b: ReadingPosition) {

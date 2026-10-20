@@ -68,7 +68,7 @@ impl Database {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         let version: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 6 {
+        if version > 7 {
             return Err(Error::invalid());
         }
         let tx = connection.transaction()?;
@@ -102,7 +102,7 @@ impl Database {
             };
             tx.execute_batch(&format!("CREATE TABLE IF NOT EXISTS {store} (id TEXT PRIMARY KEY, position INTEGER NOT NULL CHECK(position>=0), data TEXT NOT NULL CHECK(json_valid(data)){relation}); CREATE INDEX IF NOT EXISTS {store}_position ON {store}(position);"))?;
         }
-        tx.execute_batch("CREATE INDEX IF NOT EXISTS notes_deck ON notes(deck_id); CREATE INDEX IF NOT EXISTS cards_note ON cards(note_id); CREATE INDEX IF NOT EXISTS reviews_card ON reviews(card_id); CREATE INDEX IF NOT EXISTS practices_card ON practices(card_id); CREATE INDEX IF NOT EXISTS attempts_practice ON attempts(practice_id); PRAGMA user_version=6;")?;
+        tx.execute_batch("CREATE INDEX IF NOT EXISTS notes_deck ON notes(deck_id); CREATE INDEX IF NOT EXISTS cards_note ON cards(note_id); CREATE INDEX IF NOT EXISTS reviews_card ON reviews(card_id); CREATE INDEX IF NOT EXISTS practices_card ON practices(card_id); CREATE INDEX IF NOT EXISTS attempts_practice ON attempts(practice_id); PRAGMA user_version=7;")?;
         tx.commit()?;
         let schemas: HashMap<String, Value> =
             serde_json::from_str(include_str!("../schema/entities.json"))?;
@@ -135,7 +135,7 @@ impl Database {
         Ok(json!({"revision":current,"library":library}))
     }
     fn library_history(db: &Connection, summary: bool) -> Result<Value> {
-        let mut library = json!({"version":9});
+        let mut library = json!({"version":10});
         for store in STORES {
             let data = if store == "attempts" && summary {
                 "json_remove(data,'$.code','$.result.detail')"
@@ -362,6 +362,13 @@ impl Database {
         if bad {
             return Err(Error::invalid());
         }
+        let bad_origin: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sources s LEFT JOIN sources p ON p.id=json_extract(s.data,'$.origin.sourceId') WHERE (json_extract(s.data,'$.kind')='excerpt' AND json_extract(s.data,'$.characters')>10000) OR (json_extract(s.data,'$.origin.sourceId') IS NOT NULL AND (json_extract(s.data,'$.kind') IS NOT 'excerpt' OR p.id IS NULL OR p.id=s.id OR json_extract(p.data,'$.kind')='excerpt' OR json_extract(s.data,'$.format')<>json_extract(p.data,'$.format') OR json_extract(s.data,'$.origin.end')<=json_extract(s.data,'$.origin.start') OR json_extract(s.data,'$.origin.end')-json_extract(s.data,'$.origin.start')<>json_extract(s.data,'$.characters') OR json_extract(s.data,'$.origin.end')>json_extract(p.data,'$.characters'))))",
+            [], |row| row.get(0),
+        )?;
+        if bad_origin {
+            return Err(Error::invalid());
+        }
         let mut changed_sources = HashSet::new();
         for patch in patches
             .iter()
@@ -381,6 +388,54 @@ impl Database {
                 return Err(Error::invalid());
             }
             changed_sources.insert(patch.id.clone());
+        }
+        // Excerpts own their bodies; verify each against the immutable root snapshot.
+        // Group anchors, not bodies, so bulk imports retain at most one parent at a time.
+        let mut origins = BTreeMap::<String, Vec<Value>>::new();
+        let mut stmt = tx.prepare(
+            "SELECT data FROM sources WHERE json_extract(data,'$.origin.sourceId') IS NOT NULL",
+        )?;
+        for row in stmt.query_map([], |row| row.get::<_, String>(0))? {
+            let child: Value = serde_json::from_str(&row?)?;
+            let parent = child["origin"]["sourceId"]
+                .as_str()
+                .ok_or_else(Error::invalid)?;
+            if changed_sources.contains(parent)
+                || child["id"]
+                    .as_str()
+                    .is_some_and(|id| changed_sources.contains(id))
+            {
+                origins.entry(parent.into()).or_default().push(child);
+            }
+        }
+        for (parent, children) in origins {
+            let body: Vec<u8> = tx.query_row(
+                "SELECT a.body FROM sources s JOIN assets a ON a.id=s.media_id WHERE s.id=?1",
+                [parent],
+                |row| row.get(0),
+            )?;
+            let original: Vec<u16> = std::str::from_utf8(&body)
+                .map_err(|_| Error::invalid())?
+                .encode_utf16()
+                .collect();
+            for child in children {
+                let body: Vec<u8> = tx.query_row(
+                    "SELECT body FROM assets WHERE id=?1",
+                    [child["mediaId"].as_str().ok_or_else(Error::invalid)?],
+                    |row| row.get(0),
+                )?;
+                let text: Vec<u16> = std::str::from_utf8(&body)
+                    .map_err(|_| Error::invalid())?
+                    .encode_utf16()
+                    .collect();
+                let start = child["origin"]["start"]
+                    .as_u64()
+                    .ok_or_else(Error::invalid)? as usize;
+                let end = child["origin"]["end"].as_u64().ok_or_else(Error::invalid)? as usize;
+                if original.get(start..end) != Some(text.as_slice()) {
+                    return Err(Error::invalid());
+                }
+            }
         }
         let mut excerpts = BTreeMap::<String, Vec<Value>>::new();
         let mut add_excerpt = |note: &Value| {
@@ -495,7 +550,7 @@ impl Database {
             })
             .optional()?
             .ok_or_else(Error::missing)?;
-        let mut library = json!({"version":9});
+        let mut library = json!({"version":10});
         for store in STORES {
             let mut rows = BTreeMap::<String, (i64, Value)>::new();
             let mut stmt = self

@@ -243,7 +243,7 @@ it('retains reading arrangements in archives, JSON, rekeying, stored revisions a
   await repo.close()
 })
 
-it.each([7, 8])(
+it.each([7, 8, 9])(
   'migrates v%i libraries and backups without inventing priority or arrangements',
   async (version) => {
     const { library, asset } = sample()

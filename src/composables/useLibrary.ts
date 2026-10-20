@@ -31,12 +31,14 @@ import {
   readSource,
   removeSource,
   saveReadingPosition,
+  prepareSourceExcerpt,
 } from '../core/sources'
 import type {
   SourceInput,
   SourceExcerpt,
   ReadingUpdate,
   SourceQueueUpdate,
+  SaveSourceExcerptInput,
 } from '../core/source-data'
 import { arrangeSource } from '../core/source-queue'
 import { saveSearch } from '../core/search'
@@ -349,6 +351,45 @@ export function useLibrary() {
         assets: [asset],
         reason: '导入材料前',
       })
+    },
+    async saveSourceExcerpt(input: SaveSourceExcerptInput) {
+      const target = repository
+      await savingDone
+      if (!ready.value || !input.scope || input.scope !== scope.value || target !== repository)
+        throw new LocalizedError(msg('学习库已变化，摘录未保存。'))
+      if (busy.value) throw new LocalizedError(msg('正在保存，请稍候。'))
+      busy.value = true
+      let prepared: ReturnType<typeof prepareSourceExcerpt>
+      const at = new Date()
+      try {
+        const text = await getSource(input.excerpt.sourceId)
+        const parent = library.value.sources.find((source) => source.id === input.excerpt.sourceId)
+        if (
+          !parent ||
+          parent.mediaId !== input.mediaId ||
+          input.scope !== scope.value ||
+          target !== repository
+        )
+          throw new LocalizedError(msg('材料已变化，请重新打开后继续阅读。'))
+        prepared = prepareSourceExcerpt(parent, text, input.excerpt, input.title, at)
+      } finally {
+        busy.value = false
+      }
+      return commit(
+        (current) => {
+          let next = addSource(current, prepared.source, prepared.asset)
+          if (input.position)
+            next = saveReadingPosition(
+              next,
+              input.excerpt.sourceId,
+              input.mediaId,
+              input.position,
+              at,
+            )
+          return next
+        },
+        { assets: [prepared.asset], reason: '保存摘录前' },
+      )
     },
     deleteSource(id: string, expectedScope: string) {
       if (!expectedScope || expectedScope !== scope.value)
