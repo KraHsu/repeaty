@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, reactive, ref, shallowRef, watch } from 'vue'
 import { FileText, Plus, Upload } from '@lucide/vue'
 import { t, locale, type DisplayMessage } from '../i18n'
 import type { Library } from '../core/model'
@@ -11,6 +11,7 @@ import {
   type SourceQueueAction,
   type SourceQueueUpdate,
   type SourcePriority,
+  type ReadingUpdate,
 } from '../core/source-data'
 import { sourceExcerpt, recentSource } from '../core/sources'
 import { localDay } from '../core/model'
@@ -21,6 +22,12 @@ import {
   type SourceQueueView,
 } from '../core/source-queue'
 import type { ReadingProgress } from '../composables/useReadingProgress'
+import {
+  startReadingRound,
+  advanceReadingRound,
+  reconcileReadingRound,
+  type ReadingRound,
+} from '../core/reading-round'
 import { createExportFile } from '@repeaty-platform'
 import AppModal from './AppModal.vue'
 import SourceReader from './SourceReader.vue'
@@ -37,6 +44,7 @@ const props = defineProps<{
   save: (input: SourceInput, scope: string) => Promise<boolean>
   remove: (id: string, scope: string) => Promise<boolean>
   arrange: (update: SourceQueueUpdate) => Promise<boolean>
+  saveReading: (update: ReadingUpdate) => Promise<boolean>
 }>()
 const emit = defineEmits<{
   create: [excerpt: SourceExcerpt, format: 'plain' | 'markdown']
@@ -45,6 +53,10 @@ const emit = defineEmits<{
   clearNotice: []
 }>()
 const today = computed(() => localDay(props.now))
+const round = shallowRef<ReadingRound>()
+const roundEnded = computed(
+  () => !!round.value && round.value.cursor === round.value.entries.length,
+)
 const view = ref<SourceQueueView>('ready')
 const queueViews = ['ready', 'deferred', 'archived', 'all'] as const
 const queueLabels = {
@@ -98,16 +110,18 @@ const form = reactive<SourceInput>({ title: '', url: '', format: 'markdown', con
 const fileInput = ref<HTMLInputElement>(),
   reader = ref<InstanceType<typeof SourceReader>>()
 let controller: AbortController | undefined,
-  fileGeneration = 0
+  fileGeneration = 0,
+  alive = true
 let readingLoad: Promise<void> = Promise.resolve()
 watch(filteredSources, (sources) => {
-  if (!sources.some((entry) => entry.id === selectedId.value)) {
+  if (!round.value && !sources.some((entry) => entry.id === selectedId.value)) {
     selectedId.value = sources[page.value * pageSize]?.id ?? sources[0]?.id ?? ''
   }
   page.value = Math.min(page.value, pages.value - 1)
 })
 watch([() => source.value?.id, () => source.value?.mediaId], load, { immediate: true })
 onUnmounted(() => {
+  alive = false
   controller?.abort()
   fileGeneration++
 })
@@ -168,7 +182,98 @@ const readingError = computed(() => props.reading.pending.get(selectedId.value)?
 const pendingReading = computed(() => props.reading.pending.has(selectedId.value))
 const deferring = ref(false),
   arranging = ref(false),
+  moving = ref(false),
   deferDate = ref('')
+const canMove = computed(
+  () =>
+    !props.busy &&
+    !arranging.value &&
+    !moving.value &&
+    !loading.value &&
+    !error.value &&
+    !!reader.value?.ready,
+)
+function showRound(next: ReadingRound) {
+  round.value = next
+  selectedId.value = next.entries[next.cursor]?.sourceId ?? ''
+  const index = filteredSources.value.findIndex((entry) => entry.id === selectedId.value)
+  if (index >= 0) page.value = Math.floor(index / pageSize)
+}
+watch([() => props.library.sources, today, () => props.busy, moving, arranging], () => {
+  if (!round.value || props.busy || moving.value || arranging.value) return
+  const next = reconcileReadingRound(round.value, props.library.sources, today.value)
+  if (next !== round.value) showRound(next)
+})
+async function savePosition() {
+  const current = source.value
+  if (!current || !reader.value?.ready || loading.value || error.value) return false
+  const scope = props.scope,
+    pending = props.reading.pending.get(current.id)
+  const saved = await props.saveReading(reader.value.capture())
+  if (saved && alive && scope === props.scope) props.reading.acknowledge(current.id, pending?.token)
+  return saved
+}
+async function beginRound() {
+  if (
+    props.busy ||
+    moving.value ||
+    arranging.value ||
+    !counts.value.ready ||
+    (source.value && !canMove.value)
+  )
+    return
+  const scope = props.scope
+  moving.value = true
+  emit('clearNotice')
+  try {
+    if (source.value && !(await savePosition())) return
+    if (!alive || props.scope !== scope) return
+    view.value = 'ready'
+    query.value = ''
+    page.value = 0
+    showRound(startReadingRound(props.library.sources, today.value))
+  } finally {
+    moving.value = false
+  }
+}
+async function nextSource() {
+  const current = round.value,
+    scope = props.scope
+  if (!current || roundEnded.value || !canMove.value) return
+  moving.value = true
+  emit('clearNotice')
+  try {
+    if ((await savePosition()) && alive && props.scope === scope && round.value === current)
+      showRound(advanceReadingRound(current, props.library.sources, today.value))
+  } finally {
+    moving.value = false
+  }
+}
+async function stopRound() {
+  const current = round.value,
+    scope = props.scope
+  if (!current || props.busy || moving.value || arranging.value) return
+  moving.value = true
+  emit('clearNotice')
+  try {
+    if (
+      source.value &&
+      reader.value?.ready &&
+      !loading.value &&
+      !error.value &&
+      !(await savePosition())
+    )
+      return
+    if (!alive || props.scope !== scope || round.value !== current) return
+    round.value = undefined
+    if (!filteredSources.value.some((entry) => entry.id === selectedId.value))
+      selectedId.value = recentSource(filteredSources.value)?.id ?? ''
+    const index = filteredSources.value.findIndex((entry) => entry.id === selectedId.value)
+    if (index >= 0) page.value = Math.floor(index / pageSize)
+  } finally {
+    moving.value = false
+  }
+}
 const queueState = computed(() =>
   source.value ? sourceQueueState(source.value, today.value) : undefined,
 )
@@ -179,7 +284,8 @@ function openDefer() {
 }
 async function arrange(action: SourceQueueAction) {
   const current = source.value
-  if (!current || props.busy || arranging.value) return
+  if (!current || props.busy || arranging.value || moving.value) return
+  const started = round.value
   const pending = props.reading.pending.get(current.id)
   const position = reader.value?.ready ? reader.value.capture().position : pending?.update.position
   const scope = props.scope
@@ -196,9 +302,15 @@ async function arrange(action: SourceQueueAction) {
       })
     ) {
       props.reading.acknowledge(current.id, pending?.token)
-      if (props.scope === scope) {
+      if (alive && props.scope === scope) {
         deferring.value = false
-        if (action.type === 'priority') {
+        if (
+          started &&
+          round.value === started &&
+          (action.type === 'defer' || action.type === 'archive')
+        ) {
+          showRound(advanceReadingRound(started, props.library.sources, today.value))
+        } else if (action.type === 'priority') {
           const index = filteredSources.value.findIndex((entry) => entry.id === current.id)
           if (index >= 0) page.value = Math.floor(index / pageSize)
         }
@@ -321,31 +433,72 @@ async function download() {
         <h1>{{ t('学习材料') }}</h1>
         <p>{{ t('保存原文，选取摘录制作卡片。') }}</p>
       </div>
-      <button class="button primary" :disabled="busy" @click="openImport">
-        <Plus :size="18" />{{ t('导入材料') }}
-      </button>
+      <div class="source-actions">
+        <button
+          v-if="!round"
+          class="button secondary"
+          :disabled="busy || moving || arranging || !counts.ready || (!!source && !canMove)"
+          @click="beginRound"
+        >
+          {{ t('开始一轮阅读') }}
+        </button>
+        <button class="button primary" :disabled="busy || moving || !!round" @click="openImport">
+          <Plus :size="18" />{{ t('导入材料') }}
+        </button>
+      </div>
     </header>
-    <div v-if="!library.sources.length" class="empty-state">
+    <div v-if="!library.sources.length && !round" class="empty-state">
       <FileText :size="36" />
       <h2>{{ t('还没有学习材料') }}</h2>
       <p>{{ t('导入文本或 Markdown，也可以直接粘贴。原文会保存在当前学习库中。') }}</p>
     </div>
     <template v-else>
-      <nav class="source-queue-filters" :aria-label="t('阅读队列')">
+      <section
+        v-if="round && !roundEnded"
+        class="reading-round"
+        :aria-label="t('本轮阅读')"
+        :aria-busy="moving || arranging"
+      >
+        <div>
+          <strong>{{
+            t('第 {number} 篇，共 {total} 篇', {
+              number: round.cursor + 1,
+              total: round.entries.length,
+            })
+          }}</strong>
+          <p class="form-note">{{ t('本轮按开始时的顺序阅读。') }}</p>
+        </div>
+        <div class="source-actions">
+          <button class="button primary" :disabled="!canMove" @click="nextSource">
+            {{ t(round.cursor + 1 === round.entries.length ? '完成本轮' : '下一篇') }}
+          </button>
+          <button class="text-button" :disabled="busy || moving || arranging" @click="stopRound">
+            {{ t('结束本轮') }}
+          </button>
+        </div>
+      </section>
+      <nav v-if="!round" class="source-queue-filters" :aria-label="t('阅读队列')">
         <button
           v-for="value in queueViews"
           :key="value"
           type="button"
           :aria-pressed="view === value"
+          :disabled="busy || moving || !!round"
           @click="view = value"
         >
           {{ t(queueLabels[value]) }} <span>{{ counts[value] }}</span>
         </button>
       </nav>
-      <div class="sources-layout">
-        <aside class="source-list">
+      <div class="sources-layout" :class="{ 'round-layout': !!round }">
+        <aside v-if="!round" class="source-list">
           <label class="sr-only" for="source-search">{{ t('搜索材料') }}</label
-          ><input id="source-search" v-model="query" type="search" :placeholder="t('搜索材料')" />
+          ><input
+            id="source-search"
+            v-model="query"
+            type="search"
+            :placeholder="t('搜索材料')"
+            :disabled="!!round || moving"
+          />
           <p v-if="!visibleSources.length" class="form-note">{{ t('没有找到材料。') }}</p>
           <div
             v-for="entry in visibleSources"
@@ -356,6 +509,7 @@ async function download() {
             <button
               class="source-list-title"
               :aria-pressed="entry.id === selectedId"
+              :disabled="busy || moving || !!round"
               @click="openSource(entry.id)"
             >
               <strong>{{ entry.title }}</strong></button
@@ -382,7 +536,11 @@ async function download() {
                   date: new Date(entry.reading.updatedAt).toLocaleString(locale),
                 })
               }}</span>
-              <button class="text-button source-continue" @click="resume(entry.id)">
+              <button
+                class="text-button source-continue"
+                :disabled="busy || moving || !!round"
+                @click="resume(entry.id)"
+              >
                 {{ t('继续阅读') }}
               </button>
             </template>
@@ -401,7 +559,28 @@ async function download() {
             </button>
           </nav>
         </aside>
-        <section v-if="source" class="source-reader">
+        <section
+          v-if="roundEnded"
+          class="empty-state source-queue-empty reading-round-complete"
+          :aria-label="t('本轮阅读')"
+        >
+          <FileText :size="32" />
+          <h2>{{ t('本轮结束') }}</h2>
+          <p>{{ t('已到本轮末尾，阅读位置已保存。') }}</p>
+          <div class="source-actions">
+            <button
+              class="button primary"
+              :disabled="busy || moving || !counts.ready"
+              @click="beginRound"
+            >
+              {{ t('再读一轮') }}
+            </button>
+            <button class="button secondary" :disabled="busy || moving" @click="stopRound">
+              {{ t('返回材料') }}
+            </button>
+          </div>
+        </section>
+        <section v-else-if="source" class="source-reader">
           <div class="source-reader-heading">
             <div>
               <h2>{{ source.title }}</h2>
@@ -421,7 +600,11 @@ async function download() {
                 @click="download"
               >
                 {{ t('导出原文') }}</button
-              ><button class="text-button danger" :disabled="busy || exporting" @click="openDelete">
+              ><button
+                class="text-button danger"
+                :disabled="busy || exporting || moving"
+                @click="openDelete"
+              >
                 {{ t('删除材料') }}
               </button>
             </div>
@@ -439,7 +622,7 @@ async function download() {
               <select
                 id="source-reading-priority"
                 :value="source.priority ?? 'normal'"
-                :disabled="busy || arranging"
+                :disabled="busy || arranging || moving"
                 aria-describedby="source-priority-help"
                 @change="changePriority"
               >
@@ -452,7 +635,7 @@ async function download() {
               <button
                 v-if="queueState !== 'ready'"
                 class="button secondary"
-                :disabled="busy || arranging"
+                :disabled="busy || arranging || moving"
                 @click="arrange({ type: 'restore' })"
               >
                 {{ t('加入待阅读') }}
@@ -460,7 +643,7 @@ async function download() {
               <button
                 v-if="queueState !== 'archived'"
                 class="button secondary"
-                :disabled="busy || arranging"
+                :disabled="busy || arranging || moving"
                 @click="openDefer"
               >
                 {{ t('稍后阅读') }}
@@ -468,7 +651,7 @@ async function download() {
               <button
                 v-if="queueState !== 'archived'"
                 class="text-button"
-                :disabled="busy || arranging"
+                :disabled="busy || arranging || moving"
                 @click="arrange({ type: 'archive' })"
               >
                 {{ t('归档材料') }}
@@ -716,6 +899,30 @@ async function download() {
 </template>
 
 <style scoped>
+.reading-round {
+  position: sticky;
+  top: 0.75rem;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  border: 1px solid #b9cbb1;
+  border-radius: 10px;
+  background: #eef4e9;
+}
+.reading-round strong {
+  font-size: 1rem;
+}
+.reading-round .form-note {
+  margin: 0.4rem 0 0;
+}
+.reading-round-complete .source-actions {
+  justify-content: center;
+}
 .source-queue-filters {
   display: flex;
   flex-wrap: wrap;
@@ -792,6 +999,9 @@ async function download() {
   grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
   gap: 1.5rem;
   align-items: start;
+}
+.sources-layout.round-layout {
+  grid-template-columns: minmax(0, 1fr);
 }
 .source-list {
   display: grid;

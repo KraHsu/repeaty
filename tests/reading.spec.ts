@@ -12,6 +12,7 @@ import { readingQueueFlow, queueView } from './fixtures/reading-queue-flow'
 import { emptyLibrary } from '../src/core/model'
 import { addSource, prepareSource } from '../src/core/sources'
 import { exportArchive } from '../src/core/archive'
+import { readingRoundFlow, startRound } from './fixtures/reading-round-flow'
 
 async function read(page: Parameters<typeof storedLibrary>[0]) {
   const rows = await storedLibrary(page)
@@ -22,6 +23,74 @@ async function read(page: Parameters<typeof storedLibrary>[0]) {
     ]),
   ) as unknown as Library
 }
+test('reading rounds save before advancing, retain their order, defer, archive and finish without changing reviews', async ({
+  page,
+}, info) => {
+  await readingRoundFlow(page, () => read(page), info)
+})
+
+test('a failed next-source save retains the current round and position for retry', async ({
+  page,
+}) => {
+  await importReading(page, 'Next A', 'plain', readingText)
+  await importReading(page, 'Next B', 'plain', readingText)
+  await startRound(page, 'Next A')
+  await moveReading(page, 0.2)
+  await saveReading(page)
+  const before = await read(page)
+  await page.evaluate(() => {
+    const original = IDBObjectStore.prototype.put
+    ;(window as unknown as { failNext: boolean }).failNext = true
+    IDBObjectStore.prototype.put = function (...args: Parameters<typeof original>) {
+      if (this.name === 'sources' && (window as unknown as { failNext: boolean }).failNext)
+        throw new DOMException('Synthetic full storage', 'QuotaExceededError')
+      return original.apply(this, args)
+    }
+  })
+  await moveReading(page, 0.65)
+  await page.getByRole('button', { name: '下一篇', exact: true }).click()
+  await expect(page.getByRole('alert').filter({ hasText: '存储空间不足' }).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Next A', exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: '本轮阅读', exact: true })).toContainText(
+    '第 1 篇，共 2 篇',
+  )
+  expect(await read(page)).toEqual(before)
+  await page.evaluate(() => ((window as unknown as { failNext: boolean }).failNext = false))
+  await page.getByRole('button', { name: '下一篇', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Next B', exact: true })).toBeVisible()
+  const saved = (await read(page)).sources.find((source) => source.title === 'Next A')!
+  expect(saved.reading!.offset).toBeGreaterThan(
+    before.sources.find((source) => source.id === saved.id)!.reading!.offset,
+  )
+  await page.getByRole('button', { name: '完成本轮', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '本轮结束', exact: true })).toBeVisible()
+})
+
+test('an unreadable source still allows ending the round without overwriting its position', async ({
+  page,
+}) => {
+  await importReading(page, 'Readable A', 'plain', readingText)
+  await importReading(page, 'Unreadable B', 'plain', readingText)
+  await moveReading(page, 0.35)
+  await saveReading(page)
+  await startRound(page, 'Readable A')
+  const target = (await read(page)).sources.find((source) => source.title === 'Unreadable B')!
+  await page.evaluate((id) => {
+    const original = IDBObjectStore.prototype.get
+    IDBObjectStore.prototype.get = function (key: IDBValidKey | IDBKeyRange) {
+      if (this.name === 'assets' && key === id)
+        throw new DOMException('Synthetic unreadable body', 'UnknownError')
+      return original.call(this, key)
+    }
+  }, target.mediaId)
+  await page.getByRole('button', { name: '下一篇', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Unreadable B', exact: true })).toBeVisible()
+  await expect(page.locator('.source-reader [role="alert"]')).toBeVisible()
+  await expect(page.getByRole('button', { name: '完成本轮', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: '结束本轮', exact: true }).click()
+  await expect(page.getByRole('region', { name: '本轮阅读', exact: true })).toHaveCount(0)
+  expect((await read(page)).sources.find((source) => source.id === target.id)).toEqual(target)
+})
 test('reading positions survive reload, responsive layouts and backup recovery without changing study progress', async ({
   page,
 }, info) => {

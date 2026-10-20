@@ -32,7 +32,12 @@ import ReviewSession from './components/ReviewSession.vue'
 import NoteEditor from './components/NoteEditor.vue'
 import CollectionPanel from './components/CollectionPanel.vue'
 import ImportNotes from './components/ImportNotes.vue'
-import type { SourceInput, SourceExcerpt, SourceQueueUpdate } from './core/source-data'
+import type {
+  SourceInput,
+  SourceExcerpt,
+  SourceQueueUpdate,
+  ReadingUpdate,
+} from './core/source-data'
 import PluginPanel from './components/PluginPanel.vue'
 import { remoteWorkspace, desktopEdition } from './edition'
 import {
@@ -258,6 +263,9 @@ async function deleteSource(id: string, scope: string) {
 }
 async function arrangeSource(update: SourceQueueUpdate) {
   return run(() => workspace.arrangeSource(update), '阅读安排已保存')
+}
+async function saveReading(update: ReadingUpdate) {
+  return run(() => workspace.saveSourceReading(update, new Date()))
 }
 function createFromExcerpt(excerpt: SourceExcerpt, format: 'plain' | 'markdown') {
   notice.value = null
@@ -910,6 +918,7 @@ async function restoreBackup() {
         :save="saveSource"
         :remove="deleteSource"
         :arrange="arrangeSource"
+        :save-reading="saveReading"
         :action-error="notice?.error ? t(notice.text) : undefined"
         @create="createFromExcerpt"
         @share="mcpSelection = $event"
