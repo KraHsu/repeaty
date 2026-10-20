@@ -4,6 +4,7 @@ import { createRepository } from '../core/storage'
 import { fixture } from '../core/test-fixtures'
 import { addSource, prepareSource } from '../core/sources'
 import { useLibrary } from './useLibrary'
+import { sourceArrangement } from '../core/reading-operations'
 
 const factory = vi.hoisted(() => vi.fn())
 vi.mock('@repeaty-platform', () => ({ createWorkspaceRepository: factory }))
@@ -11,6 +12,49 @@ const repositories: ReturnType<typeof createRepository>[] = []
 afterEach(async () => {
   for (const repository of repositories.splice(0)) await repository.close()
   factory.mockReset()
+})
+
+it('commits a whole batch and undoes it while preserving later details and card ratings', async () => {
+  const { workspace, repository, input } = await setup()
+  await workspace.saveSource(
+    { title: 'Second', url: '', format: 'plain', content: 'Second context' },
+    input.scope,
+  )
+  const before = (await repository.load()).library
+  const targets = before.sources.map((s) => ({
+    id: s.id,
+    mediaId: s.mediaId,
+    before: sourceArrangement(s),
+  }))
+  await workspace.arrangeSources({
+    targets,
+    action: { type: 'archive' },
+    scope: input.scope,
+    reading: input,
+  })
+  expect(workspace.canUndoReading.value).toBe(true)
+  expect(
+    (await repository.load()).library.sources.every((s) => s.queue?.state === 'archived'),
+  ).toBe(true)
+  const source = workspace.library.value.sources[0]!
+  await workspace.editSourceDetails({
+    sourceId: source.id,
+    mediaId: source.mediaId,
+    scope: input.scope,
+    before: { title: source.title, url: source.url },
+    details: { title: 'Later title', url: '' },
+  })
+  await workspace.review(before.cards[0]!.id, 3)
+  const rated = (await repository.load()).library
+  await workspace.undoReadingArrangement(input.scope)
+  const after = (await repository.load()).library
+  expect(after.sources.map(sourceArrangement)).toEqual(before.sources.map(sourceArrangement))
+  expect(after.sources[0]!.title).toBe('Later title')
+  expect(after.sources[0]!.reading).toEqual(rated.sources[0]!.reading)
+  expect(after.cards).toEqual(rated.cards)
+  expect(after.reviews).toEqual(rated.reviews)
+  expect(workspace.canUndoReading.value).toBe(false)
+  await expect(workspace.undoReadingArrangement(input.scope)).rejects.toThrow()
 })
 async function setup() {
   const { source, asset } = prepareSource({

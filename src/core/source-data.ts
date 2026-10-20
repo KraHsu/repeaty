@@ -49,6 +49,26 @@ export interface SourceQueueUpdate {
   action: SourceQueueAction
   position?: ReadingPosition
 }
+export type SourceBatchAction = Extract<
+  SourceQueueAction,
+  { type: 'priority' | 'defer' | 'archive' | 'restore' }
+>
+export interface SourceArrangement {
+  queue?: Source['queue']
+  priority?: SourcePriority
+  readingIntervalDays?: Source['readingIntervalDays']
+}
+export interface SourceTarget {
+  id: string
+  mediaId: string
+  before: SourceArrangement
+}
+export interface SourceBatchUpdate {
+  targets: SourceTarget[]
+  action: SourceBatchAction
+  scope: string
+  reading?: ReadingUpdate
+}
 export const sourceOriginSchema = z
   .object({
     sourceId: id,

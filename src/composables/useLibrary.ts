@@ -1,5 +1,5 @@
 import { msg, LocalizedError, validationMessage, type DisplayMessage } from '../i18n'
-import { readonly, ref, shallowRef } from 'vue'
+import { computed, readonly, ref, shallowRef } from 'vue'
 import type { Assessment } from '../plugins/data'
 import { canReviewCard } from '../plugins'
 import { ZodError } from 'zod'
@@ -41,8 +41,16 @@ import type {
   SourceQueueUpdate,
   SaveSourceExcerptInput,
   SourceDetailsUpdate,
+  SourceBatchUpdate,
 } from '../core/source-data'
 import { arrangeSource } from '../core/source-queue'
+import {
+  arrangeSources,
+  readingUndoFor,
+  canUndoReading,
+  undoReading,
+  type ReadingUndo,
+} from '../core/reading-operations'
 import { saveSearch } from '../core/search'
 import type { TransferOptions } from '../core/archive'
 import { exportBackup, rekeyBackup, type BackupData } from '../core/backups'
@@ -70,6 +78,7 @@ export function useLibrary() {
     loadError = ref<DisplayMessage>(''),
     backupError = ref('')
   const backups = shallowRef<BackupSummary[]>([])
+  const readingUndo = shallowRef<ReadingUndo>()
   let revision = 0
   let repository: ReturnType<typeof createRepository> | ReturnType<typeof createServerRepository>
   let savingDone: Promise<void> = Promise.resolve()
@@ -81,6 +90,7 @@ export function useLibrary() {
     busy.value = true
     ready.value = false
     scope.value = ''
+    readingUndo.value = undefined
     try {
       await repository?.close()
       repository = await createWorkspaceRepository(() => {
@@ -214,6 +224,13 @@ export function useLibrary() {
     loadError: readonly(loadError),
     backups: readonly(backups),
     backupError: readonly(backupError),
+    readingUndo: readonly(readingUndo),
+    canUndoReading: computed(
+      () =>
+        ready.value &&
+        readingUndo.value?.scope === scope.value &&
+        canUndoReading(library.value, readingUndo.value),
+    ),
     readCardDrafts: (scope: string) => draftRepository(scope).readCardDrafts(),
     addCardDrafts: (scope: string, drafts: CardDraft[]) =>
       draftRepository(scope).addCardDrafts(drafts),
@@ -242,11 +259,64 @@ export function useLibrary() {
       await savingDone
       if (!ready.value || !update.scope || update.scope !== scope.value || target !== repository)
         throw new LocalizedError(msg('学习库已变化，阅读安排未保存。'))
-      const at = new Date()
+      const at = new Date(),
+        before = library.value
       let next = arrangeSource(library.value, update.sourceId, update.mediaId, update.action, at)
       if (update.position)
         next = saveReadingPosition(next, update.sourceId, update.mediaId, update.position, at)
-      if (next !== library.value) await commit(() => next, { reason: '更改阅读安排前' })
+      if (next !== library.value) {
+        await commit(() => next, { reason: '更改阅读安排前' })
+        const undo = readingUndoFor(before, library.value, update.scope)
+        if (undo && scope.value === update.scope) readingUndo.value = undo
+      }
+    },
+    async arrangeSources(update: SourceBatchUpdate) {
+      const target = repository
+      await savingDone
+      if (!ready.value || !update.scope || update.scope !== scope.value || target !== repository)
+        throw new LocalizedError(msg('学习库已变化，阅读安排未保存。'))
+      const before = library.value,
+        at = new Date()
+      let next = arrangeSources(before, update.targets, update.action, at)
+      if (update.reading) {
+        if (
+          update.reading.scope !== update.scope ||
+          !update.targets.some(
+            (t) => t.id === update.reading!.sourceId && t.mediaId === update.reading!.mediaId,
+          )
+        )
+          throw new LocalizedError(msg('材料或阅读安排已变化，请重新选择。'))
+        next = saveReadingPosition(
+          next,
+          update.reading.sourceId,
+          update.reading.mediaId,
+          update.reading.position,
+          at,
+        )
+      }
+      if (next !== library.value) {
+        await commit(() => next, { reason: '更改阅读安排前' })
+        const undo = readingUndoFor(before, library.value, update.scope)
+        if (undo && scope.value === update.scope) readingUndo.value = undo
+      }
+    },
+    async undoReadingArrangement(expectedScope: string) {
+      const target = repository,
+        undo = readingUndo.value
+      await savingDone
+      if (
+        !ready.value ||
+        !expectedScope ||
+        expectedScope !== scope.value ||
+        target !== repository ||
+        !undo ||
+        undo.scope !== expectedScope ||
+        undo !== readingUndo.value
+      )
+        throw new LocalizedError(msg('材料或阅读安排已变化，请重新选择。'))
+      const next = undoReading(library.value, undo)
+      await commit(() => next, { reason: '撤销阅读安排前' })
+      if (readingUndo.value === undo) readingUndo.value = undefined
     },
     async editSourceDetails(update: SourceDetailsUpdate) {
       const target = repository
@@ -588,12 +658,14 @@ export function useLibrary() {
     undo() {
       return commit(undoReview)
     },
-    restore(data: BackupData) {
+    async restore(data: BackupData) {
       const next = rekeyBackup(data)
-      return commit(() => next.library, { assets: next.assets, reason: '恢复备份前' })
+      await commit(() => next.library, { assets: next.assets, reason: '恢复备份前' })
+      readingUndo.value = undefined
     },
-    restoreSnapshot(data: Library) {
-      return commit(() => data, { reason: '恢复快照前' })
+    async restoreSnapshot(data: Library) {
+      await commit(() => data, { reason: '恢复快照前' })
+      readingUndo.value = undefined
     },
     async addSample() {
       const { createStarterDeck } = await import('../core/sample')

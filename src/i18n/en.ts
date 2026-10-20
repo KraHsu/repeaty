@@ -1,5 +1,8 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  撤销阅读安排前: 'Before undoing reading arrangements',
+  '材料或阅读安排已变化，请重新选择。':
+    'The materials or reading arrangements have changed. Select them again.',
   编辑材料信息: 'Edit source details',
   保存材料信息: 'Save source details',
   材料信息已保存: 'Source details saved',
