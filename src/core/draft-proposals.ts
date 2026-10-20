@@ -1,10 +1,11 @@
 import { z } from 'zod'
-import { noteSchema, type NoteInput } from './model'
+import { noteSchema } from './model'
+import { MAX_DRAFTS, type CardDraft } from './card-draft-data'
+export { MAX_DRAFTS, type CardDraft } from './card-draft-data'
 import type { SourceExcerpt } from './source-data'
 import { sourceExcerpt } from './sources'
 import { LearningQueryError, type LocalLearningSnapshot } from './learning-reader'
 
-export const MAX_DRAFTS = 50
 export const MAX_PROPOSALS = 32
 export const proposalSchema = z
   .strictObject({
@@ -37,11 +38,6 @@ type SharedExcerpt = {
   format: 'plain' | 'markdown'
   excerpt: SourceExcerpt
 }
-export type CardDraft = SharedExcerpt & {
-  id: string
-  receivedAt: string
-  input: Pick<NoteInput, 'type' | 'front' | 'back' | 'format' | 'tags'>
-}
 type Receipt = { requestId: string; draftIds: string[]; status: 'received' }
 type Proposal = {
   selectionId: string
@@ -52,7 +48,7 @@ type Proposal = {
   waiting: number
 }
 
-/** Session memory only. Formal notes are saved separately by the editor's application operation. */
+/** Grants and retry receipts stay in memory; the desktop separately persists received drafts. */
 export class DraftSession {
   scope = ''
   selection: SharedExcerpt | undefined
@@ -64,6 +60,10 @@ export class DraftSession {
     this.scope = scope
     this.revoke()
     this.drafts = []
+  }
+  restore(scope: string, drafts: CardDraft[]) {
+    if (scope !== this.scope) return
+    this.drafts = structuredClone(drafts)
   }
   revoke() {
     this.selection = undefined
@@ -152,7 +152,7 @@ export class DraftSession {
       })
       if (!checked.success) throw new LearningQueryError('invalid-arguments')
       return {
-        type: checked.data.type,
+        type: card.type,
         format: checked.data.format,
         front: checked.data.front,
         back: checked.data.back,
@@ -172,11 +172,23 @@ export class DraftSession {
         this.drafts.length + reserved + cards.length > MAX_DRAFTS
       )
         throw new LearningQueryError('draft-limit')
-      const drafts = cards.map((card) => ({
+      const position =
+        Math.max(
+          -1,
+          ...this.drafts.map((draft) => draft.position),
+          ...[...this.proposals.values()].flatMap((proposal) =>
+            proposal.drafts.map((draft) => draft.position),
+          ),
+        ) + 1
+      const drafts = cards.map((card, index) => ({
         ...selection,
+        version: 1 as const,
         id: crypto.randomUUID(),
+        position: position + index,
         receivedAt: now.toISOString(),
-        input: card,
+        updatedAt: now.toISOString(),
+        input: { ...card, frontMedia: [], backMedia: [] },
+        uploads: [],
       }))
       proposal = {
         selectionId: selection.selectionId,
@@ -197,14 +209,15 @@ export class DraftSession {
     let finished = false
     return {
       receipt: structuredClone(staged.receipt),
-      // Display drafts only after the native bridge accepted the response.
-      finish: (accepted: boolean) => {
+      drafts: staged.committed ? [] : structuredClone(staged.drafts),
+      // The desktop commits storage before accepting the batch and returning its receipt.
+      finish: (accepted: boolean, display = true) => {
         if (finished) return
         finished = true
         staged.waiting--
         if (this.proposals.get(input.requestId) !== staged) return
         if (accepted && !staged.committed && this.selection?.selectionId === staged.selectionId) {
-          this.drafts = [...this.drafts, ...staged.drafts]
+          if (display) this.drafts = [...this.drafts, ...staged.drafts]
           staged.committed = true
         }
         if (!staged.waiting && !staged.committed) this.proposals.delete(input.requestId)

@@ -148,18 +148,7 @@ const libraryRecords = () =>
     }catch(error){reject(error)}finally{db.close()}
   };
 });`)
-try {
-  await until(async () => {
-    const r = await fetch(`http://127.0.0.1:${servicePort}/api/status`, {
-      headers: { 'X-Repeaty-Client': '1' },
-    })
-    return r.ok
-  }, 'backend ready')
-  await until(async () => {
-    await command('/status')
-    return true
-  }, 'driver ready')
-  console.log('Starting native browser session')
+async function createSession() {
   const created = await command('/session', {
     capabilities: {
       alwaysMatch: {
@@ -172,6 +161,20 @@ try {
     },
   })
   session = created.sessionId
+}
+try {
+  await until(async () => {
+    const r = await fetch(`http://127.0.0.1:${servicePort}/api/status`, {
+      headers: { 'X-Repeaty-Client': '1' },
+    })
+    return r.ok
+  }, 'backend ready')
+  await until(async () => {
+    await command('/status')
+    return true
+  }, 'driver ready')
+  console.log('Starting native browser session')
+  await createSession()
   console.log('Native window created')
   await until(
     () => execute("return document.querySelectorAll('.deck-title').length===1"),
@@ -916,13 +919,64 @@ try {
     () => execute("return document.querySelectorAll('.draft-list li').length===1"),
     'native unsaved draft',
   )
+  await click('检查并编辑')
+  const pendingText = 'Native persisted edit ' + '等待确认🙂\n'.repeat(700)
+  await until(
+    () => execute("return !!document.querySelector('#card-front')"),
+    'native pending draft editor',
+  )
+  await fill('#card-front', pendingText)
+  await fill('#card-back', '')
+  await waitButton('保存草稿')
+  await click('保存草稿')
+  await until(
+    () =>
+      execute(
+        "return !!document.querySelector('.draft-queue') && document.querySelectorAll('.draft-list li').length===1",
+      ),
+    'native pending edits saved',
+  )
   assert.deepEqual(await libraryRecords(), afterDrafts)
+  // Close the actual application and reopen the same isolated profile.
+  await command(`/session/${session}`, undefined, 'DELETE')
+  session = undefined
+  await createSession()
+  await until(
+    () => execute("return document.querySelectorAll('.deck-title').length===1"),
+    'native app reopened',
+  )
+  assert.deepEqual(await libraryRecords(), afterDrafts)
+  await waitButton('制卡草稿（1）')
+  assert.equal((await invoke('mcp_status')).enabled, false)
+  await click('制卡草稿（1）')
+  assert.equal(await execute("return document.body.textContent.includes('当前分享的摘录')"), false)
+  await click('检查并编辑')
+  await until(
+    () =>
+      execute("return document.querySelector('#card-front')?.value===arguments[0]", pendingText),
+    'native restored draft edits',
+  )
+  assert.equal(await execute("return document.querySelector('#card-back').value"), '')
+  await fill('#card-back', 'Native completed answer')
+  await waitButton('确认并保存卡片')
+  await click('确认并保存卡片')
+  await until(
+    () =>
+      execute(
+        "return !!document.querySelector('.draft-queue') && document.querySelectorAll('.draft-list li').length===0",
+      ),
+    'native restored draft confirmed',
+  )
+  const confirmed = await libraryRecords()
+  assert.equal(confirmed.notes.length, afterDrafts.notes.length + 1)
+  assert.equal(confirmed.cards.length, afterDrafts.cards.length + 1)
+  assert.deepEqual(confirmed.reviews, afterDrafts.reviews)
   await command(`/session/${session}/refresh`, {})
   await until(
     () => execute("return document.querySelectorAll('.deck-title').length===1"),
-    'native confirmed drafts after restart',
+    'native consumed draft after reload',
   )
-  assert.deepEqual(await libraryRecords(), afterDrafts)
+  assert.deepEqual(await libraryRecords(), confirmed)
   assert.equal(await execute("return document.body.textContent.includes('制卡草稿（')"), false)
   console.log(
     'Native MCP excerpt sharing, long drafts, retry, three note types, confirmation and restart passed',

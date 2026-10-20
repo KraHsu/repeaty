@@ -44,7 +44,7 @@ CI 使用两个 Chromium worker，禁止提交 `test.only`，失败时保留浏�
 
 ## 大数据量存储
 
-纯前端版的 IndexedDB v8 将卡组、笔记、卡片、复习记录、练习、提交、材料元数据、媒体元数据和常用筛选分别存储，图片、音频和材料原文保存为独立 Blob。提交另有不含代码与裁判详情的摘要索引，首次升级时从原记录建立。完整提交、摘要和修订号在同一事务中更新；旧标签页不能覆盖新数据。首次打开自动迁移旧数据库，迁移校验失败时保留原记录。
+纯前端版的 IndexedDB v9 将卡组、笔记、卡片、复习记录、练习、提交、材料元数据、媒体元数据和常用筛选分别存储，图片、音频和材料原文保存为独立 Blob。提交另有不含代码与裁判详情的摘要索引，首次升级时从原记录建立。完整提交、摘要和修订号在同一事务中更新；旧标签页不能覆盖新数据。首次打开自动迁移旧数据库，迁移校验失败时保留原记录。v9 另有桌面本地库使用的 `cardDrafts` 辅助表，网页版本不提供草稿入口。
 
 启动时读取题面、调度状态和历史摘要，提交代码与裁判详情在展开时读取，收起后释放视图中的正文。提交、判题状态和评分只校验变化记录及引用关系；导入、编辑等结构变化继续执行完整校验。两处历史入口每页显示 20 次练习，查看往次代码须成功读取后才记为查看答案。
 
@@ -115,9 +115,9 @@ Anki `.apkg` 在同源 Worker 中通过 sql.js 读取，HTML 用 parse5 作为�
 
 桌面 MCP 的学习查询通过 Rust 本机 HTTP 监听和 IPC Channel 请求当前窗口的只读应用接口。`useLibrary.readLearning` 校验作用域与忙碌状态，`core/learning-reader.ts` 从已提交的内存视图投影有上限的结果；不绕过 IndexedDB，也不读取提交正文。授权仅存于本次进程，切库和重载撤销。查询沿用现有修订号，无存储或备份格式变更。[设计与验证](adr/002-desktop-mcp-bridge.md) · [客户端配置](MCP.md)。
 
-0.13.0 增加受选区授权限制的 `repeaty_selected_excerpt` 与 `repeaty_propose_cards`。`core/draft-proposals.ts` 管理临时批次、重试与容量；`desktop/mcp.ts` 在原生接受回复后才让草稿可见。`DraftWorkbench` 复用 NoteEditor，由用户确认调用 `saveExcerptNote` 才生成正式记录。临时草稿不属于库、API 或备份格式，不增加迁移。[ADR 003](adr/003-mcp-card-drafts.md)。
+0.13.0 增加受选区授权限制的 `repeaty_selected_excerpt` 与 `repeaty_propose_cards`；0.14.0 将已接收草稿保存到独立 IndexedDB 表，写入成功后才返回回执。`core/draft-proposals.ts` 管理选区、批次重试与容量；`core/card-draft-data.ts` 校验持久记录与附件，`desktop/drafts.ts` 负责恢复与作用域代次检查。`DraftWorkbench` 复用 NoteEditor，明确保存编辑或确认调用 `saveExcerptNote`；确认时生成正式记录与消费草稿使用同一事务。辅助表不参与正式修订、检查点和备份，不持久化授权。[ADR 003](adr/003-mcp-card-drafts.md) · [ADR 004](adr/004-persistent-card-drafts.md)。
 
-本次数据格式升级为 Library v6、IndexedDB v8、SQLite v3、HTTP API v4、`.repeaty` v3 和 JSON 备份 v6。旧 Library / 备份升级时补空材料列表，保留原 ID、FSRS 状态、记录和检查点；旧客户端拒绝写入新版本数据库，前后端需要一起升级。旧 `.repeaty` v1 / v2 和 JSON 备份仍可恢复。服务端校验来源、快照和摘录引用，按材料逐份读取正文验证位置，避免批量恢复时同时缓存全部原文。
+当前数据格式为 Library v6、IndexedDB v9、SQLite v3、HTTP API v4、`.repeaty` v3 和 JSON 备份 v6。0.14.0 只增加 IndexedDB 辅助表，其余格式沿用 0.11.0。旧 Library / 备份升级时补空材料列表，保留原 ID、FSRS 状态、记录和检查点；旧客户端拒绝写入新版本数据库。旧 `.repeaty` v1 / v2 和 JSON 备份仍可恢复。服务端校验来源、快照和摘录引用，按材料逐份读取正文验证位置，避免批量恢复时同时缓存全部原文。
 
 Anki 集成只规划导入，不计划提供 Repeaty → Anki 导出。尚未实现 Anki 进度迁移、自定义字段 / HTML 模板、所见即所得富文本编辑器、图片遮挡、嵌套挖空、FSRS 参数训练。
 
@@ -135,6 +135,8 @@ src/core/
   anki/              # .apkg 解析、HTML 转换、媒体比较与选择性导入更新
   source-data.ts     # 材料元数据与摘录位置
   sources.ts         # 原文快照、读取、摘录与独立删除
+  card-draft-data.ts  # 待确认草稿与附件校验
+  draft-proposals.ts # 选区授权、批次与重试
   storage.ts         # IndexedDB 分表存储、增量快照与媒体回收
   archive.ts         # 流式 ZIP / NDJSON 备份与原始媒体
   backups.ts         # 旧版 JSON 备份兼容
@@ -142,6 +144,7 @@ src/core/
 src/plugins/        # 题目 / 答案接口、应用插件开关、LeetCode 题型
 src/backend/        # HTTP 客户端、SQLite 服务的增量存储适配
 src/platform/       # 构建时选择 IndexedDB 或后端适配器
+src/desktop/        # 原生连接、MCP 桥接、持久草稿与确认界面
 repeaty.plugins.*.ts # 静态 / 后端版部署插件清单
 examples/plugins/   # 可安装的纯前端插件示例
 server/             # Rust 账户服务、每账户 SQLite、Schema 与测试

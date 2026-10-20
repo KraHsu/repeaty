@@ -5,7 +5,14 @@ import { remoteWorkspace } from '../edition'
 import type { SourceExcerpt } from '../core/source-data'
 import type { MediaUpload, NoteInput } from '../core/model'
 import type { CardDraft } from '../core/draft-proposals'
-import { draftSession, type DraftWorkspace } from './drafts'
+import {
+  draftSession,
+  draftState,
+  discardDraft,
+  reloadDrafts,
+  saveDraftEdits,
+  type DraftWorkspace,
+} from './drafts'
 import { mcpStatus } from './mcp'
 import McpSettings from './McpSettings.vue'
 import AppModal from '../components/AppModal.vue'
@@ -17,6 +24,7 @@ const queueOpen = ref(false),
   editing = ref<CardDraft>(),
   deckId = ref(''),
   sharing = ref(false),
+  saving = ref(false),
   error = ref<DisplayMessage>(''),
   shareError = ref<DisplayMessage>('')
 const library = computed(() => props.workspace.library.value)
@@ -104,26 +112,62 @@ function openDraft(id: string) {
   }
 }
 async function save(input: NoteInput, uploads: MediaUpload[], allowRemove: boolean) {
-  if (!editing.value) return false
+  if (!editing.value || saving.value) return false
+  saving.value = true
   error.value = ''
   try {
     const draft = draftSession.getDraft(
       props.workspace.localLearningSnapshot(editing.value.scope),
       editing.value.id,
     )
-    await props.workspace.saveExcerptNote(input, draft.excerpt, draft.scope, uploads, allowRemove)
+    await props.workspace.saveExcerptNote(
+      input,
+      draft.excerpt,
+      draft.scope,
+      uploads,
+      allowRemove,
+      draft.id,
+    )
     draftSession.discard(draft.id)
     return true
   } catch (issue) {
     error.value = displayError(issue)
     return false
+  } finally {
+    saving.value = false
+  }
+}
+async function keepDraft(input: NoteInput, uploads: MediaUpload[]) {
+  if (!editing.value || saving.value) return false
+  saving.value = true
+  error.value = ''
+  try {
+    await saveDraftEdits(props.workspace, editing.value.id, input, uploads)
+    return true
+  } catch (issue) {
+    error.value = displayError(issue)
+    return false
+  } finally {
+    saving.value = false
+  }
+}
+async function discard(id: string) {
+  if (saving.value) return
+  saving.value = true
+  error.value = ''
+  try {
+    await discardDraft(props.workspace, id)
+  } catch (issue) {
+    error.value = displayError(issue)
+  } finally {
+    saving.value = false
   }
 }
 </script>
 
 <template>
   <button
-    v-if="!remoteWorkspace && (count || draftSession.selection)"
+    v-if="!remoteWorkspace && (count || draftSession.selection || draftState.error)"
     class="text-button"
     @click="openQueue"
   >
@@ -166,7 +210,9 @@ async function save(input: NoteInput, uploads: MediaUpload[], allowRemove: boole
         </button>
         <button
           class="button primary"
-          :disabled="sharing || !deckId || !mcpStatus.enabled || !mcpStatus.available"
+          :disabled="
+            sharing || !deckId || !mcpStatus.enabled || !mcpStatus.available || !draftState.ready
+          "
         >
           {{ t(sharing ? '正在分享…' : '分享这段摘录') }}
         </button>
@@ -177,11 +223,20 @@ async function save(input: NoteInput, uploads: MediaUpload[], allowRemove: boole
     v-if="queueOpen && !editing && !selection && !remoteWorkspace"
     wide
     :title="t('制卡草稿')"
-    :busy="workspace.busy.value"
+    :busy="workspace.busy.value || saving"
     :error="error ? t(error) : undefined"
     @close="queueOpen = false"
   >
     <section class="draft-queue">
+      <p v-if="draftState.error" role="alert">{{ t(draftState.error) }}</p>
+      <button
+        v-if="draftState.error"
+        class="button secondary"
+        :disabled="draftState.loading || workspace.busy.value || saving"
+        @click="reloadDrafts(workspace)"
+      >
+        {{ t('重新读取草稿') }}
+      </button>
       <template v-if="draftSession.selection">
         <div class="draft-sharing">
           <strong>{{ t('当前分享的摘录') }}</strong>
@@ -192,7 +247,11 @@ async function save(input: NoteInput, uploads: MediaUpload[], allowRemove: boole
         <p class="form-note">{{ t('在 MCP 客户端请求生成卡片草稿。收到后会显示在这里。') }}</p>
       </template>
       <p class="form-note">
-        {{ t('草稿在关闭、重载应用或切换学习库后清空。确认保存后，卡片才会进入学习库和备份。') }}
+        {{
+          t(
+            '待确认草稿保存在本机，重启后可继续处理。草稿不进入复习或备份；确认保存卡片后才会加入。',
+          )
+        }}
       </p>
       <p v-if="!count" role="status">{{ t('还没有待确认的草稿。') }}</p>
       <ol v-else class="draft-list" :aria-label="t('待确认草稿')">
@@ -208,15 +267,20 @@ async function save(input: NoteInput, uploads: MediaUpload[], allowRemove: boole
           <div class="connection-actions">
             <button
               class="button secondary"
-              :disabled="workspace.busy.value || !draftSession.valid(context(), draft)"
+              :disabled="
+                workspace.busy.value ||
+                saving ||
+                !draftState.ready ||
+                !draftSession.valid(context(), draft)
+              "
               @click="openDraft(draft.id)"
             >
               {{ t('检查并编辑') }}
             </button>
             <button
               class="text-button"
-              :disabled="workspace.busy.value"
-              @click="draftSession.discard(draft.id)"
+              :disabled="workspace.busy.value || saving || !draftState.ready"
+              @click="discard(draft.id)"
             >
               {{ t('丢弃草稿') }}
             </button>
@@ -229,7 +293,7 @@ async function save(input: NoteInput, uploads: MediaUpload[], allowRemove: boole
     v-if="editing && !remoteWorkspace"
     wide
     :title="t('确认制卡草稿')"
-    :busy="workspace.busy.value"
+    :busy="workspace.busy.value || saving"
     :error="error ? t(error) : undefined"
     @close="closeEditor"
   >
@@ -238,7 +302,9 @@ async function save(input: NoteInput, uploads: MediaUpload[], allowRemove: boole
       draft
       :library="library"
       :initial="{ ...editing.input, deckId: editing.deckId, excerpt: editing.excerpt }"
-      :busy="workspace.busy.value"
+      :initial-uploads="editing.uploads"
+      :save-draft="keepDraft"
+      :busy="workspace.busy.value || saving"
       :get-media="workspace.getMedia"
       :submit="save"
       @close="closeEditor"

@@ -1,12 +1,8 @@
 import { Channel, invoke } from '@tauri-apps/api/core'
 import { ref, shallowRef, watch } from 'vue'
 import { remoteWorkspace } from '../edition'
-import {
-  LearningQueryError,
-  type LearningQuery,
-  type LearningReader,
-} from '../core/learning-reader'
-import { draftSession } from './drafts'
+import { LearningQueryError, type LearningQuery } from '../core/learning-reader'
+import { draftSession, bindDraftScope, receiveDrafts, type DraftWorkspace } from './drafts'
 
 type Status = { enabled: boolean; available: boolean; url: string | null }
 type BridgeRequest = { id: string; scope: string; query: LearningQuery }
@@ -32,7 +28,7 @@ export async function stopMcp() {
 export const mcpConfiguration = async () =>
   JSON.stringify(await invoke<unknown>('mcp_configuration'), null, 2)
 
-export async function connectLearningReader(reader: LearningReader): Promise<() => void> {
+export async function connectLearningReader(reader: DraftWorkspace): Promise<() => void> {
   const onRequest = new Channel<BridgeRequest>()
   let alive = true,
     sequence = 0,
@@ -40,7 +36,6 @@ export async function connectLearningReader(reader: LearningReader): Promise<() 
     lastScope = ''
   onRequest.onmessage = async (request) => {
     let reply: unknown
-    let proposal: ReturnType<typeof draftSession.prepare> | undefined
     try {
       if (!alive || remoteWorkspace.value) throw new LearningQueryError('library-unavailable')
       let data: unknown
@@ -50,11 +45,7 @@ export async function connectLearningReader(reader: LearningReader): Promise<() 
           request.query.arguments,
         )
       } else if (request.query.tool === 'repeaty_propose_cards') {
-        proposal = draftSession.prepare(
-          reader.localLearningSnapshot(request.scope),
-          request.query.arguments,
-        )
-        data = proposal.receipt
+        data = await receiveDrafts(reader, request.scope, request.query.arguments)
       } else data = reader.readLearning(request.query, request.scope)
       reply = { status: 'ok', data }
     } catch (error) {
@@ -65,17 +56,16 @@ export async function connectLearningReader(reader: LearningReader): Promise<() 
     }
     try {
       await invoke('mcp_reply', { id: request.id, scope: request.scope, reply })
-      proposal?.finish(true)
     } catch {
-      // Cancelled, expired and revoked calls must not display unacknowledged drafts.
-      proposal?.finish(false)
+      // A persisted batch remains available for review when its reply is lost.
+      // Its request ID makes retries safe while this selection is still shared.
     }
   }
   try {
     const attachment = await invoke<string>('mcp_attach', { onRequest })
     function update() {
       const scope = reader.scope.value
-      draftSession.bindScope(remoteWorkspace.value ? '' : scope)
+      bindDraftScope(reader, remoteWorkspace.value ? '' : scope)
       if (scope !== lastScope) {
         scopeEpoch++
         lastScope = scope
@@ -109,7 +99,7 @@ export async function connectLearningReader(reader: LearningReader): Promise<() 
     return () => {
       alive = false
       stop()
-      draftSession.bindScope('')
+      bindDraftScope(reader, '')
       void invoke('mcp_workspace', {
         attachment,
         workspace: { scope: '', scopeEpoch: ++scopeEpoch, sequence: ++sequence, available: false },

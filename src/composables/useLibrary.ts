@@ -43,6 +43,7 @@ import type { createServerRepository } from '../backend/repository'
 import type { createRepository, BackupSummary } from '../core/storage'
 import { createWorkspaceRepository } from '@repeaty-platform'
 import { readLearning, LearningQueryError, type LearningQuery } from '../core/learning-reader'
+import type { CardDraft } from '../core/card-draft-data'
 
 export function useLibrary() {
   const library = shallowRef(emptyLibrary())
@@ -86,7 +87,7 @@ export function useLibrary() {
   }
   async function commit(
     update: (current: Library) => Library,
-    options: { assets?: MediaUpload[]; reason?: string } = {},
+    options: { assets?: MediaUpload[]; reason?: string; consumeCardDraft?: string } = {},
   ) {
     if (busy.value) throw new LocalizedError(msg('正在保存，请稍候。'))
     if (!ready.value) throw new LocalizedError(msg('本地数据库尚未准备好。'))
@@ -169,6 +170,19 @@ export function useLibrary() {
       throw new LearningQueryError('library-unavailable')
     return { library: library.value, revision, scope: expectedScope }
   }
+  function draftRepository(expectedScope: string) {
+    // Auxiliary draft transactions may finish while a formal save is in progress.
+    if (
+      remoteWorkspace.value ||
+      !ready.value ||
+      !expectedScope ||
+      expectedScope !== scope.value ||
+      !expectedScope.startsWith('local:')
+    )
+      throw new LearningQueryError('library-unavailable')
+    if (!('readCardDrafts' in repository)) throw new LearningQueryError('library-unavailable')
+    return repository
+  }
   return {
     library,
     scope: readonly(scope),
@@ -177,6 +191,12 @@ export function useLibrary() {
     loadError: readonly(loadError),
     backups: readonly(backups),
     backupError: readonly(backupError),
+    readCardDrafts: (scope: string) => draftRepository(scope).readCardDrafts(),
+    addCardDrafts: (scope: string, drafts: CardDraft[]) =>
+      draftRepository(scope).addCardDrafts(drafts),
+    updateCardDraft: (scope: string, draft: CardDraft) =>
+      draftRepository(scope).updateCardDraft(draft),
+    discardCardDraft: (scope: string, id: string) => draftRepository(scope).discardCardDraft(id),
     init,
     getAttempt,
     getSource,
@@ -304,10 +324,12 @@ export function useLibrary() {
       expectedScope: string,
       assets: MediaUpload[] = [],
       allowRemove = false,
+      draftId?: string,
     ) {
       if (!expectedScope || expectedScope !== scope.value)
         throw new LocalizedError(msg('登录账户已变更，请刷新页面后重试。'))
       if (busy.value) throw new LocalizedError(msg('正在保存，请稍候。'))
+      if (draftId) draftRepository(expectedScope)
       busy.value = true
       try {
         const text = await getSource(excerpt.sourceId)
@@ -327,7 +349,7 @@ export function useLibrary() {
             undefined,
             allowRemove,
           ),
-        { assets, reason: '摘录制卡前' },
+        { assets, reason: '摘录制卡前', consumeCardDraft: draftId },
       )
     },
     deleteNotes(ids: Set<string>) {

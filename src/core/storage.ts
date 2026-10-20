@@ -19,6 +19,7 @@ import {
   renderCard,
 } from './model'
 import { sourceSchema } from './source-data'
+import { cardDraftSchema, MAX_DRAFTS, type CardDraft } from './card-draft-data'
 import { compileSearch } from './search'
 import { available } from './scheduler'
 import {
@@ -99,6 +100,7 @@ interface RepeatyDB extends DBSchema {
   attempts: RecordTable
   attemptSummaries: RecordTable
   sources: RecordTable
+  cardDrafts: { key: string; value: CardDraft }
 }
 const stores = [
   'workspace',
@@ -108,6 +110,7 @@ const stores = [
   'checkpoints',
   'history',
   'attemptSummaries',
+  'cardDrafts',
   ...recordStores,
 ] as const
 type Transaction = IDBPTransaction<RepeatyDB, typeof stores, 'readwrite'>
@@ -141,7 +144,7 @@ export function createRepository(
   onBlocked?: () => void,
   options: { compactHistory?: boolean } = {},
 ) {
-  const database = openDB<RepeatyDB>(name, 8, {
+  const database = openDB<RepeatyDB>(name, 9, {
     async upgrade(db, _oldVersion, _newVersion, tx) {
       try {
         for (const store of stores)
@@ -353,6 +356,57 @@ export function createRepository(
   }
   return {
     scope: () => `local:${name}`,
+    async readCardDrafts() {
+      const tx = (await database).transaction('cardDrafts', 'readonly')
+      const [rows, keys] = await Promise.all([tx.store.getAll(), tx.store.getAllKeys()])
+      await tx.done
+      if (rows.length > MAX_DRAFTS) throw changed()
+      return rows
+        .map((raw, index) => {
+          const draft = cardDraftSchema.parse(raw)
+          if (draft.scope !== `local:${name}` || draft.id !== keys[index]) throw changed()
+          return draft
+        })
+        .sort(
+          (a, b) =>
+            a.position - b.position ||
+            a.receivedAt.localeCompare(b.receivedAt) ||
+            a.id.localeCompare(b.id),
+        )
+    },
+    async addCardDrafts(entries: CardDraft[]) {
+      const drafts = entries.map((draft) => cardDraftSchema.parse(draft))
+      if (drafts.some((draft) => draft.scope !== `local:${name}`)) throw changed()
+      const tx = (await database).transaction('cardDrafts', 'readwrite')
+      try {
+        const existing = new Set(await tx.store.getAllKeys())
+        const added = drafts.filter((draft) => !existing.has(draft.id))
+        if (existing.size + added.length > MAX_DRAFTS)
+          throw new LocalizedError(msg('待确认草稿已达 50 条，请先保存或丢弃一些草稿。'))
+        // Retried batches must never overwrite edits already saved by the user.
+        for (const draft of added) await tx.store.add(draft, draft.id)
+        await tx.done
+      } catch (error) {
+        await abort(tx)
+        throw error
+      }
+    },
+    async updateCardDraft(entry: CardDraft) {
+      const draft = cardDraftSchema.parse(entry)
+      if (draft.scope !== `local:${name}`) throw changed()
+      const tx = (await database).transaction('cardDrafts', 'readwrite')
+      try {
+        if (!(await tx.store.get(draft.id))) throw changed()
+        await tx.store.put(draft, draft.id)
+        await tx.done
+      } catch (error) {
+        await abort(tx)
+        throw error
+      }
+    },
+    async discardCardDraft(id: string) {
+      await (await database).delete('cardDrafts', id)
+    },
     async load(): Promise<Snapshot> {
       const db = await database
       const tx = db.transaction(stores, 'readwrite')
@@ -370,7 +424,12 @@ export function createRepository(
     async save(
       library: Library,
       expectedRevision: number,
-      options: { assets?: MediaUpload[]; reason?: string; now?: Date } = {},
+      options: {
+        assets?: MediaUpload[]
+        reason?: string
+        now?: Date
+        consumeCardDraft?: string
+      } = {},
     ): Promise<Snapshot> {
       if (!cached) await this.load()
       const previous = cached!.library
@@ -473,6 +532,10 @@ export function createRepository(
         const current = await migrate(tx)
         if (current.revision !== expectedRevision || cached!.revision !== expectedRevision)
           throw changed()
+        if (options.consumeCardDraft) {
+          if (!(await tx.objectStore('cardDrafts').get(options.consumeCardDraft))) throw changed()
+          await tx.objectStore('cardDrafts').delete(options.consumeCardDraft)
+        }
         const expired =
           current.revision > 0 &&
           (await checkpoint(

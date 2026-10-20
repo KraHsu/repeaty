@@ -67,7 +67,7 @@ it('rejects incomplete edits and stale reads, and restores deleted bodies from c
   expect(removed.library.attempts).toEqual([])
   await expect(repo.readAttemptBatch(0, 1)).rejects.toThrow('另一个标签页')
   await expect(repo.getAttempt(library.attempts[0]!.id, 2)).rejects.toThrow('已不存在')
-  const db = await openDB(name, 8)
+  const db = await openDB(name, 9)
   expect(await db.count('attemptSummaries')).toBe(0)
   db.close()
   const restored = await repo.save(await repo.getBackup(checkpoint.id), 2)
