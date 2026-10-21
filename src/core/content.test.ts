@@ -49,6 +49,12 @@ describe('Markdown and math rendering', () => {
     expect(html).toMatch(/\[data-repeaty-content="content-\d+"\] \.topbar/)
     expect(html).not.toContain('url(')
     expect(html).not.toContain('@import')
+    const variables = renderMarkdown(
+      '<div style="--accent-1:#123;--gap_2:12px;color:var(--accent-1);gap:var(--gap_2)">Styled</div>',
+    )
+    expect(variables).toContain('--accent-1:#123')
+    expect(variables).toContain('--gap_2:12px')
+    expect(variables).toContain('color:var(--accent-1)')
     const unsafe = renderMarkdown(
       '<div id="app" name="location" data-reading-offset="100" style="background:image-set(\"https://example.invalid/x\" 1x)" onclick="alert(1)"><iframe srcdoc="bad"></iframe><script>alert(1)</script>Safe</div>',
     )

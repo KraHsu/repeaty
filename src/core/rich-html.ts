@@ -35,7 +35,7 @@ function declarations(children: List<CssNode>) {
   children.forEach((node) => {
     if (
       node.type !== 'Declaration' ||
-      !/^(?:--)?[a-z-]+$/i.test(node.property) ||
+      !/^(?:--[a-z0-9_-]+|[a-z-]+)$/i.test(node.property) ||
       ['behavior', '-moz-binding', '-webkit-user-modify'].includes(node.property.toLowerCase()) ||
       !safeValue(node.value)
     )
