@@ -370,6 +370,8 @@ export const en = {
   'LeetCode 登录信息始终保存在本机，不会发送给上游服务。':
     'LeetCode credentials stay on this device and are never sent to the upstream server.',
   保存并重新打开: 'Save and reload',
+  保存: 'Save',
+  重新比较: 'Compare again',
 
   挖空答案: 'Missing text',
   补充说明: 'Extra information',
