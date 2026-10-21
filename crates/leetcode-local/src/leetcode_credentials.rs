@@ -32,6 +32,15 @@ impl CredentialStore {
                 use std::os::unix::fs::OpenOptionsExt;
                 options.mode(0o600);
             }
+            #[cfg(windows)]
+            {
+                use std::os::windows::fs::OpenOptionsExt;
+                use windows_sys::Win32::{
+                    Foundation::{GENERIC_READ, GENERIC_WRITE},
+                    Storage::FileSystem::WRITE_DAC,
+                };
+                options.access_mode(GENERIC_READ | GENERIC_WRITE | WRITE_DAC);
+            }
             let file = options.open(path)?;
             #[cfg(unix)]
             {
@@ -39,16 +48,7 @@ impl CredentialStore {
                 file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
             }
             #[cfg(windows)]
-            {
-                // Windows has no file mode. Best effort: drop inherited access so only the
-                // current user can read the stored LeetCode session cookie.
-                let _ = std::process::Command::new("icacls")
-                    .arg(path)
-                    .args(["/inheritance:r", "/grant:r", "%USERNAME%:F"])
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .status();
-            }
+            crate::windows_permissions::restrict(&file)?;
         }
         let connection = Connection::open(path)?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
