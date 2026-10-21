@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { cardViews, clozes, librarySchema, migrateLibrary, removeNotes, saveNote } from './model'
+import {
+  cardViews,
+  clozes,
+  librarySchema,
+  migrateLibrary,
+  removeNotes,
+  saveNote,
+  type Library,
+} from './model'
 import { editNotes, importNotes, parseNoteImport, parseTable } from './batch'
 import { fixture, input, legacyFixture, now } from './test-fixtures'
 import { reviewCard } from './scheduler'
@@ -39,6 +47,23 @@ describe('note generation and migration', () => {
     expect(reduced.cards).toEqual([original[0]])
     expect(reduced.reviews).toHaveLength(1)
     expect(removeNotes(reduced, new Set([note.id])).reviews).toHaveLength(0)
+  })
+  it('keeps other cards in place when an early note is edited', () => {
+    let library: Library = { ...fixture(), notes: [], cards: [] }
+    const field = (front: string) => ({
+      deckId: 'deck',
+      type: 'basic' as const,
+      format: 'plain' as const,
+      front,
+      back: 'answer',
+      tags: [],
+      frontMedia: [],
+      backMedia: [],
+    })
+    for (let index = 0; index < 4; index++) library = saveNote(library, field(`Q${index}`))
+    const before = library.cards.map((card) => [card.id, card.noteId])
+    library = saveNote(library, field('Q0 edited'), library.notes[0]!.id)
+    expect(library.cards.map((card) => [card.id, card.noteId])).toEqual(before)
   })
   it('migrates old content without changing card identity or schedule', () => {
     const legacy = legacyFixture()

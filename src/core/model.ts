@@ -496,17 +496,19 @@ export function saveNote(
   const removedPractices = new Set(
     library.practices.filter((entry) => removed.has(entry.cardId)).map((entry) => entry.id),
   )
+  // Existing cards keep their index; only new variants append. Editing a note must not
+  // shift every later card, which would rewrite the whole library on each save.
+  const existing = new Set(oldCards.map((card) => card.variant))
+  const added = keys.filter((key) => !existing.has(key)).map((key) => newCard(note.id, key, now))
   return pruneMedia({
     ...library,
     notes: previous
       ? library.notes.map((entry) => (entry.id === note.id ? note : entry))
       : [...library.notes, note],
-    cards: [
-      ...library.cards.filter((card) => card.noteId !== note.id),
-      ...keys.map(
-        (key) => oldCards.find((card) => card.variant === key) ?? newCard(note.id, key, now),
-      ),
-    ],
+    cards:
+      added.length || removed.size
+        ? [...library.cards.filter((card) => !removed.has(card.id)), ...added]
+        : library.cards,
     reviews: library.reviews.filter((review) => !removed.has(review.cardId)),
     practices: library.practices.filter((entry) => !removed.has(entry.cardId)),
     attempts: library.attempts.filter((entry) => !removedPractices.has(entry.practiceId)),

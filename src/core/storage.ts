@@ -145,6 +145,8 @@ export function createRepository(
   onBlocked?: () => void,
   options: { compactHistory?: boolean } = {},
 ) {
+  // save() shadows `options` with its own parameter, so keep the repository setting here.
+  const compactHistory = Boolean(options.compactHistory)
   const database = openDB<RepeatyDB>(name, 16, {
     async upgrade(db, _oldVersion, _newVersion, tx) {
       try {
@@ -182,7 +184,10 @@ export function createRepository(
   })
   let cached: Snapshot | undefined
   let maps = new Map<RecordStore, Map<string, { value: Entity; position: number }>>()
-  function remember(snapshot: Snapshot, patches?: { store: RecordStore; id: string; row?: Row }[]) {
+  function remember(
+    snapshot: Snapshot,
+    patches?: { store: RecordStore; id: string; row?: Row; positionOnly?: number }[],
+  ) {
     if (options.compactHistory && snapshot.library.attempts.some(hasAttemptBody)) {
       snapshot = {
         ...snapshot,
@@ -197,7 +202,11 @@ export function createRepository(
     cached = snapshot
     if (patches) {
       for (const patch of patches) {
-        if (patch.row)
+        if (patch.positionOnly !== undefined) {
+          const current = maps.get(patch.store)!.get(patch.id)
+          if (current)
+            maps.get(patch.store)!.set(patch.id, { ...current, position: patch.positionOnly })
+        } else if (patch.row)
           maps.get(patch.store)!.set(patch.id, {
             value:
               options.compactHistory && patch.store === 'attempts'
@@ -450,7 +459,7 @@ export function createRepository(
         workspaceLibrarySchema.parse(library)
       if (library.reviews.length > 500_000)
         throw new LocalizedError(msg('复习记录已达到 50 万条上限，请先导出备份。'))
-      const patches: { store: RecordStore; id: string; row?: Row }[] = []
+      const patches: { store: RecordStore; id: string; row?: Row; positionOnly?: number }[] = []
       const next = { ...library }
       const noteDecks = new Map(library.notes.map((note) => [note.id, note.deckId]))
       for (const store of recordStores) {
@@ -507,7 +516,19 @@ export function createRepository(
               ? (maps.get('notes')!.get((value as Library['cards'][number]).noteId)?.value as
                   Library['notes'][number] | undefined)
               : undefined
-          if (
+          // Compressed history keeps only summaries in memory. A record whose content is
+          // unchanged but whose array index moved (an earlier record was deleted) must not
+          // be rewritten: the cache holds a summary, so writing the row would replace the
+          // stored body with it. Persist the new position alone.
+          const positionOnly =
+            store === 'attempts' &&
+            compactHistory &&
+            prior !== undefined &&
+            same &&
+            prior.position !== position
+          if (positionOnly) {
+            patches.push({ store, id: value.id, positionOnly: position })
+          } else if (
             !same ||
             prior.position !== position ||
             (store === 'cards' && oldNote?.deckId !== deckId)
@@ -595,7 +616,20 @@ export function createRepository(
           await Promise.all(
             patches.slice(start, start + 256).map(async (patch) => {
               const table = tx.objectStore(patch.store)
-              if (retain)
+              // Position-only moves also enter the change log, otherwise snapshot restore
+              // would replay the old index. Resolve the previous position before writing.
+              if (retain && patch.positionOnly !== undefined) {
+                const previousPosition = await tx.objectStore(patch.store).get(patch.id)
+                await tx.objectStore('history').put(
+                  {
+                    revision,
+                    store: patch.store,
+                    id: patch.id,
+                    before: previousPosition,
+                  },
+                  [revision, patch.store, patch.id],
+                )
+              } else if (retain)
                 await tx.objectStore('history').put(
                   {
                     revision,
@@ -615,10 +649,19 @@ export function createRepository(
                     p0: (patch.row.value as Library['media'][number]).name,
                   }),
                 )
-              if (patch.row) await table.put(patch.row, patch.id)
+              if (patch.positionOnly !== undefined) {
+                const current = await table.get(patch.id)
+                if (current) await table.put({ ...current, position: patch.positionOnly }, patch.id)
+              } else if (patch.row) await table.put(patch.row, patch.id)
               else await table.delete(patch.id)
               if (patch.store === 'attempts') {
-                if (patch.row)
+                if (patch.positionOnly !== undefined) {
+                  const summary = await tx.objectStore('attemptSummaries').get(patch.id)
+                  if (summary)
+                    await tx
+                      .objectStore('attemptSummaries')
+                      .put({ ...summary, position: patch.positionOnly }, patch.id)
+                } else if (patch.row)
                   await tx
                     .objectStore('attemptSummaries')
                     .put(
