@@ -6,6 +6,12 @@ import { seedPolish } from './polish-flow'
 import { importReading, moveReading, saveReading, readingText } from './reading-flow'
 import { startMixed } from './adaptive-mixed-flow'
 
+async function undoAction(page: Page, shortcut = 'Control+z') {
+  // A new question can render before the surrounding save promise has settled.
+  await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeEnabled()
+  await page.keyboard.press(shortcut)
+}
+
 export async function rendering027Flow(page: Page, info: TestInfo) {
   const external: string[] = []
   page.on('request', (request) => {
@@ -137,7 +143,7 @@ export async function reviewActions027Flow(page: Page, read: () => Promise<Libra
   await page.keyboard.press('Control+Enter')
   await expect(edit).toHaveCount(0)
   await expect(question).toContainText('Edited front')
-  await page.keyboard.press('Control+z')
+  await undoAction(page)
   await expect(question).toContainText('Original front')
   expect((await read()).reviews).toEqual([])
   // Attach real stored media, then restore it through delete -> undo below.
@@ -170,7 +176,7 @@ export async function reviewActions027Flow(page: Page, read: () => Promise<Libra
   await front.fill('Draft')
   await front.press('End')
   await page.keyboard.type('-typed')
-  await page.keyboard.press('Control+z')
+  await front.press('Control+z')
   await expect(front).not.toHaveValue('Draft-typed')
   expect((await read()).notes).toEqual(beforeAdd.notes)
   await front.fill('Added while reviewing')
@@ -179,7 +185,7 @@ export async function reviewActions027Flow(page: Page, read: () => Promise<Libra
   await expect(add).toHaveCount(0)
   await expect(page.locator('.card-answer')).toContainText('Original back')
   expect((await read()).notes).toHaveLength(3)
-  await page.keyboard.press('Control+z')
+  await undoAction(page)
   await expect.poll(async () => (await read()).notes.length).toBe(2)
   expect((await read()).notes).toEqual(beforeAdd.notes)
   await expect(page.locator('.card-answer')).toContainText('Original back')
@@ -188,7 +194,7 @@ export async function reviewActions027Flow(page: Page, read: () => Promise<Libra
     await page.locator('.flashcard').click()
     await page.keyboard.press(key)
     await expect(question).not.toContainText('Original front')
-    await page.keyboard.press('Control+z')
+    await undoAction(page)
     await expect(question).toContainText('Original front')
     expect((await read()).cards).toEqual(before.cards)
   }
@@ -205,7 +211,7 @@ export async function reviewActions027Flow(page: Page, read: () => Promise<Libra
   await expect(confirm).toHaveCount(0)
   await expect(question).toContainText('Next question')
   expect((await read()).cards).toHaveLength(1)
-  await page.keyboard.press('Control+z')
+  await undoAction(page)
   await expect(question).toContainText('Original front')
   expect((await read()).notes).toEqual(before.notes)
   expect((await read()).cards).toEqual(before.cards)
@@ -222,7 +228,7 @@ export async function reviewActions027Flow(page: Page, read: () => Promise<Libra
   await page.keyboard.press('3')
   await expect(question).toContainText('Next question')
   expect((await read()).reviews).toHaveLength(1)
-  await page.keyboard.press('Meta+z')
+  await undoAction(page, 'Meta+z')
   await expect(question).toContainText('Original front')
   expect((await read()).reviews).toEqual([])
   await page.keyboard.press('?')
@@ -240,7 +246,7 @@ export async function readingUndo027Flow(page: Page, read: () => Promise<Library
   const position = (await read()).sources[0]!.reading
   await page.getByRole('button', { name: '归档材料', exact: true }).click()
   await expect(page.getByRole('heading', { name: '暂无待阅读材料', exact: true })).toBeVisible()
-  await page.keyboard.press('Control+z')
+  await undoAction(page)
   await expect(page.locator('.source-reader')).toContainText('Shortcut source')
   expect((await read()).sources[0]!.reading).toMatchObject({
     offset: position!.offset,
@@ -248,7 +254,7 @@ export async function readingUndo027Flow(page: Page, read: () => Promise<Library
     view: position!.view,
   })
   await expect(page.locator('.source-text')).toHaveAttribute('aria-busy', 'false')
-  await page.keyboard.press('Control+z')
+  await undoAction(page)
   await expect(page.getByRole('heading', { name: '还没有学习材料', exact: true })).toBeVisible()
   await importReading(page, 'Mixed shortcut source', 'plain', readingText)
   await importReading(page, 'Mixed shortcut source B', 'plain', readingText)
@@ -260,11 +266,11 @@ export async function readingUndo027Flow(page: Page, read: () => Promise<Library
   const second = (await page.locator('.source-reader h2').innerText()).trim()
   await page.getByRole('button', { name: '归档材料', exact: true }).click()
   await expect(page.locator('.reading-round-complete')).toBeVisible()
-  await page.keyboard.press('Control+z')
+  await undoAction(page)
   await expect(page.locator('.source-reader h2')).toHaveText(second)
   await expect(page.locator('.reading-round')).toContainText('第 2 篇，共 2 篇')
   await expect(page.locator('.source-text')).toHaveAttribute('aria-busy', 'false')
-  await page.keyboard.press('Control+z')
+  await undoAction(page)
   await expect(page.locator('.source-reader h2')).toHaveText(first)
   await expect(page.locator('.reading-round')).toContainText('第 1 篇，共 2 篇')
   await page.getByRole('button', { name: '结束本轮', exact: true }).click()
@@ -280,15 +286,15 @@ export async function readingUndo027Flow(page: Page, read: () => Promise<Library
   await page.getByRole('button', { name: '读过，安排下次', exact: true }).click()
   await page.getByRole('button', { name: '保存阅读安排', exact: true }).click()
   await expect(page.locator('.mixed-header')).toContainText('已复习 1 次 · 已处理 2 篇')
-  await page.keyboard.press('Control+z')
+  await undoAction(page)
   await expect(page.locator('.source-reader h2')).toHaveText(second)
   await expect(page.locator('.mixed-header')).toContainText('已复习 1 次 · 已处理 1 篇')
   await expect(page.locator('.source-text')).toHaveAttribute('aria-busy', 'false')
-  await page.keyboard.press('Control+z')
+  await undoAction(page)
   await expect(page.locator('.source-reader h2')).toHaveText(first)
   await expect(page.locator('.mixed-header')).toContainText('已复习 1 次 · 已处理 0 篇')
   await expect(page.locator('.source-text')).toHaveAttribute('aria-busy', 'false')
-  await page.keyboard.press('Control+z')
+  await undoAction(page)
   await expect(page.locator('.flashcard')).toBeVisible()
   await expect(page.locator('.mixed-header')).toContainText('已复习 0 次 · 已处理 0 篇')
   expect((await read()).reviews).toEqual([])
@@ -315,9 +321,9 @@ export async function practiceUndo027Flow(page: Page, read: () => Promise<Librar
   await page.keyboard.press('Control+Enter')
   await expect(edit).toHaveCount(0)
   await expect(question).toHaveText('Changed during practice')
-  await page.keyboard.press('Control+z')
+  await undoAction(page)
   await expect(question).toHaveText(second)
-  await page.keyboard.press('Control+z')
+  await undoAction(page)
   await expect(question).toHaveText(first)
   expect((await read()).cards).toEqual(original.cards)
   await page.locator('.flashcard').click()
@@ -331,10 +337,10 @@ export async function practiceUndo027Flow(page: Page, read: () => Promise<Librar
   await page.keyboard.press('Space')
   await page.keyboard.press('3')
   await expect(question).toHaveText(second)
-  await page.keyboard.press('Control+z')
+  await undoAction(page)
   await expect(question).toHaveText(first)
   expect((await read()).notes).toHaveLength(original.notes.length + 1)
-  await page.keyboard.press('Control+z')
+  await undoAction(page)
   await expect.poll(async () => (await read()).notes.length).toBe(original.notes.length)
   expect((await read()).cards).toEqual(original.cards)
   expect((await read()).reviews).toEqual([])

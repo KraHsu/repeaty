@@ -6,11 +6,19 @@ import {
   readingUndo027Flow,
   practiceUndo027Flow,
 } from '../fixtures/authoring-027-flow'
-test('account review actions and keyboard undo persist in SQLite', async ({ page, request }) =>
-  reviewActions027Flow(
+test('server review actions and undo wait for delayed snapshot metadata', async ({
+  page,
+  request,
+}) => {
+  await page.route('**/api/backups', async (route) => {
+    if (route.request().method() === 'GET') await new Promise((resolve) => setTimeout(resolve, 150))
+    await route.continue()
+  })
+  await reviewActions027Flow(
     page,
     async () => (await (await request.get('api/library', { headers })).json()).library,
-  ))
+  )
+})
 test('account content rendering matches the static edition', async ({ page }, info) =>
   rendering027Flow(page, info))
 test('account modals retain drafts across crossing pointer gestures', async ({ page }) =>
