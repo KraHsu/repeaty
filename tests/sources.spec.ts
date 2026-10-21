@@ -119,6 +119,8 @@ test('rejects invalid files, supports pasted text and keeps an existing snapshot
   await previewSource(page)
   await saveSource(page)
   await createExcerptCard(page)
+  // Selecting an excerpt scrolls the reader; let that position finish autosaving.
+  await expect(page.locator('.reading-progress')).toHaveAttribute('data-reading-status', 'saved')
   const before = await storedLibrary(page)
   await page.getByRole('button', { name: '导入材料', exact: true }).click()
   await page.getByLabel('材料标题').fill('学习笔记')

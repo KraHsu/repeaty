@@ -46,6 +46,4 @@ export async function createExcerptCard(page: Page) {
   await page.getByLabel('正面 · 问题', { exact: true }).fill('间隔复习如何安排时间？')
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  // Selecting an excerpt scrolls the reader; let that position finish autosaving.
-  await expect(page.locator('.reading-progress')).toHaveAttribute('data-reading-status', 'saved')
 }
