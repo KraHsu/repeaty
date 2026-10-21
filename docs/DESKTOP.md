@@ -8,7 +8,7 @@
 
 [Desktop 工作流](https://github.com/KraHsu/repeaty/actions/workflows/desktop.yml)提供 Linux `.deb`、Windows NSIS 安装程序和 macOS `.dmg` 构建产物。安装包暂未配置代码签名或 Apple 公证，系统可能要求确认来源。请只使用自己构建或可信发布者提供的程序。
 
-开发环境需安装 [Tauri 2 系统依赖](https://v2.tauri.app/start/prerequisites/)、Node.js 24.12+ 和 Rust 1.97.1。
+开发环境需安装 [Tauri 2 系统依赖](https://v2.tauri.app/start/prerequisites/)、Node.js 24.15+ 和 Rust 1.97.1。
 
 ```bash
 npm ci

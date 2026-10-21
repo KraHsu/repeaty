@@ -1,11 +1,11 @@
 {
   "name": "repeaty",
-  "version": "0.26.0",
+  "version": "0.27.0",
   "private": true,
   "type": "module",
   "description": "Flashcards and spaced repetition for the browser, desktop, and self-hosted accounts.",
   "engines": {
-    "node": ">=24.12.0"
+    "node": ">=24.15.0"
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -33,11 +33,13 @@
     "@lucide/vue": "1.31.0",
     "@tauri-apps/api": "^2.12.4",
     "@zip.js/zip.js": "^2.24.0",
+    "css-tree": "^3.2.1",
     "fzstd": "^0.1.1",
     "highlight.js": "^11.12.0",
     "idb": "^8.0.4",
-    "katex": "^0.16.47",
-    "markdown-it": "^14.3.1",
+    "isomorphic-dompurify": "^4.6.0",
+    "katex": "^0.19.0",
+    "markdown-it": "^14.3.3",
     "parse5": "^8.0.1",
     "sql.js": "^1.15.0",
     "ts-fsrs": "^5.4.2",
@@ -47,6 +49,7 @@
   "devDependencies": {
     "@playwright/test": "^1.64.1",
     "@tauri-apps/cli": "^2.12.3",
+    "@types/css-tree": "^3.2.0",
     "@types/katex": "^0.16.8",
     "@types/markdown-it": "^14.2.0",
     "@types/node": "^24.0.0",

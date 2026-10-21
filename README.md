@@ -54,7 +54,7 @@ Repeaty 是一个开源的网页记忆卡片工具。把想记住的内容做成
 | 插件     | 纯前端           | 纯前端            | 纯前端、本地插件             |
 | LeetCode | 不包含           | 不包含            | 内置，登录信息留在本机       |
 
-需要 Node.js 24.12+（24.x）；后端另需 Rust 与 C 编译工具。CI 使用 Rust 1.97.1。
+需要 Node.js 24.15+（24.x）；后端另需 Rust 与 C 编译工具。CI 使用 Rust 1.97.1。
 
 ```bash
 git clone https://github.com/KraHsu/repeaty.git
