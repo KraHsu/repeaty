@@ -168,6 +168,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("力扣 credentials.sqlite3");
         let file = OpenOptions::new()
+            .write(true)
             .access_mode(GENERIC_READ | GENERIC_WRITE | WRITE_DAC)
             .create_new(true)
             .open(&path)
