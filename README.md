@@ -89,6 +89,8 @@ npm run desktop:build
 
 ## 开发与贡献
 
+新版本合并到 `main` 后，核心检查与三平台构建全部通过才会自动发布 Release，附安装包和 SHA256 校验文件；同版本的后续提交不覆盖已发布产物。[发布流程](docs/RELEASING.md)
+
 正在准备 v1.0.0。阅读、复习和设置的这批收尾完成后，仅处理发布准备和修复。[发布清单](docs/RELEASE_1_0.md)
 
 前端使用 Vue 3、TypeScript 和 Vite；后端使用 Rust、Axum 和 SQLite，调度使用 [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)。

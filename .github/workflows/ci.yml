@@ -37,6 +37,10 @@ jobs:
         run: |
           rustup toolchain install 1.97.1 --profile minimal --component rustfmt,clippy
           rustup default 1.97.1
+      - name: Check release metadata and automation
+        run: |
+          node scripts/release.mjs check
+          node --test scripts/release.test.mjs
       - name: Check static edition
         run: npm run check
       - name: Check Rust service and server edition
