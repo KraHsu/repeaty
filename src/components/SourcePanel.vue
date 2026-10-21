@@ -437,6 +437,7 @@ let releaseReading: (() => void) | undefined
 watch(
   () =>
     importing.value ||
+    deleting.value ||
     deferring.value ||
     schedulingRead.value ||
     resettingInterval.value ||
@@ -1236,7 +1237,7 @@ async function download() {
                 {{ t('导出原文') }}</button
               ><button
                 class="text-button danger"
-                :disabled="busy || exporting || moving"
+                :disabled="(busy && !reading.savingId.value) || exporting || moving"
                 @click="openDelete"
               >
                 {{ t('删除材料') }}
