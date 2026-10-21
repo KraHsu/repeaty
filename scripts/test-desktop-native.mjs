@@ -2333,15 +2333,34 @@ try {
     () => execute("return !!document.querySelector('#card-front')"),
     'native E opens editor',
   )
-  await fill('#card-front', '**原生：**更新后的问题\n\n```rust\nfn main() {}\n```')
+  await fill(
+    '#card-front',
+    '**原生：**更新后的问题\n\n```rust\nfn main() {}\n```\n\n' +
+      '<style>.native-styled { color: rgb(12, 34, 56); } .topbar { display:none; }</style>\n\n' +
+      '<div class="native-styled" style="padding:12px;border:1px solid #ccc">Native styled HTML</div>\n\n' +
+      '\\(x^2\\)\n\n\\[\\frac{1}{2}\\]',
+  )
   await fill('#card-back', 'Native edited answer')
-  await click('保存卡片')
+  await exec(xdotool, ['key', '--clearmodifiers', 'ctrl+Return'])
   await until(
     () =>
       execute(
         "return !document.querySelector('dialog') && document.querySelector('.flashcard strong')?.textContent==='原生：' && !!document.querySelector('.flashcard .hljs-keyword') && !document.querySelector('.card-answer')",
       ),
     'native edited card restarts with Markdown and highlighting',
+  )
+  assert.equal(
+    await execute("return getComputedStyle(document.querySelector('.native-styled')).color"),
+    'rgb(12, 34, 56)',
+  )
+  assert.equal(
+    await execute("return getComputedStyle(document.querySelector('.card-content')).textAlign"),
+    'left',
+  )
+  assert.equal(await execute("return document.querySelectorAll('.flashcard .katex').length"), 2)
+  assert.equal(
+    await execute("return getComputedStyle(document.querySelector('.topbar')).display==='none'"),
+    false,
   )
   const afterNativeEdit = await libraryRecords()
   assert.deepEqual(
@@ -2371,6 +2390,18 @@ try {
   await until(
     async () => (await libraryRecords()).reviews.length === beforeNativeEdit.reviews.length,
     'native edited card undo',
+  )
+  await execute('document.activeElement?.blur()')
+  await exec(xdotool, ['key', '--clearmodifiers', 'ctrl+z'])
+  await until(async () => {
+    const restored = await libraryRecords()
+    return (
+      JSON.stringify(restored.notes.map((row) => row.value)) ===
+      JSON.stringify(beforeNativeEdit.notes.map((row) => row.value))
+    )
+  }, 'native Ctrl Z restores edited content after rating undo')
+  console.log(
+    'Native 0.27 authoring: styled HTML isolation, parenthesis/bracket math, left alignment, Ctrl Enter save and Ctrl Z content undo passed',
   )
   await click('设置')
   await waitButton('AI 制卡')
