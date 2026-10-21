@@ -3,7 +3,7 @@ use reqwest::{Client, Url, redirect::Policy};
 use serde::{Deserialize, Serialize};
 use std::{
     path::{Path, PathBuf},
-    sync::{Mutex, RwLock},
+    sync::Mutex,
     time::Duration,
 };
 
@@ -32,10 +32,14 @@ pub struct Response {
 pub struct Upstream {
     // Locks only guard a few fields for the duration of a field access, never a request:
     // a slow media download must not queue every other call behind it.
-    config: RwLock<Config>,
+    session: Mutex<Session>,
     path: PathBuf,
     client: Client,
-    token: Mutex<Option<String>>,
+}
+struct Session {
+    config: Config,
+    token: Option<String>,
+    generation: u64,
 }
 pub fn endpoint(input: &str) -> Result<String, String> {
     let input = input.trim();
@@ -108,32 +112,35 @@ impl Upstream {
             Config::default()
         };
         Ok(Self {
-            config: RwLock::new(config),
+            session: Mutex::new(Session {
+                config,
+                token: None,
+                generation: 0,
+            }),
             path: path.to_owned(),
             client: Client::builder()
                 .timeout(Duration::from_secs(60))
                 .redirect(Policy::none())
                 .build()?,
-            token: Mutex::new(None),
         })
     }
     pub fn config(&self) -> Config {
-        self.config
-            .read()
-            .map(|config| config.clone())
+        self.session
+            .lock()
+            .map(|session| session.config.clone())
             .unwrap_or_default()
     }
     pub fn endpoint(&self) -> String {
-        self.config
-            .read()
-            .map(|config| config.endpoint.clone())
-            .unwrap_or_default()
+        self.config().endpoint
     }
     pub fn set_endpoint(&self, value: &str) -> Result<(), String> {
         let config = Config {
             endpoint: endpoint(value)?,
         };
         let bytes = serde_json::to_vec(&config).map_err(|_| "storage-error")?;
+        // Keep persistence and the in-memory session in the same order even if two
+        // endpoint changes arrive together. No network I/O runs under this lock.
+        let mut session = self.session.lock().map_err(|_| "storage-error")?;
         // A unique temporary name that is created rather than followed, then flushed before
         // the rename, so an interrupted write cannot leave a truncated configuration.
         let temp = self.path.with_extension(format!("{}.tmp", uuid_suffix()));
@@ -154,12 +161,22 @@ impl Upstream {
             let _ = std::fs::remove_file(&temp);
             return Err("storage-error".into());
         }
-        *self.config.write().map_err(|_| "storage-error")? = config;
-        *self.token.lock().map_err(|_| "storage-error")? = None;
+        session.config = config;
+        session.token = None;
+        session.generation = session.generation.wrapping_add(1);
         Ok(())
     }
     pub async fn request(&self, request: Request) -> Result<Response, String> {
-        let endpoint = self.endpoint();
+        // Take the destination and its credential together: a switch must never pair
+        // the old destination with the new session (or the reverse).
+        let (endpoint, token, generation) = {
+            let session = self.session.lock().map_err(|_| "storage-error")?;
+            (
+                session.config.endpoint.clone(),
+                session.token.clone(),
+                session.generation,
+            )
+        };
         if !allowed(&request) || endpoint.is_empty() {
             return Err("request-rejected".into());
         }
@@ -176,7 +193,7 @@ impl Upstream {
         if auth {
             outgoing = outgoing.header("X-Repeaty-Session", "bearer");
         }
-        if let Some(token) = self.token.lock().map_err(|_| "storage-error")?.as_ref() {
+        if let Some(token) = token {
             outgoing = outgoing.bearer_auth(token);
         }
         if let Some(body) = request.body {
@@ -211,7 +228,7 @@ impl Upstream {
             }
             body.extend_from_slice(&chunk);
         }
-        if auth && (200..300).contains(&status) {
+        let authenticated_token = if auth && (200..300).contains(&status) {
             let mut value: serde_json::Value =
                 serde_json::from_slice(&body).map_err(|_| "invalid-data")?;
             let token = value
@@ -220,15 +237,29 @@ impl Upstream {
                 .and_then(|v| v.as_str().map(str::to_owned))
                 .filter(|t| t.len() == 64 && t.bytes().all(|b| b.is_ascii_hexdigit()))
                 .ok_or("invalid-data")?;
-            *self.token.lock().map_err(|_| "storage-error")? = Some(token);
             body = serde_json::to_vec(&value).map_err(|_| "invalid-data")?;
+            Some(token)
+        } else {
+            None
+        };
+        let mut session = self.session.lock().map_err(|_| "storage-error")?;
+        // Endpoint equality alone misses A -> B -> A switches. Reject all retired
+        // responses, including successful library reads and stale 401/logout replies.
+        if session.generation != generation {
+            return Err("request-rejected".into());
         }
-        if status == 401
+        if let Some(token) = authenticated_token {
+            session.token = Some(token);
+            session.generation = session.generation.wrapping_add(1);
+        }
+        if (status == 401 && session.token.is_some())
             || (matches!(request.path.as_str(), "/auth/logout" | "/auth/password")
                 && (200..300).contains(&status))
         {
-            *self.token.lock().map_err(|_| "storage-error")? = None;
+            session.token = None;
+            session.generation = session.generation.wrapping_add(1);
         }
+        drop(session);
         Ok(Response {
             status,
             content_type,
@@ -242,6 +273,268 @@ fn uuid_suffix() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{
+        Json, Router,
+        http::{HeaderMap, StatusCode},
+        routing::{get, post},
+    };
+    use std::sync::Arc;
+    use tokio::sync::Notify;
+
+    fn request(path: &str, method: &str) -> Request {
+        Request {
+            path: path.into(),
+            method: method.into(),
+            body: None,
+            content_type: None,
+            user_id: None,
+        }
+    }
+
+    struct Server {
+        endpoint: String,
+        task: tokio::task::JoinHandle<()>,
+    }
+    impl Server {
+        async fn start(app: Router) -> Self {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let endpoint = format!("http://{}", listener.local_addr().unwrap());
+            let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            Self { endpoint, task }
+        }
+    }
+    impl Drop for Server {
+        fn drop(&mut self) {
+            self.task.abort();
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct Pending {
+        started: Arc<Notify>,
+        resume: Arc<Notify>,
+    }
+    impl Pending {
+        async fn wait(&self) {
+            self.started.notify_one();
+            self.resume.notified().await;
+        }
+        async fn started(&self) {
+            tokio::time::timeout(Duration::from_secs(5), self.started.notified())
+                .await
+                .expect("upstream request did not reach the server");
+        }
+    }
+
+    fn session_app(token: char) -> Router {
+        session_router().route(
+            "/api/auth/login",
+            post(move || async move {
+                Json(serde_json::json!({"token": token.to_string().repeat(64)}))
+            }),
+        )
+    }
+
+    fn session_router() -> Router {
+        Router::new().route(
+            "/api/auth/session",
+            get(|headers: HeaderMap| async move {
+                Json(serde_json::json!({
+                    "authorization": headers.get("authorization").map(|v| v.to_str().unwrap())
+                }))
+            }),
+        )
+    }
+
+    async fn assert_session(client: &Upstream, token: Option<char>) {
+        let response = client
+            .request(request("/auth/session", "GET"))
+            .await
+            .unwrap();
+        let body: serde_json::Value =
+            serde_json::from_slice(&STANDARD.decode(response.body).unwrap()).unwrap();
+        assert_eq!(
+            body["authorization"],
+            serde_json::json!(
+                token.map(|value| format!("Bearer {}", value.to_string().repeat(64)))
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn late_login_cannot_replace_a_new_endpoint_session_or_survive_switching_back() {
+        for switch_back in [false, true] {
+            let pending = Pending::default();
+            let old = Server::start(session_router().route(
+                "/api/auth/login",
+                post({
+                    let pending = pending.clone();
+                    move || async move {
+                        pending.wait().await;
+                        Json(serde_json::json!({"token": "a".repeat(64)}))
+                    }
+                }),
+            ))
+            .await;
+            let new = Server::start(session_app('b')).await;
+            let dir = tempfile::tempdir().unwrap();
+            let client = Arc::new(Upstream::open(&dir.path().join("desktop.json")).unwrap());
+            client.set_endpoint(&old.endpoint).unwrap();
+            let login = tokio::spawn({
+                let client = client.clone();
+                async move { client.request(request("/auth/login", "POST")).await }
+            });
+            pending.started().await;
+            client.set_endpoint(&new.endpoint).unwrap();
+            client
+                .request(request("/auth/login", "POST"))
+                .await
+                .unwrap();
+            if switch_back {
+                client.set_endpoint(&old.endpoint).unwrap();
+            }
+            pending.resume.notify_one();
+            assert_eq!(
+                login.await.unwrap().err().as_deref(),
+                Some("request-rejected")
+            );
+            assert_session(&client, if switch_back { None } else { Some('b') }).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn retired_library_logout_and_password_responses_cannot_change_the_new_session() {
+        for (path, status) in [
+            ("/library", StatusCode::OK),
+            ("/library", StatusCode::UNAUTHORIZED),
+            ("/auth/logout", StatusCode::NO_CONTENT),
+            ("/auth/password", StatusCode::NO_CONTENT),
+        ] {
+            let pending = Pending::default();
+            let method = if path == "/library" { "GET" } else { "POST" };
+            let response = {
+                let pending = pending.clone();
+                move || async move {
+                    pending.wait().await;
+                    status
+                }
+            };
+            let route = if method == "GET" {
+                get(response)
+            } else {
+                post(response)
+            };
+            let old = Server::start(session_app('a').route(&format!("/api{path}"), route)).await;
+            let new = Server::start(session_app('b')).await;
+            let dir = tempfile::tempdir().unwrap();
+            let client = Arc::new(Upstream::open(&dir.path().join("desktop.json")).unwrap());
+            client.set_endpoint(&old.endpoint).unwrap();
+            client
+                .request(request("/auth/login", "POST"))
+                .await
+                .unwrap();
+            let old_request = tokio::spawn({
+                let client = client.clone();
+                async move { client.request(request(path, method)).await }
+            });
+            pending.started().await;
+            client.set_endpoint(&new.endpoint).unwrap();
+            client
+                .request(request("/auth/login", "POST"))
+                .await
+                .unwrap();
+            pending.resume.notify_one();
+            assert_eq!(
+                old_request.await.unwrap().err().as_deref(),
+                Some("request-rejected")
+            );
+            assert_session(&client, Some('b')).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn an_unauthenticated_401_does_not_cancel_parallel_public_requests() {
+        let pending = Pending::default();
+        let server = Server::start(
+            Router::new()
+                .route(
+                    "/api/auth/session",
+                    get(|| async { StatusCode::UNAUTHORIZED }),
+                )
+                .route(
+                    "/api/status",
+                    get({
+                        let pending = pending.clone();
+                        move || async move {
+                            pending.wait().await;
+                            Json(serde_json::json!({"ok": true}))
+                        }
+                    }),
+                ),
+        )
+        .await;
+        let dir = tempfile::tempdir().unwrap();
+        let client = Arc::new(Upstream::open(&dir.path().join("desktop.json")).unwrap());
+        client.set_endpoint(&server.endpoint).unwrap();
+        let status = tokio::spawn({
+            let client = client.clone();
+            async move { client.request(request("/status", "GET")).await }
+        });
+        pending.started().await;
+        assert_eq!(
+            client
+                .request(request("/auth/session", "GET"))
+                .await
+                .unwrap()
+                .status,
+            401
+        );
+        pending.resume.notify_one();
+        assert_eq!(status.await.unwrap().unwrap().status, 200);
+    }
+
+    #[tokio::test]
+    async fn a_new_login_invalidates_old_responses_on_the_same_endpoint() {
+        let pending = Pending::default();
+        let server = Server::start(session_app('a').route(
+            "/api/library",
+            get({
+                let pending = pending.clone();
+                move || async move {
+                    pending.wait().await;
+                    StatusCode::UNAUTHORIZED
+                }
+            }),
+        ))
+        .await;
+        let dir = tempfile::tempdir().unwrap();
+        let client = Arc::new(Upstream::open(&dir.path().join("desktop.json")).unwrap());
+        client.set_endpoint(&server.endpoint).unwrap();
+        client
+            .request(request("/auth/login", "POST"))
+            .await
+            .unwrap();
+        let old_request = tokio::spawn({
+            let client = client.clone();
+            async move { client.request(request("/library", "GET")).await }
+        });
+        pending.started().await;
+        // A slow request must not prevent a new login or another request from finishing.
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            client.request(request("/auth/login", "POST")),
+        )
+        .await
+        .expect("a slow upstream request blocked login")
+        .unwrap();
+        pending.resume.notify_one();
+        assert_eq!(
+            old_request.await.unwrap().err().as_deref(),
+            Some("request-rejected")
+        );
+        assert_session(&client, Some('a')).await;
+    }
+
     #[test]
     fn endpoints_and_routes_do_not_allow_arbitrary_requests() {
         for invalid in [
@@ -348,7 +641,7 @@ mod tests {
             "redirect-rejected"
         );
         client.set_endpoint("").unwrap();
-        assert!(client.token.lock().unwrap().is_none());
+        assert!(client.session.lock().unwrap().token.is_none());
         assert!(
             !std::fs::read_to_string(dir.path().join("desktop.json"))
                 .unwrap()
