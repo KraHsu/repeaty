@@ -38,6 +38,17 @@ impl CredentialStore {
                 use std::os::unix::fs::PermissionsExt;
                 file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
             }
+            #[cfg(windows)]
+            {
+                // Windows has no file mode. Best effort: drop inherited access so only the
+                // current user can read the stored LeetCode session cookie.
+                let _ = std::process::Command::new("icacls")
+                    .arg(path)
+                    .args(["/inheritance:r", "/grant:r", "%USERNAME%:F"])
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status();
+            }
         }
         let connection = Connection::open(path)?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
