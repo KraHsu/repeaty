@@ -124,6 +124,21 @@ test('rejects invalid files, supports pasted text and keeps an existing snapshot
   await page.getByLabel('材料标题').fill('学习笔记')
   await page.getByLabel('内容格式').selectOption('plain')
   await page.getByLabel('粘贴正文').fill('A new snapshot of the source.')
+  const original = ((await storedLibrary(page)).sources as { value: Source }[])[0]!.value
+  // A layout change can scroll the underlying reader while the dialog is open.
+  // Its 700 ms autosave must not disable the form between pointer down and up.
+  const reader = page.locator('.source-text')
+  await expect(reader).toHaveAttribute('aria-busy', 'false')
+  await reader.evaluate((element: HTMLTextAreaElement) => {
+    element.scrollTop = Math.floor(element.scrollHeight / 2)
+    element.dispatchEvent(new Event('scroll'))
+  })
+  await page.waitForTimeout(1000)
+  const whileImporting = (await storedLibrary(page)).sources as { value: Source }[]
+  expect(whileImporting.find(({ value }) => value.id === original.id)!.value.reading).toEqual(
+    original.reading,
+  )
+  await expect(page.getByRole('button', { name: '保存材料', exact: true })).toBeEnabled()
   await page.getByRole('button', { name: '保存材料', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.getByRole('textbox', { name: '材料正文', exact: true })).toHaveValue(
@@ -133,4 +148,10 @@ test('rejects invalid files, supports pasted text and keeps an existing snapshot
   expect(after.sources).toHaveLength(2)
   expect(after.notes).toEqual(before.notes)
   expect(after.cards).toEqual(before.cards)
+  await expect
+    .poll(async () => {
+      const sources = (await storedLibrary(page)).sources as { value: Source }[]
+      return sources.find(({ value }) => value.id === original.id)!.value.reading?.offset
+    })
+    .toBeGreaterThan(0)
 })

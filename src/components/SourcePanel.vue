@@ -436,6 +436,7 @@ const deferOptions = computed(() => [
 let releaseReading: (() => void) | undefined
 watch(
   () =>
+    importing.value ||
     deferring.value ||
     schedulingRead.value ||
     resettingInterval.value ||
