@@ -127,6 +127,9 @@ const selectedDeck = ref('')
 const searchQuery = ref('')
 const filterState = ref<SearchFilter['state']>('all')
 const now = ref(new Date())
+// The queue, deck aggregation and activity chart are O(library) and only change when a
+// minute passes; children still receive the fine-grained `now` for their own due checks.
+const coarseNow = ref(new Date())
 const review = ref<{ deckId?: string; study?: StudySession } | null>(null)
 const mixed = ref<{ cardsPerReading: number } | null>(null)
 const mixedRatio = ref(3)
@@ -164,10 +167,12 @@ const pendingBackup = ref<BackupData>()
 const pendingSnapshot = ref<Library>()
 const confirmation = ref<{ title: string; message: DisplayMessage; action: () => Promise<void> }>()
 const upload = ref<HTMLInputElement>()
-const due = computed(() => dueCards(library.value, now.value, undefined, canReviewCard))
-const limited = computed(() => blockedByLimit(library.value, now.value, undefined, canReviewCard))
+const due = computed(() => dueCards(library.value, coarseNow.value, undefined, canReviewCard))
+const limited = computed(() =>
+  blockedByLimit(library.value, coarseNow.value, undefined, canReviewCard),
+)
 const readyReading = computed(() =>
-  queuedSources(library.value.sources, 'ready', localDay(now.value)),
+  queuedSources(library.value.sources, 'ready', localDay(coarseNow.value)),
 )
 const readyExcerpts = computed(
   () => readyReading.value.filter((source) => source.kind === 'excerpt').length,
@@ -211,7 +216,7 @@ const newCount = computed(() => due.value.filter((card) => card.schedule.state =
 const todayReviews = computed(() =>
   library.value.reviews.filter((entry) => entry.studyDay === dayKey(now.value)),
 )
-const activity = computed(() => weekActivity(library.value, now.value))
+const activity = computed(() => weekActivity(library.value, coarseNow.value))
 const maxActivity = computed(() => Math.max(4, ...activity.value.map((day) => day.count)))
 const currentDeck = computed(() =>
   library.value.decks.find((deck) => deck.id === selectedDeck.value),
@@ -245,7 +250,14 @@ onMounted(() => {
     void workspace.backupNow()
   }, 60_000)
   ticker = setInterval(() => {
-    now.value = new Date()
+    // Wake often enough that a clock change is noticed promptly, but only recompute the
+    // O(library) queue and deck aggregation when the wall-clock minute actually moved.
+    // Ticking unthrottled would re-derive them every ten seconds for no new information.
+    const next = new Date()
+    now.value = next
+    if (Math.floor(next.getTime() / 60_000) === Math.floor(coarseNow.value.getTime() / 60_000))
+      return
+    coarseNow.value = next
   }, 10_000)
 })
 onUnmounted(() => {
@@ -257,6 +269,12 @@ onUnmounted(() => {
   void workspace.close()
 })
 
+// Actions that change a schedule must refresh both clocks; otherwise the due queue would
+// keep showing the pre-review state until the next minute.
+function refreshClock() {
+  now.value = new Date()
+  coarseNow.value = now.value
+}
 function navigate(next: typeof tab.value) {
   tab.value = next
   review.value = null
@@ -274,7 +292,7 @@ function startReading() {
 function startMixed() {
   if (!Number.isInteger(mixedRatio.value) || mixedRatio.value < 1 || mixedRatio.value > 10) return
   navigate('overview')
-  now.value = new Date()
+  refreshClock()
   notice.value = null
   modal.value = null
   mixed.value = { cardsPerReading: mixedRatio.value }
@@ -336,7 +354,7 @@ async function run(action: () => Promise<void>, message?: string) {
   dismissInfoNotifications()
   try {
     await action()
-    now.value = new Date()
+    refreshClock()
     notice.value = message ? { text: message, error: false } : null
     return true
   } catch (error) {
@@ -421,7 +439,7 @@ async function deleteSearch(id: string) {
   return run(() => workspace.deleteSearch(id), '常用筛选已删除')
 }
 function startStudy(study: StudySession) {
-  now.value = new Date()
+  refreshClock()
   notice.value = null
   review.value = { study }
 }
@@ -482,7 +500,7 @@ async function confirmAction() {
   if (confirmation.value && (await run(confirmation.value.action, '已删除'))) modal.value = null
 }
 function startReview(deckId?: string) {
-  now.value = new Date()
+  refreshClock()
   notice.value = null
   review.value = { deckId }
 }
@@ -512,10 +530,11 @@ const deckCounts = computed(() => {
   return counts
 })
 const deckStates = computed(() =>
-  deckStudyCounts(library.value, now.value, due.value, cards.value, canReviewCard),
+  deckStudyCounts(library.value, coarseNow.value, due.value, cards.value, canReviewCard),
 )
 const transfer = ref<{ label: string; percent: number }>()
 let transferController: AbortController | undefined
+let transferGeneration = 0
 const filePicker = (
   window as Window & { showSaveFilePicker?: (options: unknown) => Promise<FileSystemFileHandle> }
 ).showSaveFilePicker?.bind(window)
@@ -526,6 +545,12 @@ async function exportData(format: 'archive' | 'json' | 'file' = 'archive') {
   if (transfer.value || busy.value) return
   const filename = `repeaty-backup-${now.value.toISOString().slice(0, 10)}.${format === 'json' ? 'json' : 'repeaty'}`
   let writable: WritableStream<Uint8Array> | undefined
+  // Claim the export before the first await. The native save dialog can take a while, and a
+  // second click during it must not start a parallel export that shares this state.
+  const owner = new AbortController()
+  const generation = (transferGeneration += 1)
+  transferController = owner
+  transfer.value = { label: '正在准备备份…', percent: 0 }
   try {
     if (createExportFile) writable = await createExportFile(filename)
     else if (format === 'file' && filePicker) {
@@ -535,16 +560,16 @@ async function exportData(format: 'archive' | 'json' | 'file' = 'archive') {
       })
       writable = await handle.createWritable()
     }
-    transferController = new AbortController()
-    transfer.value = { label: '正在导出备份…', percent: 0 }
+    if (generation === transferGeneration) transfer.value = { label: '正在导出备份…', percent: 0 }
     const blob =
       format === 'json'
         ? new Blob([await workspace.exportData()], { type: 'application/json' })
         : await workspace.exportArchive({
             writable,
-            signal: transferController.signal,
+            signal: owner.signal,
             progress: (percent) => {
-              if (transfer.value) transfer.value.percent = percent
+              if (generation === transferGeneration && transfer.value)
+                transfer.value.percent = percent
             },
           })
     if (blob && writable) await blob.stream().pipeTo(writable)
@@ -564,8 +589,12 @@ async function exportData(format: 'archive' | 'json' | 'file' = 'archive') {
         ? { text: '已取消备份操作', error: false }
         : { text: error as Error, error: true }
   } finally {
-    transfer.value = undefined
-    transferController = undefined
+    // Only the export that still owns the state may clear it; an earlier superseded run
+    // must not remove the progress of the one actually writing.
+    if (generation === transferGeneration) {
+      transfer.value = undefined
+      transferController = undefined
+    }
   }
 }
 async function openSnapshot(id: string) {

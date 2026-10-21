@@ -266,6 +266,9 @@ async function changeCurrent(action: 'suspend' | 'bury') {
   }
 }
 function keydown(event: KeyboardEvent) {
+  // Keys pressed while an IME composition is open are meant for the IME (e.g. typing "e"
+  // in pinyin) and must not reveal answers or grade cards.
+  if (event.isComposing || event.keyCode === 229) return
   if (document.querySelector('dialog[open]')) return
   if (
     event.repeat ||

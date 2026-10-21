@@ -60,7 +60,7 @@ const popupOptions = computed(() => [
         role="tab"
         :aria-selected="selected === item.id"
         :tabindex="selected === item.id ? 0 : -1"
-        :aria-controls="`settings-panel-${item.id}`"
+        :aria-controls="selected === item.id ? `settings-panel-${item.id}` : undefined"
         @click="selected = item.id"
       >
         {{ t(item.label) }}
