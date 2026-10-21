@@ -8,6 +8,50 @@ import {
 } from '../fixtures/reading-flow'
 import { readingQueueFlow } from '../fixtures/reading-queue-flow'
 import { readingRoundFlow, startRound } from '../fixtures/reading-round-flow'
+test('opening source deletion survives autosave between pointer down and up', async ({
+  page,
+  request,
+}) => {
+  await page.goto('./')
+  await importReading(page, 'Delete while saving', 'plain', readingText)
+  await saveReading(page)
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let notify!: () => void
+  const requested = new Promise<void>((resolve) => {
+    notify = resolve
+  })
+  await page.route('**/api/library/commit', async (route) => {
+    notify()
+    await gate
+    await route.continue()
+  })
+  try {
+    await moveReading(page, 0.5)
+    await page.getByRole('button', { name: '删除材料', exact: true }).hover()
+    await page.mouse.down()
+    await requested
+    await page.mouse.up()
+    const dialog = page.getByRole('dialog', { name: '删除材料？', exact: true })
+    await expect(dialog).toBeVisible()
+    const confirm = dialog.getByRole('button', { name: '确认删除', exact: true })
+    await expect(confirm).toBeDisabled()
+    release()
+    await expect(confirm).toBeEnabled()
+    await confirm.click()
+    await expect(dialog).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: '还没有学习材料' })).toBeVisible()
+    expect((await (await request.get('api/library', { headers })).json()).library.sources).toEqual(
+      [],
+    )
+  } finally {
+    release()
+    await page.mouse.up()
+  }
+})
+
 test('account reading rounds save positions in SQLite and preserve study records and backups', async ({
   page,
   request,
