@@ -102,10 +102,10 @@ describe('IndexedDB transactions and automatic snapshots', () => {
     const repo = createRepository(name)
     const loaded = await repo.load()
     expect(loaded.revision).toBe(6)
-    expect(loaded.library.version).toBe(12)
+    expect(loaded.library.version).toBe(13)
     expect(loaded.library.notes[0]!.format).toBe('plain')
     expect(await (await repo.getMedia(asset.meta.id))!.text()).toBe('png-data')
-    expect((await repo.getBackup('old-snapshot')).version).toBe(12)
+    expect((await repo.getBackup('old-snapshot')).version).toBe(13)
     await expect(openDB(name, 2)).rejects.toMatchObject({ name: 'VersionError' })
     expect((await repo.load()).revision).toBe(6)
     await repo.close()
@@ -226,7 +226,7 @@ it('writes only a graded card and new review, and reconstructs the earlier check
   const first = await repo.save(fixture(), 0)
   const graded = reviewCard(first.library, first.library.cards[0]!.id, 3, now)
   await repo.save(graded, 1, { now })
-  const db = await openDB(name, 15)
+  const db = await openDB(name, 16)
   expect(await db.get('workspace', 'main')).toBeUndefined()
   expect(await db.count('cards')).toBe(1)
   expect(await db.count('reviews')).toBe(1)
@@ -281,7 +281,7 @@ it('leaves legacy data intact if migration fails validation', async () => {
   db.close()
   const repo = createRepository(name)
   await expect(repo.load()).rejects.toThrow()
-  const inspect = await openDB(name, 15)
+  const inspect = await openDB(name, 16)
   expect(await inspect.get('workspace', 'main')).toEqual(corrupt)
   expect(await inspect.get('meta', 'main')).toBeUndefined()
   inspect.close()
@@ -319,6 +319,66 @@ it('queries bounded pages in stable order and retains advanced search semantics'
   queueMicrotask(() => controller.abort())
   await expect(canceled).rejects.toMatchObject({ name: 'AbortError' })
   expect((await repo.queryCards(filter, 1, now, false)).total).toBe(111)
+  await repo.close()
+})
+
+it('keeps full submission bodies when a compacted history entry shifts position', async () => {
+  const repo = createRepository(`repeaty-compact-${crypto.randomUUID()}`, undefined, {
+    compactHistory: true,
+  })
+  let library = fixture()
+  library.practices.push({
+    id: 'practice-a',
+    cardId: library.cards[0]!.id,
+    contentRevision: 'sha',
+    question: {
+      front: 'Problem',
+      back: '',
+      format: 'plain',
+      plugin: { id: 'leetcode', version: 1, data: { slug: 'a' } },
+    },
+    startedAt: now.toISOString(),
+  })
+  const attempt = (id: string, practiceId: string, code: string) => ({
+    id,
+    practiceId,
+    submittedAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    language: 'python3',
+    code,
+    elapsedMs: 1,
+    status: 'submitting' as const,
+  })
+  let snapshot = await repo.save(
+    {
+      ...library,
+      attempts: [attempt('attempt-a', 'practice-a', 'code-a')],
+    },
+    0,
+  )
+  const moved = snapshot.library.cards[0]!
+  const secondNote = { ...snapshot.library.notes[0]!, id: 'note-b', front: 'Second' }
+  const secondCard = { ...moved, id: 'card-b', noteId: 'note-b' }
+  snapshot = await repo.save(
+    {
+      ...snapshot.library,
+      notes: [...snapshot.library.notes, secondNote],
+      cards: [...snapshot.library.cards, secondCard],
+      practices: [
+        ...snapshot.library.practices,
+        { ...snapshot.library.practices[0]!, id: 'practice-b', cardId: 'card-b' },
+      ],
+      attempts: [...snapshot.library.attempts, attempt('attempt-b', 'practice-b', 'code-b')],
+    },
+    snapshot.revision,
+  )
+  // Deleting the first note removes attempt-a and moves attempt-b to position zero.
+  snapshot = await repo.save(
+    removeNotes(snapshot.library, new Set([snapshot.library.notes[0]!.id])),
+    snapshot.revision,
+  )
+  const complete = await repo.completeLibrary()
+  expect(complete.attempts).toEqual([expect.objectContaining({ id: 'attempt-b', code: 'code-b' })])
   await repo.close()
 })
 

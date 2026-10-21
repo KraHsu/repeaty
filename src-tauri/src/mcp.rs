@@ -355,10 +355,15 @@ struct Gate {
     token: String,
 }
 impl Gate {
-    fn check(&self, headers: &HeaderMap) -> Result<(), StatusCode> {
-        if headers.contains_key(header::ORIGIN)
-            || headers.get(header::HOST).and_then(|h| h.to_str().ok()) != Some(&self.authority)
-        {
+    /// HTTP/1.1 carries the authority in `Host`; HTTP/2 sends it as the `:authority`
+    /// pseudo-header, which hyper surfaces as the request URI authority. Accept either
+    /// so a client negotiating h2c is not rejected for using the protocol it chose.
+    fn check(&self, headers: &HeaderMap, uri: &axum::http::Uri) -> Result<(), StatusCode> {
+        let host = headers
+            .get(header::HOST)
+            .and_then(|h| h.to_str().ok())
+            .or_else(|| uri.authority().map(|authority| authority.as_str()));
+        if headers.contains_key(header::ORIGIN) || host != Some(self.authority.as_str()) {
             return Err(StatusCode::FORBIDDEN);
         }
         let authorization = headers
@@ -388,7 +393,7 @@ fn constant_equal(left: &[u8], right: &[u8]) -> bool {
             == 0
 }
 async fn authorize(HttpState(gate): HttpState<Gate>, request: Request, next: Next) -> Response {
-    if let Err(status) = gate.check(request.headers()) {
+    if let Err(status) = gate.check(request.headers(), request.uri()) {
         return status.into_response();
     }
     let mut response = next.run(request).await;

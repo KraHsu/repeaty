@@ -163,7 +163,7 @@ export async function readingIntervalFlow(
   await page.getByRole('button', { name: '导出 .repeaty', exact: true }).click()
   const bytes = await readFile((await (await download).path())!)
   const backup = await parseArchive(new Blob([bytes]))
-  expect(backup.library.version).toBe(12)
+  expect(backup.library.version).toBe(13)
   expect(backup.library.sources.map((source) => source.readingIntervalDays)).toEqual([1, 1])
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await queueView(page, '稍后阅读')

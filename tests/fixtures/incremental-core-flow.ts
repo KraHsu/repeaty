@@ -265,7 +265,7 @@ export async function batchRetryFlow(
   expect(after.sources.every((source) => source.queue?.state === 'archived')).toBe(true)
   await reject(true)
   await page.getByRole('button', { name: '撤销阅读安排', exact: true }).click()
-  await expect(page.locator('.notice.error')).toBeVisible()
+  await expect(page.locator('.notification.error').last()).toBeVisible()
   expect((await read()).sources.map(sourceArrangement)).toEqual(
     after.sources.map(sourceArrangement),
   )

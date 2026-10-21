@@ -1,0 +1,3 @@
+type,front,back,tags,format
+"basic","What is 2 + 2?","4","arithmetic","markdown"
+"cloze","In `x = 2 + 2`, x equals {{c1::4}}.","","arithmetic|code","markdown"

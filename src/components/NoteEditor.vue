@@ -130,6 +130,8 @@ function selectLeetCode() {
   selectedPluginId.value = 'leetcode'
 }
 function shortcut(event: KeyboardEvent) {
+  // Enter/Shift+C while an IME composition is open belongs to the IME, not to the form.
+  if (event.isComposing || event.keyCode === 229) return
   if (!(event.ctrlKey || event.metaKey) || event.repeat) return
   if (event.shiftKey && event.key.toLowerCase() === 'c' && event.target === frontInput.value) {
     event.preventDefault()

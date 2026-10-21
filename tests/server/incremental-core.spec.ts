@@ -79,7 +79,7 @@ test('a stale batch or undo cannot replace an arrangement committed by another a
   await expect(other.getByLabel('阅读优先级', { exact: true })).toHaveValue('normal')
   const latest = await read()
   await page.getByRole('button', { name: '撤销阅读安排', exact: true }).click()
-  await expect(page.locator('.notice.error')).toBeVisible()
+  await expect(page.locator('.notification.error').last()).toBeVisible()
   expect((await read()).sources).toEqual(latest.sources)
   await other.close()
 })

@@ -47,7 +47,7 @@ Claude Code 和 Claude Desktop 使用：
 
 Claude Code 首次读取项目的 `.mcp.json` 时，会要求在客户端确认该 MCP 服务；未确认时 `claude mcp get repeaty` 显示 Pending approval。
 
-每次打开、重载或切换学习库后，需要在 Repeaty 中重新开启 MCP、重新分享摘录；客户端配置可以继续使用。关闭设置窗口不关闭连接。允许读取后，客户端及其使用的模型服务将能看到查询结果，请选择可信的客户端。
+每次打开、重载或切换学习库后，需要在 Repeaty 中重新开启 MCP、重新分享摘录；客户端配置可以继续使用。离开设置页不关闭连接。允许读取后，客户端及其使用的模型服务将能看到查询结果，请选择可信的客户端。
 
 配置方式依据 [Codex MCP 文档](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)、[Claude Code MCP 文档](https://code.claude.com/docs/en/mcp)和 [Claude Desktop 本地服务器说明](https://modelcontextprotocol.io/docs/2026-07-28/develop/connect-local-servers)。Repeaty 不修改这些客户端的配置文件，也不需要在 Repeaty 中填写模型 API 密钥。
 

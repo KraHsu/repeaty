@@ -3,6 +3,7 @@ use reqwest::{Client, Url, redirect::Policy};
 use serde::{Deserialize, Serialize};
 use std::{
     path::{Path, PathBuf},
+    sync::{Mutex, RwLock},
     time::Duration,
 };
 
@@ -29,10 +30,12 @@ pub struct Response {
     pub body: String,
 }
 pub struct Upstream {
-    pub config: Config,
+    // Locks only guard a few fields for the duration of a field access, never a request:
+    // a slow media download must not queue every other call behind it.
+    config: RwLock<Config>,
     path: PathBuf,
     client: Client,
-    token: Option<String>,
+    token: Mutex<Option<String>>,
 }
 pub fn endpoint(input: &str) -> Result<String, String> {
     let input = input.trim();
@@ -81,37 +84,83 @@ fn allowed(request: &Request) -> bool {
 }
 impl Upstream {
     pub fn open(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
+        // A damaged settings file must not prevent the window from starting: the user
+        // needs the settings page to repair the endpoint. Keep the bad file for diagnosis.
         let config = if path.exists() {
-            serde_json::from_slice::<Config>(&std::fs::read(path)?)?
+            match std::fs::read(path)
+                .map_err(Box::<dyn std::error::Error>::from)
+                .and_then(|bytes| {
+                    serde_json::from_slice::<Config>(&bytes)
+                        .map_err(Box::<dyn std::error::Error>::from)
+                })
+                .and_then(|config| {
+                    endpoint(&config.endpoint)
+                        .map_err(|error| Box::<dyn std::error::Error>::from(error.as_str()))
+                        .map(|_| config)
+                }) {
+                Ok(config) => config,
+                Err(_) => {
+                    let _ = std::fs::rename(path, path.with_extension("invalid"));
+                    Config::default()
+                }
+            }
         } else {
             Config::default()
         };
-        endpoint(&config.endpoint)?;
         Ok(Self {
-            config,
+            config: RwLock::new(config),
             path: path.to_owned(),
             client: Client::builder()
                 .timeout(Duration::from_secs(60))
                 .redirect(Policy::none())
                 .build()?,
-            token: None,
+            token: Mutex::new(None),
         })
     }
-    pub fn set_endpoint(&mut self, value: &str) -> Result<(), String> {
+    pub fn config(&self) -> Config {
+        self.config
+            .read()
+            .map(|config| config.clone())
+            .unwrap_or_default()
+    }
+    pub fn endpoint(&self) -> String {
+        self.config
+            .read()
+            .map(|config| config.endpoint.clone())
+            .unwrap_or_default()
+    }
+    pub fn set_endpoint(&self, value: &str) -> Result<(), String> {
         let config = Config {
             endpoint: endpoint(value)?,
         };
         let bytes = serde_json::to_vec(&config).map_err(|_| "storage-error")?;
-        let temp = self.path.with_extension("tmp");
-        std::fs::write(&temp, bytes)
-            .and_then(|_| std::fs::rename(temp, &self.path))
+        // A unique temporary name that is created rather than followed, then flushed before
+        // the rename, so an interrupted write cannot leave a truncated configuration.
+        let temp = self.path.with_extension(format!("{}.tmp", uuid_suffix()));
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)
             .map_err(|_| "storage-error")?;
-        self.config = config;
-        self.token = None;
+        use std::io::Write;
+        let written = file
+            .write_all(&bytes)
+            .and_then(|_| file.sync_all())
+            .map_err(|_| "storage-error");
+        drop(file);
+        let replaced =
+            written.and_then(|_| std::fs::rename(&temp, &self.path).map_err(|_| "storage-error"));
+        if replaced.is_err() {
+            let _ = std::fs::remove_file(&temp);
+            return Err("storage-error".into());
+        }
+        *self.config.write().map_err(|_| "storage-error")? = config;
+        *self.token.lock().map_err(|_| "storage-error")? = None;
         Ok(())
     }
-    pub async fn request(&mut self, request: Request) -> Result<Response, String> {
-        if !allowed(&request) || self.config.endpoint.is_empty() {
+    pub async fn request(&self, request: Request) -> Result<Response, String> {
+        let endpoint = self.endpoint();
+        if !allowed(&request) || endpoint.is_empty() {
             return Err("request-rejected".into());
         }
         let method = reqwest::Method::from_bytes(request.method.as_bytes())
@@ -119,10 +168,7 @@ impl Upstream {
         let auth = matches!(request.path.as_str(), "/auth/login" | "/auth/register");
         let mut outgoing = self
             .client
-            .request(
-                method,
-                format!("{}/api{}", self.config.endpoint, request.path),
-            )
+            .request(method, format!("{endpoint}/api{}", request.path))
             .header("X-Repeaty-Client", "1");
         if let Some(id) = request.user_id {
             outgoing = outgoing.header("X-Repeaty-User", id);
@@ -130,7 +176,7 @@ impl Upstream {
         if auth {
             outgoing = outgoing.header("X-Repeaty-Session", "bearer");
         }
-        if let Some(token) = &self.token {
+        if let Some(token) = self.token.lock().map_err(|_| "storage-error")?.as_ref() {
             outgoing = outgoing.bearer_auth(token);
         }
         if let Some(body) = request.body {
@@ -174,14 +220,14 @@ impl Upstream {
                 .and_then(|v| v.as_str().map(str::to_owned))
                 .filter(|t| t.len() == 64 && t.bytes().all(|b| b.is_ascii_hexdigit()))
                 .ok_or("invalid-data")?;
-            self.token = Some(token);
+            *self.token.lock().map_err(|_| "storage-error")? = Some(token);
             body = serde_json::to_vec(&value).map_err(|_| "invalid-data")?;
         }
         if status == 401
             || (matches!(request.path.as_str(), "/auth/logout" | "/auth/password")
                 && (200..300).contains(&status))
         {
-            self.token = None;
+            *self.token.lock().map_err(|_| "storage-error")? = None;
         }
         Ok(Response {
             status,
@@ -189,6 +235,9 @@ impl Upstream {
             body: STANDARD.encode(body),
         })
     }
+}
+fn uuid_suffix() -> String {
+    uuid::Uuid::new_v4().simple().to_string()
 }
 #[cfg(test)]
 mod tests {
@@ -271,7 +320,7 @@ mod tests {
         let address = listener.local_addr().unwrap();
         let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let dir = tempfile::tempdir().unwrap();
-        let mut client = Upstream::open(&dir.path().join("desktop.json")).unwrap();
+        let client = Upstream::open(&dir.path().join("desktop.json")).unwrap();
         client.set_endpoint(&format!("http://{address}")).unwrap();
         let request = |path: &str, method: &str| Request {
             path: path.into(),
@@ -299,7 +348,7 @@ mod tests {
             "redirect-rejected"
         );
         client.set_endpoint("").unwrap();
-        assert!(client.token.is_none());
+        assert!(client.token.lock().unwrap().is_none());
         assert!(
             !std::fs::read_to_string(dir.path().join("desktop.json"))
                 .unwrap()

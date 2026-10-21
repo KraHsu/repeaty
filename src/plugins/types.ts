@@ -1,5 +1,5 @@
 import type { Component } from 'vue'
-import type { CardView, Grade, Media } from '../core/model'
+import type { CardView, Grade, Media, Review } from '../core/model'
 import type { Assessment } from './data'
 import type { Practice, Attempt, AttemptRecord } from '../core/practice-data'
 
@@ -46,15 +46,36 @@ export interface QuestionPlugin {
   history?: Component
 }
 
+export interface ReviewPanelProps {
+  card: CardView
+  reviews: readonly Review[]
+  revealed: boolean
+}
+/** Frontend-only review decorations do not create or judge a question type. */
+export interface ReviewPanelPlugin {
+  id: string
+  kind: 'frontend'
+  label: string
+  version: number
+  description?: string
+  reviewPanel: Component
+  settings?: Component
+}
+export function isQuestionPlugin(
+  plugin: QuestionPlugin | ReviewPanelPlugin,
+): plugin is QuestionPlugin {
+  return 'showQuestion' in plugin
+}
+
 /** Installed by the deployment, then optionally enabled by each browser. */
 export interface PluginInstallation {
-  plugin: QuestionPlugin
+  plugin: QuestionPlugin | ReviewPanelPlugin
   enabledByDefault?: boolean
   builtin?: boolean
 }
 
 /** Browser editions cannot install desktop local plugins. */
-export type FrontendPlugin = QuestionPlugin & { kind: 'frontend' }
+export type FrontendPlugin = (QuestionPlugin | ReviewPanelPlugin) & { kind: 'frontend' }
 export type FrontendPluginInstallation = Omit<PluginInstallation, 'plugin'> & {
   plugin: FrontendPlugin
 }

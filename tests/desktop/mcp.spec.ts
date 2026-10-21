@@ -32,7 +32,7 @@ test('desktop settings opt in to local read queries, revoke keys, and retain the
   await expect(page.getByRole('dialog')).toHaveCount(0)
   const before = await storedLibrary(page)
   await page.getByRole('button', { name: '设置', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: '桌面设置' })
+  const dialog = page.getByRole('region', { name: '桌面设置' })
   const mcp = dialog.getByRole('region', { name: 'MCP 连接' })
   await mcp.getByLabel('MCP 客户端', { exact: true }).selectOption('http')
   await expect(mcp.getByRole('status')).toHaveText('已关闭')
@@ -69,7 +69,7 @@ test('desktop settings opt in to local read queries, revoke keys, and retain the
     JSON.parse(await mcp.getByLabel('客户端连接配置').inputValue()).mcpServers.repeaty.headers
       .Authorization,
   ).not.toBe(key)
-  await dialog.getByRole('button', { name: '关闭弹窗' }).click()
+  await page.getByRole('button', { name: '学习概览', exact: true }).click()
   await page.getByLabel('界面语言').selectOption('en')
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
   await expect(page.getByRole('region', { name: 'MCP connection' })).toContainText('read-only')
@@ -101,7 +101,7 @@ test('client configurations can be copied before enabling MCP and reused after r
 }, info) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await page.getByRole('button', { name: '设置', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: '桌面设置' })
+  const dialog = page.getByRole('region', { name: '桌面设置' })
   const mcp = dialog.getByRole('region', { name: 'MCP 连接' })
   const client = mcp.getByLabel('MCP 客户端', { exact: true })
   const configurations = new Map<string, string>()

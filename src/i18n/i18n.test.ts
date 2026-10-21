@@ -160,4 +160,42 @@ describe('messages and data isolation', () => {
     expect(html).not.toContain('<script>')
     expect(html).not.toContain('<img')
   })
+  it('translates every interface string that is passed to t(), msg() or notify()', async () => {
+    const { readFileSync, readdirSync, statSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const files = (directory: string): string[] =>
+      readdirSync(directory).flatMap((name) => {
+        const path = join(directory, name)
+        if (statSync(path).isDirectory()) return files(path)
+        return /\.(ts|vue)$/.test(path) && !path.includes('.test.') ? [path] : []
+      })
+    // Interpret the escapes a JavaScript string literal can contain in a catalog key.
+    const unescape = (value: string) =>
+      value.replace(
+        /\\(u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|n|r|t|\\)/g,
+        (_, code: string) =>
+          code === 'n'
+            ? '\n'
+            : code === 'r'
+              ? '\r'
+              : code === 't'
+                ? '\t'
+                : code.startsWith('u{')
+                  ? String.fromCodePoint(parseInt(code.slice(2, -1), 16))
+                  : code.startsWith('u') || code.startsWith('x')
+                    ? String.fromCharCode(parseInt(code.slice(1), 16))
+                    : '\\',
+      )
+    const missing = new Set<string>()
+    for (const path of files('src')) {
+      if (path.includes(join('src', 'i18n'))) continue
+      const source = readFileSync(path, 'utf8')
+      // Literal keys only: dynamic arguments come from catalogs and are checked at runtime.
+      for (const match of source.matchAll(/\b(?:t|msg|notify)\(\s*'((?:[^'\\]|\\.)*)'/g)) {
+        const key = unescape(match[1]!)
+        if (!Object.hasOwn(en, key)) missing.add(key)
+      }
+    }
+    expect([...missing]).toEqual([])
+  })
 })

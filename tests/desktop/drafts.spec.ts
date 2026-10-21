@@ -195,7 +195,7 @@ test('shared excerpts become editable drafts, save all three types with provenan
     status: 'error',
     code: 'selection-unavailable',
   })
-  await page.getByRole('button', { name: 'Close dialog' }).click()
+  await page.getByRole('button', { name: 'Overview', exact: true }).click()
   expect(await storedLibrary(page)).toEqual(saved)
   // Provenance is ordinary saved card data and remains available during review.
   await page.getByRole('button', { name: 'Start review', exact: true }).first().click()

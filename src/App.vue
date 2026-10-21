@@ -2,7 +2,16 @@
 import { version } from '../package.json'
 import { t, msg, locale, setLocale, type DisplayMessage } from './i18n'
 
-import { computed, defineAsyncComponent, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import {
+  computed,
+  defineAsyncComponent,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  reactive,
+  ref,
+  watch,
+} from 'vue'
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -23,9 +32,9 @@ import {
   Puzzle,
   Repeat2,
   ShieldCheck,
+  Settings as SettingsIcon,
   Sparkles,
   Trash2,
-  X,
 } from '@lucide/vue'
 import AppModal from './components/AppModal.vue'
 import ReviewSession from './components/ReviewSession.vue'
@@ -41,7 +50,16 @@ import type {
   SourceBatchUpdate,
   ReadingUpdate,
 } from './core/source-data'
-import PluginPanel from './components/PluginPanel.vue'
+import NotificationCenter from './components/NotificationCenter.vue'
+import DeckStatus from './components/DeckStatus.vue'
+import { deckStudyCounts } from './core/deck-status'
+import { listenPreferences } from './preferences'
+import {
+  clearNotifications,
+  notify,
+  dismissNotificationContext,
+  dismissInfoNotifications,
+} from './notifications'
 import { remoteWorkspace, desktopEdition } from './edition'
 import {
   ServerConnection,
@@ -49,6 +67,7 @@ import {
   createExportFile,
   connectLearningReader,
   DraftWorkbench,
+  PlatformSettings,
 } from '@repeaty-platform'
 import { canReviewCard, listenPluginPreferences } from './plugins'
 import type { BackupData } from './core/backups'
@@ -61,7 +80,7 @@ import { useReadingProgress } from './composables/useReadingProgress'
 import {
   colors,
   localDay,
-  cardViews,
+  createCardViewReader,
   type CardView,
   type NoteInput,
   type MediaUpload,
@@ -75,16 +94,21 @@ import {
 import { queuedSources } from './core/source-queue'
 import { blockedByLimit, dayKey, dueCards, weekActivity } from './core/scheduler'
 const SourcePanel = defineAsyncComponent(() => import('./components/SourcePanel.vue'))
+const MixedSession = defineAsyncComponent(() => import('./components/MixedSession.vue'))
 const PracticeHistoryPanel = defineAsyncComponent(
   () => import('./components/PracticeHistoryPanel.vue'),
 )
+const SettingsPage = defineAsyncComponent(() => import('./components/SettingsPage.vue'))
 
 const workspace = useLibrary()
 const readingProgress = useReadingProgress(workspace)
 const { library, ready, busy, loadError, backups, backupError } = workspace
 const offline = useOffline()
-const cards = computed(() => cardViews(library.value))
-const tab = ref<'overview' | 'cards' | 'history' | 'plugins' | 'data' | 'sources'>('overview')
+const readViews = createCardViewReader()
+const cards = computed(() => readViews(library.value))
+const tab = ref<'overview' | 'cards' | 'history' | 'plugins' | 'data' | 'sources' | 'settings'>(
+  'overview',
+)
 const historyCardId = ref('')
 const autoStartReading = ref(false)
 const mcpSelection = ref<SourceExcerpt>()
@@ -95,14 +119,31 @@ watch(workspace.scope, () => {
   sourceDraft.value = undefined
   modal.value = null
   review.value = null
+  mixed.value = null
+  reviewEditTarget.value = undefined
+  clearNotifications()
 })
 const selectedDeck = ref('')
 const searchQuery = ref('')
 const filterState = ref<SearchFilter['state']>('all')
 const now = ref(new Date())
+// The queue, deck aggregation and activity chart are O(library) and only change when a
+// minute passes; children still receive the fine-grained `now` for their own due checks.
+const coarseNow = ref(new Date())
 const review = ref<{ deckId?: string; study?: StudySession } | null>(null)
+const mixed = ref<{ cardsPerReading: number } | null>(null)
+const mixedRatio = ref(3)
+const mixedReader = ref<InstanceType<typeof SourcePanel>>()
 const notice = ref<{ text: DisplayMessage; error: boolean } | null>(null)
-const modal = ref<'deck' | 'card' | 'confirm' | 'import' | 'bulkImport' | 'snapshot' | null>(null)
+watch(notice, (entry) => {
+  if (entry) notify(entry.text, entry.error ? 'error' : 'info')
+})
+const activeReview = ref<InstanceType<typeof ReviewSession>>()
+const reviewEditTarget = ref<{ id: string; noteId: string; scope: string }>()
+let reviewEditorOwner: InstanceType<typeof ReviewSession> | undefined
+const modal = ref<
+  'deck' | 'card' | 'confirm' | 'import' | 'bulkImport' | 'snapshot' | 'mixed' | null
+>(null)
 const editingId = ref<string>()
 const sourceDraft = ref<Partial<NoteInput>>()
 const deckForm = reactive<DeckInput>({
@@ -126,19 +167,56 @@ const pendingBackup = ref<BackupData>()
 const pendingSnapshot = ref<Library>()
 const confirmation = ref<{ title: string; message: DisplayMessage; action: () => Promise<void> }>()
 const upload = ref<HTMLInputElement>()
-const due = computed(() => dueCards(library.value, now.value, undefined, canReviewCard))
-const limited = computed(() => blockedByLimit(library.value, now.value, undefined, canReviewCard))
+const due = computed(() => dueCards(library.value, coarseNow.value, undefined, canReviewCard))
+const limited = computed(() =>
+  blockedByLimit(library.value, coarseNow.value, undefined, canReviewCard),
+)
 const readyReading = computed(() =>
-  queuedSources(library.value.sources, 'ready', localDay(now.value)),
+  queuedSources(library.value.sources, 'ready', localDay(coarseNow.value)),
 )
 const readyExcerpts = computed(
   () => readyReading.value.filter((source) => source.kind === 'excerpt').length,
 )
+const sourceBindings = computed(() => ({
+  library: library.value,
+  busy: busy.value,
+  scope: workspace.scope.value,
+  reading: readingProgress,
+  now: now.value,
+  canShare: desktopEdition && !remoteWorkspace.value,
+  read: workspace.getSource,
+  save: saveSource,
+  updateDetails: editSourceDetails,
+  saveExcerpt: saveSourceExcerpt,
+  remove: deleteSource,
+  arrange: arrangeSource,
+  arrangeBatch: arrangeSources,
+  undoReading,
+  canUndoReading: workspace.canUndoReading.value,
+  readingUndoId: workspace.readingUndo.value?.id,
+  saveReading,
+  actionError: notice.value?.error ? t(notice.value.text) : undefined,
+}))
+const reviewBindings = computed(() => ({
+  library: library.value,
+  busy: busy.value,
+  editing: modal.value === 'card' && !!reviewEditTarget.value,
+  submit: submitReview,
+  undo: undoReview,
+  change: changeCards,
+  getMedia: workspace.getMedia,
+  workspaceScope: workspace.scope.value,
+  saveAttempt: workspace.recordAttempt,
+  getAttempt: workspace.getAttempt,
+  getSource: workspace.getSource,
+  finishPractice: (id: string, cardId: string, assessment?: import('./plugins/data').Assessment) =>
+    run(() => workspace.finishPractice(id, cardId, assessment)),
+}))
 const newCount = computed(() => due.value.filter((card) => card.schedule.state === 0).length)
 const todayReviews = computed(() =>
   library.value.reviews.filter((entry) => entry.studyDay === dayKey(now.value)),
 )
-const activity = computed(() => weekActivity(library.value, now.value))
+const activity = computed(() => weekActivity(library.value, coarseNow.value))
 const maxActivity = computed(() => Math.max(4, ...activity.value.map((day) => day.count)))
 const currentDeck = computed(() =>
   library.value.decks.find((deck) => deck.id === selectedDeck.value),
@@ -150,17 +228,20 @@ const pageTitle = computed(
       cards: currentDeck.value?.name ?? t('全部卡片'),
       data: t('数据与备份'),
       plugins: t('插件'),
+      settings: t('设置'),
       history: t('练习历史'),
       sources: t('学习材料'),
     })[tab.value],
 )
 
 let stopPluginPreferences: (() => void) | undefined
+let stopPreferences: (() => void) | undefined
 let stopLearningReader: (() => void) | undefined
 let ticker: ReturnType<typeof setInterval>
 let backupTicker: ReturnType<typeof setInterval>
 onMounted(() => {
   stopPluginPreferences = listenPluginPreferences()
+  stopPreferences = listenPreferences()
   void connectLearningReader(workspace).then((stop) => {
     stopLearningReader = stop
   })
@@ -169,10 +250,18 @@ onMounted(() => {
     void workspace.backupNow()
   }, 60_000)
   ticker = setInterval(() => {
-    now.value = new Date()
+    // Wake often enough that a clock change is noticed promptly, but only recompute the
+    // O(library) queue and deck aggregation when the wall-clock minute actually moved.
+    // Ticking unthrottled would re-derive them every ten seconds for no new information.
+    const next = new Date()
+    now.value = next
+    if (Math.floor(next.getTime() / 60_000) === Math.floor(coarseNow.value.getTime() / 60_000))
+      return
+    coarseNow.value = next
   }, 10_000)
 })
 onUnmounted(() => {
+  stopPreferences?.()
   stopPluginPreferences?.()
   stopLearningReader?.()
   clearInterval(ticker)
@@ -180,9 +269,16 @@ onUnmounted(() => {
   void workspace.close()
 })
 
+// Actions that change a schedule must refresh both clocks; otherwise the due queue would
+// keep showing the pre-review state until the next minute.
+function refreshClock() {
+  now.value = new Date()
+  coarseNow.value = now.value
+}
 function navigate(next: typeof tab.value) {
   tab.value = next
   review.value = null
+  mixed.value = null
   selectedDeck.value = ''
   searchQuery.value = ''
   filterState.value = 'all'
@@ -192,6 +288,17 @@ function navigate(next: typeof tab.value) {
 function startReading() {
   navigate('sources')
   autoStartReading.value = true
+}
+function startMixed() {
+  if (!Number.isInteger(mixedRatio.value) || mixedRatio.value < 1 || mixedRatio.value > 10) return
+  navigate('overview')
+  refreshClock()
+  notice.value = null
+  modal.value = null
+  mixed.value = { cardsPerReading: mixedRatio.value }
+}
+async function leaveMixedReading() {
+  return (await mixedReader.value?.leaveSession()) ?? true
 }
 function openHistory(card?: CardView) {
   navigate('history')
@@ -217,6 +324,7 @@ function editDeck(deck?: Deck) {
   modal.value = 'deck'
 }
 function editCard(card?: CardView) {
+  reviewEditTarget.value = undefined
   sourceDraft.value = undefined
   notice.value = null
   if (!library.value.decks.length) {
@@ -226,6 +334,14 @@ function editCard(card?: CardView) {
   editingId.value = card?.noteId
   modal.value = 'card'
 }
+function editReviewCard(card: CardView) {
+  editCard(card)
+  reviewEditorOwner = activeReview.value
+  reviewEditTarget.value = { id: card.id, noteId: card.noteId, scope: workspace.scope.value }
+}
+watch(modal, (value) => {
+  if (value !== 'card') reviewEditTarget.value = undefined
+})
 function openImport() {
   notice.value = null
   if (!library.value.decks.length) {
@@ -235,9 +351,10 @@ function openImport() {
   modal.value = 'bulkImport'
 }
 async function run(action: () => Promise<void>, message?: string) {
+  dismissInfoNotifications()
   try {
     await action()
-    now.value = new Date()
+    refreshClock()
     notice.value = message ? { text: message, error: false } : null
     return true
   } catch (error) {
@@ -259,7 +376,9 @@ async function saveDeck() {
   }
 }
 async function saveCard(input: NoteInput, assets: MediaUpload[], allowRemove: boolean) {
-  return run(
+  const target = reviewEditTarget.value
+  const owner = reviewEditorOwner
+  const saved = await run(
     () =>
       sourceDraft.value?.excerpt
         ? workspace.saveExcerptNote(
@@ -272,6 +391,16 @@ async function saveCard(input: NoteInput, assets: MediaUpload[], allowRemove: bo
         : workspace.saveNote(input, editingId.value, assets, allowRemove),
     '笔记与卡片已保存',
   )
+  if (
+    saved &&
+    target?.scope === workspace.scope.value &&
+    reviewEditTarget.value === target &&
+    owner === activeReview.value
+  ) {
+    await nextTick()
+    owner?.restart(target.id, target.noteId)
+  }
+  return saved
 }
 async function saveSource(input: SourceInput, scope: string) {
   return run(() => workspace.saveSource(input, scope), '材料已保存')
@@ -310,7 +439,7 @@ async function deleteSearch(id: string) {
   return run(() => workspace.deleteSearch(id), '常用筛选已删除')
 }
 function startStudy(study: StudySession) {
-  now.value = new Date()
+  refreshClock()
   notice.value = null
   review.value = { study }
 }
@@ -332,7 +461,10 @@ async function batchEdit(ids: string[], edit: BatchEdit) {
   return run(() => workspace.editNotes(new Set(ids), edit), '笔记已批量更新')
 }
 async function undoReview() {
-  return run(workspace.undo, '已撤销上次评分')
+  const id = library.value.reviews.at(-1)?.id
+  const saved = await run(workspace.undo, '已撤销上次评分')
+  if (saved && id) dismissNotificationContext(id)
+  return saved
 }
 function confirmDeleteDeck(deck: Deck) {
   notice.value = null
@@ -368,7 +500,7 @@ async function confirmAction() {
   if (confirmation.value && (await run(confirmation.value.action, '已删除'))) modal.value = null
 }
 function startReview(deckId?: string) {
-  now.value = new Date()
+  refreshClock()
   notice.value = null
   review.value = { deckId }
 }
@@ -386,10 +518,23 @@ function deckDue(id: string) {
   return due.value.filter((card) => card.deckId === id).length
 }
 function deckCards(id: string) {
-  return cards.value.filter((card) => card.deckId === id).length
+  return deckCounts.value.get(id) ?? 0
 }
+const deckCounts = computed(() => {
+  const notes = new Map(library.value.notes.map((note) => [note.id, note.deckId])),
+    counts = new Map<string, number>()
+  for (const card of library.value.cards) {
+    const deck = notes.get(card.noteId)!
+    counts.set(deck, (counts.get(deck) ?? 0) + 1)
+  }
+  return counts
+})
+const deckStates = computed(() =>
+  deckStudyCounts(library.value, coarseNow.value, due.value, cards.value, canReviewCard),
+)
 const transfer = ref<{ label: string; percent: number }>()
 let transferController: AbortController | undefined
+let transferGeneration = 0
 const filePicker = (
   window as Window & { showSaveFilePicker?: (options: unknown) => Promise<FileSystemFileHandle> }
 ).showSaveFilePicker?.bind(window)
@@ -400,6 +545,12 @@ async function exportData(format: 'archive' | 'json' | 'file' = 'archive') {
   if (transfer.value || busy.value) return
   const filename = `repeaty-backup-${now.value.toISOString().slice(0, 10)}.${format === 'json' ? 'json' : 'repeaty'}`
   let writable: WritableStream<Uint8Array> | undefined
+  // Claim the export before the first await. The native save dialog can take a while, and a
+  // second click during it must not start a parallel export that shares this state.
+  const owner = new AbortController()
+  const generation = (transferGeneration += 1)
+  transferController = owner
+  transfer.value = { label: '正在准备备份…', percent: 0 }
   try {
     if (createExportFile) writable = await createExportFile(filename)
     else if (format === 'file' && filePicker) {
@@ -409,16 +560,16 @@ async function exportData(format: 'archive' | 'json' | 'file' = 'archive') {
       })
       writable = await handle.createWritable()
     }
-    transferController = new AbortController()
-    transfer.value = { label: '正在导出备份…', percent: 0 }
+    if (generation === transferGeneration) transfer.value = { label: '正在导出备份…', percent: 0 }
     const blob =
       format === 'json'
         ? new Blob([await workspace.exportData()], { type: 'application/json' })
         : await workspace.exportArchive({
             writable,
-            signal: transferController.signal,
+            signal: owner.signal,
             progress: (percent) => {
-              if (transfer.value) transfer.value.percent = percent
+              if (generation === transferGeneration && transfer.value)
+                transfer.value.percent = percent
             },
           })
     if (blob && writable) await blob.stream().pipeTo(writable)
@@ -438,8 +589,12 @@ async function exportData(format: 'archive' | 'json' | 'file' = 'archive') {
         ? { text: '已取消备份操作', error: false }
         : { text: error as Error, error: true }
   } finally {
-    transfer.value = undefined
-    transferController = undefined
+    // Only the export that still owns the state may clear it; an earlier superseded run
+    // must not remove the progress of the one actually writing.
+    if (generation === transferGeneration) {
+      transfer.value = undefined
+      transferController = undefined
+    }
   }
 }
 async function openSnapshot(id: string) {
@@ -608,7 +763,9 @@ async function restoreBackup() {
     <main class="main-content">
       <header class="topbar">
         <div class="breadcrumb">
-          Repeaty<ChevronRight :size="14" /><strong>{{ review ? t('复习') : pageTitle }}</strong>
+          Repeaty<ChevronRight :size="14" /><strong>{{
+            mixed ? t('混合学习') : review ? t('复习') : pageTitle
+          }}</strong>
         </div>
         <div class="topbar-tools">
           <component
@@ -618,7 +775,13 @@ async function restoreBackup() {
             :selection="mcpSelection"
             @close-selection="mcpSelection = undefined"
           />
-          <component v-if="AccountControls" :is="AccountControls" />
+          <component
+            v-if="AccountControls && (!desktopEdition || remoteWorkspace)"
+            :is="AccountControls"
+          />
+          <button class="text-button settings-entry" @click="navigate('settings')">
+            <SettingsIcon :size="18" />{{ t('设置') }}
+          </button>
           <label class="language-picker"
             ><span class="sr-only">{{ t('界面语言') }}</span
             ><select
@@ -639,18 +802,15 @@ async function restoreBackup() {
           }}</span>
         </div>
       </header>
-      <div
-        v-if="notice"
-        :class="['notice', { error: notice.error }]"
-        :role="notice.error ? 'alert' : 'status'"
-      >
-        <span>{{ t(notice.text) }}</span
-        ><button class="icon-button" :aria-label="t('关闭提示')" @click="notice = null">
-          <X :size="16" />
-        </button>
-      </div>
+      <NotificationCenter />
 
-      <section v-if="loadError" class="empty-state">
+      <SettingsPage
+        v-if="tab === 'plugins' || tab === 'settings'"
+        :key="tab"
+        :initial-tab="tab === 'plugins' ? 'plugins' : 'general'"
+        :platform-settings="PlatformSettings"
+      />
+      <section v-else-if="loadError" class="empty-state">
         <Database :size="36" />
         <h1>{{ t(remoteWorkspace ? '无法连接服务' : '本地存储暂不可用') }}</h1>
         <p role="alert">{{ t(loadError) }}</p>
@@ -660,24 +820,57 @@ async function restoreBackup() {
         <Repeat2 :size="32" />
         <p>{{ t('正在加载…') }}</p>
       </section>
+      <MixedSession
+        v-else-if="mixed"
+        :key="workspace.scope.value"
+        :library="library"
+        :scope="workspace.scope.value"
+        :now="now"
+        :busy="busy"
+        :cards-per-reading="mixed.cardsPerReading"
+        :leave-reading="leaveMixedReading"
+        :undo-card="undoReview"
+        :undo-reading="undoReading"
+        :can-undo-reading="workspace.canUndoReading.value"
+        :reading-undo-id="workspace.readingUndo.value?.id"
+        @close="mixed = null"
+        @clear-notice="notice = null"
+      >
+        <template #card="{ item, done, activity }">
+          <ReviewSession
+            :key="item.key"
+            ref="activeReview"
+            v-bind="reviewBindings"
+            :mixed-card-id="item.id"
+            @step="done"
+            @activity="activity"
+            @edit="editReviewCard"
+            @close="mixed = null"
+          />
+        </template>
+        <template #reading="{ item, done, activity }">
+          <SourcePanel
+            :key="item.key"
+            ref="mixedReader"
+            v-bind="sourceBindings"
+            :session="{ sourceId: item.id, mediaId: item.mediaId }"
+            @session-done="done"
+            @activity="activity"
+            @create="createFromExcerpt"
+            @share="mcpSelection = $event"
+            @edit="(id) => editCard(cards.find((card) => card.noteId === id))"
+            @clear-notice="notice = null"
+          />
+        </template>
+      </MixedSession>
       <ReviewSession
         v-else-if="review"
-        :library="library"
+        ref="activeReview"
+        v-bind="reviewBindings"
         :deck-id="review.deckId"
         :study="review.study"
-        :busy="busy"
-        :submit="submitReview"
-        :undo="undoReview"
-        :change="changeCards"
-        :get-media="workspace.getMedia"
-        :workspace-scope="workspace.scope.value"
-        :save-attempt="workspace.recordAttempt"
-        :get-attempt="workspace.getAttempt"
-        :get-source="workspace.getSource"
-        :finish-practice="
-          (id, cardId, assessment) => run(() => workspace.finishPractice(id, cardId, assessment))
-        "
         @close="review = null"
+        @edit="editReviewCard"
       />
 
       <div v-else-if="tab === 'overview'" class="page dashboard">
@@ -798,6 +991,13 @@ async function restoreBackup() {
           </div>
           <div class="daily-reading-actions">
             <button
+              class="button secondary"
+              :disabled="busy || (!due.length && !readyReading.length)"
+              @click="modal = 'mixed'"
+            >
+              {{ t('开始混合学习') }}
+            </button>
+            <button
               v-if="readyReading.length"
               class="button primary"
               :disabled="busy"
@@ -869,6 +1069,7 @@ async function restoreBackup() {
               </div>
               <button class="deck-title" @click="openDeck(deck)">{{ deck.name }}</button>
               <p v-if="deck.description">{{ deck.description }}</p>
+              <DeckStatus :status="deckStates.get(deck.id)!" compact />
               <div class="deck-card-bottom">
                 <span
                   >{{ t('{p0} 张卡片', { p0: deckCards(deck.id) })
@@ -944,6 +1145,7 @@ async function restoreBackup() {
             </button>
           </div>
         </header>
+        <DeckStatus v-if="currentDeck" :status="deckStates.get(currentDeck.id)!" />
         <CollectionPanel
           :query-cards="workspace.queryCards"
           v-model:deck-id="selectedDeck"
@@ -976,25 +1178,8 @@ async function restoreBackup() {
       <SourcePanel
         v-else-if="tab === 'sources'"
         :key="workspace.scope.value"
-        :library="library"
-        :busy="busy"
-        :scope="workspace.scope.value"
-        :reading="readingProgress"
-        :now="now"
-        :can-share="desktopEdition && !remoteWorkspace"
-        :read="workspace.getSource"
-        :save="saveSource"
-        :update-details="editSourceDetails"
-        :save-excerpt="saveSourceExcerpt"
-        :remove="deleteSource"
-        :arrange="arrangeSource"
-        :arrange-batch="arrangeSources"
-        :undo-reading="undoReading"
-        :can-undo-reading="workspace.canUndoReading.value"
-        :reading-undo-id="workspace.readingUndo.value?.id"
+        v-bind="sourceBindings"
         :auto-start="autoStartReading"
-        :save-reading="saveReading"
-        :action-error="notice?.error ? t(notice.text) : undefined"
         @start-handled="autoStartReading = false"
         @review="startReview()"
         @create="createFromExcerpt"
@@ -1002,8 +1187,6 @@ async function restoreBackup() {
         @edit="(id) => editCard(cards.find((card) => card.noteId === id))"
         @clear-notice="notice = null"
       />
-
-      <PluginPanel v-else-if="tab === 'plugins'" />
 
       <div v-else class="page data-page">
         <header class="page-heading">
@@ -1217,6 +1400,35 @@ async function restoreBackup() {
         </div>
       </div>
     </main>
+
+    <AppModal
+      v-if="modal === 'mixed'"
+      :title="t('开始混合学习')"
+      :busy="busy"
+      @close="modal = null"
+    >
+      <form class="editor-form" @submit.prevent="startMixed">
+        <p>{{ t('按现有复习额度安排卡片，在其中穿插今天待阅读的材料。') }}</p>
+        <label for="mixed-ratio">{{ t('每篇材料之间复习几张卡片？') }}</label>
+        <input
+          id="mixed-ratio"
+          v-model.number="mixedRatio"
+          type="number"
+          min="1"
+          max="10"
+          step="1"
+          required
+        />
+        <p class="form-note">
+          {{ t('其中一类处理完后继续另一类。结束或刷新页面后，下次重新开始一轮。') }}
+        </p>
+        <div class="form-actions">
+          <button type="button" class="button secondary" @click="modal = null">
+            {{ t('取消') }}</button
+          ><button class="button primary" :disabled="busy">{{ t('开始学习') }}</button>
+        </div>
+      </form>
+    </AppModal>
 
     <AppModal
       :error="notice?.error ? t(notice.text) : undefined"

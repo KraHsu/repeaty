@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 use upstream::{Config, Request, Response, Upstream};
 
 struct Desktop {
-    upstream: Mutex<Upstream>,
+    upstream: Upstream,
     plugins: Plugins,
     exports: Mutex<exports::Exporter>,
     mcp: Arc<mcp::Mcp>,
@@ -72,8 +72,7 @@ async fn mcp_start(
     state: State<'_, Desktop>,
 ) -> Result<mcp::Status, String> {
     main_window(&window)?;
-    let upstream = state.upstream.lock().await;
-    if !upstream.config.endpoint.is_empty() {
+    if !state.upstream.endpoint().is_empty() {
         return Err("library-unavailable".into());
     }
     state.mcp.start().await.map_err(str::to_owned)
@@ -109,17 +108,17 @@ fn mcp_client_configuration(
 }
 #[tauri::command]
 async fn desktop_config(state: State<'_, Desktop>) -> Result<Config, String> {
-    Ok(state.upstream.lock().await.config.clone())
+    Ok(state.upstream.config())
 }
 #[tauri::command]
 async fn set_endpoint(state: State<'_, Desktop>, endpoint: String) -> Result<(), String> {
-    state.upstream.lock().await.set_endpoint(&endpoint)?;
+    state.upstream.set_endpoint(&endpoint)?;
     state.mcp.detach();
     Ok(())
 }
 #[tauri::command]
 async fn upstream_request(state: State<'_, Desktop>, request: Request) -> Result<Response, String> {
-    state.upstream.lock().await.request(request).await
+    state.upstream.request(request).await
 }
 #[tauri::command]
 async fn local_plugin(
@@ -216,7 +215,7 @@ fn main() {
                 mcp: Arc::new(mcp::Mcp::with_connection_file(
                     directory.join("mcp.connection.json"),
                 )),
-                upstream: Mutex::new(Upstream::open(&directory.join("desktop.json"))?),
+                upstream: Upstream::open(&directory.join("desktop.json"))?,
                 plugins: Plugins::new(vec![Arc::new(
                     repeaty_leetcode_local::leetcode::LeetCode::open(
                         &directory.join("leetcode.credentials.sqlite3"),

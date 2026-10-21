@@ -1,5 +1,6 @@
 import { LocalizedError, msg } from '../i18n'
 import { localDay, type Library } from './model'
+import { adaptiveReadingPlan, nextAdaptiveReading } from './adaptive-reading'
 import {
   sourceQueueActionSchema,
   sourceSchema,
@@ -73,14 +74,11 @@ export function nextReadingDay(now: Date, days = 1) {
 
 /** Only a confirmed read advances this ladder; custom dates keep its last step. */
 export function nextReadingInterval(source: Source, now: Date) {
-  const index =
-    source.readingIntervalDays === undefined
-      ? 0
-      : Math.min(
-          READING_INTERVAL_DAYS.indexOf(source.readingIntervalDays) + 1,
-          READING_INTERVAL_DAYS.length - 1,
-        )
-  const intervalDays = READING_INTERVAL_DAYS[index]!
+  // Imported or older libraries may hold intervals off the ladder (2, 5 days…).
+  // Advance to the next larger step instead of collapsing back to the first one.
+  const index = READING_INTERVAL_DAYS.findIndex((days) => days > (source.readingIntervalDays ?? 0))
+  const intervalDays =
+    READING_INTERVAL_DAYS[index === -1 ? READING_INTERVAL_DAYS.length - 1 : index]!
   return { intervalDays, date: nextReadingDay(now, intervalDays) }
 }
 
@@ -104,8 +102,8 @@ export function arrangeSource(
     return { ...library, sources: library.sources.map((entry) => (entry.id === id ? next : entry)) }
   }
   if (action.type === 'reset-interval') {
-    if (source.readingIntervalDays === undefined) return library
-    const { readingIntervalDays: _interval, ...rest } = source
+    if (source.readingIntervalDays === undefined && !source.adaptiveReading) return library
+    const { readingIntervalDays: _interval, adaptiveReading: _adaptive, ...rest } = source
     const next = sourceSchema.parse(rest)
     return { ...library, sources: library.sources.map((entry) => (entry.id === id ? next : entry)) }
   }
@@ -118,25 +116,51 @@ export function arrangeSource(
     )
       throw new LocalizedError(msg('阅读安排已变化，请重新确认下次日期。'))
   }
-  if ((action.type === 'defer' || action.type === 'read') && action.date <= today)
+  if (action.type === 'read-adaptive') {
+    const plan = adaptiveReadingPlan(source, action.feedback, now)
+    if (
+      source.queue?.state === 'archived' ||
+      action.intervalDays !== plan.intervalDays ||
+      action.date !== plan.date ||
+      action.expectedReadCount !== plan.expectedReadCount
+    )
+      throw new LocalizedError(msg('阅读安排已变化，请重新确认下次日期。'))
+  }
+  if (
+    (action.type === 'defer' || action.type === 'read' || action.type === 'read-adaptive') &&
+    action.date <= today
+  )
     throw new LocalizedError(msg('请选择今天之后的阅读日期。'))
   const queue =
     action.type === 'archive'
       ? { state: 'archived' as const, availableOn: source.queue?.availableOn ?? today }
       : {
           state: 'active' as const,
-          availableOn: action.type === 'defer' || action.type === 'read' ? action.date : today,
+          availableOn:
+            action.type === 'defer' || action.type === 'read' || action.type === 'read-adaptive'
+              ? action.date
+              : today,
         }
   if (
     source.queue?.state === queue.state &&
     source.queue.availableOn === queue.availableOn &&
-    (action.type !== 'read' || source.readingIntervalDays === action.intervalDays)
+    (action.type !== 'read' ||
+      (source.readingIntervalDays === action.intervalDays && !source.adaptiveReading)) &&
+    action.type !== 'read-adaptive'
   )
     return library
+  const { adaptiveReading, readingIntervalDays, ...rest } = source
   const next = sourceSchema.parse({
-    ...source,
+    ...rest,
     queue,
-    ...(action.type === 'read' ? { readingIntervalDays: action.intervalDays } : {}),
+    ...(action.type === 'read'
+      ? { readingIntervalDays: action.intervalDays }
+      : action.type === 'read-adaptive'
+        ? { adaptiveReading: nextAdaptiveReading(source, action.feedback, now) }
+        : {
+            ...(adaptiveReading ? { adaptiveReading } : {}),
+            ...(readingIntervalDays !== undefined ? { readingIntervalDays } : {}),
+          }),
   })
   return { ...library, sources: library.sources.map((entry) => (entry.id === id ? next : entry)) }
 }

@@ -68,7 +68,7 @@ impl Database {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         let version: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 9 {
+        if version > 10 {
             return Err(Error::invalid());
         }
         let tx = connection.transaction()?;
@@ -102,7 +102,7 @@ impl Database {
             };
             tx.execute_batch(&format!("CREATE TABLE IF NOT EXISTS {store} (id TEXT PRIMARY KEY, position INTEGER NOT NULL CHECK(position>=0), data TEXT NOT NULL CHECK(json_valid(data)){relation}); CREATE INDEX IF NOT EXISTS {store}_position ON {store}(position);"))?;
         }
-        tx.execute_batch("CREATE INDEX IF NOT EXISTS notes_deck ON notes(deck_id); CREATE INDEX IF NOT EXISTS cards_note ON cards(note_id); CREATE INDEX IF NOT EXISTS reviews_card ON reviews(card_id); CREATE INDEX IF NOT EXISTS practices_card ON practices(card_id); CREATE INDEX IF NOT EXISTS attempts_practice ON attempts(practice_id); PRAGMA user_version=9;")?;
+        tx.execute_batch("CREATE INDEX IF NOT EXISTS notes_deck ON notes(deck_id); CREATE INDEX IF NOT EXISTS cards_note ON cards(note_id); CREATE INDEX IF NOT EXISTS reviews_card ON reviews(card_id); CREATE INDEX IF NOT EXISTS practices_card ON practices(card_id); CREATE INDEX IF NOT EXISTS attempts_practice ON attempts(practice_id); PRAGMA user_version=10;")?;
         tx.commit()?;
         let schemas: HashMap<String, Value> =
             serde_json::from_str(include_str!("../schema/entities.json"))?;
@@ -135,7 +135,7 @@ impl Database {
         Ok(json!({"revision":current,"library":library}))
     }
     fn library_history(db: &Connection, summary: bool) -> Result<Value> {
-        let mut library = json!({"version":12});
+        let mut library = json!({"version":13});
         for store in STORES {
             let data = if store == "attempts" && summary {
                 "json_remove(data,'$.code','$.result.detail')"
@@ -269,16 +269,23 @@ impl Database {
         let retain: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM checkpoints)", [], |row| {
             row.get(0)
         })?;
+        // Remember what each patched row looked like before, so validation can skip records
+        // whose content did not change (reading-position saves are the common case).
+        let mut changed: Vec<(&Patch, Option<Value>)> = Vec::new();
         for patch in &commit.patches {
             let store = &patch.store;
+            let previous: Option<(i64, String)> = tx
+                .query_row(
+                    &format!("SELECT position,data FROM {store} WHERE id=?1"),
+                    [&patch.id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()?;
+            let previous_value = previous
+                .as_ref()
+                .map(|(_, data)| serde_json::from_str::<Value>(data))
+                .transpose()?;
             if retain {
-                let previous: Option<(i64, String)> = tx
-                    .query_row(
-                        &format!("SELECT position,data FROM {store} WHERE id=?1"),
-                        [&patch.id],
-                        |row| Ok((row.get(0)?, row.get(1)?)),
-                    )
-                    .optional()?;
                 tx.execute(
                     "INSERT INTO history VALUES(?1,?2,?3,?4,?5)",
                     params![
@@ -290,13 +297,31 @@ impl Database {
                     ],
                 )?;
             }
+            let touched = match (&patch.value, &previous_value) {
+                (Some(value), Some(before)) => {
+                    before != value || previous.as_ref().map(|p| p.0) != patch.position
+                }
+                _ => true,
+            };
             if let Some(value) = &patch.value {
                 tx.execute(&format!("INSERT INTO {store}(id,position,data) VALUES(?1,?2,?3) ON CONFLICT(id) DO UPDATE SET position=excluded.position,data=excluded.data"), params![patch.id, patch.position, value.to_string()])?;
             } else {
                 tx.execute(&format!("DELETE FROM {store} WHERE id=?1"), [&patch.id])?;
             }
+            if touched {
+                changed.push((patch, previous_value));
+            }
         }
+        // Unchanged stores were validated when they were last written; re-checking all of
+        // them on every commit made position saves scale with the whole library.
+        let touched_stores: HashSet<&str> = changed
+            .iter()
+            .map(|(patch, _)| patch.store.as_str())
+            .collect();
         for store in STORES {
+            if !touched_stores.contains(store) {
+                continue;
+            }
             let (count, distinct, max): (i64, i64, Option<i64>) = tx.query_row(
                 &format!("SELECT COUNT(*),COUNT(DISTINCT position),MAX(position) FROM {store}"),
                 [],
@@ -317,190 +342,339 @@ impl Database {
                 return Err(Error::invalid());
             }
         }
-        let bad_media: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM media m LEFT JOIN assets a USING(id) WHERE a.id IS NULL OR json_extract(m.data,'$.type')<>a.mime OR json_extract(m.data,'$.size')<>length(a.body))", [], |r|r.get(0))?;
-        if bad_media {
-            return Err(Error::invalid());
+        for (patch, previous) in &changed {
+            Self::validate_patch(&tx, patch, previous.as_ref())?;
         }
-        let bad_practice: bool = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM reviews r LEFT JOIN practices p ON p.id=json_extract(r.data,'$.practiceId') WHERE json_extract(r.data,'$.practiceId') IS NOT NULL AND (p.id IS NULL OR p.card_id<>r.card_id)) OR EXISTS(SELECT 1 FROM practices p LEFT JOIN reviews r ON r.id=json_extract(p.data,'$.reviewId') WHERE json_extract(p.data,'$.reviewId') IS NOT NULL AND (r.id IS NULL OR r.card_id<>p.card_id OR json_extract(r.data,'$.practiceId') IS NOT p.id OR json_extract(r.data,'$.rating') IS NOT json_extract(p.data,'$.rating')))",
-            [], |r| r.get(0),
-        )?;
-        if bad_practice {
-            return Err(Error::invalid());
-        }
-        if commit
-            .patches
-            .iter()
-            .any(|p| p.store == "notes" || p.store == "media")
-        {
-            let missing: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM notes n, json_each(json_extract(n.data,'$.frontMedia')) m WHERE NOT EXISTS(SELECT 1 FROM media WHERE id=m.value)) OR EXISTS(SELECT 1 FROM notes n, json_each(json_extract(n.data,'$.backMedia')) m WHERE NOT EXISTS(SELECT 1 FROM media WHERE id=m.value))", [], |r|r.get(0))?;
-            if missing {
-                return Err(Error::invalid());
-            }
-        }
-        Self::validate_sources(&tx, &commit.patches)?;
         tx.execute("UPDATE workspace SET revision=?1 WHERE id=1", [current + 1])?;
         Self::collect_assets(&tx)?;
         tx.commit()?;
         Ok(current + 1)
     }
-    fn validate_sources(tx: &Transaction<'_>, patches: &[Patch]) -> Result<()> {
-        if !patches
-            .iter()
-            .any(|p| ["sources", "notes", "media"].contains(&p.store.as_str()))
-        {
-            return Ok(());
+    /// Validate only what this patch changed: the row itself plus the JSON references that
+    /// foreign keys cannot express. Unchanged rows were already validated when they were
+    /// written; rescanning all of them made every save scale with the whole library, and a
+    /// reading-position save happens every few hundred milliseconds while scrolling.
+    fn validate_patch(tx: &Transaction<'_>, patch: &Patch, previous: Option<&Value>) -> Result<()> {
+        match patch.store.as_str() {
+            "sources" => Self::validate_source(tx, patch, previous),
+            "notes" => Self::validate_note(tx, patch, previous),
+            "media" => Self::validate_media(tx, patch),
+            "reviews" | "practices" | "attempts" => Self::validate_history(tx, patch),
+            _ => Ok(()),
         }
-        let bad_reading: bool = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM sources WHERE json_extract(data,'$.reading.offset') > json_extract(data,'$.characters') OR (json_extract(data,'$.reading.view')='preview' AND json_extract(data,'$.format')<>'markdown') OR (json_extract(data,'$.reading.view')='source' AND json_extract(data,'$.reading.fraction')<>0))",
-            [], |row| row.get(0),
-        )?;
-        if bad_reading {
-            return Err(Error::invalid());
-        }
-        let bad: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM sources s LEFT JOIN media m ON m.id=s.media_id WHERE m.id IS NULL OR json_extract(m.data,'$.type') <> CASE json_extract(s.data,'$.format') WHEN 'markdown' THEN 'text/markdown' ELSE 'text/plain' END OR json_extract(m.data,'$.size') > 1048576) OR EXISTS(SELECT 1 FROM notes n LEFT JOIN sources s ON s.id=json_extract(n.data,'$.excerpt.sourceId') WHERE json_extract(n.data,'$.excerpt.sourceId') IS NOT NULL AND (s.id IS NULL OR json_extract(n.data,'$.excerpt.end') > json_extract(s.data,'$.characters'))) OR EXISTS(SELECT 1 FROM notes n, json_each(n.data,'$.frontMedia') a JOIN media m ON m.id=a.value WHERE json_extract(m.data,'$.type') LIKE 'text/%') OR EXISTS(SELECT 1 FROM notes n, json_each(n.data,'$.backMedia') a JOIN media m ON m.id=a.value WHERE json_extract(m.data,'$.type') LIKE 'text/%')", [], |row| row.get(0))?;
-        if bad {
-            return Err(Error::invalid());
-        }
-        let bad_origin: bool = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM sources s LEFT JOIN sources p ON p.id=json_extract(s.data,'$.origin.sourceId') WHERE (json_extract(s.data,'$.kind')='excerpt' AND json_extract(s.data,'$.characters')>10000) OR (json_extract(s.data,'$.origin.sourceId') IS NOT NULL AND (json_extract(s.data,'$.kind') IS NOT 'excerpt' OR p.id IS NULL OR p.id=s.id OR json_extract(s.data,'$.format')<>json_extract(p.data,'$.format') OR json_extract(s.data,'$.origin.end')<=json_extract(s.data,'$.origin.start') OR json_extract(s.data,'$.origin.end')-json_extract(s.data,'$.origin.start')<>json_extract(s.data,'$.characters') OR json_extract(s.data,'$.origin.end')>json_extract(p.data,'$.characters'))))",
-            [], |row| row.get(0),
-        )?;
-        if bad_origin {
-            return Err(Error::invalid());
-        }
-        let mut parents = BTreeMap::<String, String>::new();
-        let mut stmt = tx.prepare("SELECT id,json_extract(data,'$.origin.sourceId') FROM sources WHERE json_extract(data,'$.origin.sourceId') IS NOT NULL")?;
-        for row in stmt.query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })? {
-            let (id, parent) = row?;
-            parents.insert(id, parent);
-        }
-        for id in parents.keys() {
-            let mut seen = HashSet::from([id]);
-            let mut current = id;
-            let mut depth = 0;
-            while let Some(parent) = parents.get(current) {
-                depth += 1;
-                if depth > 32 || !seen.insert(parent) {
-                    return Err(Error::invalid());
-                }
-                current = parent;
-            }
-        }
-        let mut changed_sources = HashSet::new();
-        for patch in patches
-            .iter()
-            .filter(|patch| patch.store == "sources" && patch.value.is_some())
-        {
-            let source = patch.value.as_ref().unwrap();
-            let body: Vec<u8> = tx.query_row(
-                "SELECT body FROM assets WHERE id=?1",
-                [source["mediaId"].as_str().unwrap_or("")],
+    }
+    fn exists(tx: &Transaction<'_>, sql: &str, id: &str) -> Result<bool> {
+        Ok(tx.query_row(sql, [id], |row| row.get(0))?)
+    }
+    fn validate_media(tx: &Transaction<'_>, patch: &Patch) -> Result<()> {
+        let Some(value) = patch.value.as_ref() else {
+            // Deleting an asset that a note still attaches would leave a dangling reference.
+            let referenced: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM notes n, json_each(json_extract(n.data,'$.frontMedia')) m WHERE m.value=?1) OR EXISTS(SELECT 1 FROM notes n, json_each(json_extract(n.data,'$.backMedia')) m WHERE m.value=?1)",
+                [&patch.id],
                 |row| row.get(0),
             )?;
-            let text = std::str::from_utf8(&body).map_err(|_| Error::invalid())?;
-            if text.trim().is_empty()
-                || text.contains('\r')
-                || text.encode_utf16().count() as u64 != source["characters"].as_u64().unwrap_or(0)
-            {
-                return Err(Error::invalid());
-            }
-            changed_sources.insert(patch.id.clone());
-        }
-        // Excerpts own their bodies; verify each against the immutable parent snapshot.
-        // Group anchors, not bodies, so bulk imports retain at most one parent at a time.
-        let mut origins = BTreeMap::<String, Vec<Value>>::new();
-        let mut stmt = tx.prepare(
-            "SELECT data FROM sources WHERE json_extract(data,'$.origin.sourceId') IS NOT NULL",
-        )?;
-        for row in stmt.query_map([], |row| row.get::<_, String>(0))? {
-            let child: Value = serde_json::from_str(&row?)?;
-            let parent = child["origin"]["sourceId"]
-                .as_str()
-                .ok_or_else(Error::invalid)?;
-            if changed_sources.contains(parent)
-                || child["id"]
-                    .as_str()
-                    .is_some_and(|id| changed_sources.contains(id))
-            {
-                origins.entry(parent.into()).or_default().push(child);
-            }
-        }
-        for (parent, children) in origins {
-            let body: Vec<u8> = tx.query_row(
-                "SELECT a.body FROM sources s JOIN assets a ON a.id=s.media_id WHERE s.id=?1",
-                [parent],
-                |row| row.get(0),
-            )?;
-            let original: Vec<u16> = std::str::from_utf8(&body)
-                .map_err(|_| Error::invalid())?
-                .encode_utf16()
-                .collect();
-            for child in children {
-                let body: Vec<u8> = tx.query_row(
-                    "SELECT body FROM assets WHERE id=?1",
-                    [child["mediaId"].as_str().ok_or_else(Error::invalid)?],
-                    |row| row.get(0),
-                )?;
-                let text: Vec<u16> = std::str::from_utf8(&body)
-                    .map_err(|_| Error::invalid())?
-                    .encode_utf16()
-                    .collect();
-                let start = child["origin"]["start"]
-                    .as_u64()
-                    .ok_or_else(Error::invalid)? as usize;
-                let end = child["origin"]["end"].as_u64().ok_or_else(Error::invalid)? as usize;
-                if original.get(start..end) != Some(text.as_slice()) {
-                    return Err(Error::invalid());
-                }
-            }
-        }
-        let mut excerpts = BTreeMap::<String, Vec<Value>>::new();
-        let mut add_excerpt = |note: &Value| {
-            if let Some(id) = note["excerpt"]["sourceId"].as_str() {
-                excerpts
-                    .entry(id.into())
-                    .or_default()
-                    .push(note["excerpt"].clone());
-            }
+            return if referenced {
+                Err(Error::invalid())
+            } else {
+                Ok(())
+            };
         };
-        for patch in patches.iter().filter(|patch| patch.store == "notes") {
-            if let Some(note) = &patch.value {
-                add_excerpt(note);
+        let stored: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM assets a WHERE a.id=?1 AND a.mime=json_extract(?2,'$.type') AND length(a.body)=json_extract(?2,'$.size'))",
+            params![patch.id, value.to_string()],
+            |row| row.get(0),
+        )?;
+        if stored {
+            Ok(())
+        } else {
+            Err(Error::invalid())
+        }
+    }
+    fn validate_history(tx: &Transaction<'_>, patch: &Patch) -> Result<()> {
+        let invalid = Error::invalid();
+        match patch.store.as_str() {
+            "reviews" => {
+                let Some(value) = patch.value.as_ref() else {
+                    return if Self::exists(
+                        tx,
+                        "SELECT EXISTS(SELECT 1 FROM practices WHERE json_extract(data,'$.reviewId')=?1)",
+                        &patch.id,
+                    )? {
+                        Err(invalid)
+                    } else {
+                        Ok(())
+                    };
+                };
+                if let Some(practice) = value["practiceId"].as_str() {
+                    let card: Option<String> = tx
+                        .query_row(
+                            "SELECT card_id FROM practices WHERE id=?1",
+                            [practice],
+                            |row| row.get(0),
+                        )
+                        .optional()?;
+                    if card.as_deref() != value["cardId"].as_str() {
+                        return Err(invalid);
+                    }
+                }
+                Ok(())
+            }
+            "practices" => {
+                let Some(value) = patch.value.as_ref() else {
+                    return if Self::exists(
+                        tx,
+                        "SELECT EXISTS(SELECT 1 FROM reviews WHERE json_extract(data,'$.practiceId')=?1)",
+                        &patch.id,
+                    )? {
+                        Err(invalid)
+                    } else {
+                        Ok(())
+                    };
+                };
+                let Some(review_id) = value["reviewId"].as_str() else {
+                    return Ok(());
+                };
+                let row: Option<String> = tx
+                    .query_row("SELECT data FROM reviews WHERE id=?1", [review_id], |row| {
+                        row.get(0)
+                    })
+                    .optional()?;
+                let Some(row) = row else { return Err(invalid) };
+                let review: Value = serde_json::from_str(&row)?;
+                if review["cardId"] != value["cardId"]
+                    || review["practiceId"] != value["id"]
+                    || review["rating"] != value["rating"]
+                {
+                    return Err(invalid);
+                }
+                Ok(())
+            }
+            _ => {
+                let Some(value) = patch.value.as_ref() else {
+                    return Ok(());
+                };
+                if let Some(practice) = value["practiceId"].as_str()
+                    && !Self::exists(
+                        tx,
+                        "SELECT EXISTS(SELECT 1 FROM practices WHERE id=?1)",
+                        practice,
+                    )?
+                {
+                    return Err(invalid);
+                }
+                Ok(())
             }
         }
-        for source_id in changed_sources {
-            let mut stmt = tx.prepare(
-                "SELECT data FROM notes WHERE json_extract(data,'$.excerpt.sourceId')=?1",
-            )?;
-            for row in stmt.query_map([source_id], |row| row.get::<_, String>(0))? {
-                add_excerpt(&serde_json::from_str::<Value>(&row?)?);
-            }
-        }
-        // Keep at most one snapshot body in memory when validating a bulk restore.
-        for (id, values) in excerpts {
-            let body: Vec<u8> = tx.query_row(
+    }
+    fn source_body(tx: &Transaction<'_>, id: &str) -> Result<Vec<u16>> {
+        let body: Vec<u8> = tx
+            .query_row(
                 "SELECT a.body FROM sources s JOIN assets a ON a.id=s.media_id WHERE s.id=?1",
                 [id],
                 |row| row.get(0),
+            )
+            .map_err(|_| Error::invalid())?;
+        Ok(std::str::from_utf8(&body)
+            .map_err(|_| Error::invalid())?
+            .encode_utf16()
+            .collect())
+    }
+    fn validate_source(
+        tx: &Transaction<'_>,
+        patch: &Patch,
+        previous: Option<&Value>,
+    ) -> Result<()> {
+        let Some(value) = patch.value.as_ref() else {
+            // A deleted snapshot must not leave excerpts or notes pointing at it.
+            let referenced: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM sources WHERE json_extract(data,'$.origin.sourceId')=?1) OR EXISTS(SELECT 1 FROM notes WHERE json_extract(data,'$.excerpt.sourceId')=?1)",
+                [&patch.id],
+                |row| row.get(0),
             )?;
-            let text: Vec<u16> = std::str::from_utf8(&body)
-                .map_err(|_| Error::invalid())?
-                .encode_utf16()
-                .collect();
-            for excerpt in values {
-                let start = excerpt["start"].as_u64().ok_or_else(Error::invalid)? as usize;
-                let end = excerpt["end"].as_u64().ok_or_else(Error::invalid)? as usize;
-                let quote = excerpt["quote"].as_str().ok_or_else(Error::invalid)?;
-                let utf16: Vec<u16> = quote.encode_utf16().collect();
-                if text.get(start..end) != Some(utf16.as_slice())
-                    || quote.trim().is_empty()
-                    || utf16.len() > 10_000
-                {
+            return if referenced {
+                Err(Error::invalid())
+            } else {
+                Ok(())
+            };
+        };
+        if let Some(reading) = value.get("reading").filter(|reading| !reading.is_null()) {
+            let preview = reading["view"].as_str() == Some("preview");
+            if reading["offset"].as_u64().unwrap_or(0) > value["characters"].as_u64().unwrap_or(0)
+                || (preview && value["format"].as_str() != Some("markdown"))
+                || (!preview && reading["fraction"].as_f64().unwrap_or(0.0) != 0.0)
+            {
+                return Err(Error::invalid());
+            }
+        }
+        let mime = if value["format"].as_str() == Some("markdown") {
+            "text/markdown"
+        } else {
+            "text/plain"
+        };
+        let media_ok: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM media m WHERE m.id=?1 AND json_extract(m.data,'$.type')=?2 AND json_extract(m.data,'$.size')<=1048576)",
+            params![value["mediaId"].as_str().unwrap_or(""), mime],
+            |row| row.get(0),
+        )?;
+        if !media_ok {
+            return Err(Error::invalid());
+        }
+        // A position save only moves offsets. The snapshot body cannot have changed unless one
+        // of these fields did, so the body read (and excerpt re-validation) is skipped.
+        let content_changed = previous.is_none_or(|before| {
+            before["mediaId"] != value["mediaId"]
+                || before["characters"] != value["characters"]
+                || before["format"] != value["format"]
+                || before["kind"] != value["kind"]
+                || before["origin"] != value["origin"]
+        });
+        if !content_changed {
+            return Ok(());
+        }
+        let body: Vec<u8> = tx
+            .query_row(
+                "SELECT body FROM assets WHERE id=?1",
+                [value["mediaId"].as_str().unwrap_or("")],
+                |row| row.get(0),
+            )
+            .map_err(|_| Error::invalid())?;
+        let text = std::str::from_utf8(&body).map_err(|_| Error::invalid())?;
+        if text.trim().is_empty()
+            || text.contains('\r')
+            || text.encode_utf16().count() as u64 != value["characters"].as_u64().unwrap_or(0)
+        {
+            return Err(Error::invalid());
+        }
+        if let Some(origin) = value.get("origin").filter(|origin| !origin.is_null()) {
+            let parent_id = origin["sourceId"].as_str().unwrap_or("");
+            let start = origin["start"].as_u64().unwrap_or(0) as usize;
+            let end = origin["end"].as_u64().unwrap_or(0) as usize;
+            let row: Option<String> = tx
+                .query_row("SELECT data FROM sources WHERE id=?1", [parent_id], |row| {
+                    row.get(0)
+                })
+                .optional()?;
+            let Some(row) = row else {
+                return Err(Error::invalid());
+            };
+            let parent: Value = serde_json::from_str(&row)?;
+            if parent_id == patch.id
+                || value["kind"].as_str() != Some("excerpt")
+                || end <= start
+                || end - start != value["characters"].as_u64().unwrap_or(0) as usize
+                || end - start > 10_000
+                || end > parent["characters"].as_u64().unwrap_or(0) as usize
+                || parent["format"] != value["format"]
+            {
+                return Err(Error::invalid());
+            }
+            let mut seen = HashSet::from([patch.id.clone()]);
+            let mut current = parent_id.to_owned();
+            let mut depth = 0;
+            loop {
+                depth += 1;
+                if depth > 32 || !seen.insert(current.clone()) {
                     return Err(Error::invalid());
                 }
+                let next: Option<String> = tx
+                    .query_row("SELECT data FROM sources WHERE id=?1", [&current], |row| {
+                        row.get(0)
+                    })
+                    .optional()?;
+                let Some(next) = next else { break };
+                let next: Value = serde_json::from_str(&next)?;
+                match next["origin"]["sourceId"].as_str() {
+                    Some(parent) => current = parent.to_owned(),
+                    None => break,
+                }
+            }
+            let original = Self::source_body(tx, parent_id)?;
+            let quote: Vec<u16> = text.encode_utf16().collect();
+            if original.get(start..end) != Some(quote.as_slice()) {
+                return Err(Error::invalid());
+            }
+        }
+        // Replacing a snapshot body can break excerpts recorded against the old text.
+        if previous.is_some_and(|before| before["mediaId"] != value["mediaId"]) {
+            let original: Vec<u16> = text.encode_utf16().collect();
+            let mut stmt = tx.prepare(
+                "SELECT data FROM sources WHERE json_extract(data,'$.origin.sourceId')=?1",
+            )?;
+            let children: Vec<String> = stmt
+                .query_map([&patch.id], |row| row.get(0))?
+                .collect::<rusqlite::Result<_>>()?;
+            drop(stmt);
+            for child in children {
+                let child: Value = serde_json::from_str(&child)?;
+                let start = child["origin"]["start"].as_u64().unwrap_or(0) as usize;
+                let end = child["origin"]["end"].as_u64().unwrap_or(0) as usize;
+                let child_body: Vec<u8> = tx
+                    .query_row(
+                        "SELECT body FROM assets WHERE id=?1",
+                        [child["mediaId"].as_str().unwrap_or("")],
+                        |row| row.get(0),
+                    )
+                    .map_err(|_| Error::invalid())?;
+                let child_text: Vec<u16> = std::str::from_utf8(&child_body)
+                    .map_err(|_| Error::invalid())?
+                    .encode_utf16()
+                    .collect();
+                if original.get(start..end) != Some(child_text.as_slice()) {
+                    return Err(Error::invalid());
+                }
+            }
+        }
+        Ok(())
+    }
+    fn validate_note(tx: &Transaction<'_>, patch: &Patch, previous: Option<&Value>) -> Result<()> {
+        let Some(value) = patch.value.as_ref() else {
+            return Ok(());
+        };
+        if previous.is_none_or(|before| {
+            before["frontMedia"] != value["frontMedia"] || before["backMedia"] != value["backMedia"]
+        }) {
+            let mut stmt =
+                tx.prepare("SELECT json_extract(data,'$.type') FROM media WHERE id=?1")?;
+            for key in ["frontMedia", "backMedia"] {
+                for id in value[key].as_array().cloned().unwrap_or_default() {
+                    let kind: Option<String> = stmt
+                        .query_row([id.as_str().unwrap_or("")], |row| row.get(0))
+                        .optional()?;
+                    match kind {
+                        None => return Err(Error::invalid()),
+                        Some(kind) if kind.starts_with("text/") => return Err(Error::invalid()),
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if let Some(excerpt) = value.get("excerpt").filter(|excerpt| !excerpt.is_null())
+            && previous.is_none_or(|before| before["excerpt"] != *excerpt)
+        {
+            let source_id = excerpt["sourceId"].as_str().unwrap_or("");
+            let row: Option<String> = tx
+                .query_row("SELECT data FROM sources WHERE id=?1", [source_id], |row| {
+                    row.get(0)
+                })
+                .optional()?;
+            let Some(row) = row else {
+                return Err(Error::invalid());
+            };
+            let source: Value = serde_json::from_str(&row)?;
+            let start = excerpt["start"].as_u64().unwrap_or(0) as usize;
+            let end = excerpt["end"].as_u64().unwrap_or(0) as usize;
+            let quote = excerpt["quote"].as_str().ok_or_else(Error::invalid)?;
+            let utf16: Vec<u16> = quote.encode_utf16().collect();
+            if end > source["characters"].as_u64().unwrap_or(0) as usize
+                || quote.trim().is_empty()
+                || utf16.len() > 10_000
+            {
+                return Err(Error::invalid());
+            }
+            let text = Self::source_body(tx, source_id)?;
+            if text.get(start..end) != Some(utf16.as_slice()) {
+                return Err(Error::invalid());
             }
         }
         Ok(())
@@ -570,7 +744,7 @@ impl Database {
             })
             .optional()?
             .ok_or_else(Error::missing)?;
-        let mut library = json!({"version":12});
+        let mut library = json!({"version":13});
         for store in STORES {
             let mut rows = BTreeMap::<String, (i64, Value)>::new();
             let mut stmt = self

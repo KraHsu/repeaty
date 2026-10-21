@@ -15,6 +15,48 @@ fn input(revision: i64, patches: Value) -> Commit {
     serde_json::from_value(json!({"expectedRevision":revision,"patches":patches})).unwrap()
 }
 #[test]
+fn adaptive_reading_survives_v9_upgrade_and_validates_state_atomically() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("adaptive.sqlite3");
+    let mut db = Database::open(&path).unwrap();
+    let text = "Adaptive reading 中文";
+    db.put_media("adaptive-body", "text/plain", text.as_bytes())
+        .unwrap();
+    let mut library = fixture();
+    library["media"] = json!([{"id":"adaptive-body","name":"reading.txt","type":"text/plain","size":text.len(),"createdAt":"2026-10-20T00:00:00Z"}]);
+    library["sources"] = json!([{"id":"adaptive-source","title":"Adaptive","url":"","format":"plain","mediaId":"adaptive-body","characters":text.encode_utf16().count(),"createdAt":"2026-10-20T00:00:00Z"}]);
+    db.commit(commit(0, &library)).unwrap();
+    db.backup_now(true).unwrap();
+    let backups = db.backups().unwrap();
+    let previous = backups[0]["id"].as_str().unwrap();
+    drop(db);
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    connection.pragma_update(None, "user_version", 9).unwrap();
+    drop(connection);
+    let mut db = Database::open(&path).unwrap();
+    assert_eq!(db.load().unwrap()["library"], library);
+    let mut updated = library.clone();
+    updated["sources"][0]["adaptiveReading"] = json!({"intervalDays":7,"factor":2.15,"lastReadOn":"2026-10-20","readCount":1,"feedback":"easy"});
+    db.commit(commit(1, &updated)).unwrap();
+    let saved = db.load().unwrap();
+    for (key, value) in [
+        ("intervalDays", json!(366)),
+        ("factor", json!(3.01)),
+        ("readCount", json!(0)),
+        ("feedback", json!("accepted")),
+        ("lastReadOn", json!("invalid")),
+    ] {
+        let mut invalid = updated.clone();
+        invalid["sources"][0]["adaptiveReading"][key] = value;
+        assert!(db.commit(commit(2, &invalid)).is_err(), "{key}");
+        assert_eq!(db.load().unwrap(), saved);
+    }
+    assert_eq!(db.backup(previous).unwrap(), library);
+    drop(db);
+    let mut db = Database::open(&path).unwrap();
+    assert_eq!(db.load().unwrap()["library"], updated);
+}
+#[test]
 fn reading_intervals_upgrade_v7_and_preserve_snapshots_without_inventing_progress() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("intervals.sqlite3");
@@ -92,9 +134,9 @@ fn reading_intervals_upgrade_v7_and_preserve_snapshots_without_inventing_progres
         connection
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap(),
-        9
+        10
     );
-    connection.pragma_update(None, "user_version", 10).unwrap();
+    connection.pragma_update(None, "user_version", 11).unwrap();
     drop(connection);
     assert!(Database::open(&path).is_err());
     let connection = rusqlite::Connection::open(&path).unwrap();
@@ -102,7 +144,7 @@ fn reading_intervals_upgrade_v7_and_preserve_snapshots_without_inventing_progres
         connection
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap(),
-        10
+        11
     );
 }
 #[test]
@@ -388,7 +430,7 @@ fn source_only_libraries_get_snapshots_and_sqlite_v2_upgrades_safely() {
         connection
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap(),
-        9
+        10
     );
 }
 
@@ -591,7 +633,7 @@ fn reading_priority_upgrades_v5_and_rolls_back_invalid_values_without_changing_l
         connection
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap(),
-        9
+        10
     );
 }
 
@@ -717,7 +759,7 @@ fn independent_excerpts_survive_sqlite_v6_upgrade_and_validate_provenance_atomic
         connection
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap(),
-        9
+        10
     );
 }
 
@@ -727,7 +769,7 @@ fn nested_excerpts_validate_cycles_and_depth_and_survive_a_v8_upgrade() {
     let path = dir.path().join("nested.sqlite3");
     let mut db = Database::open(&path).unwrap();
     let body = "Same🙂";
-    let mut library = json!({"version":12,"decks":[],"notes":[],"cards":[],"reviews":[],"media":[],"sources":[],"savedSearches":[],"practices":[],"attempts":[]});
+    let mut library = json!({"version":13,"decks":[],"notes":[],"cards":[],"reviews":[],"media":[],"sources":[],"savedSearches":[],"practices":[],"attempts":[]});
     for index in 0..34 {
         let id = format!("level-{index}");
         let media_id = format!("body-{index}");

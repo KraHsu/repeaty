@@ -1,4 +1,4 @@
-# 题目插件
+# 应用插件
 
 [返回开发文档](DEVELOPMENT.md) · [后端部署](SELF_HOSTING.md)
 
@@ -11,9 +11,17 @@
 | 纯前端插件 | `kind: 'frontend'` | `repeaty.plugins.static.ts`                     | 所有版本 |
 | 本地插件   | `kind: 'local'`    | `repeaty.plugins.desktop.ts` 和桌面 Rust 注册表 | 仅桌面版 |
 
-后端版和桌面版继承纯前端清单。默认前端清单为空，桌面清单内置 LeetCode。开源服务没有插件路由。构建选择清单与存储适配器，静态产物不包含账户客户端、Tauri 或 LeetCode 模块。
+后端版和桌面版继承纯前端清单。默认前端清单内置答题历史，桌面清单另内置 LeetCode。开源服务没有插件路由。构建选择清单与存储适配器，静态产物不包含账户客户端、Tauri 或 LeetCode 模块。
 
 关闭插件保留题目与进度。要从安装包移除插件代码，需移出清单并重新构建。
+
+## 复习显示插件
+
+显示插件通过 `ReviewPanelPlugin` 在卡片上方提供可选界面，与题目类型分别注册。它声明 `kind: 'frontend'`，复用清单、开关和可选 `settings`，提供 `reviewPanel: Component`，不提供 `showQuestion` / `showAnswer`。组件接收 `ReviewPanelProps`：当前 `card`、只读的 `reviews` 和 `revealed`，不能据此自动评分。
+
+内置 `review-history` 显示当前卡片最近的 1–50 次已保存评分，按保存顺序从左到右排列：重来为红色、困难为黄色、良好为绿色、简单为蓝色；末尾的虚线圆代表本次作答。默认翻面后显示，可在「设置 → 插件 → 答题历史」调整。圆球提供评分和日期文本，撤销后直接反映学习库中的记录。只练习不会生成历史评分；它不是 LeetCode 提交代码的历史视图。
+
+显示插件的开关不改变卡片的可复习状态。设置和开关保存在当前浏览器 / 应用，不包含在学习库备份中。
 
 ## 前端接口
 
@@ -60,14 +68,16 @@ interface QuestionPlugin {
 
 ```ts
 import type { FrontendPluginInstallation } from './src/plugins/types'
+import reviewHistory from './src/plugins/review-history'
 import typedAnswer from './examples/plugins/typed-answer'
 
 export default [
+  { plugin: reviewHistory, builtin: true, enabledByDefault: true },
   { plugin: typedAnswer, enabledByDefault: true },
 ] satisfies FrontendPluginInstallation[]
 ```
 
-运行 `npm run dev`，添加卡片时选择「插件题目 → Typed answer」。`npm run build` 将示例打包到静态站点；`npm run build:server` 与 `npm run build:desktop` 也会包含它。示例默认不部署到本仓库的 GitHub Pages。
+运行 `npm run dev`，添加卡片时选择「插件题目 → Typed answer」。`npm run build` 将示例打包到静态站点；`npm run build:server` 与 `npm run build:desktop` 也会包含它。该示例没有替换内置答题历史，默认不部署到本仓库的 GitHub Pages。
 
 插件与应用在同一 JavaScript 环境执行，不是隔离沙箱。只安装信任的本地或 npm 模块；备份只携带数据，不安装或执行插件代码。
 

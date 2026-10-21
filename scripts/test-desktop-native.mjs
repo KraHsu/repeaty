@@ -467,6 +467,10 @@ try {
     ['leetcode.cn'],
   )
   await click('设置')
+  await until(
+    () => execute("return !!document.querySelector('#upstream-endpoint')"),
+    'upstream settings ready',
+  )
   await fill('#upstream-endpoint', '')
   await click('保存并重新打开')
   await until(
@@ -2138,6 +2142,276 @@ try {
 
   console.log(
     'Native independent excerpts: exact origin, local card creation, priority, two application restarts and parent deletion passed without changing existing card progress',
+  )
+  // Final v1.0 features run through the real WebKit window and persistent library.
+  const readerReady = () =>
+    until(
+      () =>
+        execute(
+          "return document.querySelector('.source-text, .source-markdown-preview')?.getAttribute('aria-busy')==='false'",
+        ),
+      'native adaptive reader ready',
+    )
+  const scheduleAdaptive = async () => {
+    await readerReady()
+    const title = await execute("return document.querySelector('.source-reader h2').textContent")
+    const before = (await sourceRecords()).find((source) => source.title === title)
+    await waitButton('读过，安排下次')
+    await click('读过，安排下次')
+    await until(
+      () => execute("return !!document.querySelector('#reading-schedule-mode')"),
+      'native interval method',
+    )
+    await execute(
+      "const select=document.querySelector('#reading-schedule-mode');select.value='adaptive';select.dispatchEvent(new Event('change',{bubbles:true}));",
+    )
+    await execute(
+      "const input=document.querySelector('input[name=reading-feedback][value=easy]');input.checked=true;input.dispatchEvent(new Event('change',{bubbles:true}));",
+    )
+    await writeFile(
+      'test-results/native-adaptive-reading.png',
+      Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
+    )
+    await click('保存阅读安排')
+    await until(
+      async () =>
+        !(await execute("return !!document.querySelector('dialog')")) &&
+        (await sourceRecords()).find((source) => source.id === before.id)?.adaptiveReading
+          ?.readCount ===
+          (before.adaptiveReading?.readCount ?? 0) + 1,
+      'native adaptive state saved',
+    )
+    const saved = (await sourceRecords()).find((source) => source.id === before.id)
+    assert.equal(saved.adaptiveReading.feedback, 'easy')
+    assert.ok(saved.adaptiveReading.intervalDays >= 1 && saved.adaptiveReading.intervalDays <= 365)
+    return { before, saved }
+  }
+  const nativeAdaptive = await scheduleAdaptive()
+  assert.deepEqual(await libraryRecords(), nativeCoreLearning)
+  await click('撤销阅读安排')
+  await until(
+    async () =>
+      !(await sourceRecords()).find((source) => source.id === nativeAdaptive.before.id)
+        .adaptiveReading,
+    'native adaptive undo',
+  )
+  assert.deepEqual(await libraryRecords(), nativeCoreLearning)
+  await click('学习概览')
+  await click('创建卡组')
+  await until(
+    () => execute("return !!document.querySelector('#deck-name')"),
+    'native mixed deck form',
+  )
+  await fill('#deck-name', 'Native mixed study')
+  await click('保存卡组')
+  await until(() => execute("return !document.querySelector('dialog')"), 'native mixed deck saved')
+  for (const title of ['Native mixed first', 'Native mixed second']) {
+    if (!(await execute("return !!document.querySelector('#card-front')"))) await click('添加卡片')
+    await until(
+      () => execute("return !!document.querySelector('#card-front')"),
+      'native mixed card form',
+    )
+    await fill('#card-front', title)
+    await fill('#card-back', 'Native answer')
+    await click('保存卡片')
+    await until(
+      async () => (await libraryRecords()).notes.some((note) => note.value.front === title),
+      'native mixed card saved',
+    )
+  }
+  if (await execute("return !!document.querySelector('dialog')"))
+    await execute("document.querySelector('dialog .modal-header button').click()")
+  await click('学习概览')
+  await click('开始混合学习')
+  await until(
+    () => execute("return !!document.querySelector('#mixed-ratio')"),
+    'native mixed ratio',
+  )
+  await fill('#mixed-ratio', '1')
+  await click('开始学习')
+  const gradeMixed = async () => {
+    await until(
+      () => execute("return !!document.querySelector('.mixed-session .flashcard')"),
+      'native mixed card',
+    )
+    await click('显示答案')
+    await until(
+      () => execute("return !!document.querySelector('.grade-button.easy:not(:disabled)')"),
+      'native mixed grade ready',
+    )
+    await execute("document.querySelector('.grade-button.easy').click()")
+    await readerReady()
+  }
+  const beforeNativeMixed = await libraryRecords()
+  await gradeMixed()
+  const mixedAdaptive = await scheduleAdaptive()
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.mixed-header')?.textContent.includes('已复习 1 次 · 已处理 1 篇')",
+      ),
+    'native mixed counters',
+  )
+  assert.equal((await libraryRecords()).reviews.length, beforeNativeMixed.reviews.length + 1)
+  await click('撤销阅读安排')
+  await readerReady()
+  assert.deepEqual(
+    (await sourceRecords()).find((source) => source.id === mixedAdaptive.before.id).adaptiveReading,
+    mixedAdaptive.before.adaptiveReading,
+  )
+  assert.equal((await libraryRecords()).reviews.length, beforeNativeMixed.reviews.length + 1)
+  await waitButton('撤销上次评分')
+  await click('撤销上次评分')
+  await until(
+    () => execute("return !!document.querySelector('.flashcard')"),
+    'native mixed rating undone',
+  )
+  assert.equal((await libraryRecords()).reviews.length, beforeNativeMixed.reviews.length)
+  await gradeMixed()
+  await scheduleAdaptive()
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.mixed-header')?.textContent.includes('已复习 1 次 · 已处理 1 篇')",
+      ),
+    'native mixed restored counters',
+  )
+  await writeFile(
+    'test-results/native-mixed-study.png',
+    Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
+  )
+  await waitButton('结束混合学习')
+  await click('结束混合学习')
+  await until(
+    () => execute("return !document.querySelector('.mixed-session')"),
+    'native mixed exited',
+  )
+  const finalSources = await sourceRecords(),
+    finalLearning = await libraryRecords()
+  await command(`/session/${session}`, undefined, 'DELETE')
+  session = undefined
+  await createSession()
+  await until(
+    () => execute("return !!document.querySelector('.daily-reading')"),
+    'native final restart',
+  )
+  assert.deepEqual(await sourceRecords(), finalSources)
+  assert.deepEqual(await libraryRecords(), finalLearning)
+  assert.equal(await execute("return !!document.querySelector('.mixed-session')"), false)
+  console.log(
+    'Native adaptive and mixed study: real feedback, interleaving, independent reading/rating undo, replay and actual application restart passed',
+  )
+  await click('插件')
+  await until(
+    () => execute("return !!document.querySelector('#history-length')"),
+    'native history settings',
+  )
+  await fill('#history-length', '3')
+  await execute(
+    "document.querySelector('#history-length').dispatchEvent(new Event('change',{bubbles:true}));const input=document.querySelector('#history-after-reveal');input.checked=false;input.dispatchEvent(new Event('change',{bubbles:true}));",
+  )
+  await click('学习概览')
+  await execute('document.querySelector(\'[aria-label="复习卡组 Native mixed study"]\').click()')
+  await until(
+    () =>
+      execute(
+        "return !!document.querySelector('.flashcard') && !!document.querySelector('.review-history-dots .current')",
+      ),
+    'native history current circle',
+  )
+  const beforeNativeEdit = await libraryRecords()
+  const { stdout: nativeWindows } = await exec(xdotool, [
+    'search',
+    '--onlyvisible',
+    '--name',
+    'Repeaty',
+  ])
+  await exec(xdotool, ['windowfocus', nativeWindows.trim().split('\n').at(-1)])
+  await execute('document.activeElement?.blur()')
+  await exec(xdotool, ['key', '--clearmodifiers', 'e'])
+  await until(
+    () => execute("return !!document.querySelector('#card-front')"),
+    'native E opens editor',
+  )
+  await fill('#card-front', '**原生：**更新后的问题\n\n```rust\nfn main() {}\n```')
+  await fill('#card-back', 'Native edited answer')
+  await click('保存卡片')
+  await until(
+    () =>
+      execute(
+        "return !document.querySelector('dialog') && document.querySelector('.flashcard strong')?.textContent==='原生：' && !!document.querySelector('.flashcard .hljs-keyword') && !document.querySelector('.card-answer')",
+      ),
+    'native edited card restarts with Markdown and highlighting',
+  )
+  const afterNativeEdit = await libraryRecords()
+  assert.deepEqual(
+    afterNativeEdit.cards.map((row) => row.value),
+    beforeNativeEdit.cards.map((row) => row.value),
+  )
+  assert.deepEqual(afterNativeEdit.reviews, beforeNativeEdit.reviews)
+  await click('显示答案')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.card-answer')?.textContent.includes('Native edited answer')",
+      ),
+    'native edited answer',
+  )
+  await writeFile(
+    'test-results/native-review-edited.png',
+    Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
+  )
+  await execute("document.querySelector('.grade-button.easy').click()")
+  await until(
+    async () => (await libraryRecords()).reviews.length === beforeNativeEdit.reviews.length + 1,
+    'native edited card grade durable',
+  )
+  await waitButton('撤销上次评分')
+  await click('撤销上次评分')
+  await until(
+    async () => (await libraryRecords()).reviews.length === beforeNativeEdit.reviews.length,
+    'native edited card undo',
+  )
+  await click('设置')
+  await waitButton('AI 制卡')
+  await click('AI 制卡')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('#ai-card-skill')?.value.includes('name: repeaty-cards')",
+      ),
+    'native portable skill loads',
+  )
+  await click('下载 SKILL.md')
+  const skillChooser = await until(async () => {
+    const { stdout } = await exec(xdotool, ['search', '--onlyvisible', '--name', 'Save'])
+    return stdout.trim().split('\n').at(-1)
+  }, 'native skill save dialog')
+  const skillFile = join(directory, 'downloads', 'SKILL.md')
+  await exec(xdotool, ['windowfocus', skillChooser])
+  await exec(xdotool, ['key', '--clearmodifiers', 'ctrl+l', 'ctrl+a'])
+  await exec(xdotool, ['type', '--clearmodifiers', skillFile])
+  await exec(xdotool, ['key', '--clearmodifiers', 'Return'])
+  await sleep(300)
+  await exec(xdotool, ['key', '--clearmodifiers', 'alt+s'])
+  await until(
+    async () => (await readFile(skillFile, 'utf8')).includes('type,front,back,tags,format'),
+    'native skill export written',
+  )
+  await command(`/session/${session}`, undefined, 'DELETE')
+  session = undefined
+  await createSession()
+  await waitButton('插件')
+  await click('插件')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('#history-length')?.value==='3' && !document.querySelector('#history-after-reveal').checked",
+      ),
+    'native history preferences survive restart',
+  )
+  console.log(
+    'Native release polish: E editing, restarted question, Chinese strong, Rust highlighting, unchanged schedules/history, grade/undo, history preferences and actual SKILL.md export passed',
   )
   console.log(
     'Native WebKit/Tauri: starter lifecycle, accounts, upstream, credentials, backup, LeetCode history and Anki import/update, source snapshots, excerpt review and native text export passed.',

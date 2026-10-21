@@ -41,6 +41,14 @@ function clearDraft() {
   message.value = ''
   saveError.value = ''
 }
+function enterCredential(event: KeyboardEvent) {
+  // The Enter that commits an IME composition must reach the input, not save a half-typed
+  // cookie pair; stopping it also prevents the composition from ever committing.
+  if (event.isComposing || event.keyCode === 229) return
+  event.stopPropagation()
+  event.preventDefault()
+  void configure('save')
+}
 async function configure(action: 'save' | 'clear') {
   if (saving.value || loading.value) return
   const site = props.site
@@ -247,7 +255,7 @@ onUnmounted(() => {
       <p class="form-note">
         {{ t('填写 Cookie 的值。保存后立即生效；已保存的值不会回填。') }}
       </p>
-      <div class="credential-fields" @keydown.enter.stop.prevent="configure('save')">
+      <div class="credential-fields" @keydown.enter="enterCredential($event)">
         <label class="form-field" :for="`${fieldId}-session`"
           >LEETCODE_SESSION
           <input

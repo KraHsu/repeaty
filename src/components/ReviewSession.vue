@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { t, msg, type Message } from '../i18n'
+import { t, msg } from '../i18n'
+import { notify } from '../notifications'
 
 import { defineAsyncComponent, computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { ArrowLeft, Check, CornerDownLeft, RotateCcw } from '@lucide/vue'
+import { ArrowLeft, Check, CornerDownLeft, RotateCcw, Ellipsis, Pencil } from '@lucide/vue'
 import {
   available,
   blockedByLimit,
@@ -10,9 +11,15 @@ import {
   intervalLabel,
   previewReview,
 } from '../core/scheduler'
-import { cardViews, type Grade, type Library, type StudySession } from '../core/model'
+import {
+  createCardViewReader,
+  type CardView,
+  type Grade,
+  type Library,
+  type StudySession,
+} from '../core/model'
 import { studyCards } from '../core/search'
-import { questionPlugin, canReviewCard } from '../plugins'
+import { questionPlugin, canReviewCard, enabledReviewPanels } from '../plugins'
 import type { QuestionState } from '../plugins/types'
 import type { Assessment } from '../plugins/data'
 import type { Practice, Attempt } from '../core/practice-data'
@@ -22,7 +29,9 @@ const props = defineProps<{
   library: Library
   deckId?: string
   study?: StudySession
+  mixedCardId?: string
   busy: boolean
+  editing?: boolean
   submit: (
     id: string,
     grade: Grade,
@@ -38,7 +47,13 @@ const props = defineProps<{
   getSource: (id: string, signal?: AbortSignal) => Promise<string>
   getAttempt: (id: string, signal?: AbortSignal) => Promise<Attempt>
 }>()
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{
+  close: []
+  step: [graded: boolean]
+  activity: [busy: boolean]
+  edit: [card: CardView]
+}>()
+const grading = ref(false)
 const clock = ref(new Date())
 const revealed = ref(false)
 const sourceOpen = ref(false)
@@ -49,7 +64,8 @@ const currentOrigin = computed(() =>
   props.library.sources.find((source) => source.id === currentSource.value?.origin?.sourceId),
 )
 const completed = ref(0)
-const feedback = ref<Message[]>([])
+const revision = ref(0)
+const menu = ref<HTMLDetailsElement>()
 const currentId = ref<string>()
 const automatic = computed(() => questionState.assessment?.mode === 'automatic')
 const suggestedName = computed(
@@ -57,6 +73,8 @@ const suggestedName = computed(
 )
 const practice = computed(() => Boolean(props.study && !props.study.reschedule))
 const studied = ref<{ id: string; grade: Grade; reviewId?: string }[]>([])
+const readViews = createCardViewReader()
+const views = computed(() => readViews(props.library))
 const queue = computed(() =>
   props.study
     ? studyCards(
@@ -65,10 +83,11 @@ const queue = computed(() =>
         studied.value.map((entry) => entry.id),
         clock.value,
       ).filter(canReviewCard)
-    : dueCards(props.library, clock.value, props.deckId, canReviewCard),
+    : dueCards(props.library, clock.value, props.deckId, canReviewCard, views.value).filter(
+        (card) => !props.mixedCardId || card.id === props.mixedCardId,
+      ),
 )
 const startedWith = queue.value.length
-const views = computed(() => cardViews(props.library))
 const current = computed(() =>
   views.value.find(
     (card) => card.id === currentId.value && available(card, clock.value) && canReviewCard(card),
@@ -85,6 +104,11 @@ const cardHistory = computed(() => {
 })
 const questionState = reactive<QuestionState>({ allowedGrades: [], busy: false })
 watch(
+  () => props.busy || props.editing || questionState.busy || grading.value,
+  (value) => emit('activity', value),
+  { immediate: true, flush: 'sync' },
+)
+watch(
   currentId,
   () => {
     sourceOpen.value = false
@@ -98,7 +122,9 @@ watch(
   { flush: 'sync' },
 )
 const limited = computed(() =>
-  props.study ? 0 : blockedByLimit(props.library, clock.value, props.deckId, canReviewCard),
+  props.study
+    ? 0
+    : blockedByLimit(props.library, clock.value, props.deckId, canReviewCard, views.value),
 )
 const canUndo = computed(() =>
   practice.value
@@ -138,6 +164,34 @@ function selectNext() {
   currentId.value = queue.value[0]?.id
   revealed.value = false
 }
+function restart(id: string, noteId: string) {
+  const target =
+    views.value.find((card) => card.id === id) ?? views.value.find((card) => card.noteId === noteId)
+  if (!target || !available(target, new Date()) || !canReviewCard(target)) return selectNext()
+  if (
+    !props.study &&
+    !dueCards(props.library, new Date(), undefined, canReviewCard, views.value).some(
+      (card) => card.id === target.id,
+    )
+  )
+    return selectNext()
+  currentId.value = target.id
+  revealed.value = false
+  sourceOpen.value = false
+  questionState.allowedGrades = []
+  questionState.suggestedGrade = undefined
+  questionState.assessment = undefined
+  questionState.practiceId = undefined
+  questionState.complete = undefined
+  questionState.busy = false
+  revision.value++
+}
+defineExpose({ restart })
+function editCurrent() {
+  if (!current.value || props.busy || props.editing || questionState.busy || grading.value) return
+  if (menu.value) menu.value.open = false
+  emit('edit', current.value)
+}
 watch(queue, (cards) => {
   if (!current.value && cards.length) {
     currentId.value = cards[0]?.id
@@ -149,40 +203,50 @@ async function grade(value: Grade) {
     !current.value ||
     !revealed.value ||
     props.busy ||
+    props.editing ||
+    grading.value ||
     questionState.busy ||
     !questionState.allowedGrades.includes(value)
   )
     return
   const id = current.value.id
   const complete = questionState.complete
-  const saved = practice.value
-    ? !questionState.practiceId ||
-      (await props.finishPractice(questionState.practiceId, id, questionState.assessment))
-    : await props.submit(id, value, questionState.assessment, questionState.practiceId)
-  if (saved) {
-    await complete?.()
-    const effects = practice.value ? undefined : props.library.reviews.at(-1)?.effects
-    feedback.value = [
-      effects?.siblings.length
-        ? msg('同笔记的 {count} 张关联卡片已自动暂缓至明天。', { count: effects.siblings.length })
-        : '',
-      effects?.markedLeech ? msg('这张卡已标记为顽固卡，可在卡片列表中筛选并改写问题。') : '',
-    ].filter((entry): entry is Message => Boolean(entry))
-    if (props.study)
-      studied.value.push({
-        id,
-        grade: value,
-        reviewId: practice.value ? undefined : props.library.reviews.at(-1)?.id,
-      })
-    completed.value++
-    selectNext()
+  grading.value = true
+  try {
+    const saved = practice.value
+      ? !questionState.practiceId ||
+        (await props.finishPractice(questionState.practiceId, id, questionState.assessment))
+      : await props.submit(id, value, questionState.assessment, questionState.practiceId)
+    if (saved) {
+      await complete?.()
+      const effects = practice.value ? undefined : props.library.reviews.at(-1)?.effects
+      const context = props.library.reviews.at(-1)?.id
+      if (effects?.siblings.length)
+        notify(
+          msg('同笔记的 {count} 张关联卡片已自动暂缓至明天。', { count: effects.siblings.length }),
+          'info',
+          context,
+        )
+      if (effects?.markedLeech)
+        notify('这张卡已标记为顽固卡，可在卡片列表中筛选并改写问题。', 'warning', context)
+      if (props.study)
+        studied.value.push({
+          id,
+          grade: value,
+          reviewId: practice.value ? undefined : props.library.reviews.at(-1)?.id,
+        })
+      completed.value++
+      if (props.mixedCardId) emit('step', true)
+      selectNext()
+    }
+  } finally {
+    grading.value = false
   }
 }
 async function undoLast() {
-  if (!canUndo.value || props.busy || questionState.busy) return
+  if (!canUndo.value || props.busy || props.editing || questionState.busy || grading.value) return
   const id = practice.value ? studied.value.at(-1)?.id : props.library.reviews.at(-1)?.cardId
   if (practice.value || (await props.undo())) {
-    feedback.value = []
     if (props.study) studied.value.pop()
     completed.value = Math.max(0, completed.value - 1)
     selectNext()
@@ -190,10 +254,21 @@ async function undoLast() {
   }
 }
 async function changeCurrent(action: 'suspend' | 'bury') {
-  if (!questionState.busy && current.value && (await props.change([current.value.id], action)))
-    selectNext()
+  if (props.busy || props.editing || grading.value || questionState.busy || !current.value) return
+  grading.value = true
+  try {
+    if (await props.change([current.value.id], action)) {
+      if (props.mixedCardId) emit('step', false)
+      selectNext()
+    }
+  } finally {
+    grading.value = false
+  }
 }
 function keydown(event: KeyboardEvent) {
+  // Keys pressed while an IME composition is open are meant for the IME (e.g. typing "e"
+  // in pinyin) and must not reveal answers or grade cards.
+  if (event.isComposing || event.keyCode === 229) return
   if (document.querySelector('dialog[open]')) return
   if (
     event.repeat ||
@@ -201,11 +276,18 @@ function keydown(event: KeyboardEvent) {
     event.metaKey ||
     event.altKey ||
     props.busy ||
-    questionState.busy
+    questionState.busy ||
+    grading.value
   )
     return
   if ((event.target as HTMLElement)?.closest('input, textarea, select, button, [contenteditable]'))
     return
+  if (props.editing) return
+  if (event.key.toLowerCase() === 'e' && current.value) {
+    event.preventDefault()
+    editCurrent()
+    return
+  }
   if (event.code === 'Space' && current.value && !questionState.busy) {
     event.preventDefault()
     revealed.value = true
@@ -225,13 +307,18 @@ onMounted(() => {
 onUnmounted(() => {
   clearInterval(timer)
   window.removeEventListener('keydown', keydown)
+  emit('activity', false)
 })
 </script>
 
 <template>
   <section class="review-space">
-    <header class="review-header">
-      <button class="text-button" :disabled="busy || questionState.busy" @click="emit('close')">
+    <header v-if="!mixedCardId" class="review-header">
+      <button
+        class="text-button"
+        :disabled="busy || questionState.busy || grading"
+        @click="emit('close')"
+      >
         <ArrowLeft :size="17" /> {{ study ? t('结束专项练习') : t('结束复习') }}
       </button>
       <span class="muted">{{
@@ -247,7 +334,7 @@ onUnmounted(() => {
         })
       }}
     </p>
-    <div class="review-progress">
+    <div v-if="!mixedCardId" class="review-progress">
       <span
         :style="{
           width: `${Math.min(100, (completed / Math.max(startedWith, completed + queue.length, 1)) * 100)}%`,
@@ -256,9 +343,22 @@ onUnmounted(() => {
     </div>
 
     <div class="review-tools">
+      <details v-if="current" ref="menu" class="review-menu">
+        <summary :aria-label="t('更多操作')"><Ellipsis :size="22" /></summary>
+        <div>
+          <button
+            class="text-button"
+            :disabled="busy || editing || questionState.busy || grading"
+            @click="editCurrent"
+          >
+            <Pencil :size="17" />{{ t('编辑') }} <kbd>E</kbd>
+          </button>
+        </div>
+      </details>
       <button
+        v-if="!mixedCardId"
         class="text-button"
-        :disabled="busy || questionState.busy || !canUndo"
+        :disabled="busy || questionState.busy || grading || !canUndo"
         @click="undoLast"
       >
         {{ t('撤销上次评分') }}
@@ -266,30 +366,35 @@ onUnmounted(() => {
       <template v-if="current && !practice"
         ><button
           class="text-button"
-          :disabled="busy || questionState.busy"
+          :disabled="busy || questionState.busy || grading"
           @click="changeCurrent('bury')"
         >
           {{ t('今天暂缓') }}</button
         ><button
           class="text-button"
-          :disabled="busy || questionState.busy"
+          :disabled="busy || questionState.busy || grading"
           @click="changeCurrent('suspend')"
         >
           {{ t('暂停此卡') }}
         </button></template
       >
     </div>
-    <p v-if="feedback.length" class="study-banner" role="status">
-      {{ feedback.map((entry) => t(entry)).join(' ') }}
-    </p>
     <template v-if="current && plugin">
       <div class="review-context">
         <span class="pill">{{ deck?.name }}</span
         ><span>{{ current.schedule.state === 0 ? t('新卡片') : t('复习卡片') }}</span>
         <span v-if="current.leech" class="status-chip leech">{{ t('顽固卡 · 多次遗忘') }}</span>
       </div>
+      <component
+        v-for="panel in enabledReviewPanels"
+        :is="panel.reviewPanel"
+        :key="panel.id"
+        :card="current"
+        :reviews="library.reviews"
+        :revealed="revealed"
+      />
       <article
-        :key="current.id"
+        :key="`${current.id}:${revision}`"
         class="flashcard"
         :class="{ 'plugin-card': current.type === 'plugin' }"
         aria-live="polite"
@@ -297,7 +402,7 @@ onUnmounted(() => {
         <span class="eyebrow">{{ t('问题') }}</span>
         <component
           :is="plugin.showQuestion"
-          :key="current.id"
+          :key="`${current.id}:${revision}`"
           :card="current"
           :media="library.media"
           :get-media="getMedia"
@@ -371,7 +476,10 @@ onUnmounted(() => {
             :key="item.value"
             :class="['grade-button', item.class]"
             :disabled="
-              busy || questionState.busy || !questionState.allowedGrades.includes(item.value)
+              busy ||
+              questionState.busy ||
+              grading ||
+              !questionState.allowedGrades.includes(item.value)
             "
             @click="grade(item.value)"
           >
@@ -436,3 +544,47 @@ onUnmounted(() => {
     </div>
   </section>
 </template>
+<style scoped>
+.review-menu {
+  position: relative;
+  margin-right: auto;
+}
+.review-menu summary {
+  list-style: none;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.review-menu summary::-webkit-details-marker {
+  display: none;
+}
+.review-menu > div {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  min-width: 180px;
+  padding: 0.5rem;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px #20351b18;
+}
+.review-menu button {
+  display: flex;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.6rem;
+}
+kbd {
+  margin-left: auto;
+  font: inherit;
+  font-size: 0.9rem;
+  color: #65785f;
+}
+</style>

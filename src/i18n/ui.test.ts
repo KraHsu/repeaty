@@ -5,7 +5,7 @@ import { createApp, nextTick, type App as VueApp } from 'vue'
 import App from '../App.vue'
 import { createRepository } from '../core/storage'
 import { emptyLibrary } from '../core/model'
-import { initI18n, LOCALE_STORAGE_KEY, setLocale } from '.'
+import { initI18n, LOCALE_STORAGE_KEY, setLocale, t } from '.'
 
 let app: VueApp | undefined
 let host: HTMLDivElement
@@ -33,6 +33,9 @@ async function start() {
   app = createApp(App)
   app.mount(host)
   await vi.waitFor(() => expect(host.querySelector('.dashboard')).not.toBeNull())
+  // Loading the library reveals the dashboard before snapshot metadata finishes.
+  // Native .click() on a disabled button is a no-op; wait for the actual action.
+  await vi.waitFor(() => expect(button(t('创建卡组')).disabled).toBe(false), { timeout: 5000 })
 }
 async function submitForm() {
   host
@@ -128,10 +131,13 @@ it('keeps drafts and revealed answers while translating authoring, statuses, and
 it('translates an already visible backup error and legacy snapshot labels without changing data', async () => {
   await start()
   button('Add starter deck').click()
-  await vi.waitFor(() =>
-    expect(host.querySelector('.sidebar-deck')!.textContent).toContain(
-      'Start here: FSRS & Repeaty',
-    ),
+  await vi.waitFor(
+    () => {
+      const deck = host.querySelector('.sidebar-deck')
+      expect(deck).not.toBeNull()
+      expect(deck!.textContent).toContain('Start here: FSRS & Repeaty')
+    },
+    { timeout: 5000 },
   )
   button('Data & backups').click()
   await nextTick()

@@ -2,6 +2,8 @@ import { test, expect, storedLibrary } from './fixture'
 import type { BrowserContext, Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { practiceHistoryFixture } from '../fixtures/practice-history'
+import { importReading, readingText } from '../fixtures/reading-flow'
+import { startMixed } from '../fixtures/adaptive-mixed-flow'
 
 const question = {
   questionId: '1',
@@ -874,4 +876,38 @@ test('credential errors preserve drafts and changing the editor site clears sens
   await expect(com.getByRole('status')).toContainText('未配置登录信息')
   await expect(com.getByLabel('LEETCODE_SESSION', { exact: true })).toHaveValue('')
   await expect(com.getByLabel('csrftoken', { exact: true })).toHaveValue('')
+})
+
+test('mixed study judges LeetCode locally and preserves attempts when a reading-side undo restores its rating', async ({
+  context,
+}) => {
+  const remote = await connect(context, { rejectFirst: true })
+  const page = await context.newPage()
+  await create(page)
+  await page.getByRole('button', { name: '结束复习', exact: true }).click()
+  await importReading(page, 'LeetCode mixed context', 'plain', readingText)
+  await startMixed(page)
+  await expect(page.getByLabel('代码', { exact: true })).toBeEnabled()
+  await page.getByLabel('代码', { exact: true }).fill('def solve(value):\n    return 0')
+  await page.getByRole('button', { name: '提交到 LeetCode' }).click()
+  await expect(page.locator('.judge-result')).toContainText('答案错误')
+  await page.getByLabel('代码', { exact: true }).fill('def solve(value):\n    return value')
+  await page.getByRole('button', { name: '提交到 LeetCode' }).click()
+  await expect(page.locator('.judge-result')).toContainText('通过')
+  await page.getByLabel('复习评分').selectOption('automatic')
+  await page.getByRole('button', { name: '结束作答并查看答案' }).click()
+  await page.getByRole('button', { name: '保存评分：良好' }).click()
+  await expect(
+    page.getByRole('heading', { name: 'LeetCode mixed context', exact: true }),
+  ).toBeVisible()
+  await expect(page.locator('.source-text')).toHaveAttribute('aria-busy', 'false')
+  let records = await storedLibrary(page)
+  expect(records.reviews).toHaveLength(1)
+  expect(records.attempts).toHaveLength(2)
+  await page.getByRole('button', { name: '撤销上次评分', exact: true }).click()
+  await expect(page.getByLabel('代码', { exact: true })).toBeVisible()
+  records = await storedLibrary(page)
+  expect(records.reviews).toHaveLength(0)
+  expect(records.attempts).toHaveLength(2)
+  expect(remote.submissions()).toBe(2)
 })

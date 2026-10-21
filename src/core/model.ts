@@ -237,7 +237,7 @@ export function variants(note: Pick<Note, 'type' | 'front'>): string[] {
 }
 
 const libraryContents = z.object({
-  version: z.literal(12),
+  version: z.literal(13),
   sources: z.array(sourceSchema).max(10_000),
   practices: z.array(practiceSchema).max(100_000),
   attempts: z.array(attemptSchema).max(500_000),
@@ -362,7 +362,7 @@ export const recordSchemas = {
 }
 export function emptyLibrary(): Library {
   return {
-    version: 12,
+    version: 13,
     sources: [],
     decks: [],
     notes: [],
@@ -410,16 +410,15 @@ export function renderCard(card: Card, note: Note): CardView {
   if (note.type === 'cloze') {
     const target = Number(card.variant.split(':')[1])
     let answer = front
-    for (const item of clozes(note.front)) {
+    const deletions = clozes(note.front)
+    for (const item of deletions) {
       front = front.replace(item.raw, () =>
         item.number === target ? `[${item.hint || '…'}]` : item.answer,
       )
       answer = answer.replace(item.raw, () => item.answer)
     }
     cloze = {
-      answers: clozes(note.front)
-        .filter((item) => item.number === target)
-        .map((item) => item.answer),
+      answers: deletions.filter((item) => item.number === target).map((item) => item.answer),
       context: answer,
       extra: note.back,
     }
@@ -443,6 +442,26 @@ export function renderCard(card: Card, note: Note): CardView {
 export function cardViews(library: Library): CardView[] {
   const notes = new Map(library.notes.map((note) => [note.id, note]))
   return library.cards.map((card) => renderCard(card, notes.get(card.noteId)!))
+}
+/** For UI consumers of immutable snapshots: reuse unchanged rendered cards. */
+export function createCardViewReader() {
+  const cache = new WeakMap<Card, { note: Note; view: CardView }>()
+  let previousNotes: Library['notes'] | undefined,
+    notes = new Map<string, Note>()
+  return (library: Library) => {
+    if (previousNotes !== library.notes) {
+      previousNotes = library.notes
+      notes = new Map(library.notes.map((note) => [note.id, note]))
+    }
+    return library.cards.map((card) => {
+      const note = notes.get(card.noteId)!,
+        prior = cache.get(card)
+      if (prior?.note === note) return prior.view
+      const view = renderCard(card, note)
+      cache.set(card, { note, view })
+      return view
+    })
+  }
 }
 export function pruneMedia(library: Library): Library {
   const used = new Set([
@@ -477,17 +496,19 @@ export function saveNote(
   const removedPractices = new Set(
     library.practices.filter((entry) => removed.has(entry.cardId)).map((entry) => entry.id),
   )
+  // Existing cards keep their index; only new variants append. Editing a note must not
+  // shift every later card, which would rewrite the whole library on each save.
+  const existing = new Set(oldCards.map((card) => card.variant))
+  const added = keys.filter((key) => !existing.has(key)).map((key) => newCard(note.id, key, now))
   return pruneMedia({
     ...library,
     notes: previous
       ? library.notes.map((entry) => (entry.id === note.id ? note : entry))
       : [...library.notes, note],
-    cards: [
-      ...library.cards.filter((card) => card.noteId !== note.id),
-      ...keys.map(
-        (key) => oldCards.find((card) => card.variant === key) ?? newCard(note.id, key, now),
-      ),
-    ],
+    cards:
+      added.length || removed.size
+        ? [...library.cards.filter((card) => !removed.has(card.id)), ...added]
+        : library.cards,
     reviews: library.reviews.filter((review) => !removed.has(review.cardId)),
     practices: library.practices.filter((entry) => !removed.has(entry.cardId)),
     attempts: library.attempts.filter((entry) => !removedPractices.has(entry.practiceId)),
@@ -525,32 +546,34 @@ export function migrateLibrary(value: unknown): Library {
       value.version === 9 ||
       value.version === 10 ||
       value.version === 11 ||
-      value.version === 12)
+      value.version === 12 ||
+      value.version === 13)
   )
     return librarySchema.parse(
-      value.version === 12
+      value.version === 13
         ? value
         : value.version === 6 ||
             value.version === 7 ||
             value.version === 8 ||
             value.version === 9 ||
             value.version === 10 ||
-            value.version === 11
-          ? { ...value, version: 12 }
+            value.version === 11 ||
+            value.version === 12
+          ? { ...value, version: 13 }
           : value.version === 5
-            ? { sources: [], ...value, version: 12 }
+            ? { sources: [], ...value, version: 13 }
             : {
                 sources: [],
                 practices: [],
                 attempts: [],
                 ...value,
-                version: 12,
+                version: 13,
               },
     )
   const old = legacySchema.parse(value)
   const seen = new Set<string>()
   return librarySchema.parse({
-    version: 12,
+    version: 13,
     sources: [],
     practices: [],
     attempts: [],
