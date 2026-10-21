@@ -132,6 +132,38 @@ it('limits history to twenty changes and clears it when the library is reopened'
   expect(workspace.canUndoOperation.value).toBe(false)
 })
 
+it('restores the preceding reading undo after reversing consecutive arrangements', async () => {
+  const prepared = ['First', 'Second'].map((title) =>
+    prepareSource({ title, url: '', format: 'plain', content: title }, now),
+  )
+  const library = prepared.reduce(
+    (library, { source, asset }) => addSource(library, source, asset),
+    fixture(),
+  )
+  const { workspace } = await setup(
+    library,
+    prepared.map((entry) => entry.asset),
+  )
+  const ids: string[] = []
+  for (const { source } of prepared) {
+    await workspace.arrangeSource({
+      sourceId: source.id,
+      mediaId: source.mediaId,
+      scope: workspace.scope.value,
+      action: { type: 'archive' },
+    })
+    ids.push(workspace.readingUndo.value!.id)
+  }
+  await workspace.undoReadingArrangement(workspace.scope.value)
+  expect(workspace.readingUndo.value!.id).toBe(ids[0])
+  expect(workspace.canUndoReading.value).toBe(true)
+  expect(workspace.lastOperation.value!.id).toBe(ids[0])
+  await workspace.undoReadingArrangement(workspace.scope.value)
+  expect(workspace.library.value.sources.every((source) => !source.queue)).toBe(true)
+  expect(workspace.canUndoReading.value).toBe(false)
+  expect(workspace.canUndoOperation.value).toBe(false)
+})
+
 it('restores compact judge bodies after deleting their note without resubmitting to the judge', async () => {
   const plugin = { id: 'leetcode', version: 1, data: { slug: 'test-problem' } }
   const library = fixture({ type: 'plugin', plugin })

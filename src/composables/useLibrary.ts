@@ -472,10 +472,13 @@ export function useLibrary() {
         undo !== readingUndo.value
       )
         throw new LocalizedError(msg('材料或阅读安排已变化，请重新选择。'))
+      const previous = operations.value.find((entry) => entry.id === undo.id)?.previousReadingUndo
       const next = undoReading(library.value, undo)
       await commit(() => next, { reason: '撤销阅读安排前', undoLabel: false })
       forgetOperation(undo.id)
-      if (readingUndo.value === undo) readingUndo.value = undefined
+      if (readingUndo.value === undo)
+        readingUndo.value =
+          previous && canUndoReading(library.value, previous) ? previous : undefined
     },
     async editSourceDetails(update: SourceDetailsUpdate) {
       const target = repository

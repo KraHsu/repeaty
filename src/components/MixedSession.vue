@@ -48,7 +48,7 @@ const active = ref(false),
   switching = ref(false)
 const locked = computed(() => props.busy || active.value || switching.value)
 const grades = shallowRef<{ id: string; cardId: string }[]>([])
-const readingCheckpoint = shallowRef<{ id: string; index: number; after: number }>()
+const readingCheckpoints = shallowRef<{ id: string; index: number; after: number }[]>([])
 let key = 0,
   alive = true
 onUnmounted(() => {
@@ -80,8 +80,11 @@ function readingDone(item: ReadingTask, arranged: boolean) {
   if (!alive || current.value?.key !== item.key) return
   round.value = finishMixedReading(round.value, item.index)
   const undoId = props.readingUndoId
-  readingCheckpoint.value =
-    undoId && arranged ? { id: undoId, index: item.index, after: round.value.cursor } : undefined
+  if (undoId && arranged)
+    readingCheckpoints.value = [
+      ...readingCheckpoints.value.slice(-19),
+      { id: undoId, index: item.index, after: round.value.cursor },
+    ]
   choose()
 }
 const callbacks = computed(() => {
@@ -145,8 +148,8 @@ async function undoCard() {
 }
 async function undoReading() {
   if (locked.value || !props.canUndoReading) return
-  const checkpoint = readingCheckpoint.value,
-    undoId = props.readingUndoId,
+  const undoId = props.readingUndoId,
+    checkpoint = readingCheckpoints.value.find((entry) => entry.id === undoId),
     scope = props.scope
   switching.value = true
   emit('clearNotice')
@@ -168,7 +171,7 @@ async function undoReading() {
         completedReadings: Math.max(0, round.value.completedReadings - 1),
       }
     }
-    readingCheckpoint.value = undefined
+    readingCheckpoints.value = readingCheckpoints.value.filter((entry) => entry.id !== undoId)
     choose()
   } finally {
     switching.value = false
