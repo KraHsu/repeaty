@@ -225,6 +225,10 @@ export function undoReview(library: Library): Library {
             ...entry,
             rating: undefined,
             reviewId: undefined,
+            // The rating no longer exists, so the practice is open again; otherwise
+            // finishPractice refuses to rate it a second time.
+            completedAt: undefined,
+            completion: undefined,
             ratingUndoneAt: new Date().toISOString(),
           }
         : entry,

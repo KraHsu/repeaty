@@ -11,7 +11,7 @@ import {
   sourceExcerpt,
 } from './sources'
 import { arrangeSource, nextReadingInterval } from './source-queue'
-import { sourceSchema, type SourceQueueAction } from './source-data'
+import { sourceSchema, type Source, type SourceQueueAction } from './source-data'
 import { migrateLibrary } from './model'
 import { createRepository, recordStores } from './storage'
 import { exportArchive, parseArchive } from './archive'
@@ -62,6 +62,21 @@ it('advances only confirmed reads through calendar intervals and caps at 30 days
     current = next
     at = new Date(`${date}T12:00:00`)
   }
+})
+
+it('advances from an imported interval that is not on the ladder instead of restarting at one day', () => {
+  const { source } = sample()
+  const imported = (days: number) =>
+    nextReadingInterval(
+      { ...source, readingIntervalDays: days as Source['readingIntervalDays'] },
+      now,
+    )
+  // 2 and 5 are intervals that no current version writes but older imports may hold.
+  expect(imported(2)).toMatchObject({ intervalDays: 3 })
+  expect(imported(5)).toMatchObject({ intervalDays: 7 })
+  expect(nextReadingInterval({ ...source, readingIntervalDays: 30 }, now)).toMatchObject({
+    intervalDays: 30,
+  })
 })
 
 it('retains the last interval through custom dates, priority, archive, restore and position saves; reset keeps the date', () => {

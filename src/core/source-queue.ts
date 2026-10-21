@@ -74,14 +74,11 @@ export function nextReadingDay(now: Date, days = 1) {
 
 /** Only a confirmed read advances this ladder; custom dates keep its last step. */
 export function nextReadingInterval(source: Source, now: Date) {
-  const index =
-    source.readingIntervalDays === undefined
-      ? 0
-      : Math.min(
-          READING_INTERVAL_DAYS.indexOf(source.readingIntervalDays) + 1,
-          READING_INTERVAL_DAYS.length - 1,
-        )
-  const intervalDays = READING_INTERVAL_DAYS[index]!
+  // Imported or older libraries may hold intervals off the ladder (2, 5 days…).
+  // Advance to the next larger step instead of collapsing back to the first one.
+  const index = READING_INTERVAL_DAYS.findIndex((days) => days > (source.readingIntervalDays ?? 0))
+  const intervalDays =
+    READING_INTERVAL_DAYS[index === -1 ? READING_INTERVAL_DAYS.length - 1 : index]!
   return { intervalDays, date: nextReadingDay(now, intervalDays) }
 }
 
