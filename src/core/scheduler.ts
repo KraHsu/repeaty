@@ -225,10 +225,9 @@ export function undoReview(library: Library): Library {
             ...entry,
             rating: undefined,
             reviewId: undefined,
-            // The rating no longer exists, so the practice is open again; otherwise
-            // finishPractice refuses to rate it a second time.
-            completedAt: undefined,
-            completion: undefined,
+            // `completedAt` stays: the practice was answered, and clearing it would make
+            // the question mount treat the finished attempt as the current one.
+            // `finishPractice` reopens a practice whose rating was undone.
             ratingUndoneAt: new Date().toISOString(),
           }
         : entry,

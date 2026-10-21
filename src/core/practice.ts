@@ -122,7 +122,10 @@ export function finishPractice(
   now = new Date(),
 ): Library {
   const practice = library.practices.find((entry) => entry.id === practiceId)
-  if (!practice || practice.cardId !== cardId || practice.completedAt) throw fail()
+  // An undone rating reopens its practice: the answering is still complete, but the
+  // grade must be recorded again.
+  if (!practice || practice.cardId !== cardId || (practice.completedAt && !practice.ratingUndoneAt))
+    throw fail()
   if (
     library.attempts.some(
       (entry) =>
