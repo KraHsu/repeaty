@@ -66,6 +66,7 @@ jobs:
           cargo test --manifest-path src-tauri/Cargo.toml --locked
       - name: Check Windows credentials and upstream isolation
         if: runner.os == 'Windows'
+        shell: bash
         run: |
           cargo clippy --manifest-path crates/leetcode-local/Cargo.toml --locked --all-targets -- -D warnings
           cargo test --manifest-path crates/leetcode-local/Cargo.toml --locked
