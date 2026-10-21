@@ -814,3 +814,48 @@ fn nested_excerpts_validate_cycles_and_depth_and_survive_a_v8_upgrade() {
         library
     );
 }
+
+#[test]
+fn fractional_attempt_times_survive_json_sqlite_summaries_and_restarts_exactly() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("fractional-times.sqlite3");
+    let mut db = Database::open(&path).unwrap();
+    let mut library = fixture();
+    library["practices"] = json!([{
+        "id":"practice", "cardId":library["cards"][0]["id"], "contentRevision":"snapshot",
+        "question":{"front":"Problem","back":"","format":"plain","plugin":{"id":"leetcode","version":1,"data":{}}},
+        "startedAt":"2026-10-18T00:00:00.000Z"
+    }]);
+    let times = [212.30000019073486, 113.89999985694885, 79.40000009536743];
+    library["attempts"] = Value::Array(times.iter().enumerate().map(|(index,elapsed)| json!({
+        "id":format!("fraction-{index}"), "practiceId":"practice", "language":"python3", "code":"print(1)",
+        "submittedAt":"2026-10-18T00:00:00.000Z", "updatedAt":"2026-10-18T00:00:00.000Z",
+        "elapsedMs":elapsed, "status":"completed", "submissionId":(index+1).to_string(),
+        "result":{"outcome":"accepted","status":"Accepted","runtime":"1 ms","memory":"10 MB","detail":""}
+    })).collect());
+    let raw = serde_json::to_string(&library).unwrap();
+    // The HTTP JSON parser must preserve the exact binary64 value the browser sent.
+    let wire: Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(wire, library);
+    db.commit(commit(0, &wire)).unwrap();
+    db.backup_now(true).unwrap();
+    let checkpoint = db.backups().unwrap()[0]["id"].as_str().unwrap().to_string();
+    drop(db);
+    let mut db = Database::open(&path).unwrap();
+    assert_eq!(db.load().unwrap()["library"], library);
+    assert_eq!(db.backup(&checkpoint).unwrap(), library);
+    let summary = db.load_summary().unwrap();
+    for (index, elapsed) in times.iter().enumerate() {
+        let body = db
+            .read_attempts(ReadAttempts::One {
+                id: format!("fraction-{index}"),
+                revision: 1,
+            })
+            .unwrap();
+        assert_eq!(body["attempts"][0]["elapsedMs"].as_f64().unwrap(), *elapsed);
+        assert_eq!(
+            summary["library"]["attempts"][index]["elapsedMs"],
+            body["attempts"][0]["elapsedMs"]
+        );
+    }
+}
