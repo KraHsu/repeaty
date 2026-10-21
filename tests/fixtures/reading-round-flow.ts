@@ -100,6 +100,9 @@ export async function readingRoundFlow(page: Page, read: () => Promise<Library>,
   await expect(page.getByRole('region', { name: 'Reading round', exact: true })).toContainText(
     'Source 1 of 1',
   )
+  // Responsive layout can emit a late scroll event; its autosave disables round actions.
+  await expect(page.locator('.source-markdown-preview')).toHaveAttribute('aria-busy', 'false')
+  await expect(page.locator('.reading-progress')).toHaveAttribute('data-reading-status', 'saved')
   await page.getByRole('button', { name: 'Finish round', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Round finished', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Start another round', exact: true }).click()
