@@ -35,7 +35,10 @@ import {
   Settings as SettingsIcon,
   Sparkles,
   Trash2,
+  Undo2,
 } from '@lucide/vue'
+import { shortcutBlocked } from './shortcuts'
+import type { Operation } from './core/operations'
 import AppModal from './components/AppModal.vue'
 import ReviewSession from './components/ReviewSession.vue'
 import NoteEditor from './components/NoteEditor.vue'
@@ -134,6 +137,9 @@ const review = ref<{ deckId?: string; study?: StudySession } | null>(null)
 const mixed = ref<{ cardsPerReading: number } | null>(null)
 const mixedRatio = ref(3)
 const mixedReader = ref<InstanceType<typeof SourcePanel>>()
+const activeSource = ref<InstanceType<typeof SourcePanel>>()
+const mixedController = ref<InstanceType<typeof MixedSession>>()
+const undoingAction = ref(false)
 const notice = ref<{ text: DisplayMessage; error: boolean } | null>(null)
 watch(notice, (entry) => {
   if (entry) notify(entry.text, entry.error ? 'error' : 'info')
@@ -142,7 +148,7 @@ const activeReview = ref<InstanceType<typeof ReviewSession>>()
 const reviewEditTarget = ref<{ id: string; noteId: string; scope: string }>()
 let reviewEditorOwner: InstanceType<typeof ReviewSession> | undefined
 const modal = ref<
-  'deck' | 'card' | 'confirm' | 'import' | 'bulkImport' | 'snapshot' | 'mixed' | null
+  'deck' | 'card' | 'confirm' | 'import' | 'bulkImport' | 'snapshot' | 'mixed' | 'shortcuts' | null
 >(null)
 const editingId = ref<string>()
 const sourceDraft = ref<Partial<NoteInput>>()
@@ -200,6 +206,7 @@ const sourceBindings = computed(() => ({
 const reviewBindings = computed(() => ({
   library: library.value,
   busy: busy.value,
+  lastOperationId: workspace.lastOperation.value?.id,
   editing: modal.value === 'card' && !!reviewEditTarget.value,
   submit: submitReview,
   undo: undoReview,
@@ -240,6 +247,7 @@ let stopLearningReader: (() => void) | undefined
 let ticker: ReturnType<typeof setInterval>
 let backupTicker: ReturnType<typeof setInterval>
 onMounted(() => {
+  window.addEventListener('keydown', globalKeydown)
   stopPluginPreferences = listenPluginPreferences()
   stopPreferences = listenPreferences()
   void connectLearningReader(workspace).then((stop) => {
@@ -261,6 +269,7 @@ onMounted(() => {
   }, 10_000)
 })
 onUnmounted(() => {
+  window.removeEventListener('keydown', globalKeydown)
   stopPreferences?.()
   stopPluginPreferences?.()
   stopLearningReader?.()
@@ -350,7 +359,7 @@ function openImport() {
   }
   modal.value = 'bulkImport'
 }
-async function run(action: () => Promise<void>, message?: string) {
+async function run(action: () => Promise<void>, message?: DisplayMessage) {
   dismissInfoNotifications()
   try {
     await action()
@@ -432,6 +441,127 @@ function createFromExcerpt(excerpt: SourceExcerpt, format: 'plain' | 'markdown')
   sourceDraft.value = { excerpt, back: excerpt.quote, format }
   modal.value = 'card'
 }
+function addReviewCard(card: CardView) {
+  editCard()
+  sourceDraft.value = { deckId: card.deckId, format: card.format }
+}
+const shortcutLocked = computed(
+  () =>
+    !ready.value ||
+    busy.value ||
+    undoingAction.value ||
+    !!activeReview.value?.locked ||
+    !!activeSource.value?.locked ||
+    !!mixedController.value?.locked,
+)
+const canUndoAction = computed(
+  () => workspace.canUndoOperation.value || !!activeReview.value?.canUndoPractice,
+)
+const undoTitle = computed(
+  () =>
+    t('撤销：{action}', {
+      action: msg(
+        activeReview.value?.canUndoPractice
+          ? '评分'
+          : (workspace.lastOperation.value?.label ?? '评分'),
+      ),
+    }) + ' · Ctrl / ⌘ Z',
+)
+async function undoLastAction() {
+  if (shortcutLocked.value || !canUndoAction.value) return
+  undoingAction.value = true
+  const release = readingProgress.hold()
+  try {
+    const entry = workspace.lastOperation.value
+    if (activeReview.value?.canUndoPractice) {
+      await activeReview.value.undoLast()
+      return
+    }
+    if (!entry || entry.kind === 'review') {
+      if (mixedController.value?.canUndoCard) {
+        await mixedController.value.undoCard()
+        return
+      }
+      if (!mixed.value && activeReview.value?.canUndo) {
+        await activeReview.value.undoLast()
+        return
+      }
+    }
+    if (entry?.kind === 'reading' && workspace.canUndoReading.value) {
+      if (mixedController.value) {
+        await mixedController.value.undoReading()
+        return
+      }
+      if (activeSource.value) {
+        await activeSource.value.undoArrangement()
+        return
+      }
+    }
+    if (mixedController.value && !(await mixedController.value.leave())) return
+    let restored: Operation | undefined
+    const saved = await run(
+      async () => {
+        restored = await workspace.undoLastOperation()
+      },
+      msg('已撤销：{action}', { action: msg(entry?.label ?? '评分') }),
+    )
+    if (saved && restored) {
+      if (restored.reviewId) dismissNotificationContext(restored.reviewId)
+      await nextTick()
+      if (mixedController.value) await mixedController.value.reconcileUndo(restored)
+      else activeReview.value?.reconcileUndo(restored)
+    }
+  } finally {
+    release()
+    undoingAction.value = false
+  }
+}
+function globalKeydown(event: KeyboardEvent) {
+  if (shortcutBlocked(event) || shortcutLocked.value) return
+  const primary = event.ctrlKey || event.metaKey
+  if (primary && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'z') {
+    event.preventDefault()
+    void undoLastAction()
+    return
+  }
+  if (primary || event.altKey) return
+  const key = event.key.toLowerCase()
+  if (key === 'a' && !event.shiftKey) {
+    event.preventDefault()
+    if (activeReview.value?.current) activeReview.value.addCurrent()
+    else {
+      editCard()
+      if (review.value?.deckId) sourceDraft.value = { deckId: review.value.deckId }
+    }
+  } else if (key === '/' && !event.shiftKey) {
+    event.preventDefault()
+    navigate('cards')
+    void nextTick(() => document.querySelector<HTMLInputElement>('.search-field input')?.focus())
+  } else if (key === 'b' && !review.value && !mixed.value && !event.shiftKey) {
+    event.preventDefault()
+    navigate('cards')
+  } else if (key === 'r' && !review.value && !mixed.value && !event.shiftKey) {
+    event.preventDefault()
+    startReview(selectedDeck.value || undefined)
+  } else if (key === '?') {
+    event.preventDefault()
+    modal.value = 'shortcuts'
+  }
+}
+const shortcuts = [
+  ['Ctrl / ⌘ Z', '撤销最近操作'],
+  ['Ctrl / ⌘ Enter', '保存当前表单'],
+  ['A', '添加卡片 / 笔记'],
+  ['E', '编辑当前卡片'],
+  ['Ctrl / ⌘ Del', '删除当前笔记'],
+  ['B', '浏览卡片 / 复习中暂缓'],
+  ['R', '开始复习'],
+  ['S', '暂停当前卡片'],
+  ['Space / 1–4', '显示答案 / 评分'],
+  ['/', '搜索卡片'],
+  ['Esc', '退出复习 / 关闭弹窗'],
+  ['?', '快捷键'],
+] as const
 async function saveSearch(filter: SearchFilter, name: string, id?: string) {
   return run(() => workspace.saveSearch(filter, name, id), '常用筛选已保存')
 }
@@ -768,6 +898,23 @@ async function restoreBackup() {
           }}</strong>
         </div>
         <div class="topbar-tools">
+          <button
+            class="text-button"
+            :disabled="shortcutLocked || !canUndoAction"
+            :title="undoTitle"
+            aria-keyshortcuts="Control+Z Meta+Z"
+            @click="undoLastAction"
+          >
+            <Undo2 :size="18" />{{ t('撤销') }}
+          </button>
+          <button
+            class="icon-button"
+            :aria-label="t('快捷键')"
+            :title="t('快捷键') + ' · ?'"
+            @click="modal = 'shortcuts'"
+          >
+            <CircleHelp :size="18" />
+          </button>
           <component
             v-if="DraftWorkbench"
             :is="DraftWorkbench"
@@ -822,6 +969,7 @@ async function restoreBackup() {
       </section>
       <MixedSession
         v-else-if="mixed"
+        ref="mixedController"
         :key="workspace.scope.value"
         :library="library"
         :scope="workspace.scope.value"
@@ -845,6 +993,8 @@ async function restoreBackup() {
             @step="done"
             @activity="activity"
             @edit="editReviewCard"
+            @add="addReviewCard"
+            @delete="(card) => confirmDeleteNotes([card.noteId])"
             @close="mixed = null"
           />
         </template>
@@ -871,6 +1021,8 @@ async function restoreBackup() {
         :study="review.study"
         @close="review = null"
         @edit="editReviewCard"
+        @add="addReviewCard"
+        @delete="(card) => confirmDeleteNotes([card.noteId])"
       />
 
       <div v-else-if="tab === 'overview'" class="page dashboard">
@@ -1177,6 +1329,7 @@ async function restoreBackup() {
 
       <SourcePanel
         v-else-if="tab === 'sources'"
+        ref="activeSource"
         :key="workspace.scope.value"
         v-bind="sourceBindings"
         :auto-start="autoStartReading"
@@ -1430,6 +1583,21 @@ async function restoreBackup() {
       </form>
     </AppModal>
 
+    <AppModal v-if="modal === 'shortcuts'" :title="t('快捷键')" @close="modal = null">
+      <table class="shortcut-table">
+        <tbody>
+          <tr v-for="[keys, label] in shortcuts" :key="keys">
+            <td>
+              <kbd>{{ keys }}</kbd>
+            </td>
+            <td>{{ t(label) }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="form-note">
+        {{ t('输入框保留文字撤销；学习库支持撤销当前会话最近 20 次修改。评分在重启后仍可撤销。') }}
+      </p>
+    </AppModal>
     <AppModal
       :error="notice?.error ? t(notice.text) : undefined"
       v-if="modal === 'deck'"

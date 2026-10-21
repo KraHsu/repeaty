@@ -1,4 +1,10 @@
-import { msg, LocalizedError, validationMessage, type DisplayMessage } from '../i18n'
+import {
+  msg,
+  LocalizedError,
+  validationMessage,
+  type DisplayMessage,
+  type MessageKey,
+} from '../i18n'
 import { computed, readonly, ref, shallowRef } from 'vue'
 import type { Assessment } from '../plugins/data'
 import { canReviewCard } from '../plugins'
@@ -68,6 +74,7 @@ import type { createRepository, BackupSummary } from '../core/storage'
 import { createWorkspaceRepository } from '@repeaty-platform'
 import { readLearning, LearningQueryError, type LearningQuery } from '../core/learning-reader'
 import type { CardDraft } from '../core/card-draft-data'
+import { operationFor, revertOperation, type Operation } from '../core/operations'
 
 export function useLibrary() {
   const backupListWarning = '修改已保存，但暂时无法读取快照列表。'
@@ -79,6 +86,19 @@ export function useLibrary() {
     backupError = ref('')
   const backups = shallowRef<BackupSummary[]>([])
   const readingUndo = shallowRef<ReadingUndo>()
+  type UndoEntry = Operation & { previousReadingUndo?: ReadingUndo; removedAssets: MediaUpload[] }
+  const operations = shallowRef<UndoEntry[]>([])
+  let legacyUndo = true
+  function undoBarrier() {
+    operations.value = []
+    legacyUndo = false
+  }
+  function forgetOperation(id: string | undefined) {
+    if (id)
+      operations.value = operations.value.filter(
+        (entry) => entry.id !== id && entry.reviewId !== id,
+      )
+  }
   let revision = 0
   let repository: ReturnType<typeof createRepository> | ReturnType<typeof createServerRepository>
   let savingDone: Promise<void> = Promise.resolve()
@@ -95,6 +115,8 @@ export function useLibrary() {
     ready.value = false
     scope.value = ''
     readingUndo.value = undefined
+    operations.value = []
+    legacyUndo = true
     try {
       await repository?.close()
       repository = await createWorkspaceRepository(() => {
@@ -123,6 +145,8 @@ export function useLibrary() {
       reason?: string
       consumeCardDraft?: string
       backgroundMetadata?: boolean
+      undoLabel?: MessageKey | false
+      undoKind?: Operation['kind']
     } = {},
   ) {
     if (busy.value) throw new LocalizedError(msg('正在保存，请稍候。'))
@@ -133,9 +157,42 @@ export function useLibrary() {
       finishSave = resolve
     })
     try {
-      const saved = await repository.save(update(library.value), revision, options)
+      const before = library.value,
+        next = update(before),
+        entry =
+          options.undoLabel === false || options.consumeCardDraft
+            ? undefined
+            : operationFor(before, next, scope.value, options.undoLabel ?? '修改', options.undoKind)
+      if (entry) {
+        // Compact judge history keeps code out of the active library. A deletion
+        // must retain the affected bodies before the durable rows disappear.
+        for (const change of entry.changes)
+          if (
+            change.store === 'attempts' &&
+            change.before &&
+            !change.after &&
+            !hasAttemptBody(change.before as import('../core/practice-data').AttemptRecord)
+          )
+            change.before = await repository.getAttempt(change.id, revision)
+      }
+      const priorReading = readingUndo.value
+      const removedAssets: MediaUpload[] = []
+      if (entry)
+        for (const change of entry.changes) {
+          if (change.store === 'media' && change.before && !change.after) {
+            const blob = await repository.getMedia(change.id)
+            if (blob) removedAssets.push({ meta: change.before as Library['media'][number], blob })
+          }
+        }
+      const saved = await repository.save(next, revision, options)
       library.value = saved.library
       revision = saved.revision
+      if (entry)
+        operations.value = [
+          ...operations.value.slice(-19),
+          { ...entry, previousReadingUndo: priorReading, removedAssets },
+        ]
+      if (options.consumeCardDraft) undoBarrier()
       // The transaction is durable. A later metadata read must not invite a second write.
       const target = repository,
         metadataScope = scope.value,
@@ -165,6 +222,74 @@ export function useLibrary() {
       busy.value = false
       finishSave()
     }
+  }
+  async function undoRating() {
+    const reviewId = library.value.reviews.at(-1)?.id
+    await commit(undoReview, { backgroundMetadata: true, undoLabel: false })
+    forgetOperation(reviewId)
+  }
+  async function undoLastOperation(): Promise<Operation> {
+    const target = repository,
+      expectedScope = scope.value
+    await savingDone
+    const entry = operations.value.at(-1)
+    if (!ready.value || target !== repository || !expectedScope || expectedScope !== scope.value)
+      throw new LocalizedError(msg('操作涉及的内容已变化，无法撤销。请刷新后检查学习库。'))
+    if (!entry) {
+      const review = library.value.reviews.at(-1)
+      if (!legacyUndo || !review?.previous) throw new LocalizedError(msg('没有可撤销的操作。'))
+      await undoRating()
+      return {
+        id: review.id,
+        scope: expectedScope,
+        label: '评分',
+        kind: 'review',
+        changes: [],
+        cardId: review.cardId,
+        reviewId: review.id,
+        noteIds: [],
+      }
+    }
+    if (entry.scope !== expectedScope) throw new LocalizedError(msg('没有可撤销的操作。'))
+    if (entry.kind === 'review') {
+      if (entry.reviewId !== library.value.reviews.at(-1)?.id)
+        throw new LocalizedError(msg('操作涉及的内容已变化，无法撤销。请刷新后检查学习库。'))
+      await undoRating()
+      return entry
+    }
+    const expectedRevision = revision
+    const next = revertOperation(library.value, entry)
+    const assets: MediaUpload[] = []
+    for (const change of entry.changes)
+      if (
+        change.store === 'media' &&
+        change.before &&
+        !change.after &&
+        !(await target.getMedia(change.id))
+      ) {
+        const retained = entry.removedAssets.find((asset) => asset.meta.id === change.id)
+        if (!retained) throw new LocalizedError(msg('撤销所需的媒体已不存在，请从快照恢复。'))
+        assets.push(retained)
+      }
+    if (
+      scope.value !== expectedScope ||
+      repository !== target ||
+      revision !== expectedRevision ||
+      operations.value.at(-1) !== entry
+    )
+      throw new LocalizedError(msg('操作涉及的内容已变化，无法撤销。请刷新后检查学习库。'))
+    await commit(() => next, {
+      assets,
+      undoLabel: false,
+      reason: '撤销操作前',
+      backgroundMetadata: true,
+    })
+    forgetOperation(entry.id)
+    if (entry.previousReadingUndo && canUndoReading(library.value, entry.previousReadingUndo))
+      readingUndo.value = entry.previousReadingUndo
+    else if (entry.kind === 'reading' || !canUndoReading(library.value, readingUndo.value))
+      readingUndo.value = undefined
+    return entry
   }
   async function getAttempt(id: string, signal?: AbortSignal): Promise<Attempt> {
     const target = repository,
@@ -241,6 +366,13 @@ export function useLibrary() {
     backups: readonly(backups),
     backupError: readonly(backupError),
     readingUndo: readonly(readingUndo),
+    lastOperation: computed(() => operations.value.at(-1)),
+    canUndoOperation: computed(
+      () =>
+        ready.value &&
+        (operations.value.length > 0 || (legacyUndo && !!library.value.reviews.at(-1)?.previous)),
+    ),
+    undoLastOperation,
     canUndoReading: computed(
       () =>
         ready.value &&
@@ -268,7 +400,7 @@ export function useLibrary() {
         update.position,
         at,
       )
-      if (next !== library.value) await commit(() => next)
+      if (next !== library.value) await commit(() => next, { undoLabel: false })
     },
     async arrangeSource(update: SourceQueueUpdate) {
       const target = repository
@@ -281,9 +413,14 @@ export function useLibrary() {
       if (update.position)
         next = saveReadingPosition(next, update.sourceId, update.mediaId, update.position, at)
       if (next !== library.value) {
-        await commit(() => next, { reason: '更改阅读安排前' })
+        await commit(() => next, {
+          reason: '更改阅读安排前',
+          undoLabel: '阅读安排',
+          undoKind: 'reading',
+        })
         const undo = readingUndoFor(before, library.value, update.scope)
-        if (undo && scope.value === update.scope) readingUndo.value = undo
+        if (undo && scope.value === update.scope)
+          readingUndo.value = { ...undo, id: operations.value.at(-1)?.id ?? undo.id }
       }
     },
     async arrangeSources(update: SourceBatchUpdate) {
@@ -311,9 +448,14 @@ export function useLibrary() {
         )
       }
       if (next !== library.value) {
-        await commit(() => next, { reason: '更改阅读安排前' })
+        await commit(() => next, {
+          reason: '更改阅读安排前',
+          undoLabel: '阅读安排',
+          undoKind: 'reading',
+        })
         const undo = readingUndoFor(before, library.value, update.scope)
-        if (undo && scope.value === update.scope) readingUndo.value = undo
+        if (undo && scope.value === update.scope)
+          readingUndo.value = { ...undo, id: operations.value.at(-1)?.id ?? undo.id }
       }
     },
     async undoReadingArrangement(expectedScope: string) {
@@ -331,7 +473,8 @@ export function useLibrary() {
       )
         throw new LocalizedError(msg('材料或阅读安排已变化，请重新选择。'))
       const next = undoReading(library.value, undo)
-      await commit(() => next, { reason: '撤销阅读安排前' })
+      await commit(() => next, { reason: '撤销阅读安排前', undoLabel: false })
+      forgetOperation(undo.id)
       if (readingUndo.value === undo) readingUndo.value = undefined
     },
     async editSourceDetails(update: SourceDetailsUpdate) {
@@ -354,7 +497,8 @@ export function useLibrary() {
           update.position,
           new Date(),
         )
-      if (next !== library.value) await commit(() => next, { reason: '编辑材料信息前' })
+      if (next !== library.value)
+        await commit(() => next, { reason: '编辑材料信息前', undoLabel: '编辑材料信息' })
     },
     localLearningSnapshot,
     readLearning(query: LearningQuery, expectedScope: string) {
@@ -373,6 +517,7 @@ export function useLibrary() {
       }
     },
     close() {
+      operations.value = []
       return repository?.close()
     },
     queryCards(
@@ -419,21 +564,24 @@ export function useLibrary() {
       return repository.getBackup(id)
     },
     saveDeck(input: DeckInput, id?: string) {
-      return commit((current) => {
-        const previous = current.decks.find((deck) => deck.id === id)
-        if (id && !previous) throw new LocalizedError(msg('卡组已不存在。'))
-        const deck = deckSchema.parse({
-          ...input,
-          id: id ?? crypto.randomUUID(),
-          createdAt: previous?.createdAt ?? new Date().toISOString(),
-        })
-        return {
-          ...current,
-          decks: previous
-            ? current.decks.map((entry) => (entry.id === id ? deck : entry))
-            : [...current.decks, deck],
-        }
-      })
+      return commit(
+        (current) => {
+          const previous = current.decks.find((deck) => deck.id === id)
+          if (id && !previous) throw new LocalizedError(msg('卡组已不存在。'))
+          const deck = deckSchema.parse({
+            ...input,
+            id: id ?? crypto.randomUUID(),
+            createdAt: previous?.createdAt ?? new Date().toISOString(),
+          })
+          return {
+            ...current,
+            decks: previous
+              ? current.decks.map((entry) => (entry.id === id ? deck : entry))
+              : [...current.decks, deck],
+          }
+        },
+        { undoLabel: id ? '编辑卡组' : '新建卡组' },
+      )
     },
     deleteDeck(id: string) {
       return commit(
@@ -445,7 +593,7 @@ export function useLibrary() {
           decks: current.decks.filter((deck) => deck.id !== id),
           savedSearches: current.savedSearches.filter((search) => search.deckId !== id),
         }),
-        { reason: '删除卡组前' },
+        { reason: '删除卡组前', undoLabel: '删除卡组' },
       )
     },
     saveNote(input: NoteInput, id?: string, assets: MediaUpload[] = [], allowRemove = false) {
@@ -457,7 +605,7 @@ export function useLibrary() {
             id,
             allowRemove,
           ),
-        { assets, reason: id ? '编辑笔记前' : undefined },
+        { assets, reason: id ? '编辑笔记前' : undefined, undoLabel: id ? '编辑卡片' : '添加卡片' },
       )
     },
     async saveSource(input: SourceInput, expectedScope: string) {
@@ -467,6 +615,7 @@ export function useLibrary() {
       return commit((current) => addSource(current, source, asset), {
         assets: [asset],
         reason: '导入材料前',
+        undoLabel: '导入材料',
       })
     },
     async saveSourceExcerpt(input: SaveSourceExcerptInput) {
@@ -505,13 +654,16 @@ export function useLibrary() {
             )
           return next
         },
-        { assets: [prepared.asset], reason: '保存摘录前' },
+        { assets: [prepared.asset], reason: '保存摘录前', undoLabel: '保存摘录' },
       )
     },
     deleteSource(id: string, expectedScope: string) {
       if (!expectedScope || expectedScope !== scope.value)
         return Promise.reject(new LocalizedError(msg('登录账户已变更，请刷新页面后重试。')))
-      return commit((current) => removeSource(current, id), { reason: '删除材料前' })
+      return commit((current) => removeSource(current, id), {
+        reason: '删除材料前',
+        undoLabel: '删除材料',
+      })
     },
     async saveExcerptNote(
       input: NoteInput,
@@ -544,17 +696,26 @@ export function useLibrary() {
             undefined,
             allowRemove,
           ),
-        { assets, reason: '摘录制卡前', consumeCardDraft: draftId },
+        { assets, reason: '摘录制卡前', consumeCardDraft: draftId, undoLabel: '用摘录制卡' },
       )
     },
     deleteNotes(ids: Set<string>) {
-      return commit((current) => removeNotes(current, ids), { reason: '删除笔记前' })
+      return commit((current) => removeNotes(current, ids), {
+        reason: '删除笔记前',
+        undoLabel: '删除笔记',
+      })
     },
     editNotes(ids: Set<string>, edit: BatchEdit) {
-      return commit((current) => editNotes(current, ids, edit), { reason: '批量编辑前' })
+      return commit((current) => editNotes(current, ids, edit), {
+        reason: '批量编辑前',
+        undoLabel: '批量操作',
+      })
     },
     importNotes(notes: NoteInput[], skip: boolean) {
-      return commit((current) => importNotes(current, notes, skip), { reason: '导入笔记前' })
+      return commit((current) => importNotes(current, notes, skip), {
+        reason: '导入笔记前',
+        undoLabel: '批量导入',
+      })
     },
     async previewAnki(data: AnkiPackage, expectedScope: string, signal?: AbortSignal) {
       const target = repository
@@ -598,10 +759,16 @@ export function useLibrary() {
       if (!expectedScope || expectedScope !== scope.value)
         return Promise.reject(new LocalizedError(msg('登录账户已变更，请刷新页面后重试。')))
       const next = applyAnkiImportPlan(library.value, plan, selection, deckId)
-      return commit(() => next.library, { assets: next.assets, reason: '导入笔记前' })
+      return commit(() => next.library, {
+        assets: next.assets,
+        reason: '导入笔记前',
+        undoLabel: '批量导入',
+      })
     },
     changeCards(ids: Set<string>, action: CardAction) {
-      return commit((current) => changeCards(current, ids, action))
+      return commit((current) => changeCards(current, ids, action), {
+        undoLabel: action === 'bury' ? '今天暂缓' : action === 'suspend' ? '暂停此卡' : '修改',
+      })
     },
     async recordAttempt(practice: Practice, attempt: Attempt, expectedScope: string) {
       if (expectedScope !== scope.value || !expectedScope)
@@ -614,33 +781,39 @@ export function useLibrary() {
       const full = previous && !hasAttemptBody(previous) ? await getAttempt(previous.id) : undefined
       if (expectedScope !== scope.value || (full && expectedRevision !== revision))
         throw new LocalizedError(msg('练习记录已变化，请重新打开题目后重试。'))
-      return commit((current) => {
-        if (full) {
-          const prior = current.attempts.find((entry) => entry.id === full.id)
-          if (!prior || !sameAttemptSummary(prior, full))
-            throw new LocalizedError(msg('练习记录已变化，请重新打开题目后重试。'))
-        }
-        return recordAttempt(
-          full
-            ? {
-                ...current,
-                attempts: current.attempts.map((entry) => (entry.id === full.id ? full : entry)),
-              }
-            : current,
-          practice,
-          attempt,
-        )
-      })
+      await commit(
+        (current) => {
+          if (full) {
+            const prior = current.attempts.find((entry) => entry.id === full.id)
+            if (!prior || !sameAttemptSummary(prior, full))
+              throw new LocalizedError(msg('练习记录已变化，请重新打开题目后重试。'))
+          }
+          return recordAttempt(
+            full
+              ? {
+                  ...current,
+                  attempts: current.attempts.map((entry) => (entry.id === full.id ? full : entry)),
+                }
+              : current,
+            practice,
+            attempt,
+          )
+        },
+        { undoLabel: false },
+      )
+      if (!previous) undoBarrier()
     },
     revealPracticeHistory(practiceId: string, expectedScope: string) {
       if (expectedScope !== scope.value || !expectedScope)
         return Promise.reject(new Error('练习记录已变化，请重新打开题目后重试。'))
       if (revealPracticeHistory(library.value, practiceId) === library.value)
         return Promise.resolve()
-      return commit((current) => revealPracticeHistory(current, practiceId))
+      return commit((current) => revealPracticeHistory(current, practiceId), { undoLabel: false })
     },
     finishPractice(id: string, cardId: string, assessment?: Assessment) {
-      return commit((current) => finishPractice(current, id, cardId, assessment))
+      return commit((current) => finishPractice(current, id, cardId, assessment), {
+        undoLabel: false,
+      })
     },
     review(
       id: string,
@@ -661,7 +834,7 @@ export function useLibrary() {
             canReviewCard,
             practiceId,
           ),
-        { backgroundMetadata: true },
+        { backgroundMetadata: true, undoLabel: '评分', undoKind: 'review' },
       )
     },
     saveSearch(filter: SearchFilter, name: string, id?: string) {
@@ -673,16 +846,20 @@ export function useLibrary() {
         savedSearches: current.savedSearches.filter((entry) => entry.id !== id),
       }))
     },
-    undo() {
-      return commit(undoReview, { backgroundMetadata: true })
-    },
+    undo: undoRating,
     async restore(data: BackupData) {
       const next = rekeyBackup(data)
-      await commit(() => next.library, { assets: next.assets, reason: '恢复备份前' })
+      await commit(() => next.library, {
+        assets: next.assets,
+        reason: '恢复备份前',
+        undoLabel: false,
+      })
+      undoBarrier()
       readingUndo.value = undefined
     },
     async restoreSnapshot(data: Library) {
-      await commit(() => data, { reason: '恢复快照前' })
+      await commit(() => data, { reason: '恢复快照前', undoLabel: false })
+      undoBarrier()
       readingUndo.value = undefined
     },
     async addSample() {

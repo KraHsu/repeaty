@@ -5,6 +5,7 @@ import { type Library, localDay } from '../core/model'
 import { dueCards } from '../core/scheduler'
 import { sourceQueueState } from '../core/source-queue'
 import { canReviewCard } from '../plugins'
+import type { Operation } from '../core/operations'
 import {
   startMixedRound,
   nextMixedTask,
@@ -190,6 +191,16 @@ const currentValid = computed(() => {
 watch([currentValid, locked], ([valid, busy]) => {
   if (!busy && current.value && !valid) choose()
 })
+async function reconcileUndo(operation: Operation) {
+  if (!operation.cardId || !alive) return
+  if (
+    dueCards(props.library, props.now, undefined, canReviewCard).some(
+      (card) => card.id === operation.cardId,
+    )
+  )
+    choose({ kind: 'card', id: operation.cardId })
+}
+defineExpose({ undoCard, undoReading, canUndoCard, locked, leave, reconcileUndo })
 </script>
 
 <template>

@@ -535,7 +535,13 @@ async function finishSession() {
     moving.value = false
   }
 }
-defineExpose({ leaveSession })
+defineExpose({
+  leaveSession,
+  undoArrangement,
+  locked: computed(
+    () => props.busy || moving.value || arranging.value || loading.value || undoing.value,
+  ),
+})
 function showRound(next: ReadingRound) {
   round.value = next
   selectedId.value = next.entries[next.cursor]?.sourceId ?? ''

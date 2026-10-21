@@ -2296,6 +2296,20 @@ select {
 .plain-paragraph:last-child {
   margin-bottom: 0;
 }
+.shortcut-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-block: 1rem;
+}
+.shortcut-table td {
+  padding: 0.65rem 0.4rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+.shortcut-table kbd {
+  font: inherit;
+  font-size: var(--text-sm);
+}
 .card-question .markdown-content p {
   font-size: inherit;
 }
