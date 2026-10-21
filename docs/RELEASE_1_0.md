@@ -14,6 +14,8 @@
 
 不加入本次发布：PDF / 网页采集、Obsidian、内置模型 API、持久 MCP 授权、远程 MCP、Judge0、SymPy、数值题、公开 SDK、桌面 SQLite、调度算法替换、Anki 深度模板 / 历史兼容与反向导出。后续不按旧长期列表自动开发新功能。
 
+自动发布流程见 [RELEASING.md](RELEASING.md)。0.x 版本可按版本号自动发布；稳定的 v1.0.0 还要求本清单全部完成，自动构建不会替代 Windows / macOS 的安装包 GUI 验收。
+
 ## 发布门槛
 
 - [ ] 合并后的 `main` 质量检查、三平台桌面任务和 GitHub Pages 部署通过；处理上一次阅读保存重试测试的失败。
