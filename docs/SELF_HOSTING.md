@@ -6,7 +6,7 @@ Rust 服务提供网页、账户和学习数据 API。每个账户有独立的 S
 
 ## 启动
 
-需要 Node.js 24.12+、Rust 1.97.1 和 C 编译工具。SQLite 随程序编译。
+需要 Node.js 24.15+、Rust 1.97.1 和 C 编译工具。SQLite 随程序编译。
 
 ```bash
 npm ci

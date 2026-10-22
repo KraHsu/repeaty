@@ -1,5 +1,33 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  '操作涉及的内容已变化，无法撤销。请刷新后检查学习库。':
+    'The affected content has changed. Refresh and check your library before continuing.',
+  '撤销所需的媒体已不存在，请从快照恢复。':
+    'Media needed for undo is unavailable. Restore it from a snapshot.',
+  '没有可撤销的操作。': 'Nothing to undo.',
+  '已撤销：{action}': 'Undid: {action}',
+  '撤销：{action}': 'Undo: {action}',
+  撤销: 'Undo',
+  添加: 'Add',
+  删除: 'Delete',
+  撤销操作前: 'Before undoing an action',
+  修改: 'Changes',
+  评分: 'Rating',
+  阅读安排: 'Reading schedule',
+  快捷键: 'Keyboard shortcuts',
+  撤销最近操作: 'Undo last action',
+  保存当前表单: 'Save current form',
+  '添加卡片 / 笔记': 'Add card / note',
+  编辑当前卡片: 'Edit current card',
+  删除当前笔记: 'Delete current note',
+  浏览卡片: 'Browse cards',
+  '浏览卡片 / 复习中暂缓': 'Browse cards / bury during review',
+  '显示答案 / 评分': 'Show answer / rate',
+  暂缓当前卡片: 'Bury current card',
+  暂停当前卡片: 'Suspend current card',
+  '退出复习 / 关闭弹窗': 'End review / close dialog',
+  '输入框保留文字撤销；学习库支持撤销当前会话最近 20 次修改。评分在重启后仍可撤销。':
+    'Text fields keep text undo. Library undo covers the last 20 changes in this session; the latest rating can also be undone after restarting.',
   设置分类: 'Settings categories',
   通用: 'General',
   界面: 'Appearance',

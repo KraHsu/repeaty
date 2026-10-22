@@ -222,7 +222,7 @@ const selection = shallowRef(new Map<string, Selection>())
 const batchDraft = shallowRef<{ entries: Selection[]; scope: string }>()
 const savingBatch = ref(false)
 const undoing = ref(false)
-const roundUndo = shallowRef<{ id: string; before: ReadingRound; after: ReadingRound }>()
+const roundUndo = shallowRef<{ id: string; before: ReadingRound; after: ReadingRound }[]>([])
 function selectSources(entries: Source[]) {
   const next = new Map(selection.value)
   for (const source of entries)
@@ -273,7 +273,7 @@ async function saveBatch(action: SourceBatchAction) {
       if (reading) props.reading.acknowledge(reading.sourceId, pending?.token)
       batchDraft.value = undefined
       selection.value = new Map()
-      roundUndo.value = undefined
+      roundUndo.value = []
     }
   } finally {
     savingBatch.value = false
@@ -285,7 +285,7 @@ async function undoArrangement() {
   const scope = props.scope,
     undoId = props.readingUndoId,
     current = round.value,
-    previous = roundUndo.value
+    previous = roundUndo.value.find((entry) => entry.id === undoId)
   undoing.value = true
   moving.value = true
   emit('clearNotice')
@@ -293,7 +293,7 @@ async function undoArrangement() {
     if ((await props.undoReading()) && alive && props.scope === scope) {
       if (previous && previous.id === undoId && current === previous.after)
         showRound(reconcileReadingRound(previous.before, props.library.sources, today.value))
-      roundUndo.value = undefined
+      roundUndo.value = roundUndo.value.filter((entry) => entry.id !== undoId)
       selection.value = new Map()
     }
   } finally {
@@ -535,7 +535,13 @@ async function finishSession() {
     moving.value = false
   }
 }
-defineExpose({ leaveSession })
+defineExpose({
+  leaveSession,
+  undoArrangement,
+  locked: computed(
+    () => props.busy || moving.value || arranging.value || loading.value || undoing.value,
+  ),
+})
 function showRound(next: ReadingRound) {
   round.value = next
   selectedId.value = next.entries[next.cursor]?.sourceId ?? ''
@@ -693,7 +699,10 @@ async function arrange(action: SourceQueueAction) {
           showRound(after)
           await nextTick()
           if (props.readingUndoId && props.readingUndoId !== undoId)
-            roundUndo.value = { id: props.readingUndoId, before: started, after }
+            roundUndo.value = [
+              ...roundUndo.value.slice(-19),
+              { id: props.readingUndoId, before: started, after },
+            ]
         } else if (action.type === 'priority') {
           const index = filteredSources.value.findIndex((entry) => entry.id === current.id)
           if (index >= 0) page.value = Math.floor(index / pageSize)

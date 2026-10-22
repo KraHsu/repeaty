@@ -3,7 +3,18 @@ import { t, msg } from '../i18n'
 import { notify } from '../notifications'
 
 import { defineAsyncComponent, computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { ArrowLeft, Check, CornerDownLeft, RotateCcw, Ellipsis, Pencil } from '@lucide/vue'
+import {
+  ArrowLeft,
+  Check,
+  CornerDownLeft,
+  RotateCcw,
+  Ellipsis,
+  Pencil,
+  Plus,
+  Trash2,
+} from '@lucide/vue'
+import { shortcutBlocked } from '../shortcuts'
+import type { Operation } from '../core/operations'
 import {
   available,
   blockedByLimit,
@@ -32,6 +43,7 @@ const props = defineProps<{
   mixedCardId?: string
   busy: boolean
   editing?: boolean
+  lastOperationId?: string
   submit: (
     id: string,
     grade: Grade,
@@ -52,6 +64,8 @@ const emit = defineEmits<{
   step: [graded: boolean]
   activity: [busy: boolean]
   edit: [card: CardView]
+  add: [card: CardView]
+  delete: [card: CardView]
 }>()
 const grading = ref(false)
 const clock = ref(new Date())
@@ -72,7 +86,7 @@ const suggestedName = computed(
   () => grades.find((grade) => grade.value === questionState.suggestedGrade)?.label ?? '',
 )
 const practice = computed(() => Boolean(props.study && !props.study.reschedule))
-const studied = ref<{ id: string; grade: Grade; reviewId?: string }[]>([])
+const studied = ref<{ id: string; grade: Grade; reviewId?: string; operationId?: string }[]>([])
 const readViews = createCardViewReader()
 const views = computed(() => readViews(props.library))
 const queue = computed(() =>
@@ -134,6 +148,12 @@ const canUndo = computed(() =>
         (studied.value.length > 0 &&
           studied.value.at(-1)?.reviewId === props.library.reviews.at(-1)?.id)),
 )
+const canUndoPractice = computed(
+  () =>
+    practice.value &&
+    studied.value.length > 0 &&
+    studied.value.at(-1)?.operationId === props.lastOperationId,
+)
 const deck = computed(() => props.library.decks.find((entry) => entry.id === current.value?.deckId))
 const preview = computed(() =>
   current.value && !practice.value
@@ -186,7 +206,33 @@ function restart(id: string, noteId: string) {
   questionState.busy = false
   revision.value++
 }
-defineExpose({ restart })
+function reconcileUndo(operation: Operation) {
+  if (current.value && operation.noteIds.includes(current.value.noteId))
+    return restart(current.value.id, current.value.noteId)
+  const restored = views.value.find((card) => card.id === operation.cardId)
+  if (restored) restart(restored.id, restored.noteId)
+  else if (!current.value) selectNext()
+}
+defineExpose({
+  restart,
+  undoLast,
+  canUndo,
+  reconcileUndo,
+  addCurrent,
+  current,
+  canUndoPractice,
+  locked: computed(() => props.busy || props.editing || questionState.busy || grading.value),
+})
+function addCurrent() {
+  if (!current.value || props.busy || props.editing || questionState.busy || grading.value) return
+  if (menu.value) menu.value.open = false
+  emit('add', current.value)
+}
+function deleteCurrent() {
+  if (!current.value || props.busy || props.editing || questionState.busy || grading.value) return
+  if (menu.value) menu.value.open = false
+  emit('delete', current.value)
+}
 function editCurrent() {
   if (!current.value || props.busy || props.editing || questionState.busy || grading.value) return
   if (menu.value) menu.value.open = false
@@ -234,6 +280,7 @@ async function grade(value: Grade) {
           id,
           grade: value,
           reviewId: practice.value ? undefined : props.library.reviews.at(-1)?.id,
+          operationId: props.lastOperationId,
         })
       completed.value++
       if (props.mixedCardId) emit('step', true)
@@ -255,6 +302,7 @@ async function undoLast() {
 }
 async function changeCurrent(action: 'suspend' | 'bury') {
   if (props.busy || props.editing || grading.value || questionState.busy || !current.value) return
+  if (menu.value) menu.value.open = false
   grading.value = true
   try {
     if (await props.change([current.value.id], action)) {
@@ -268,8 +316,17 @@ async function changeCurrent(action: 'suspend' | 'bury') {
 function keydown(event: KeyboardEvent) {
   // Keys pressed while an IME composition is open are meant for the IME (e.g. typing "e"
   // in pinyin) and must not reveal answers or grade cards.
-  if (event.isComposing || event.keyCode === 229) return
-  if (document.querySelector('dialog[open]')) return
+  if (shortcutBlocked(event)) return
+  if (
+    (event.ctrlKey || event.metaKey) &&
+    !event.altKey &&
+    !event.shiftKey &&
+    event.key === 'Delete'
+  ) {
+    event.preventDefault()
+    deleteCurrent()
+    return
+  }
   if (
     event.repeat ||
     event.ctrlKey ||
@@ -280,21 +337,34 @@ function keydown(event: KeyboardEvent) {
     grading.value
   )
     return
-  if ((event.target as HTMLElement)?.closest('input, textarea, select, button, [contenteditable]'))
-    return
   if (props.editing) return
+  if (event.key.toLowerCase() === 'a' && current.value) {
+    event.preventDefault()
+    addCurrent()
+    return
+  }
   if (event.key.toLowerCase() === 'e' && current.value) {
     event.preventDefault()
     editCurrent()
     return
   }
+  if (!practice.value && current.value && ['b', 's'].includes(event.key.toLowerCase())) {
+    event.preventDefault()
+    void changeCurrent(event.key.toLowerCase() === 'b' ? 'bury' : 'suspend')
+    return
+  }
   if (event.code === 'Space' && current.value && !questionState.busy) {
+    if ((event.target as HTMLElement)?.closest('button, summary')) return
     event.preventDefault()
     revealed.value = true
   }
   const value = Number(event.key)
   if (!automatic.value && [1, 2, 3, 4].includes(value) && revealed.value) void grade(value as Grade)
-  if (event.key === 'Escape') emit('close')
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    if (menu.value?.open) menu.value.open = false
+    else emit('close')
+  }
 }
 let timer: ReturnType<typeof setInterval>
 onMounted(() => {
@@ -349,10 +419,40 @@ onUnmounted(() => {
           <button
             class="text-button"
             :disabled="busy || editing || questionState.busy || grading"
+            @click="addCurrent"
+          >
+            <Plus :size="17" />{{ t('添加') }} <kbd>A</kbd>
+          </button>
+          <button
+            class="text-button"
+            :disabled="busy || editing || questionState.busy || grading"
             @click="editCurrent"
           >
             <Pencil :size="17" />{{ t('编辑') }} <kbd>E</kbd>
           </button>
+          <button
+            class="text-button danger"
+            :disabled="busy || editing || questionState.busy || grading"
+            @click="deleteCurrent"
+          >
+            <Trash2 :size="17" />{{ t('删除') }} <kbd>Ctrl / ⌘ Del</kbd>
+          </button>
+          <template v-if="!practice">
+            <button
+              class="text-button"
+              :disabled="busy || editing || questionState.busy || grading"
+              @click="changeCurrent('bury')"
+            >
+              {{ t('今天暂缓') }} <kbd>B</kbd>
+            </button>
+            <button
+              class="text-button"
+              :disabled="busy || editing || questionState.busy || grading"
+              @click="changeCurrent('suspend')"
+            >
+              {{ t('暂停此卡') }} <kbd>S</kbd>
+            </button>
+          </template>
         </div>
       </details>
       <button
@@ -568,7 +668,8 @@ onUnmounted(() => {
   z-index: 10;
   top: calc(100% + 0.4rem);
   left: 0;
-  min-width: 180px;
+  min-width: 240px;
+  max-width: calc(100vw - 3rem);
   padding: 0.5rem;
   background: var(--paper);
   border: 1px solid var(--line);
@@ -586,5 +687,6 @@ kbd {
   font: inherit;
   font-size: 0.9rem;
   color: #65785f;
+  white-space: nowrap;
 }
 </style>

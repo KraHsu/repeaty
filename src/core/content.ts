@@ -2,9 +2,10 @@ import { t } from '../i18n'
 import MarkdownIt from 'markdown-it'
 import katex from 'katex'
 import hljs from 'highlight.js/lib/common'
+import { cleanHtml, contentScope, wrapHtml } from './rich-html'
 
 const markdown = new MarkdownIt({
-  html: false,
+  html: true,
   breaks: true,
   linkify: false,
   highlight(code, language) {
@@ -73,22 +74,25 @@ function formula(source: string, displayMode: boolean): string {
   })
 }
 markdown.inline.ruler.before('escape', 'math', (state, silent) => {
-  if (state.src[state.pos] !== '$') return false
-  const display = state.src.startsWith('$$', state.pos)
-  const delimiter = display ? '$$' : '$'
+  const rest = state.src.slice(state.pos)
+  const delimiter = ['$$', '\\(', '\\[', '$'].find((marker) => rest.startsWith(marker))
+  if (!delimiter) return false
+  const display = delimiter === '$$' || delimiter === '\\['
+  const closing = delimiter === '\\(' ? '\\)' : delimiter === '\\[' ? '\\]' : delimiter
   const start = state.pos + delimiter.length
-  if (!display && /\s/.test(state.src[start] ?? ' ')) return false
+  if (delimiter === '$' && /\s/.test(state.src[start] ?? ' ')) return false
   let end = start
-  while ((end = state.src.indexOf(delimiter, end)) !== -1) {
+  while ((end = state.src.indexOf(closing, end)) !== -1) {
     let slashes = 0
     for (let i = end - 1; i >= start && state.src[i] === '\\'; i--) slashes++
     if (slashes % 2 === 0) break
-    end += delimiter.length
+    end += closing.length
   }
   if (
     end < 0 ||
     end === start ||
-    (!display && (/\s/.test(state.src[end - 1]!) || state.src.slice(start, end).includes('\n')))
+    (delimiter === '$' &&
+      (/\s/.test(state.src[end - 1]!) || state.src.slice(start, end).includes('\n')))
   )
     return false
   if (!silent) {
@@ -96,7 +100,7 @@ markdown.inline.ruler.before('escape', 'math', (state, silent) => {
     token.content = state.src.slice(start, end)
     token.meta = { display }
   }
-  state.pos = end + delimiter.length
+  state.pos = end + closing.length
   return true
 })
 markdown.renderer.rules.math = (tokens, index) =>
@@ -104,13 +108,15 @@ markdown.renderer.rules.math = (tokens, index) =>
 markdown.block.ruler.before('fence', 'math_block', (state, start, end, silent) => {
   const line = (n: number) =>
     state.src.slice(state.bMarks[n]! + state.tShift[n]!, state.eMarks[n]!).trim()
-  if (state.sCount[start]! - state.blkIndent >= 4 || !line(start).startsWith('$$')) return false
+  const opening = ['$$', '\\['].find((marker) => line(start).startsWith(marker))
+  if (state.sCount[start]! - state.blkIndent >= 4 || !opening) return false
+  const closing = opening === '$$' ? '$$' : '\\]'
   const first = line(start).slice(2)
   let next = start + 1,
     content = first
-  if (first.endsWith('$$')) content = first.slice(0, -2)
+  if (first.endsWith(closing)) content = first.slice(0, -2)
   else {
-    while (next < end && !line(next).endsWith('$$')) {
+    while (next < end && !line(next).endsWith(closing)) {
       content += '\n' + line(next)
       next++
     }
@@ -128,11 +134,13 @@ markdown.block.ruler.before('fence', 'math_block', (state, start, end, silent) =
 })
 markdown.renderer.rules.math_block = (tokens, index) => formula(tokens[index]!.content, true) + '\n'
 export function renderMarkdown(text: string): string {
-  return markdown.render(text)
+  const scope = contentScope()
+  return wrapHtml(cleanHtml(markdown.render(text), scope), scope)
 }
 
 /** Wrap top-level blocks with source offsets; ordinary card rendering stays unchanged. */
 export function renderReadingMarkdown(text: string): string {
+  const scope = contentScope()
   const lines = [0]
   for (let index = 0; index < text.length; index++) if (text[index] === '\n') lines.push(index + 1)
   const tokens = markdown.parse(text, {})
@@ -147,7 +155,10 @@ export function renderReadingMarkdown(text: string): string {
       )
         end++
     if (token.nesting === 1 && end < tokens.length) end++
-    const html = markdown.renderer.render(tokens.slice(index, end), markdown.options, {})
+    const html = cleanHtml(
+      markdown.renderer.render(tokens.slice(index, end), markdown.options, {}),
+      scope,
+    )
     blocks.push(
       token.map
         ? `<div class="reading-block" data-reading-offset="${lines[token.map[0]] ?? 0}" data-reading-end="${lines[token.map[1]] ?? text.length}">${html}</div>`
@@ -155,5 +166,5 @@ export function renderReadingMarkdown(text: string): string {
     )
     index = end
   }
-  return blocks.join('')
+  return wrapHtml(blocks.join(''), scope)
 }

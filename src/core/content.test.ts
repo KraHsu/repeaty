@@ -17,14 +17,54 @@ describe('Markdown and math rendering', () => {
     expect(renderMarkdown('\\$5 and $10')).not.toContain('class="katex"')
     expect(renderMarkdown('$$x^2$$')).toContain('katex-display')
   })
-  it('disables HTML, unsafe links, remote images and trusted TeX commands', () => {
+  it('keeps HTML presentation but removes active content, unsafe links and remote resources', () => {
     const html = renderMarkdown(
       '<img src=x onerror=alert(1)>\n\n[x](javascript:alert%281%29) ![pic](https://example.com/a.png)\n\n$\\href{javascript:alert(1)}{click}$ $\\includegraphics{https://example.com/a.png}$',
     )
-    expect(html).not.toMatch(/<img|<script|href="javascript:|src="https:/i)
-    expect(html).toContain('&lt;img')
+    expect(html).not.toMatch(/<script|onerror|href="javascript:|src="https?:|src="x"/i)
     expect(html).toContain('请使用附件')
     expect(renderMarkdown('[link](https://example.com)')).toContain('rel="noopener noreferrer"')
+  })
+  it('renders parenthesis and bracket math without touching code, escaped markers or unclosed expressions', () => {
+    for (const source of ['\\(x^2\\)', '$x^2$'])
+      expect(renderMarkdown('Before ' + source + ' after')).toContain('class="katex"')
+    for (const source of ['\\[x^2\\]', '\\[\n\\frac{1}{2}\n\\]', '$$x^2$$'])
+      expect(renderMarkdown(source)).toContain('class="katex-display"')
+    expect(renderMarkdown('`\\(x\\)`')).not.toContain('class="katex"')
+    expect(renderMarkdown('```tex\n\\[x\\]\n```')).not.toContain('class="katex-display"')
+    expect(renderMarkdown('\\\\(x\\\\)')).not.toContain('class="katex"')
+    expect(renderMarkdown('\\[unclosed')).not.toContain('class="katex"')
+    const source = 'First\n\n\\[\nx^2\n\\]\n\nLast'
+    expect(renderReadingMarkdown(source)).toContain(
+      `data-reading-offset="${source.indexOf('Last')}"`,
+    )
+  })
+  it('preserves inline styles and scopes stylesheets while blocking CSS resource loads and global selectors', () => {
+    const html = renderMarkdown(
+      '<style>.note, .topbar { color: red; background: url(https://example.invalid/x) } @import "https://example.invalid/s.css";</style>\n\n<div class="note" style="display: grid; gap: 12px; color: #123; background: linear-gradient(red, blue)">Styled <strong>HTML</strong></div>',
+    )
+    expect(html).toContain('display:grid')
+    expect(html).toContain('gap:12px')
+    expect(html).toContain('linear-gradient(red,blue)')
+    expect(html).toMatch(/\[data-repeaty-content="content-\d+"\] \.topbar/)
+    expect(html).not.toContain('url(')
+    expect(html).not.toContain('@import')
+    const variables = renderMarkdown(
+      '<div style="--accent-1:#123;--gap_2:12px;color:var(--accent-1);gap:var(--gap_2)">Styled</div>',
+    )
+    expect(variables).toContain('--accent-1:#123')
+    expect(variables).toContain('--gap_2:12px')
+    expect(variables).toContain('color:var(--accent-1)')
+    const unsafe = renderMarkdown(
+      '<div id="app" name="location" data-reading-offset="100" style="background:image-set(\"https://example.invalid/x\" 1x)" onclick="alert(1)"><iframe srcdoc="bad"></iframe><script>alert(1)</script>Safe</div>',
+    )
+    expect(unsafe).not.toMatch(
+      /id="app"|name=|data-reading-offset|onclick|<iframe|<script|image-set/,
+    )
+    expect(unsafe).toContain('Safe')
+    expect(
+      renderMarkdown('<div style="background:u\\72l(https://example.invalid/x)">Safe</div>'),
+    ).not.toContain('style=')
   })
   it('recovers from invalid math without crashing', () => {
     expect(renderMarkdown('$\\frac{$')).toContain('katex-error')
