@@ -13,8 +13,17 @@ pub fn digest(bytes: &[u8]) -> String {
 
 /// Prototype roots are private and fixed. Full capability-based directory traversal is an M1 gate.
 pub fn regular_file(path: &Path) -> io::Result<File> {
+    open_regular(path, false)
+}
+
+// FlushFileBuffers requires a writable handle on Windows, unlike Unix fsync.
+pub fn sync_regular_file(path: &Path) -> io::Result<()> {
+    open_regular(path, true)?.sync_all()
+}
+
+fn open_regular(path: &Path, writable: bool) -> io::Result<File> {
     let mut options = OpenOptions::new();
-    options.read(true);
+    options.read(true).write(writable);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
@@ -33,6 +42,16 @@ pub fn regular_file(path: &Path) -> io::Result<File> {
             io::ErrorKind::InvalidInput,
             "not a regular file",
         ));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.nlink() != 1 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "hard-linked file",
+            ));
+        }
     }
     #[cfg(windows)]
     {

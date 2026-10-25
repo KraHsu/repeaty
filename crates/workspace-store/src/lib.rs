@@ -3,3 +3,4 @@
 
 pub mod atomic;
 pub mod files;
+pub mod prototype;

@@ -18,6 +18,12 @@ fn retained<'a>(candidate: &'a Path, backup: &'a Path) -> &'a Path {
 
 #[test]
 fn replacement_retains_the_actual_last_moment_version() {
+    eprintln!(
+        "native workspace: os={}, primitive={:?}, sync={:?}",
+        std::env::consts::OS,
+        atomic::replace_method(),
+        files::sync_coverage()
+    );
     let dir = tempfile::tempdir().unwrap();
     let target = dir.path().join("题目.md");
     let candidate = dir.path().join("candidate");

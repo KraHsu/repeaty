@@ -44,6 +44,7 @@ export async function checkVersions(root = '.') {
     ['server', 'repeaty-server'],
     ['src-tauri', 'repeaty-desktop'],
     ['crates/leetcode-local', 'repeaty-leetcode-local'],
+    ['crates/workspace-store', 'repeaty-workspace'],
   ]) {
     for (const extension of ['toml', 'lock']) {
       const path = directory + '/Cargo.' + extension
