@@ -9,11 +9,11 @@ cargo clippy --locked --manifest-path crates/workspace-store/Cargo.toml --all-ta
 
 The native primitives preserve the actual displaced file instead of copying a preflight version and overwriting it. They do not implement compare-and-swap, undo, filesystem traversal, or conflict resolution. A caller must retain the displaced path even after success: an editor can keep writing through an older handle. Failures never fall back to an ordinary overwrite.
 
-| Platform | Replace existing             | Create without clobbering          | Validation                            |
-| -------- | ---------------------------- | ---------------------------------- | ------------------------------------- |
-| Linux    | `renameat2(RENAME_EXCHANGE)` | `RENAME_NOREPLACE`                 | Local temporary-file tests passed     |
-| macOS    | `renamex_np(RENAME_SWAP)`    | `RENAME_EXCL`                      | Implemented; native execution pending |
-| Windows  | `ReplaceFileW` with backup   | `MoveFileExW` without replace flag | Implemented; native execution pending |
+| Platform | Replace existing             | Create without clobbering          | Validation                 |
+| -------- | ---------------------------- | ---------------------------------- | -------------------------- |
+| Linux    | `renameat2(RENAME_EXCHANGE)` | `RENAME_NOREPLACE`                 | Local and native CI passed |
+| macOS    | `renamex_np(RENAME_SWAP)`    | `RENAME_EXCL`                      | Native CI passed           |
+| Windows  | `ReplaceFileW` with backup   | `MoveFileExW` without replace flag | Native CI passed           |
 
 Files are synced before publication. Unix also syncs directories; Windows reports file-only sync coverage. Process-crash tests cannot establish power-loss durability, and these experiments do not validate network filesystems, hostile directory replacement, all editors, or real libraries.
 
