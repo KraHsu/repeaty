@@ -93,7 +93,7 @@ npm run desktop:build
 
 正在准备 v1.0.0。用户另行授权的 0.27.0 范围是内容渲染、内嵌 HTML、撤销与快捷键、弹窗和复习菜单；完成后继续冻结其他新功能，仅处理发布准备和修复。[发布清单](docs/RELEASE_1_0.md)
 
-[工作目录模式与旧库迁移方案](docs/WORKSPACE_MODE.md)记录后续架构讨论，尚未实现；当前版本的存储与使用方式不变。
+[工作目录模式与旧库迁移方案](docs/WORKSPACE_MODE.md)将 [Markdown 外部编辑](docs/WORKSPACE_CONTENT_FORMAT.md) 纳入首批设计，尚未实现；当前版本的存储与使用方式不变。
 
 前端使用 Vue 3、TypeScript 和 Vite；后端使用 Rust、Axum 和 SQLite，调度使用 [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)。
 
