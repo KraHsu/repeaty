@@ -517,6 +517,34 @@ fn unchanged_content_does_not_replace_the_live_file() {
 }
 
 #[test]
+fn an_intent_larger_than_the_recovery_reader_limit_is_rejected_before_writing() {
+    let (root, mut proto) = setup();
+    let mut request = draft_request();
+    request.new_cards = (1..=99)
+        .map(|number| NewCard {
+            id: format!("large-card-{number}"),
+            variant: format!("cloze:{number}"),
+            state_json: format!("\"{}\"", "x".repeat(24_000)),
+        })
+        .collect();
+    assert!(
+        proto
+            .save(request, DRAFT_NOTE.as_bytes())
+            .unwrap_err()
+            .to_string()
+            .contains("transaction-intent-too-large")
+    );
+    assert_eq!(count(root.path(), "operations"), 0);
+    assert_eq!(
+        fs::read_dir(root.path().join(".repeaty/transactions"))
+            .unwrap()
+            .count(),
+        0
+    );
+    assert_eq!(consumed(root.path()), None);
+}
+
+#[test]
 fn conflict_evidence_survives_an_interrupted_database_status_update() {
     let (root, mut proto) = setup();
     fs::write(root.path().join("notes/old.md"), "external").unwrap();

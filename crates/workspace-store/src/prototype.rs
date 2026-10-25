@@ -222,6 +222,10 @@ impl Prototype {
             next_hash: files::digest(bytes),
             method: atomic::replace_method(),
         };
+        let serialized = serde_json::to_vec(&intent)?;
+        if serialized.len() as u64 > files::MAX_TEXT_BYTES {
+            return Err("transaction-intent-too-large".into());
+        }
         let dir = self.operation_dir(&intent.request.operation_id)?;
         if dir.exists() {
             require_directory(&dir)?;
@@ -249,7 +253,7 @@ impl Prototype {
         self.store_object(bytes)?;
         checkpoint(Checkpoint::ObjectDurable)?;
         write_same_or_new(&dir.join("slot"), bytes)?;
-        write_same_or_new(&dir.join("intent.json"), &serde_json::to_vec(&intent)?)?;
+        write_same_or_new(&dir.join("intent.json"), &serialized)?;
         checkpoint(Checkpoint::JournalDurable)?;
         self.reserve(&intent)?;
         checkpoint(Checkpoint::ReservationCommitted)?;

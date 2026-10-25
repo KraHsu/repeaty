@@ -108,13 +108,13 @@ pub fn write_new(path: &Path, bytes: &[u8]) -> io::Result<()> {
 }
 
 pub fn create_private_dir(path: &Path) -> io::Result<()> {
-    let mut builder = fs::DirBuilder::new();
     #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;
-        builder.mode(0o700);
+        fs::DirBuilder::new().mode(0o700).create(path)?;
     }
-    builder.create(path)?;
+    #[cfg(not(unix))]
+    fs::create_dir(path)?;
     sync_directory(path.parent().ok_or(io::ErrorKind::InvalidInput)?)
 }
 
