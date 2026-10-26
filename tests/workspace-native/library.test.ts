@@ -427,11 +427,20 @@ describe('the desktop workspace is the learning store', () => {
       env.runtime.api('workspace_choose', { epoch: status.epoch, path: env.path, mode: 'create' }),
     ).rejects.toThrow('workspace-not-empty')
     const moved = join(env.root, 'moved')
-    await rename(env.path, moved)
-    await mkdir(env.path)
-    await expect(env.repo.load()).rejects.toThrow()
-    await rm(env.path, { recursive: true })
-    await rename(moved, env.path)
+    const renamed = await rename(env.path, moved).then(
+      () => true,
+      (error: NodeJS.ErrnoException) => {
+        if (process.platform === 'win32' && ['EPERM', 'EACCES', 'EBUSY'].includes(error.code ?? ''))
+          return false
+        throw error
+      },
+    )
+    if (renamed) {
+      await mkdir(env.path)
+      await expect(env.repo.load()).rejects.toThrow()
+      await rm(env.path, { recursive: true })
+      await rename(moved, env.path)
+    } else expect(await env.repo.load()).toEqual(saved)
     status = statusSchema.parse(await env.runtime.api('workspace_close', { epoch: status.epoch }))
     await expect(env.repo.save(saved.library, saved.revision)).rejects.toThrow()
     const restored = statusSchema.parse(

@@ -8,7 +8,6 @@
   <a href="https://github.com/KraHsu/repeaty/releases">下载客户端</a> ·
   <a href="https://www.krahsu.top/repeaty/">在线体验</a> ·
   <a href="docs/USAGE.md">使用指南</a> ·
-  <a href="docs/SELF_HOSTING.md">自行部署</a> ·
   <a href="docs/PLUGINS.md">编写插件</a>
 </p>
 
@@ -19,13 +18,15 @@
 
 Repeaty 是一个开源的记忆卡片工具。把想记住的内容做成卡片，按 FSRS 安排复习。
 
-可以直接在浏览器中使用，也可以安装桌面版，或部署带账户的 Rust + SQLite 服务。纯前端版与桌面本地模式无需注册，没有订阅或付费功能。
+以桌面客户端为主，一个文件夹保存卡片、材料、附件与学习进度，无需注册。在线页面供体验使用。核心免费开源，目前没有订阅或收费服务。
 
 ![Repeaty 的入门卡组与学习概览](docs/media/workspace.png)
 
 ## 开始使用
 
-从 **[Releases](https://github.com/KraHsu/repeaty/releases)** 安装桌面客户端，或打开 **[在线版](https://www.krahsu.top/repeaty/)**。默认的入门卡组有 24 条笔记、27 张卡片，一边介绍 FSRS，一边带你试用评分、挖空、公式、图片和音频。支持 English / 中文（简体）。
+本分支的桌面工作目录接管尚未发布，使用 `npm run desktop:dev` 启动后，在「工作目录」中选择空文件夹创建学习库。入门卡组会自动添加，包含 24 条笔记、27 张卡片，介绍 FSRS、评分、挖空、公式、图片和音频。支持 English / 中文（简体）。
+
+[Releases](https://github.com/KraHsu/repeaty/releases) 提供已发布安装包，目前仍使用此前的存储方式；也可打开 [在线体验](https://www.krahsu.top/repeaty/)。
 
 已有自己的材料？创建卡组并添加卡片，或从 Anki `.apkg`、CSV / TSV 导入。复习时先回答，再翻面，按实际表现选择「重来 / 困难 / 良好 / 简单」。
 
@@ -71,22 +72,16 @@ npm run build
 VITE_BASE_PATH=/repeaty/ npm run build
 ```
 
-**带后端版**：默认在 `http://127.0.0.1:8080` 提供服务，账户与各自的学习库写入 `data/`。
+**桌面客户端**：安装 [Tauri 2 系统依赖](https://v2.tauri.app/start/prerequisites/)后运行或构建。
 
 ```bash
-npm run build:server
-cargo run --release --locked --manifest-path server/Cargo.toml
-```
-
-**桌面版**：从 [Releases](https://github.com/KraHsu/repeaty/releases) 下载安装包，或在安装 [Tauri 2 系统依赖](https://v2.tauri.app/start/prerequisites/)后构建。尚未发布的构建可在 [Desktop 工作流](https://github.com/KraHsu/repeaty/actions/workflows/desktop.yml)中获取。
-
-```bash
+npm run desktop:dev
 npm run desktop:build
 ```
 
-默认使用本地库，右上角「设置」可指定上游服务地址。本地库与账户库各自保留，不自动合并。
+客户端直接打开本地学习目录，保存 Markdown 正文、附件及 SQLite 学习状态，不配置上游 endpoint。复制或备份前关闭学习库，并复制整个目录。外部修改已有笔记后，可重新扫描并接受修改，保留原有进度。
 
-[后端部署与旧库迁移](docs/SELF_HOSTING.md) · [桌面版说明](docs/DESKTOP.md) · [LeetCode 配置](docs/LEETCODE.md)
+[桌面使用与开发](docs/DESKTOP.md) · [目录格式与当前边界](docs/WORKSPACE_MODE.md) · [LeetCode 配置](docs/LEETCODE.md)
 
 ## 开发与贡献
 
@@ -94,16 +89,16 @@ npm run desktop:build
 
 正在准备 v1.0.0。用户另行授权的 0.27.0 范围是内容渲染、内嵌 HTML、撤销与快捷键、弹窗和复习菜单；完成后继续冻结其他新功能，仅处理发布准备和修复。[发布清单](docs/RELEASE_1_0.md)
 
-[工作目录模式与旧库迁移](docs/WORKSPACE_MODE.md)以桌面客户端为主要体验入口。已实现 [M0 原型](docs/WORKSPACE_M0.md)和[桌面目录预览](docs/WORKSPACE_DESKTOP_PREVIEW.md)：系统选择目录、最近重开、检查外部 Markdown 与已接受版本。预览尚未替代当前学习库，旧库迁移入口未开放；网页与自托管端继续兼容。
+本轮将桌面学习存储接入[工作目录](docs/WORKSPACE_MODE.md)，取消桌面本地 / 上游分支。项目暂无其他使用者，因此直接采用新格式，不开发旧库过渡或自动迁移，也不删除旧数据。自动同步、外部材料版本接受及更完整的文件操作仍未完成。
 
-前端使用 Vue 3、TypeScript 和 Vite；后端使用 Rust、Axum 和 SQLite，调度使用 [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)。
+界面使用 Vue 3、TypeScript 和 Vite；原生存储使用 Rust 与 SQLite；调度使用 [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)。
 
 ```bash
-npm run dev                      # http://127.0.0.1:5173
-npx playwright install chromium  # 首次运行浏览器测试前安装
-npm run check                    # 格式、单元测试、构建、浏览器测试
-npm run check:server             # Rust 与后端版检查
-npm run test:e2e:desktop         # 桌面界面与本地插件交互测试
+npm run desktop:dev
+npm test
+npm run typecheck
+npm run test:workspace:native    # 共享仓库与真实 Rust 存储联测
+npm run test:e2e:desktop         # 界面回归，连接真实 Rust 存储
 ```
 
 欢迎提交 Issue 和 PR。报告问题时，请附上复现步骤、浏览器版本和报错；修改功能时，一并更新相关测试和文档。

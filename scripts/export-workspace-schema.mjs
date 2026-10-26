@@ -30,7 +30,7 @@ try {
   const path = 'crates/workspace-store/schema/entities.json'
   if (process.argv.includes('--check')) {
     if ((await readFile(path, 'utf8')) !== source)
-      throw new Error('Run npm run schema:server and commit the updated server schema.')
+      throw new Error('Run npm run schema:workspace and commit the updated native schema.')
   } else await writeFile(path, source)
 } finally {
   await vite.close()

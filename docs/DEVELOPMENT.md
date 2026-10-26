@@ -1,17 +1,17 @@
 # 开发文档
 
-[返回首页](../README.md) · [使用指南](USAGE.md) · [后端部署](SELF_HOSTING.md) · [插件接口](PLUGINS.md)
+[返回首页](../README.md) · [使用指南](USAGE.md) · [桌面客户端](DESKTOP.md) · [插件接口](PLUGINS.md)
 
 ## 开发与验证
 
-需要 Node.js 24.15+（24.x）。运行后端及对应测试还需 Rust，CI 固定使用 1.97.1。
+需要 Node.js 24.15+（24.x）、Rust 与 Tauri 系统依赖，CI 固定使用 Rust 1.97.1。桌面是当前主要开发入口。
 
 ```bash
 npm ci
-npm run dev
+npm run desktop:dev
 ```
 
-默认开发地址为 `http://127.0.0.1:5173`。首次使用自动添加入门卡组，删除后不会自动补回。
+首次启动选择空目录创建学习库，入门卡组会自动添加；删除后不会自动补回。网页体验可用 `npm run dev` 单独运行。
 
 ```bash
 npm run format:check # 格式检查；npm run format 自动整理
@@ -23,7 +23,7 @@ npm run preview      # 本地预览生产构建
 npm run test:e2e     # 构建后执行 Playwright，使用生产站点而非开发服务器
 npm run check        # 格式检查 + 单元测试 + 静态构建 + 浏览器测试
 npm run check:server # Schema 一致性、插件测试、Rust fmt/clippy/test、后端浏览器测试
-npm run schema:server # 修改实体模型后重新生成 Rust 使用的 JSON Schema
+npm run schema:workspace # 修改实体模型后重新生成 Rust 使用的 JSON Schema
 ```
 
 首次运行浏览器测试先执行 `npx playwright install chromium`。静态版测试也可设置 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome` 使用已有 Chrome。浏览器测试启动 `127.0.0.1:4175`，覆盖制卡、复习、撤销、额度、批量管理、媒体恢复、快捷制卡、常用筛选、两种专项练习、自动暂缓、双语切换与偏好持久化、移动端布局和断网重载。另有合计 128 MiB 的原始音频与图片、接近 10000 字长文本的归档恢复／离线复习／再次导出测试，对所有媒体比较 SHA-256。
@@ -66,7 +66,7 @@ Markdown 使用 [highlight.js 的显式语言接口](https://highlightjs.readthe
 
 带后端版使用 SQLite：九个实体表按记录保存 JSON 字段，附件放入独立 BLOB 表，引用使用外键与索引。请求只发送变更记录；服务在一个事务中检查修订号、记录格式和引用，写入增量历史与新记录。SQLite 数据库版本使用 `PRAGMA user_version`，当前为 10，学习数据版本为 13，后端 API 为 v11。实体 JSON Schema 从前端 Zod 模型生成并由 CI 检查一致性，Rust 另行检查跨记录引用和附件大小。它不是把整个学习库保存成一份 JSON 文件。
 
-媒体先上传，之后与学习记录的引用一起提交；同一 ID 的内容不可改写，防止破坏旧快照。上传失败不提交学习记录，未引用上传保留一天再清理。客户端失去写入响应时不会自动重试覆盖，修订冲突要求刷新。支持 `historyVersion: 1` 的 API v11 服务提供 `/library/summary` 与 `/library/attempts`，代码单独按编号或批次读取；请求绑定账户与修订号。没有摘要能力的 API v11 服务读取完整库；API v10 及更早服务需先升级。搜索仍使用内存中的题面和摘要；单次结构化提交上限 64 MiB，媒体独立上传。详情见[后端部署](SELF_HOSTING.md)。
+媒体先上传，之后与学习记录的引用一起提交；同一 ID 的内容不可改写，防止破坏旧快照。上传失败不提交学习记录，未引用上传保留一天再清理。客户端失去写入响应时不会自动重试覆盖，修订冲突要求刷新。支持 `historyVersion: 1` 的 API v11 服务提供 `/library/summary` 与 `/library/attempts`，代码单独按编号或批次读取；请求绑定账户与修订号。没有摘要能力的 API v11 服务读取完整库；API v10 及更早服务需先升级。搜索仍使用内存中的题面和摘要；单次结构化提交上限 64 MiB，媒体独立上传。详情见[桌面客户端](DESKTOP.md)。
 
 `.repeaty` 导出按修订号分批读取完整提交，批次之间检查版本与记录顺序，库发生变化时中止导出。JSON 导出与快照恢复按需载入完整记录。当前学习数据为 v13、`.repeaty` 容器为 v10，摘要不属于备份格式，不会替代已保存的代码。
 
@@ -92,12 +92,9 @@ VITE_BASE_PATH=/repeaty/ npm run preview
 
 ## CI 与 GitHub Pages
 
-[CI 工作流](../.github/workflows/ci.yml)在提交到 `main`、向 `main` 提交 PR，以及手动运行时执行：
+[单元工作流](../.github/workflows/unit.yml)在功能分支与 PR 运行 `npm test` 和发布脚本单元测试，不构建安装包或运行浏览器。完整 [CI](../.github/workflows/ci.yml) 与 [Desktop](../.github/workflows/desktop.yml) 只在 main 运行，手动触发也受相同分支约束。
 
-1. 按 `.nvmrc` 安装 Node.js，使用 `npm ci` 安装锁定依赖，另行安装 Playwright Chromium 及系统依赖。
-2. 运行格式检查、单元 / DOM 测试、类型检查、纯前端生产构建和浏览器测试，使用 `/repeaty/` 子路径。
-3. 安装 Rust 1.97.1，检查生成 Schema、插件开关、Rust 格式、Clippy 与测试，再构建后端版、启动临时 SQLite 服务执行浏览器测试。后端测试使用根路径和独立临时数据库，覆盖账户隔离、登录会话、写入冲突、128 MiB 媒体 / 长文本与静态版备份互通。
-4. 仅在 `main` 的检查通过后上传已经测试的 `dist/`，通过 `github-pages` 环境部署到 [GitHub Pages](https://krahsu.github.io/repeaty/)。`dist-server/` 与 Rust 二进制不上传 Pages；PR 只检查，不部署。
+main 检查网页构建与回归、原生目录事务和跨语言测试，并构建三平台安装包。桌面浏览器测试连接真实 Rust 目录存储；Linux 原生测试另外使用真实 WebKit、IPC 与系统选择器，产物和截图按实际运行保存。账户服务不再是桌面构建依赖。
 
 工作流使用固定提交版本的官方 GitHub Actions。检查任务仅授予仓库读取权限；部署任务单独授予 `pages: write` 和 `id-token: write`，不需要配置个人访问令牌。失败报告保留 7 天。
 
@@ -105,7 +102,7 @@ VITE_BASE_PATH=/repeaty/ npm run preview
 
 分支保护配置在 GitHub 的 `Settings → Branches`，`main` 的规则为：
 
-- 必须通过 PR 合并，`Quality checks` 必须通过，且分支需与最新 `main` 保持同步。
+- 必须通过 PR 合并，`Unit tests` 必须通过，且分支需与最新 `main` 保持同步。
 - 所有审阅对话必须解决；禁止强制推送和删除分支，管理员也遵守这些规则。
 - 额外批准人数为 0，个人维护者可以在检查通过后合并自己的 PR。
 

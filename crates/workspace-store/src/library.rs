@@ -121,6 +121,7 @@ impl Library {
           CREATE TABLE workspace_identity(id TEXT NOT NULL);
           CREATE TABLE documents(kind TEXT NOT NULL,id TEXT NOT NULL,path TEXT NOT NULL UNIQUE,hash TEXT NOT NULL,PRIMARY KEY(kind,id));
           CREATE TABLE publications(operation TEXT NOT NULL,path TEXT NOT NULL,hash TEXT,expected TEXT,status TEXT NOT NULL DEFAULT 'pending',PRIMARY KEY(operation,path));
+          CREATE INDEX publications_status ON publications(status);
           CREATE TABLE receipts(id TEXT PRIMARY KEY,digest TEXT NOT NULL,revision INTEGER NOT NULL);
           CREATE TABLE card_drafts(id TEXT PRIMARY KEY,data TEXT NOT NULL);
           CREATE TABLE values_store(namespace TEXT NOT NULL,id TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(namespace,id));")?;
@@ -482,6 +483,9 @@ impl Library {
         let revision=self.db.commit_with(Commit {expected_revision:request.expected_revision,patches:request.patches,reason:request.reason},|tx| {
             if let Some(id)=consume && tx.execute("DELETE FROM card_drafts WHERE id=?1",[id])?!=1 { return Err(Error::conflict()); }
             for (doc,hash) in &documents {
+                // A newly accepted observation supersedes older incomplete publication
+                // attempts for this document, including its previous working path.
+                tx.execute("UPDATE publications SET status='superseded' WHERE status IN ('pending','conflict') AND (path=?1 OR path IN (SELECT path FROM documents WHERE kind=?2 AND id=?3))",params![doc.path,doc.kind,doc.id])?;
                 if let Some(hash)=hash {
                     tx.execute("INSERT INTO documents VALUES(?1,?2,?3,?4) ON CONFLICT(kind,id) DO UPDATE SET path=excluded.path,hash=excluded.hash",params![doc.kind,doc.id,doc.path,hash])?;
                 } else { tx.execute("DELETE FROM documents WHERE kind=?1 AND id=?2",params![doc.kind,doc.id])?; }
@@ -599,7 +603,7 @@ impl Library {
         Ok(())
     }
     pub fn attention(&self) -> Result<Value> {
-        let mut stmt=self.db.connection.prepare("SELECT path,status FROM publications WHERE status!='done' ORDER BY rowid DESC LIMIT 100")?;
+        let mut stmt=self.db.connection.prepare("SELECT path,status FROM publications WHERE status IN ('pending','conflict') ORDER BY rowid DESC LIMIT 100")?;
         Ok(Value::Array(
             stmt.query_map([], |r| {
                 Ok(json!({"path":r.get::<_,String>(0)?,"status":r.get::<_,String>(1)?}))
@@ -875,7 +879,17 @@ mod tests {
             let root = tempfile::tempdir().unwrap();
             let library = Library::create(root.path()).unwrap();
             let member = root.path().join(name);
-            fs::rename(&member, root.path().join("old")).unwrap();
+            let moved = fs::rename(&member, root.path().join("old"));
+            if cfg!(windows)
+                && moved
+                    .as_ref()
+                    .is_err_and(|error| error.kind() == io::ErrorKind::PermissionDenied)
+            {
+                // Windows may deny replacing an open SQLite file itself.
+                library.guard(&library.token).unwrap();
+                continue;
+            }
+            moved.unwrap();
             if name == "assets" {
                 fs::create_dir(&member).unwrap();
             } else {

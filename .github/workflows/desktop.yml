@@ -63,13 +63,13 @@ jobs:
           cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
           cargo test --manifest-path crates/leetcode-local/Cargo.toml --locked
           cargo test --manifest-path src-tauri/Cargo.toml --locked
-      - name: Check Windows credentials and upstream isolation
+      - name: Check Windows credentials and native commands
         if: runner.os == 'Windows'
         shell: bash
         run: |
           cargo clippy --manifest-path crates/leetcode-local/Cargo.toml --locked --all-targets -- -D warnings
           cargo test --manifest-path crates/leetcode-local/Cargo.toml --locked
-          cargo test --manifest-path src-tauri/Cargo.toml --locked upstream::tests
+          cargo test --manifest-path src-tauri/Cargo.toml --locked
       - name: Build installer
         run: npm run desktop:build -- --bundles ${{ matrix.bundles }}
       - name: Exercise MCP stdio without a graphical session
@@ -81,16 +81,13 @@ jobs:
           REPEATY_EXPECT_BUNDLED: '1'
           REPEATY_CAPTURE_NATIVE_SCREEN: '1'
         run: |
-          npm run build:server
-          cargo build --locked --manifest-path server/Cargo.toml
-          xvfb-run -a node scripts/test-desktop-native.mjs
-          GSETTINGS_BACKEND=memory GTK_USE_PORTAL=0 GIO_USE_VFS=local dbus-run-session --config-file=scripts/fixtures/minimal-desktop-session.conf -- xvfb-run -a node scripts/test-workspace-preview-native.mjs
-      - name: Upload workspace preview screenshots
+          GSETTINGS_BACKEND=memory GTK_USE_PORTAL=0 GIO_USE_VFS=local dbus-run-session --config-file=scripts/fixtures/minimal-desktop-session.conf -- xvfb-run -a node scripts/test-workspace-native.mjs
+      - name: Upload workspace screenshots
         if: always() && runner.os == 'Linux'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: workspace-preview-screenshots
-          path: test-results/workspace-preview-*.png
+          name: workspace-screenshots
+          path: test-results/workspace-active-*.png
           if-no-files-found: ignore
           retention-days: 14
       - name: Upload installer

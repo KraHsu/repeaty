@@ -1,5 +1,7 @@
 # M0 文件保存与恢复原型
 
+> 历史实验记录：以下内容描述 M0 独立目录，不是当前桌面存储。正式目录已由 [工作目录方案](WORKSPACE_MODE.md) 接管；不提供实验格式迁移。
+
 日期：2026-10-25。实现位于 [`crates/workspace-store`](../crates/workspace-store/README.md)，上层约定见 [内容格式与外部编辑](WORKSPACE_CONTENT_FORMAT.md#6-repeaty-内部编辑冲突与中断)。
 
 本批验证单个 Markdown 工作文件、独立内容对象与 SQLite 记录之间的保存。原型只能创建空的实验目录，或打开带专用标记及数据库身份的实验目录；没有接入 Tauri、服务端、现有学习库或迁移入口。

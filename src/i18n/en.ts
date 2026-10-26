@@ -1,5 +1,16 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  '文件中的笔记身份已被移除，请恢复后再接受修改。':
+    'The note identity was removed. Restore it before accepting changes.',
+  '文件身份与原笔记不同，请检查文件头。':
+    'The file identity differs from the original note. Check its frontmatter.',
+  '多个文件使用了同一个身份，请保留一份后重新扫描。':
+    'Multiple files share the same identity. Keep one and scan again.',
+  '文件路径重复，请改名后重新扫描。': 'File paths overlap. Rename the file and scan again.',
+  '磁盘上缺少文件，已接受的内容和学习记录仍保留。':
+    'The file is missing. Accepted content and study history are still kept.',
+  '文件格式或引用无效，请检查后重新扫描。':
+    'The file format or a reference is invalid. Check the file and scan again.',
   '文件数：{count}': 'Files: {count}',
   选择文件: 'Select a file',
   工作文件: 'Working file',

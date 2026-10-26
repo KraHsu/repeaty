@@ -77,6 +77,16 @@ function selectFile(path: string) {
   selected.value = path
   showAccepted.value = false
 }
+function reasonText(reason: string) {
+  const labels: Record<string, string> = {
+    'registered-identity-removed': '文件中的笔记身份已被移除，请恢复后再接受修改。',
+    'registered-identity-changed': '文件身份与原笔记不同，请检查文件头。',
+    'duplicate-id': '多个文件使用了同一个身份，请保留一份后重新扫描。',
+    'duplicate-path': '文件路径重复，请改名后重新扫描。',
+    'confirm-stable-deletion': '磁盘上缺少文件，已接受的内容和学习记录仍保留。',
+  }
+  return t(labels[reason] ?? '文件格式或引用无效，请检查后重新扫描。')
+}
 let alive = true
 async function run(action: () => Promise<unknown>) {
   if (locked.value) return
@@ -284,7 +294,7 @@ onUnmounted(() => {
             <Check :size="18" />{{ t('接受修改') }}
           </button>
         </div>
-        <p v-if="current?.reason" class="form-note">{{ current.reason }}</p>
+        <p v-if="current?.reason" class="form-note">{{ reasonText(current.reason) }}</p>
         <p
           v-if="current?.identity?.kind === 'source' && current.status !== 'unchanged'"
           class="form-note"

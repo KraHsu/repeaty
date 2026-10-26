@@ -82,8 +82,8 @@ jobs:
           node --test scripts/release.test.mjs
       - name: Check static edition
         run: npm run check
-      - name: Check Rust service and server edition
-        run: npm run check:server
+      - name: Check desktop record schema
+        run: node scripts/export-workspace-schema.mjs --check
       - name: Upload browser failure report
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

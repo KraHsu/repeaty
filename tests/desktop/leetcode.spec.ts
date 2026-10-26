@@ -217,9 +217,22 @@ test('international site, English, manual rating, and pending judge recovery do 
   await page.getByRole('button', { name: /^Hard/ }).click()
   await expect(page.getByRole('heading', { name: 'Review session finished' })).toBeVisible()
   expect(remote.submissions()).toBe(1)
-  expect(await page.evaluate(() => localStorage.getItem('repeaty.leetcode.site'))).toBe(
-    'leetcode.com',
-  )
+  expect(
+    await page.evaluate(async () => {
+      const invoke = (
+        window as unknown as {
+          __TAURI_INTERNALS__: {
+            invoke(command: string, args?: Record<string, unknown>): Promise<unknown>
+          }
+        }
+      ).__TAURI_INTERNALS__.invoke
+      const { active } = (await invoke('workspace_status')) as { active: { token: string } }
+      return invoke('workspace_read', {
+        token: active.token,
+        request: { type: 'value', namespace: 'settings', id: 'repeaty.leetcode.site' },
+      })
+    }),
+  ).toBe('leetcode.com')
 })
 
 test('an expired session during judging retains code and the official submission for credential renewal', async ({
@@ -630,7 +643,7 @@ test('failed history storage prevents submitting code and keeps the editor intac
   await expect(other.getByRole('dialog')).toHaveCount(0)
   await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
   await page.getByRole('button', { name: '提交到 LeetCode' }).click()
-  await expect(page.getByRole('alert')).toContainText('数据已在另一个标签页更新')
+  await expect(page.getByRole('alert')).toContainText('学习库内容已变化')
   expect(remote.submissions()).toBe(0)
   expect((await storedLibrary(page)).attempts).toHaveLength(0)
   await expect(page.getByLabel('代码', { exact: true })).toHaveValue(
@@ -649,14 +662,25 @@ test('pending official submissions recover from library records when the tempora
   await expect(page.locator('.leetcode-question > [role="alert"]')).toContainText(
     '无法连接 LeetCode',
   )
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve, reject) => {
-        const request = indexedDB.deleteDatabase('repeaty-leetcode-drafts')
-        request.onsuccess = () => resolve()
-        request.onerror = () => reject(request.error)
-      }),
-  )
+  await page.evaluate(async () => {
+    const invoke = (
+      window as unknown as {
+        __TAURI_INTERNALS__: {
+          invoke(command: string, args?: Record<string, unknown>): Promise<unknown>
+        }
+      }
+    ).__TAURI_INTERNALS__.invoke
+    const { active } = (await invoke('workspace_status')) as { active: { token: string } }
+    const { library } = (await invoke('workspace_read', {
+      token: active.token,
+      request: { type: 'load' },
+    })) as { library: { cards: { id: string }[] } }
+    for (const card of library.cards)
+      await invoke('workspace_write', {
+        token: active.token,
+        request: { type: 'value', namespace: 'leetcode', id: card.id, value: null },
+      })
+  })
   remote.allowChecks()
   await page.reload()
   await page.getByRole('button', { name: '开始复习', exact: true }).click()
@@ -687,14 +711,25 @@ test('revealing an answer remains recorded when the temporary draft is lost', as
           .answerSeen,
     )
     .toBe(true)
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve, reject) => {
-        const request = indexedDB.deleteDatabase('repeaty-leetcode-drafts')
-        request.onsuccess = () => resolve()
-        request.onerror = () => reject(request.error)
-      }),
-  )
+  await page.evaluate(async () => {
+    const invoke = (
+      window as unknown as {
+        __TAURI_INTERNALS__: {
+          invoke(command: string, args?: Record<string, unknown>): Promise<unknown>
+        }
+      }
+    ).__TAURI_INTERNALS__.invoke
+    const { active } = (await invoke('workspace_status')) as { active: { token: string } }
+    const { library } = (await invoke('workspace_read', {
+      token: active.token,
+      request: { type: 'load' },
+    })) as { library: { cards: { id: string }[] } }
+    for (const card of library.cards)
+      await invoke('workspace_write', {
+        token: active.token,
+        request: { type: 'value', namespace: 'leetcode', id: card.id, value: null },
+      })
+  })
   remote.allowChecks()
   await page.reload()
   await page.getByRole('button', { name: '开始复习', exact: true }).click()
@@ -704,7 +739,7 @@ test('revealing an answer remains recorded when the temporary draft is lost', as
   expect(remote.submissions()).toBe(1)
 })
 
-test('plugin switches persist across tabs without changing questions or progress', async ({
+test('plugin switches persist in the workspace without changing questions or progress', async ({
   page,
   context,
 }) => {
@@ -712,12 +747,8 @@ test('plugin switches persist across tabs without changing questions or progress
   await create(page)
   const before = await storedLibrary(page)
   await page.getByRole('button', { name: '插件', exact: true }).click()
-  const other = await context.newPage()
-  await other.goto('./')
-  await other.getByRole('button', { name: '插件', exact: true }).click()
-  await expect(other.getByRole('switch', { name: '启用 LeetCode' })).toBeChecked()
+  await expect(page.getByRole('switch', { name: '启用 LeetCode' })).toBeChecked()
   await page.getByRole('switch', { name: '启用 LeetCode' }).click()
-  await expect(other.getByRole('switch', { name: '启用 LeetCode' })).not.toBeChecked()
   await page.reload()
   await page.getByRole('button', { name: '插件', exact: true }).click()
   await expect(page.getByRole('switch', { name: '启用 LeetCode' })).not.toBeChecked()

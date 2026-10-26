@@ -966,7 +966,10 @@ async function restoreBackup() {
       <NotificationCenter />
 
       <WorkspaceBrowser
-        v-if="WorkspaceBrowser && (tab === 'workspace' || !workspaceAvailable)"
+        v-if="
+          WorkspaceBrowser &&
+          (tab === 'workspace' || (!workspaceAvailable && tab !== 'settings' && tab !== 'plugins'))
+        "
         :workspace="workspace"
       />
       <SettingsPage

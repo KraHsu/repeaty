@@ -1,8 +1,30 @@
 import { test as base, expect } from '@playwright/test'
+import { workspaceRuntime } from '../fixtures/workspace-runtime'
+import { mkdtemp, mkdir, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 export { storedLibrary } from '../fixtures/stored-library'
 export const test = base.extend<{ native: void; emptyWorkspace: void }>({
   native: [
     async ({ context }, use) => {
+      const root = await mkdtemp(join(tmpdir(), 'repeaty-browser-workspace-'))
+      const path = join(root, 'library')
+      await mkdir(path)
+      const runtime = workspaceRuntime(join(root, 'device'))
+      const status = await runtime.call<{ epoch: string }>('workspace_status')
+      await runtime.call('workspace_choose', { epoch: status.epoch, mode: 'create', path })
+      let choices = 0
+      await context.exposeBinding(
+        '__repeatyWorkspace',
+        async (_, command: string, args: Record<string, unknown> = {}) => {
+          if (command === 'workspace_choose') {
+            const path = join(root, 'chosen-' + ++choices)
+            await mkdir(path)
+            return runtime.call(command, { ...args, path })
+          }
+          return runtime.call(command, args)
+        },
+      )
       let configured: string[] = []
       await context.route('**/__native/leetcode', (route) => {
         const request = route.request().postDataJSON()
@@ -170,12 +192,31 @@ export const test = base.extend<{ native: void; emptyWorkspace: void }>({
                 exporting = undefined
                 return
               }
-              if (command === 'desktop_config')
-                return { endpoint: localStorage.getItem('test.endpoint') ?? '' }
-              if (command === 'set_endpoint') {
-                localStorage.setItem('test.endpoint', args.endpoint as string)
-                return
+              if (command === 'workspace_write') {
+                const request = args.request as {
+                  type: string
+                  input?: { consumeCardDraft?: string }
+                }
+                const flags = window as unknown as Record<string, boolean>
+                if (
+                  (flags.failDraftSave &&
+                    request.type === 'commit' &&
+                    request.input?.consumeCardDraft) ||
+                  (flags.failDraftAdd && request.type === 'draft-add') ||
+                  (flags.failDraftEdit && request.type === 'draft-update') ||
+                  (flags.failDraftDiscard && request.type === 'draft-remove')
+                )
+                  throw 'storage-error'
               }
+              if (command.startsWith('workspace_'))
+                return (
+                  window as unknown as {
+                    __repeatyWorkspace(
+                      command: string,
+                      args: Record<string, unknown>,
+                    ): Promise<unknown>
+                  }
+                ).__repeatyWorkspace(command, args)
               if (command === 'open_external') {
                 window.open(args.url as string, '_blank')
                 return
@@ -193,13 +234,17 @@ export const test = base.extend<{ native: void; emptyWorkspace: void }>({
                 if (!response.ok) throw value.error
                 return value
               }
-              if (command === 'upstream_request') throw 'request-failed'
               throw `Unexpected command: ${command}`
             },
           },
         })
       })
-      await use()
+      try {
+        await use()
+      } finally {
+        await runtime.close()
+        await rm(root, { recursive: true, force: true })
+      }
     },
     { auto: true },
   ],

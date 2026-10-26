@@ -3,7 +3,7 @@
   "version": "0.27.0",
   "private": true,
   "type": "module",
-  "description": "Flashcards and spaced repetition for the browser, desktop, and self-hosted accounts.",
+  "description": "Desktop flashcards and spaced repetition, with your learning library in one folder.",
   "engines": {
     "node": ">=24.15.0"
   },
@@ -22,14 +22,15 @@
     "check": "npm run format:check && npm run test && npm run test:e2e",
     "benchmark": "node scripts/benchmark.mjs",
     "build:server": "npm run typecheck && vite build --mode server",
-    "schema:server": "node scripts/export-server-schema.mjs",
+    "schema:server": "npm run schema:workspace",
     "test:e2e:server": "npm run build && npm run build:server && playwright test --config playwright.server.config.ts",
-    "check:server": "node scripts/export-server-schema.mjs --check && vitest run --mode server src/plugins/plugins.test.ts && cargo fmt --manifest-path server/Cargo.toml --check && cargo clippy --manifest-path server/Cargo.toml --locked --all-targets -- -D warnings && cargo test --manifest-path server/Cargo.toml --locked && npm run test:e2e:server",
+    "check:server": "node scripts/export-workspace-schema.mjs --check && vitest run --mode server src/plugins/plugins.test.ts && cargo fmt --manifest-path server/Cargo.toml --check && cargo clippy --manifest-path server/Cargo.toml --locked --all-targets -- -D warnings && cargo test --manifest-path server/Cargo.toml --locked && npm run test:e2e:server",
     "dev:desktop": "vite --mode desktop --host localhost --port 4178 --strictPort",
     "build:desktop": "npm run typecheck && vite build --mode desktop",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
-    "test:e2e:desktop": "npm run build:desktop && playwright test --config playwright.desktop.config.ts"
+    "test:e2e:desktop": "npm run build:desktop && cargo build --locked --manifest-path crates/workspace-store/Cargo.toml --example workspace-runtime && playwright test --config playwright.desktop.config.ts",
+    "schema:workspace": "node scripts/export-workspace-schema.mjs"
   },
   "dependencies": {
     "@lucide/vue": "1.31.0",

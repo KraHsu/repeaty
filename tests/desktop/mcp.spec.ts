@@ -85,14 +85,12 @@ test('desktop settings opt in to local read queries, revoke keys, and retain the
   expect(await storedLibrary(page)).toEqual(before)
 })
 
-test('an upstream workspace cannot enable MCP', async ({ page }) => {
-  await page.evaluate(() => localStorage.setItem('test.endpoint', 'http://127.0.0.1:8080'))
-  await page.reload()
+test('closing a workspace disables MCP until a directory is opened', async ({ page }) => {
+  await page.getByRole('button', { name: '工作目录', exact: true }).click()
+  await page.getByRole('button', { name: '关闭目录', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '打开文件夹，开始学习' })).toBeVisible()
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await expect(page.getByRole('button', { name: '开启 MCP' })).toBeDisabled()
-  await expect(page.getByRole('region', { name: 'MCP 连接' })).toContainText('仅支持本地学习库')
-  await expect(page.getByLabel('MCP 客户端', { exact: true })).toBeDisabled()
-  await expect(page.getByRole('button', { name: '显示连接配置' })).toBeDisabled()
 })
 
 test('client configurations can be copied before enabling MCP and reused after restart', async ({
