@@ -81,6 +81,8 @@ cargo test --manifest-path crates/workspace-store/Cargo.toml --locked
 
 本地 Linux：29 项测试通过。其中一个测试驱动 18 次独立子进程退出，覆盖编辑与草稿确认各 9 个检查点：正文对象、意图、预约、发布尝试、文件发布、发布记录、SQLite 提交前、提交后及完成记录。子进程直接退出，不依靠正常析构来回滚。
 
+后续 CI 在 macOS 发现重开偶发报已打开：并行生成的子进程可以继承锁的文件描述符，单纯关闭父进程描述符不足以立即解锁。现已增加持有继承描述符的确定性回归样例：修复前在 Linux 也能稳定复现；修复后在 SQLite 连接关闭后显式解锁，再关闭自身描述符，仍阻止同时打开第二个写入者。本地原型测试增至 30 项，跨平台结果按后续批次重新记录。
+
 同时覆盖：原 ID 与调度 JSON 保留、重复恢复、复制操作 ID、草稿重复确认、原生发布竞争、旧句柄迟到写入、新文件名冲突、损坏对象 / 日志、卡片约束失败、SQLite 基线变化，以及可检测的符号链接 / 硬链接输入。每次中断恢复后检查数据库完整性和变更记录数量。
 
 提交 `31dffc5` 的三平台原型 CI 均已通过，并上传测试日志：[Linux](https://github.com/KraHsu/repeaty/actions/runs/40207103311/job/121210418937)、[Windows](https://github.com/KraHsu/repeaty/actions/runs/40207103311/job/121210419025)、[macOS](https://github.com/KraHsu/repeaty/actions/runs/40207103311/job/121210419108)。Linux / macOS 为 29 项，Windows 为 27 项；差别来自仅在 Unix 运行的两项链接检查，三平台都执行了 18 个子进程中断场景。这是原语与最小协议的执行证据，不是三平台客户端 / 编辑器的正式目录验收。

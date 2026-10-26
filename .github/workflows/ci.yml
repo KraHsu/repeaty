@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]
   workflow_dispatch:
 
 permissions:
@@ -16,6 +17,7 @@ concurrency:
 
 jobs:
   workspace-persistence:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: Workspace persistence (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -48,6 +50,7 @@ jobs:
           retention-days: 14
 
   checks:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: Quality checks
     runs-on: ubuntu-24.04
     timeout-minutes: 30

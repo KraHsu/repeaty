@@ -1743,7 +1743,7 @@ try {
   await until(
     () =>
       execute(
-        "return document.querySelector('.source-reader h2')?.textContent==='Native source' && document.querySelector('.source-text')?.getAttribute('aria-busy')==='false'",
+        "return document.querySelector('.source-reader h2')?.textContent==='Native source' && document.querySelector('.source-text, .source-markdown-preview')?.getAttribute('aria-busy')==='false'",
       ),
     'native source returned after excerpt navigation',
   )

@@ -30,13 +30,24 @@ Windows / macOS 安装包尚未配置代码签名或公证。自动构建、MCP 
 发布一个新版本时，在同一分支更新：
 
 - `package.json` 与 `package-lock.json` 的根包版本。
-- `server/Cargo.toml`、`src-tauri/Cargo.toml`、`crates/leetcode-local/Cargo.toml`。
-- 对应三个 `Cargo.lock` 中的自身包版本，以及桌面锁文件中嵌入的本地插件版本。
+- `server/Cargo.toml`、`src-tauri/Cargo.toml`、`crates/leetcode-local/Cargo.toml`、`crates/workspace-store/Cargo.toml`。
+- 对应四个 `Cargo.lock` 中的自身包版本，以及桌面锁文件中嵌入的本地插件版本。
 - `src-tauri/tauri.conf.json`。
 
 运行 `node scripts/release.mjs check` 核对版本，再完成正常测试与 PR。合并后自动发布；已有公开 Release 的同版本提交只做正常检查和部署，不替换下载文件。需要发布后续修复时，增加版本号。
 
 带预发布标识的版本（如 `1.0.0-rc.1`）自动标记为 Pre-release，不替换 Latest。稳定的 `1.0.0` 还要求 [发布清单](RELEASE_1_0.md) 全部完成，脚本不会代为勾选或跳过验收。
+
+## 开发阶段的检查
+
+草稿 PR 保留分批提交，自动工作流跳过完整测试与安装包构建；完成一批本地验证后，再对该分支手动运行一次 CI / Desktop。转为待合并 PR 时，`ready_for_review` 事件运行全量检查；后续提交和 `main` 推送也运行全量检查。草稿身份本身禁止合并，不用工作流级路径过滤留下永远等待的必需检查。
+
+```bash
+gh workflow run ci.yml --ref <功能分支>
+gh workflow run desktop.yml --ref <功能分支>
+```
+
+使用 Actions 的手动运行验证草稿批次；合并门槛仍以待合并 PR 最新提交的自动检查为准。非 `main` 的手动验证不发布安装包或部署 Pages。已有同一批次验证运行时，等待结果，不另外启动重复运行。
 
 ## 失败与重试
 

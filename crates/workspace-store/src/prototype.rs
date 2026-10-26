@@ -91,7 +91,16 @@ impl Checkpoint {
 pub struct Prototype {
     root: PathBuf,
     conn: Connection,
-    _lock: File,
+    _lock: RootLock,
+}
+
+// Closing a descriptor alone does not release flock while a forked child still has a copy.
+// This field drops after the SQLite connection, explicitly releasing the shared lock first.
+struct RootLock(File);
+impl Drop for RootLock {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
 }
 
 impl Prototype {
@@ -768,7 +777,7 @@ fn need_attention(intent: &Intent, committed: bool, reason: &str) -> SaveOutcome
         reason: reason.into(),
     }
 }
-fn lock_root(root: &Path) -> Result<File> {
+fn lock_root(root: &Path) -> Result<RootLock> {
     let mut options = FileOptions::new();
     options.read(true).write(true).create(true).truncate(false);
     #[cfg(unix)]
@@ -780,6 +789,9 @@ fn lock_root(root: &Path) -> Result<File> {
     if !file.metadata()?.is_file() {
         return Err("invalid-lock-file".into());
     }
-    file.try_lock().map_err(|_| "prototype-already-open")?;
-    Ok(file)
+    match file.try_lock() {
+        Ok(()) => Ok(RootLock(file)),
+        Err(std::fs::TryLockError::WouldBlock) => Err("prototype-already-open".into()),
+        Err(std::fs::TryLockError::Error(error)) => Err(error.into()),
+    }
 }
