@@ -18,6 +18,10 @@ npm run desktop:build
 
 构建产物位于 `src-tauri/target/release/bundle/`。前端单独构建使用 `npm run build:desktop`；`dist-desktop/` 依赖原生接口，不能作为普通网页部署。
 
+## 工作目录预览（开发中）
+
+本分支新增的侧边栏「工作目录」提供独立预览：系统选择目录、最近重开、扫描 Markdown 和查看已接受正文。它尚未替代当前学习库，不执行旧库迁移。使用方法和验证边界见[桌面工作目录预览](WORKSPACE_DESKTOP_PREVIEW.md)。
+
 ## 使用上游服务
 
 打开右上角「设置 → 通用 → 桌面设置」，填写后端根地址，例如 `https://repeaty.example.com`，保存后登录或创建账户。本机开发服务允许 `http://127.0.0.1:8080`。地址不能包含 `/api`、路径、登录信息或查询参数。服务离线或尚未登录时，设置页仍可打开。

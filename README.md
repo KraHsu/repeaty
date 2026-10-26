@@ -5,6 +5,7 @@
 </picture>
 
 <p align="center">
+  <a href="https://github.com/KraHsu/repeaty/releases">下载客户端</a> ·
   <a href="https://www.krahsu.top/repeaty/">在线体验</a> ·
   <a href="docs/USAGE.md">使用指南</a> ·
   <a href="docs/SELF_HOSTING.md">自行部署</a> ·
@@ -16,7 +17,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-37634b" alt="MIT License" /></a>
 </p>
 
-Repeaty 是一个开源的网页记忆卡片工具。把想记住的内容做成卡片，按 FSRS 安排复习。
+Repeaty 是一个开源的记忆卡片工具。把想记住的内容做成卡片，按 FSRS 安排复习。
 
 可以直接在浏览器中使用，也可以安装桌面版，或部署带账户的 Rust + SQLite 服务。纯前端版与桌面本地模式无需注册，没有订阅或付费功能。
 
@@ -24,7 +25,7 @@ Repeaty 是一个开源的网页记忆卡片工具。把想记住的内容做成
 
 ## 开始使用
 
-打开 **[Repeaty 在线版](https://www.krahsu.top/repeaty/)**，点击「开始复习」即可。默认的入门卡组有 24 条笔记、27 张卡片，一边介绍 FSRS，一边带你试用评分、挖空、公式、图片和音频。支持 English / 中文（简体）。
+从 **[Releases](https://github.com/KraHsu/repeaty/releases)** 安装桌面客户端，或打开 **[在线版](https://www.krahsu.top/repeaty/)**。默认的入门卡组有 24 条笔记、27 张卡片，一边介绍 FSRS，一边带你试用评分、挖空、公式、图片和音频。支持 English / 中文（简体）。
 
 已有自己的材料？创建卡组并添加卡片，或从 Anki `.apkg`、CSV / TSV 导入。复习时先回答，再翻面，按实际表现选择「重来 / 困难 / 良好 / 简单」。
 
@@ -93,7 +94,7 @@ npm run desktop:build
 
 正在准备 v1.0.0。用户另行授权的 0.27.0 范围是内容渲染、内嵌 HTML、撤销与快捷键、弹窗和复习菜单；完成后继续冻结其他新功能，仅处理发布准备和修复。[发布清单](docs/RELEASE_1_0.md)
 
-[工作目录模式与旧库迁移方案](docs/WORKSPACE_MODE.md)已开始 [M0 原型验证](docs/WORKSPACE_M0.md)，包括 [Markdown 外部编辑格式](docs/WORKSPACE_CONTENT_FORMAT.md)与旧库只读清点。真实目录和迁移入口尚未接入，当前版本的存储与使用方式不变。
+[工作目录模式与旧库迁移](docs/WORKSPACE_MODE.md)以桌面客户端为主要体验入口。已实现 [M0 原型](docs/WORKSPACE_M0.md)和[桌面目录预览](docs/WORKSPACE_DESKTOP_PREVIEW.md)：系统选择目录、最近重开、检查外部 Markdown 与已接受版本。预览尚未替代当前学习库，旧库迁移入口未开放；网页与自托管端继续兼容。
 
 前端使用 Vue 3、TypeScript 和 Vite；后端使用 Rust、Axum 和 SQLite，调度使用 [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)。
 

@@ -89,6 +89,8 @@ cargo test --manifest-path crates/workspace-store/Cargo.toml --locked
 
 ## 尚未覆盖
 
+客户端现可通过[独立目录预览](WORKSPACE_DESKTOP_PREVIEW.md)读取本原型的工作文件与接受版本；这不是保存 API 或学习库仓库接入。
+
 - 内容接受批次已接通共享校验、变体退役 / 恢复、媒体包和 CardDraft 适配；完整评分 / 练习 / 检查点 / 阅读状态及正式工作目录 schema 仍待实现。
 - 实际 MCP 接收与确认界面、草稿 / 材料的工作文件、检查点恢复和旧库迁移。
 - 任意嵌套 / Unicode 路径、长期文件监听、权限变化、对抗目录替换的句柄相对访问与完整冲突解决。

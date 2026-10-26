@@ -1,6 +1,6 @@
 # M0 内容与原生存储对接
 
-这是 [M0](WORKSPACE_M0.md) 的第三批实现，基于[文件保存与恢复协议](WORKSPACE_PERSISTENCE.md)。运行范围仍是临时实验目录，没有接入客户端，也不执行真实学习库迁移。
+这是 [M0](WORKSPACE_M0.md) 的第三批实现，基于[文件保存与恢复协议](WORKSPACE_PERSISTENCE.md)。运行范围仍是独立实验目录，保存流程没有接入客户端制卡 / 复习仓库，也不执行真实学习库迁移。后续已新增[桌面只读预览入口](WORKSPACE_DESKTOP_PREVIEW.md)，可以查看原型文件与已接受正文。
 
 ## 一份校验结果进入保存协议
 
@@ -78,4 +78,4 @@ npm run test:workspace:native
 
 同一提交的 [Desktop](https://github.com/KraHsu/repeaty/actions/runs/40275269868) 通过三平台安装包和无图形会话 MCP stdio；Linux 另通过 55 项桌面浏览器测试及真实 WebKit / Rust IPC 测试。Windows / macOS 的 GUI 与实际安装仍需人工验收。
 
-实验根目录现为标记版本 2、SQLite `user_version = 1002`，继续使用 RPM0 身份和 `state.prototype.sqlite3`。旧实验根目录明确拒绝，不自动升级。产品版本仍为 0.27.0；正式 `workspace.json` / RPTY 格式、实际目录入口、可编辑 Source / Draft、完整业务状态与旧库迁移仍待后续实现。
+实验根目录现为标记版本 2、SQLite `user_version = 1002`，继续使用 RPM0 身份和 `state.prototype.sqlite3`。旧实验根目录明确拒绝，不自动升级。产品版本仍为 0.27.0；正式 `workspace.json` / RPTY 格式、客户端学习库仓库、可编辑 Source / Draft、完整业务状态与旧库迁移仍待后续实现。

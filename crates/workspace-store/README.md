@@ -1,6 +1,6 @@
 # Workspace persistence prototype
 
-M0 experiment for [Repeaty's workspace plan](../../docs/WORKSPACE_M0.md). This crate is not connected to the client, server, or existing libraries. Tests use disposable directories and synthetic data.
+M0 experiment for [Repeaty's workspace plan](../../docs/WORKSPACE_M0.md). Its save protocol is not connected to active client libraries or the server. The desktop can inspect explicit experimental roots through a separate preview. Tests use disposable directories and synthetic data.
 
 ```sh
 cargo test --locked --manifest-path crates/workspace-store/Cargo.toml
@@ -44,3 +44,9 @@ npm run test:workspace:native
 The example is a headless fixture driver, not a network endpoint or a Tauri command. Tests include real CardDraft-shaped image/audio data, cloze retirement/restoration, independent media files, tampered inputs and 11 process-exit boundaries through a media-backed confirmation. Ordinary `npm test` stays usable without Rust.
 
 Experiment roots now use marker version 2 and database version 1002. Earlier experiment roots are rejected, never upgraded. Product version remains 0.27.0. These experiments still do not implement the final workspace manifest/schema, application directory entry points, live MCP confirmation, arbitrary paths, editor integration or durable conflict resolution.
+
+## Desktop preview sessions
+
+The desktop [directory preview](../../docs/WORKSPACE_DESKTOP_PREVIEW.md) uses `preview::Sessions` to create, open, close, and remember explicit experimental roots. Native pickers grant new paths; recent paths must match their recorded workspace identity. Epochs reject stale picker results before opening, and closing revokes read tokens. A device-level identity lock also excludes simultaneous sessions on copied roots.
+
+Directory IO is lazy and runs outside the UI thread. Scans read through held directory capabilities, reject unsupported files, and return bounded raw text and accepted projections. Incomplete enumeration never establishes deletion. This does not accept edits, execute recovery, move the current study library, or implement the final workspace format. The TypeScript inspector runs in a Worker; the Vue file list is paged separately from ordinary study operations.
