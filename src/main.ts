@@ -5,7 +5,8 @@ import { initI18n } from './i18n'
 import 'katex/dist/katex.min.css'
 import './style.css'
 
+const initializing = initializePlatform()
 initI18n()
-await initializePlatform()
 
 createApp(App).mount('#app')
+void initializing.catch(() => {})

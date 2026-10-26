@@ -1,33 +1,31 @@
-import { defineAsyncComponent, ref } from 'vue'
-import { createRepository } from '../core/storage'
-import { createServerRepository } from '../backend/repository'
-import { setApiTransport } from '../backend/client'
-import { remoteWorkspace } from '../edition'
-import { getConfig, upstreamTransport, handleExternalLinks } from '../desktop/native'
-export const desktopEndpoint = ref('')
+import { restorePreferences } from '../preferences'
+import { restorePluginPreferences } from '../plugins'
+import { defineAsyncComponent } from 'vue'
+import type { Component } from 'vue'
+import { createNativeRepository } from '../desktop/repository'
+import {
+  currentWorkspace,
+  initializeWorkspaces,
+  installWorkspaceStores,
+} from '../desktop/workspaces'
+import { handleExternalLinks } from '../desktop/native'
+export const AccountControls: Component | undefined = undefined
+export const ServerConnection: Component | undefined = undefined
 export const DraftWorkbench = defineAsyncComponent(() => import('../desktop/DraftWorkbench.vue'))
 export const WorkspaceBrowser = defineAsyncComponent(
-  () => import('../desktop/WorkspacePreview.vue'),
-)
-export const AccountControls = defineAsyncComponent(
-  () => import('../components/AccountControls.vue'),
+  () => import('../desktop/WorkspaceManager.vue'),
 )
 export const PlatformSettings = defineAsyncComponent(() => import('../desktop/DesktopSettings.vue'))
-export const ServerConnection = defineAsyncComponent(
-  () => import('../components/ServerConnection.vue'),
-)
+export { workspaceAvailable } from '../desktop/workspaces'
 export async function initializePlatform() {
-  const config = await getConfig()
-  desktopEndpoint.value = config.endpoint
-  remoteWorkspace.value = Boolean(config.endpoint)
-  setApiTransport(upstreamTransport)
+  installWorkspaceStores()
   handleExternalLinks()
+  await initializeWorkspaces()
+  restorePreferences()
+  restorePluginPreferences()
 }
-export async function createWorkspaceRepository(onBlocked: () => void) {
-  return remoteWorkspace.value
-    ? createServerRepository(desktopEndpoint.value)
-    : createRepository('repeaty', onBlocked, { compactHistory: true })
+export async function createWorkspaceRepository(_onBlocked: () => void) {
+  return createNativeRepository(await currentWorkspace())
 }
-
 export { createExportFile } from '../desktop/exports'
 export { connectLearningReader } from '../desktop/mcp'

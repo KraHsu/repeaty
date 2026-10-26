@@ -1,3 +1,4 @@
+import { readSetting, writeSetting } from '../../settings-store'
 import { z } from 'zod'
 import type { Grade } from '../../core/model'
 
@@ -196,14 +197,14 @@ export function automaticGrade(
 
 export function defaultSite(): LeetCodeSite {
   try {
-    return siteSchema.parse(localStorage.getItem('repeaty.leetcode.site') ?? 'leetcode.cn')
+    return siteSchema.parse(readSetting('repeaty.leetcode.site') ?? 'leetcode.cn')
   } catch {
     return 'leetcode.cn'
   }
 }
 export function rememberSite(site: LeetCodeSite) {
   try {
-    localStorage.setItem('repeaty.leetcode.site', site)
+    writeSetting('repeaty.leetcode.site', site)
   } catch {
     /* Preference is optional. */
   }

@@ -27,7 +27,7 @@ try {
     })
   }
   const source = await format(JSON.stringify(schemas), { parser: 'json', printWidth: 100 })
-  const path = 'server/schema/entities.json'
+  const path = 'crates/workspace-store/schema/entities.json'
   if (process.argv.includes('--check')) {
     if ((await readFile(path, 'utf8')) !== source)
       throw new Error('Run npm run schema:server and commit the updated server schema.')

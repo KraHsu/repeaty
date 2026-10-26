@@ -6,13 +6,16 @@ license = "MIT"
 publish = false
 
 [dependencies]
-rusqlite = { version = "0.40.2", features = ["bundled"] }
+rusqlite = { version = "0.40.2", features = ["bundled", "functions"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["float_roundtrip"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+jsonschema = { version = "0.37", default-features = false }
 sha2 = "0.10"
 uuid = { version = "1", features = ["v4"] }
 cap-std = "4.0.3"
 same-file = "1"
+base64 = "0.22"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

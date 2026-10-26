@@ -119,8 +119,12 @@ export const noteSchema = z
     plugin: pluginDataSchema.optional(),
     excerpt: excerptSchema.optional(),
     format: z.enum(['plain', 'markdown']).default('plain'),
-    front: z.string().trim().min(1).max(10_000),
-    back: z.string().trim().max(10_000),
+    front: z
+      .string()
+      .min(1)
+      .max(10_000)
+      .refine((value) => value.trim().length > 0),
+    back: z.string().max(10_000),
     tags,
     frontMedia: z.array(id).max(8),
     backMedia: z.array(id).max(8),

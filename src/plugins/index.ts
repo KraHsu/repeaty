@@ -1,3 +1,4 @@
+import { readSetting, writeSetting } from '../settings-store'
 import { computed, defineAsyncComponent, ref } from 'vue'
 import installations from '@repeaty-plugins'
 import { desktopEdition } from '../edition'
@@ -42,7 +43,7 @@ export function pluginAvailable(id: string) {
 export const pluginPreferenceError = ref('')
 export function restorePluginPreferences() {
   try {
-    const value = JSON.parse(localStorage.getItem(PLUGIN_PREFERENCES_KEY) ?? '{}')
+    const value = JSON.parse(readSetting(PLUGIN_PREFERENCES_KEY) ?? '{}')
     preferences.value = Object.fromEntries(
       installedPlugins.flatMap(({ plugin }) =>
         value &&
@@ -72,7 +73,9 @@ export function setPluginEnabled(id: string, enabled: boolean) {
   preferences.value = { ...preferences.value, [id]: enabled }
   pluginPreferenceError.value = ''
   try {
-    localStorage.setItem(PLUGIN_PREFERENCES_KEY, JSON.stringify(preferences.value))
+    writeSetting(PLUGIN_PREFERENCES_KEY, JSON.stringify(preferences.value), () => {
+      pluginPreferenceError.value = '插件开关已生效，但未能保存；下次打开时可能恢复默认设置。'
+    })
   } catch {
     pluginPreferenceError.value = '插件开关已生效，但未能保存；下次打开时可能恢复默认设置。'
   }

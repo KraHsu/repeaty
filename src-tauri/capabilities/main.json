@@ -2,7 +2,9 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
   "description": "Only the bundled main window may use Repeaty's native commands.",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "allow-mcp-attach",
     "allow-mcp-workspace",
@@ -13,20 +15,18 @@
     "allow-mcp-configuration",
     "allow-mcp-client-configuration",
     "core:default",
-    "allow-desktop-config",
-    "allow-set-endpoint",
-    "allow-upstream-request",
     "allow-local-plugin",
-    "allow-workspace-preview-status",
-    "allow-workspace-preview-choose",
-    "allow-workspace-preview-recent",
-    "allow-workspace-preview-close",
-    "allow-workspace-preview-restore",
-    "allow-workspace-preview-scan",
+    "allow-workspace-status",
+    "allow-workspace-choose",
+    "allow-workspace-recent",
+    "allow-workspace-close",
+    "allow-workspace-restore",
     "allow-open-external",
     "allow-export-begin",
     "allow-export-write",
     "allow-export-finish",
-    "allow-export-cancel"
+    "allow-export-cancel",
+    "allow-workspace-read",
+    "allow-workspace-write"
   ]
 }

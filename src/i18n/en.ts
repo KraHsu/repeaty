@@ -1,5 +1,8 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  '文件数：{count}': 'Files: {count}',
+  选择文件: 'Select a file',
+  工作文件: 'Working file',
   '操作涉及的内容已变化，无法撤销。请刷新后检查学习库。':
     'The affected content has changed. Refresh and check your library before continuing.',
   '撤销所需的媒体已不存在，请从快照恢复。':
@@ -1393,4 +1396,42 @@ export const en = {
   文件分页: 'File pages',
   '最近记录已变化。请通过“打开目录”重新选择。':
     'Recent folders changed. Use “Open folder” to choose it again.',
+  '请先创建或打开工作目录。': 'Create or open a workspace first.',
+  '请选择空文件夹。已有文件不会被覆盖。': 'Choose an empty folder. Existing files will be kept.',
+  '不支持这个工作目录格式。': 'This workspace format is not supported.',
+  '这个学习库已在另一窗口中打开。': 'This workspace is already open in another window.',
+  '找不到工作目录或必要文件。': 'The workspace or a required file could not be found.',
+  '工作目录已被移动或替换，请重新打开。': 'The workspace was moved or replaced. Open it again.',
+  '学习库已切换，请重新打开当前内容。': 'The workspace changed. Open this item again.',
+  '文件已在外部修改，请先在工作目录页面检查并接受修改。':
+    'This file was edited externally. Review and accept the change in Workspace first.',
+  '学习库内容已变化，请重新载入。': 'The workspace changed. Reload it before continuing.',
+  '无法访问工作目录，请检查文件夹权限。':
+    'Cannot access the workspace. Check the folder permissions.',
+  '目录中包含链接或不支持的文件，操作已停止。':
+    'The workspace contains a link or an unsupported file. The operation was stopped.',
+  '本次文件检查超过范围，请减少文件数量或大小。': 'This scan exceeds the file count or size limit.',
+  '内容无效，修改未保存。': 'The content is invalid. Changes were not saved.',
+  '内容已不存在，请重新载入。': 'This item no longer exists. Reload the workspace.',
+  '无法读写工作目录，请检查磁盘空间和文件权限。':
+    'Cannot read or write the workspace. Check free space and folder permissions.',
+  '卡片、材料、附件和学习进度保存在同一个文件夹中。':
+    'Cards, sources, attachments and study progress live in one folder.',
+  创建学习库: 'Create workspace',
+  当前学习库: 'Current workspace',
+  '打开文件夹，开始学习': 'Open a folder to start learning',
+  '首次使用请选择空文件夹创建学习库，入门卡组会自动添加。':
+    'Choose an empty folder to create a workspace. A starter deck will be added.',
+  '已有学习库请选择包含 workspace.json 的文件夹。':
+    'To open an existing workspace, choose the folder containing workspace.json.',
+  '部分正文文件需要检查。已保存的学习进度仍保留在当前目录。':
+    'Some content files need attention. Your saved study progress remains in this workspace.',
+  '卡片方向或挖空编号已变化，请在应用内编辑确认。':
+    'Card directions or cloze numbers changed. Edit the note in the app to confirm these changes.',
+  '材料快照的外部修改暂不自动接受，原有摘录与出处保持不变。':
+    'External changes to source snapshots are not accepted automatically. Existing excerpts and references are preserved.',
+  接受修改: 'Accept changes',
+  '在侧边栏“工作目录”中创建、打开或关闭学习库。':
+    'Use Workspace in the sidebar to create, open or close a workspace.',
+  保存在工作目录中: 'Saved in your workspace folder',
 } as const

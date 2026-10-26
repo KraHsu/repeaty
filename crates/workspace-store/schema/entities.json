@@ -1,0 +1,630 @@
+{
+  "sources": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "id": { "type": "string", "minLength": 1, "maxLength": 100 },
+      "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+      "url": {
+        "default": "",
+        "type": "string",
+        "maxLength": 2048,
+        "pattern": "^(?:https?:\\/\\/[^\\s]+)?$"
+      },
+      "format": { "type": "string", "enum": ["plain", "markdown"] },
+      "mediaId": { "type": "string", "minLength": 1, "maxLength": 100 },
+      "characters": { "type": "integer", "minimum": 1, "maximum": 250000 },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+      },
+      "reading": {
+        "type": "object",
+        "properties": {
+          "offset": { "type": "integer", "minimum": 0, "maximum": 250000 },
+          "fraction": { "type": "number", "minimum": 0, "maximum": 1 },
+          "view": { "type": "string", "enum": ["source", "preview"] },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          }
+        },
+        "required": ["offset", "fraction", "view", "updatedAt"],
+        "additionalProperties": false
+      },
+      "queue": {
+        "type": "object",
+        "properties": {
+          "state": { "type": "string", "enum": ["active", "archived"] },
+          "availableOn": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          }
+        },
+        "required": ["state", "availableOn"],
+        "additionalProperties": false
+      },
+      "priority": { "type": "string", "enum": ["high", "normal", "low"] },
+      "readingIntervalDays": { "type": "number", "enum": [1, 3, 7, 14, 30] },
+      "adaptiveReading": {
+        "type": "object",
+        "properties": {
+          "intervalDays": { "type": "integer", "minimum": 1, "maximum": 365 },
+          "factor": { "type": "number", "minimum": 1.3, "maximum": 3 },
+          "lastReadOn": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "readCount": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+          "feedback": { "type": "string", "enum": ["again", "good", "easy"] }
+        },
+        "required": ["intervalDays", "factor", "lastReadOn", "readCount", "feedback"],
+        "additionalProperties": false
+      },
+      "kind": { "type": "string", "const": "excerpt" },
+      "origin": {
+        "type": "object",
+        "properties": {
+          "sourceId": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "start": { "type": "integer", "minimum": 0, "maximum": 250000 },
+          "end": { "type": "integer", "exclusiveMinimum": 0, "maximum": 250000 }
+        },
+        "required": ["sourceId", "start", "end"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["id", "title", "url", "format", "mediaId", "characters", "createdAt"],
+    "additionalProperties": false
+  },
+  "decks": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "id": { "type": "string", "minLength": 1, "maxLength": 150 },
+      "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+      "description": { "type": "string", "maxLength": 300 },
+      "color": { "type": "string", "enum": ["sage", "sand", "lavender", "blue", "rose"] },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+      },
+      "newLimit": { "default": 20, "type": "integer", "minimum": 0, "maximum": 9999 },
+      "reviewLimit": { "default": 200, "type": "integer", "minimum": 0, "maximum": 9999 },
+      "burySiblings": { "default": true, "type": "boolean" },
+      "leechThreshold": { "default": 8, "type": "integer", "minimum": 0, "maximum": 100 },
+      "desiredRetention": { "default": 0.9, "type": "number", "minimum": 0.7, "maximum": 0.97 }
+    },
+    "required": [
+      "id",
+      "name",
+      "description",
+      "color",
+      "createdAt",
+      "newLimit",
+      "reviewLimit",
+      "burySiblings",
+      "leechThreshold",
+      "desiredRetention"
+    ],
+    "additionalProperties": false
+  },
+  "notes": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "id": { "type": "string", "minLength": 1, "maxLength": 150 },
+      "deckId": { "type": "string", "minLength": 1, "maxLength": 150 },
+      "type": { "type": "string", "enum": ["basic", "reversed", "cloze", "plugin"] },
+      "plugin": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$" },
+          "version": { "type": "integer", "exclusiveMinimum": 0, "maximum": 1000 },
+          "data": {
+            "type": "object",
+            "propertyNames": { "type": "string", "maxLength": 100 },
+            "additionalProperties": { "$ref": "#/$defs/__schema0" }
+          }
+        },
+        "required": ["id", "version", "data"],
+        "additionalProperties": false
+      },
+      "excerpt": {
+        "type": "object",
+        "properties": {
+          "sourceId": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "start": { "type": "integer", "minimum": 0, "maximum": 250000 },
+          "end": { "type": "integer", "exclusiveMinimum": 0, "maximum": 250000 },
+          "quote": { "type": "string", "minLength": 1, "maxLength": 10000 }
+        },
+        "required": ["sourceId", "start", "end", "quote"],
+        "additionalProperties": false
+      },
+      "format": { "default": "plain", "type": "string", "enum": ["plain", "markdown"] },
+      "front": { "type": "string", "minLength": 1, "maxLength": 10000 },
+      "back": { "type": "string", "maxLength": 10000 },
+      "tags": {
+        "maxItems": 20,
+        "type": "array",
+        "items": { "type": "string", "minLength": 1, "maxLength": 40 }
+      },
+      "frontMedia": {
+        "maxItems": 8,
+        "type": "array",
+        "items": { "type": "string", "minLength": 1, "maxLength": 150 }
+      },
+      "backMedia": {
+        "maxItems": 8,
+        "type": "array",
+        "items": { "type": "string", "minLength": 1, "maxLength": 150 }
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+      }
+    },
+    "required": [
+      "id",
+      "deckId",
+      "type",
+      "format",
+      "front",
+      "back",
+      "tags",
+      "frontMedia",
+      "backMedia",
+      "createdAt",
+      "updatedAt"
+    ],
+    "additionalProperties": false,
+    "$defs": {
+      "__schema0": {
+        "anyOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "boolean" },
+          { "type": "null" },
+          { "type": "array", "items": { "$ref": "#/$defs/__schema0" } },
+          {
+            "type": "object",
+            "propertyNames": { "type": "string" },
+            "additionalProperties": { "$ref": "#/$defs/__schema0" }
+          }
+        ]
+      }
+    }
+  },
+  "cards": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "id": { "type": "string", "minLength": 1, "maxLength": 150 },
+      "noteId": { "type": "string", "minLength": 1, "maxLength": 150 },
+      "variant": { "type": "string", "pattern": "^(forward|reverse|cloze:[1-9]\\d?)$" },
+      "schedule": {
+        "type": "object",
+        "properties": {
+          "due": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "stability": { "type": "number", "minimum": 0 },
+          "difficulty": { "type": "number", "minimum": 0, "maximum": 10 },
+          "elapsed_days": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+          "scheduled_days": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+          "learning_steps": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+          "reps": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+          "lapses": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+          "state": {
+            "anyOf": [
+              { "type": "number", "const": 0 },
+              { "type": "number", "const": 1 },
+              { "type": "number", "const": 2 },
+              { "type": "number", "const": 3 }
+            ]
+          },
+          "last_review": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          }
+        },
+        "required": [
+          "due",
+          "stability",
+          "difficulty",
+          "elapsed_days",
+          "scheduled_days",
+          "learning_steps",
+          "reps",
+          "lapses",
+          "state"
+        ],
+        "additionalProperties": false
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+      },
+      "suspended": { "type": "boolean" },
+      "leech": { "default": false, "type": "boolean" },
+      "autoBurial": {
+        "type": "object",
+        "properties": {
+          "day": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+          "reviewId": { "type": "string", "minLength": 1, "maxLength": 150 }
+        },
+        "required": ["day", "reviewId"],
+        "additionalProperties": false
+      },
+      "buriedOn": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+    },
+    "required": [
+      "id",
+      "noteId",
+      "variant",
+      "schedule",
+      "createdAt",
+      "updatedAt",
+      "suspended",
+      "leech"
+    ],
+    "additionalProperties": false
+  },
+  "reviews": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "id": { "type": "string", "minLength": 1, "maxLength": 150 },
+      "cardId": { "type": "string", "minLength": 1, "maxLength": 150 },
+      "rating": {
+        "anyOf": [
+          { "type": "number", "const": 1 },
+          { "type": "number", "const": 2 },
+          { "type": "number", "const": 3 },
+          { "type": "number", "const": 4 }
+        ]
+      },
+      "reviewedAt": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+      },
+      "nextDue": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+      },
+      "studyDay": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+      "kind": { "type": "string", "enum": ["new", "review", "learning", "legacy"] },
+      "source": { "default": "normal", "type": "string", "enum": ["normal", "filtered"] },
+      "assessment": {
+        "type": "object",
+        "properties": {
+          "pluginId": { "type": "string", "maxLength": 64 },
+          "mode": { "type": "string", "enum": ["manual", "automatic"] },
+          "attempts": { "type": "integer", "minimum": 0, "maximum": 10000 },
+          "elapsedMs": { "type": "number", "minimum": 0, "maximum": 31536000000 },
+          "outcome": { "type": "string", "enum": ["accepted", "rejected", "unanswered"] },
+          "submissionId": { "type": "string", "pattern": "^\\d{1,30}$" },
+          "suggestedGrade": {
+            "anyOf": [
+              { "type": "number", "const": 1 },
+              { "type": "number", "const": 2 },
+              { "type": "number", "const": 3 },
+              { "type": "number", "const": 4 }
+            ]
+          },
+          "answerSeen": { "type": "boolean" },
+          "ruleVersion": { "type": "integer", "minimum": 1, "maximum": 1000 }
+        },
+        "required": ["pluginId", "mode", "attempts", "elapsedMs", "outcome"],
+        "additionalProperties": false
+      },
+      "practiceId": { "type": "string", "minLength": 1, "maxLength": 150 },
+      "effects": {
+        "type": "object",
+        "properties": {
+          "siblings": {
+            "maxItems": 99,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "cardId": { "type": "string", "minLength": 1, "maxLength": 150 },
+                "previous": {
+                  "type": "object",
+                  "properties": {
+                    "day": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+                    "reviewId": { "type": "string", "minLength": 1, "maxLength": 150 }
+                  },
+                  "required": ["day", "reviewId"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["cardId"],
+              "additionalProperties": false
+            }
+          },
+          "markedLeech": { "type": "boolean" }
+        },
+        "required": ["siblings", "markedLeech"],
+        "additionalProperties": false
+      },
+      "previous": {
+        "type": "object",
+        "properties": {
+          "schedule": {
+            "type": "object",
+            "properties": {
+              "due": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "stability": { "type": "number", "minimum": 0 },
+              "difficulty": { "type": "number", "minimum": 0, "maximum": 10 },
+              "elapsed_days": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+              "scheduled_days": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+              "learning_steps": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+              "reps": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+              "lapses": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+              "state": {
+                "anyOf": [
+                  { "type": "number", "const": 0 },
+                  { "type": "number", "const": 1 },
+                  { "type": "number", "const": 2 },
+                  { "type": "number", "const": 3 }
+                ]
+              },
+              "last_review": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              }
+            },
+            "required": [
+              "due",
+              "stability",
+              "difficulty",
+              "elapsed_days",
+              "scheduled_days",
+              "learning_steps",
+              "reps",
+              "lapses",
+              "state"
+            ],
+            "additionalProperties": false
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          }
+        },
+        "required": ["schedule", "updatedAt"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["id", "cardId", "rating", "reviewedAt", "nextDue", "studyDay", "kind", "source"],
+    "additionalProperties": false
+  },
+  "media": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "id": { "type": "string", "minLength": 1, "maxLength": 150 },
+      "name": { "type": "string", "minLength": 1, "maxLength": 255 },
+      "type": {
+        "type": "string",
+        "enum": [
+          "image/png",
+          "image/jpeg",
+          "image/webp",
+          "image/gif",
+          "audio/mpeg",
+          "audio/wav",
+          "audio/x-wav",
+          "audio/ogg",
+          "audio/mp4",
+          "audio/webm",
+          "audio/flac",
+          "audio/aac",
+          "text/plain",
+          "text/markdown"
+        ]
+      },
+      "size": { "type": "integer", "exclusiveMinimum": 0, "maximum": 10485760 },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+      }
+    },
+    "required": ["id", "name", "type", "size", "createdAt"],
+    "additionalProperties": false
+  },
+  "savedSearches": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "id": { "type": "string", "minLength": 1, "maxLength": 150 },
+      "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+      "query": { "type": "string", "maxLength": 1000 },
+      "deckId": { "type": "string", "maxLength": 150 },
+      "state": {
+        "type": "string",
+        "enum": ["all", "新卡片", "待复习", "学习中", "复习中", "已暂停", "今日暂缓", "顽固卡"]
+      }
+    },
+    "required": ["id", "name", "query", "deckId", "state"],
+    "additionalProperties": false
+  },
+  "practices": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "id": { "type": "string", "minLength": 1, "maxLength": 100 },
+      "cardId": { "type": "string", "minLength": 1, "maxLength": 150 },
+      "contentRevision": { "type": "string", "minLength": 1, "maxLength": 100 },
+      "question": {
+        "type": "object",
+        "properties": {
+          "front": { "type": "string", "maxLength": 10000 },
+          "back": { "type": "string", "maxLength": 10000 },
+          "format": { "type": "string", "enum": ["plain", "markdown"] },
+          "plugin": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$" },
+              "version": { "type": "integer", "exclusiveMinimum": 0, "maximum": 1000 },
+              "data": {
+                "type": "object",
+                "propertyNames": { "type": "string", "maxLength": 100 },
+                "additionalProperties": { "$ref": "#/$defs/__schema0" }
+              }
+            },
+            "required": ["id", "version", "data"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["front", "back", "format", "plugin"],
+        "additionalProperties": false
+      },
+      "startedAt": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+      },
+      "answerSeen": { "type": "boolean" },
+      "completedAt": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+      },
+      "completion": { "type": "string", "enum": ["review", "practice"] },
+      "assessment": {
+        "type": "object",
+        "properties": {
+          "pluginId": { "type": "string", "maxLength": 64 },
+          "mode": { "type": "string", "enum": ["manual", "automatic"] },
+          "attempts": { "type": "integer", "minimum": 0, "maximum": 10000 },
+          "elapsedMs": { "type": "number", "minimum": 0, "maximum": 31536000000 },
+          "outcome": { "type": "string", "enum": ["accepted", "rejected", "unanswered"] },
+          "submissionId": { "type": "string", "pattern": "^\\d{1,30}$" },
+          "suggestedGrade": {
+            "anyOf": [
+              { "type": "number", "const": 1 },
+              { "type": "number", "const": 2 },
+              { "type": "number", "const": 3 },
+              { "type": "number", "const": 4 }
+            ]
+          },
+          "answerSeen": { "type": "boolean" },
+          "ruleVersion": { "type": "integer", "minimum": 1, "maximum": 1000 }
+        },
+        "required": ["pluginId", "mode", "attempts", "elapsedMs", "outcome"],
+        "additionalProperties": false
+      },
+      "rating": {
+        "anyOf": [
+          { "type": "number", "const": 1 },
+          { "type": "number", "const": 2 },
+          { "type": "number", "const": 3 },
+          { "type": "number", "const": 4 }
+        ]
+      },
+      "reviewId": { "type": "string", "minLength": 1, "maxLength": 100 },
+      "ratingUndoneAt": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+      }
+    },
+    "required": ["id", "cardId", "contentRevision", "question", "startedAt"],
+    "additionalProperties": false,
+    "$defs": {
+      "__schema0": {
+        "anyOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "boolean" },
+          { "type": "null" },
+          { "type": "array", "items": { "$ref": "#/$defs/__schema0" } },
+          {
+            "type": "object",
+            "propertyNames": { "type": "string" },
+            "additionalProperties": { "$ref": "#/$defs/__schema0" }
+          }
+        ]
+      }
+    }
+  },
+  "attempts": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "id": { "type": "string", "minLength": 1, "maxLength": 100 },
+      "practiceId": { "type": "string", "minLength": 1, "maxLength": 100 },
+      "submittedAt": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+      },
+      "language": { "type": "string", "pattern": "^[a-z0-9-]{1,40}$" },
+      "code": { "type": "string", "maxLength": 50000 },
+      "elapsedMs": { "type": "number", "minimum": 0, "maximum": 31536000000 },
+      "status": {
+        "type": "string",
+        "enum": ["submitting", "pending", "completed", "unknown", "failed"]
+      },
+      "submissionId": { "type": "string", "pattern": "^\\d{1,30}$" },
+      "result": {
+        "type": "object",
+        "properties": {
+          "outcome": { "type": "string", "enum": ["accepted", "rejected"] },
+          "status": { "type": "string", "maxLength": 200 },
+          "runtime": { "type": "string", "maxLength": 200 },
+          "memory": { "type": "string", "maxLength": 200 },
+          "detail": { "type": "string", "maxLength": 10000 }
+        },
+        "required": ["outcome", "status", "runtime", "memory", "detail"],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "id",
+      "practiceId",
+      "submittedAt",
+      "updatedAt",
+      "language",
+      "code",
+      "elapsedMs",
+      "status"
+    ],
+    "additionalProperties": false
+  }
+}

@@ -53,7 +53,7 @@ export function inspectPreview(scan: PreviewScan) {
     const parsed = readWorkspaceMarkdown(file.raw)
     if (
       parsed.status !== 'managed' ||
-      parsed.document.identity.kind !== 'note' ||
+      !['note', 'source'].includes(parsed.document.identity.kind) ||
       parsed.document.identity.id !== file.id
     )
       throw new Error('invalid-accepted-manifest')

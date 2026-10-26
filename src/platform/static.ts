@@ -1,4 +1,5 @@
-import type { Component } from 'vue'
+import { ref, type Component } from 'vue'
+export const workspaceAvailable = ref(true)
 import { createRepository } from '../core/storage'
 import type { LearningReader } from '../core/learning-reader'
 export const AccountControls: Component | undefined = undefined

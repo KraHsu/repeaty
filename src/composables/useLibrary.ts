@@ -68,8 +68,9 @@ import {
   type Practice,
   type Attempt,
 } from '../core/practice-data'
-import { remoteWorkspace } from '../edition'
+import { remoteWorkspace, desktopEdition } from '../edition'
 import type { createServerRepository } from '../backend/repository'
+import type { createNativeRepository, DocumentWrite } from '../desktop/repository'
 import type { createRepository, BackupSummary } from '../core/storage'
 import { createWorkspaceRepository } from '@repeaty-platform'
 import { readLearning, LearningQueryError, type LearningQuery } from '../core/learning-reader'
@@ -100,7 +101,10 @@ export function useLibrary() {
       )
   }
   let revision = 0
-  let repository: ReturnType<typeof createRepository> | ReturnType<typeof createServerRepository>
+  let repository:
+    | ReturnType<typeof createRepository>
+    | ReturnType<typeof createServerRepository>
+    | ReturnType<typeof createNativeRepository>
   let savingDone: Promise<void> = Promise.resolve()
   let backupRead = 0
   async function refreshBackups() {
@@ -131,9 +135,10 @@ export function useLibrary() {
       loadError.value = ''
       await refreshBackups()
     } catch (error) {
-      loadError.value = remoteWorkspace.value
-        ? (error as Error)
-        : '无法读取本地数据库。请确认浏览器允许本站使用存储，再刷新页面。已有数据不会被自动覆盖。'
+      loadError.value =
+        remoteWorkspace.value || desktopEdition
+          ? (error as Error)
+          : '无法读取本地数据库。请确认浏览器允许本站使用存储，再刷新页面。已有数据不会被自动覆盖。'
     } finally {
       busy.value = false
     }
@@ -144,6 +149,7 @@ export function useLibrary() {
       assets?: MediaUpload[]
       reason?: string
       consumeCardDraft?: string
+      externalDocuments?: DocumentWrite[]
       backgroundMetadata?: boolean
       undoLabel?: MessageKey | false
       undoKind?: Operation['kind']
@@ -701,6 +707,13 @@ export function useLibrary() {
           ),
         { assets, reason: '摘录制卡前', consumeCardDraft: draftId, undoLabel: '用摘录制卡' },
       )
+    },
+    acceptExternalNote(id: string, input: NoteInput, document: DocumentWrite) {
+      return commit((current) => saveNote(current, input, id), {
+        externalDocuments: [document],
+        reason: '接受外部修改前',
+        undoLabel: '编辑卡片',
+      })
     },
     deleteNotes(ids: Set<string>) {
       return commit((current) => removeNotes(current, ids), {

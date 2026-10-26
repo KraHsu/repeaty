@@ -1,3 +1,4 @@
+import { readSetting, writeSetting } from './settings-store'
 import { reactive, readonly, ref } from 'vue'
 import { z } from 'zod'
 
@@ -17,7 +18,7 @@ export const preferences = readonly(state)
 export const preferenceError = ref('')
 export function restorePreferences() {
   try {
-    Object.assign(state, schema.parse(JSON.parse(localStorage.getItem(PREFERENCES_KEY) ?? '{}')))
+    Object.assign(state, schema.parse(JSON.parse(readSetting(PREFERENCES_KEY) ?? '{}')))
   } catch {
     Object.assign(state, schema.parse({}))
   }
@@ -28,7 +29,9 @@ export function setPreference<K extends keyof Preferences>(key: K, value: Prefer
   Object.assign(state, result.data)
   preferenceError.value = ''
   try {
-    localStorage.setItem(PREFERENCES_KEY, JSON.stringify(state))
+    writeSetting(PREFERENCES_KEY, JSON.stringify(state), () => {
+      preferenceError.value = '设置已生效，但未能保存；下次打开时可能恢复默认设置。'
+    })
   } catch {
     preferenceError.value = '设置已生效，但未能保存；下次打开时可能恢复默认设置。'
   }

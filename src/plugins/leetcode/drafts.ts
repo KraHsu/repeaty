@@ -31,6 +31,14 @@ const draftSchema = z.object({
     .optional(),
 })
 export type Draft = z.infer<typeof draftSchema>
+export interface DraftStorage {
+  read(id: string, scope: string): Promise<unknown>
+  write(id: string, value: Draft | undefined, scope: string): Promise<void>
+}
+let storage: DraftStorage | undefined
+export function useDraftStorage(value: DraftStorage) {
+  storage = value
+}
 interface DraftDB extends DBSchema {
   drafts: { key: string; value: Draft }
 }
@@ -47,6 +55,10 @@ export async function readDraft(
   scope = 'local:repeaty',
   legacyRevision?: string,
 ): Promise<Draft | undefined> {
+  if (storage) {
+    const value = draftSchema.safeParse(await storage.read(id, scope))
+    return value.success && value.data.revision === revision ? value.data : undefined
+  }
   const db = await database()
   try {
     const key = JSON.stringify([scope, id])
@@ -63,6 +75,7 @@ export async function readDraft(
   }
 }
 export async function writeDraft(id: string, draft?: Draft, scope = 'local:repeaty') {
+  if (storage) return storage.write(id, draft ? draftSchema.parse(draft) : undefined, scope)
   const db = await database()
   try {
     const key = JSON.stringify([scope, id])

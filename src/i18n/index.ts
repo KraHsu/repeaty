@@ -1,3 +1,4 @@
+import { readSetting, writeSetting } from '../settings-store'
 import { readonly, ref } from 'vue'
 import { ZodError } from 'zod'
 import { en } from './en'
@@ -92,7 +93,7 @@ function updateDocument() {
 export function setLocale(value: Locale) {
   currentLocale.value = value
   try {
-    localStorage.setItem(LOCALE_STORAGE_KEY, value)
+    writeSetting(LOCALE_STORAGE_KEY, value)
   } catch {
     /* Language still works without storage. */
   }
@@ -101,7 +102,7 @@ export function setLocale(value: Locale) {
 export function initI18n() {
   let saved: string | null = null
   try {
-    saved = localStorage.getItem(LOCALE_STORAGE_KEY)
+    saved = readSetting(LOCALE_STORAGE_KEY)
   } catch {
     /* Fall back to browser preferences. */
   }

@@ -73,6 +73,7 @@ import {
   DraftWorkbench,
   PlatformSettings,
   WorkspaceBrowser,
+  workspaceAvailable,
 } from '@repeaty-platform'
 import { canReviewCard, listenPluginPreferences } from './plugins'
 import type { BackupData } from './core/backups'
@@ -881,7 +882,7 @@ async function restoreBackup() {
       </div>
       <div class="sidebar-bottom">
         <div class="local-status">
-          <span />{{ t(remoteWorkspace ? 'SQLite 存储' : '本地存储') }}
+          <span />{{ t(desktopEdition || remoteWorkspace ? 'SQLite 存储' : '本地存储') }}
         </div>
         <p>
           {{
@@ -964,7 +965,10 @@ async function restoreBackup() {
       </header>
       <NotificationCenter />
 
-      <WorkspaceBrowser v-if="tab === 'workspace' && WorkspaceBrowser" />
+      <WorkspaceBrowser
+        v-if="WorkspaceBrowser && (tab === 'workspace' || !workspaceAvailable)"
+        :workspace="workspace"
+      />
       <SettingsPage
         v-else-if="tab === 'plugins' || tab === 'settings'"
         :key="tab"
@@ -1379,7 +1383,7 @@ async function restoreBackup() {
                   remoteWorkspace
                     ? '保存在服务的 SQLite 数据库中'
                     : desktopEdition
-                      ? '保存在本机应用中'
+                      ? '保存在工作目录中'
                       : '保存在当前浏览器',
                 )
               }}

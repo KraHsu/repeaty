@@ -1,71 +1,45 @@
-//! Native picker is the only source of a new ambient directory capability.
 use crate::main_window;
-use repeaty_workspace::preview::{Scan, Sessions, Status, error_code};
+use repeaty_workspace::{error::Result as StoreResult, sessions::Sessions};
+use serde_json::Value;
 use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 use tauri::{Manager, State};
 use tauri_plugin_dialog::DialogExt;
-
 struct Inner {
     directory: PathBuf,
-    sessions: Option<Result<Sessions, String>>,
+    sessions: Option<Sessions>,
 }
-pub struct Preview(Arc<Mutex<Inner>>);
-impl Preview {
-    pub fn new(device_directory: &Path) -> Self {
+pub struct Workspaces(Arc<Mutex<Inner>>);
+impl Workspaces {
+    pub fn new(directory: &Path) -> Self {
         Self(Arc::new(Mutex::new(Inner {
-            directory: device_directory.to_owned(),
+            directory: directory.into(),
             sessions: None,
         })))
     }
 }
 async fn run<T: Send + 'static>(
-    state: &Preview,
-    task: impl FnOnce(&mut Sessions) -> repeaty_workspace::prototype::Result<T> + Send + 'static,
+    state: &Workspaces,
+    task: impl FnOnce(&mut Sessions) -> StoreResult<T> + Send + 'static,
 ) -> Result<T, String> {
     let manager = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let mut guard = manager
-            .lock()
-            .map_err(|_| "workspace-unavailable".to_string())?;
-        // Do not touch a remembered disk or open SQLite while creating the app window.
-        if guard.sessions.as_ref().is_none_or(|result| result.is_err()) {
-            guard.sessions =
-                Some(Sessions::open(&guard.directory).map_err(|e| error_code(e.as_ref())));
+        let mut guard = manager.lock().map_err(|_| "storage-error".to_owned())?;
+        if guard.sessions.is_none() {
+            guard.sessions = Some(Sessions::open(&guard.directory).map_err(|e| e.0.to_owned())?);
         }
-        let sessions = guard
-            .sessions
-            .as_mut()
-            .ok_or("workspace-unavailable")?
-            .as_mut()
-            .map_err(|e| e.clone())?;
-        task(sessions).map_err(|e| error_code(e.as_ref()))
+        task(guard.sessions.as_mut().ok_or("storage-error")?).map_err(|e| e.0.to_owned())
     })
     .await
-    .map_err(|_| "workspace-unavailable".to_string())?
+    .map_err(|_| "storage-error".to_owned())?
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[tokio::test]
-    async fn failed_lazy_initialization_can_retry_without_restarting_the_client() {
-        let parent = tempfile::tempdir().unwrap();
-        let directory = parent.path().join("device");
-        let state = Preview::new(&directory);
-        assert!(run(&state, |sessions| sessions.status()).await.is_err());
-        std::fs::create_dir(&directory).unwrap();
-        assert!(run(&state, |sessions| sessions.status()).await.is_ok());
-    }
-}
-
 #[tauri::command]
-pub async fn workspace_preview_status(
+pub async fn workspace_status(
     window: tauri::WebviewWindow,
-    state: State<'_, Preview>,
-) -> Result<Status, String> {
+    state: State<'_, Workspaces>,
+) -> Result<Value, String> {
     main_window(&window)?;
     run(&state, |s| s.status()).await
 }
@@ -76,29 +50,25 @@ pub enum ChooseMode {
     Open,
 }
 #[tauri::command]
-pub async fn workspace_preview_choose(
+pub async fn workspace_choose(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
-    state: State<'_, Preview>,
+    state: State<'_, Workspaces>,
     epoch: String,
     mode: ChooseMode,
-) -> Result<Option<Status>, String> {
+) -> Result<Option<Value>, String> {
     main_window(&window)?;
-    let before = run(&state, |s| s.status()).await?;
-    if before.epoch != epoch {
-        return Err("stale-workspace-session".into());
-    }
+    let expected = epoch.clone();
+    run(&state, move |s| s.check_epoch(&expected)).await?;
     let selected = tauri::async_runtime::spawn_blocking(move || {
         let mut picker = app.dialog().file();
-        // GTK's fallback chooser may have no current folder in a fresh desktop
-        // session, leaving path entry unable to confirm even an existing directory.
         if let Ok(home) = app.path().home_dir() {
             picker = picker.set_directory(home);
         }
         picker.blocking_pick_folder()
     })
     .await
-    .map_err(|_| "workspace-unavailable")?;
+    .map_err(|_| "storage-error")?;
     let Some(selected) = selected else {
         return Ok(None);
     };
@@ -110,40 +80,51 @@ pub async fn workspace_preview_choose(
     .map(Some)
 }
 #[tauri::command]
-pub async fn workspace_preview_recent(
+pub async fn workspace_recent(
     window: tauri::WebviewWindow,
-    state: State<'_, Preview>,
+    state: State<'_, Workspaces>,
     epoch: String,
     path: String,
     id: String,
-) -> Result<Status, String> {
+) -> Result<Value, String> {
     main_window(&window)?;
     run(&state, move |s| s.recent(&epoch, &path, &id)).await
 }
 #[tauri::command]
-pub async fn workspace_preview_close(
+pub async fn workspace_close(
     window: tauri::WebviewWindow,
-    state: State<'_, Preview>,
+    state: State<'_, Workspaces>,
     epoch: String,
-) -> Result<Status, String> {
+) -> Result<Value, String> {
     main_window(&window)?;
     run(&state, move |s| s.close(&epoch)).await
 }
 #[tauri::command]
-pub async fn workspace_preview_restore(
+pub async fn workspace_restore(
     window: tauri::WebviewWindow,
-    state: State<'_, Preview>,
+    state: State<'_, Workspaces>,
     epoch: String,
-) -> Result<Status, String> {
+) -> Result<Value, String> {
     main_window(&window)?;
     run(&state, move |s| s.restore(&epoch)).await
 }
 #[tauri::command]
-pub async fn workspace_preview_scan(
+pub async fn workspace_read(
     window: tauri::WebviewWindow,
-    state: State<'_, Preview>,
+    state: State<'_, Workspaces>,
     token: String,
-) -> Result<Scan, String> {
+    request: Value,
+) -> Result<Value, String> {
     main_window(&window)?;
-    run(&state, move |s| s.scan(&token)).await
+    run(&state, move |s| s.read(&token, request)).await
+}
+#[tauri::command]
+pub async fn workspace_write(
+    window: tauri::WebviewWindow,
+    state: State<'_, Workspaces>,
+    token: String,
+    request: Value,
+) -> Result<Value, String> {
+    main_window(&window)?;
+    run(&state, move |s| s.write(&token, request)).await
 }

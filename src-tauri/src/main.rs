@@ -3,16 +3,13 @@ mod exports;
 mod mcp;
 mod plugins;
 mod workspaces;
-use tauri_plugin_dialog::DialogExt;
-mod upstream;
 use plugins::Plugins;
 use std::sync::Arc;
 use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_dialog::DialogExt;
 use tokio::sync::Mutex;
-use upstream::{Config, Request, Response, Upstream};
 
 struct Desktop {
-    upstream: Upstream,
     plugins: Plugins,
     exports: Mutex<exports::Exporter>,
     mcp: Arc<mcp::Mcp>,
@@ -73,9 +70,6 @@ async fn mcp_start(
     state: State<'_, Desktop>,
 ) -> Result<mcp::Status, String> {
     main_window(&window)?;
-    if !state.upstream.endpoint().is_empty() {
-        return Err("library-unavailable".into());
-    }
     state.mcp.start().await.map_err(str::to_owned)
 }
 #[tauri::command]
@@ -106,20 +100,6 @@ fn mcp_client_configuration(
         .mcp
         .client_configuration(client, &executable)
         .map_err(str::to_owned)
-}
-#[tauri::command]
-async fn desktop_config(state: State<'_, Desktop>) -> Result<Config, String> {
-    Ok(state.upstream.config())
-}
-#[tauri::command]
-async fn set_endpoint(state: State<'_, Desktop>, endpoint: String) -> Result<(), String> {
-    state.upstream.set_endpoint(&endpoint)?;
-    state.mcp.detach();
-    Ok(())
-}
-#[tauri::command]
-async fn upstream_request(state: State<'_, Desktop>, request: Request) -> Result<Response, String> {
-    state.upstream.request(request).await
 }
 #[tauri::command]
 async fn local_plugin(
@@ -216,14 +196,13 @@ fn main() {
                 mcp: Arc::new(mcp::Mcp::with_connection_file(
                     directory.join("mcp.connection.json"),
                 )),
-                upstream: Upstream::open(&directory.join("desktop.json"))?,
                 plugins: Plugins::new(vec![Arc::new(
                     repeaty_leetcode_local::leetcode::LeetCode::open(
                         &directory.join("leetcode.credentials.sqlite3"),
                     )?,
                 )])?,
             });
-            app.manage(workspaces::Preview::new(&directory));
+            app.manage(workspaces::Workspaces::new(&directory));
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Repeaty")
                 .inner_size(1280.0, 850.0)
@@ -262,16 +241,14 @@ fn main() {
             export_write,
             export_finish,
             export_cancel,
-            desktop_config,
-            set_endpoint,
-            upstream_request,
             local_plugin,
-            workspaces::workspace_preview_status,
-            workspaces::workspace_preview_choose,
-            workspaces::workspace_preview_recent,
-            workspaces::workspace_preview_close,
-            workspaces::workspace_preview_restore,
-            workspaces::workspace_preview_scan,
+            workspaces::workspace_status,
+            workspaces::workspace_choose,
+            workspaces::workspace_recent,
+            workspaces::workspace_close,
+            workspaces::workspace_restore,
+            workspaces::workspace_read,
+            workspaces::workspace_write,
             open_external
         ])
         .run(tauri::generate_context!())

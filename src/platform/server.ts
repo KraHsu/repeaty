@@ -17,4 +17,5 @@ export {
   DraftWorkbench,
   PlatformSettings,
   WorkspaceBrowser,
+  workspaceAvailable,
 } from './static'
