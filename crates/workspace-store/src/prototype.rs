@@ -1,4 +1,4 @@
-//! Opaque-content transaction experiment on explicitly created M0 roots, not a library schema.
+//! Validated-acceptance transaction experiment on explicit M0 roots, not a final library schema.
 //! Working Markdown may differ from the immutable accepted version. Recovery never overwrites it.
 
 use crate::{
@@ -14,10 +14,13 @@ use std::{
     time::Duration,
 };
 
+mod acceptance;
+pub use acceptance::{AssetSnapshot, CardMapping, NoteAcceptance, SourceSnapshot};
+
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
-const MARKER: &[u8] = b"{\"format\":\"repeaty-workspace-m0-experiment\",\"version\":1}\n";
+const MARKER: &[u8] = b"{\"format\":\"repeaty-workspace-m0-experiment\",\"version\":2}\n";
 const APP_ID: i32 = 0x52504d30; // RPM0, deliberately not the final RPTY workspace format.
-const DB_VERSION: i32 = 1001;
+const DB_VERSION: i32 = 1002;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -37,6 +40,8 @@ pub struct SaveRequest {
     pub expected_hash: Option<String>,
     pub draft_id: Option<String>,
     pub new_cards: Vec<NewCard>,
+    #[serde(default)]
+    pub acceptance: Option<NoteAcceptance>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,6 +78,7 @@ pub enum Checkpoint {
     BeforeDatabaseCommit,
     DatabaseCommitted,
     CompletionRecorded,
+    AssetPublished(usize),
 }
 impl Checkpoint {
     pub const ALL: [Self; 9] = [
@@ -113,6 +119,7 @@ impl Prototype {
         let root = root.canonicalize()?;
         for path in [
             "notes",
+            "assets",
             ".repeaty",
             ".repeaty/objects",
             ".repeaty/objects/sha256",
@@ -125,9 +132,12 @@ impl Prototype {
             "PRAGMA application_id={APP_ID}; PRAGMA user_version={DB_VERSION};
              PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;
              CREATE TABLE notes(id TEXT PRIMARY KEY, path TEXT UNIQUE NOT NULL,
-               path_key TEXT UNIQUE NOT NULL, accepted_hash TEXT NOT NULL, last_operation TEXT);
+               path_key TEXT UNIQUE NOT NULL, accepted_hash TEXT NOT NULL, last_operation TEXT,
+               accepted_revision TEXT REFERENCES note_versions(revision));
              CREATE TABLE cards(id TEXT PRIMARY KEY, note_id TEXT NOT NULL REFERENCES notes(id),
-               variant TEXT NOT NULL, state_json TEXT NOT NULL, UNIQUE(note_id, variant));
+               variant TEXT NOT NULL, state_json TEXT NOT NULL,
+               lifecycle TEXT NOT NULL DEFAULT 'active' CHECK(lifecycle IN ('active','retired')),
+               last_revision TEXT REFERENCES note_versions(revision), UNIQUE(note_id, variant));
              CREATE TABLE drafts(id TEXT PRIMARY KEY, payload TEXT NOT NULL,
                reserved_by TEXT, reserved_note_id TEXT, consumed_by TEXT);
              CREATE TABLE operations(id TEXT PRIMARY KEY, intent TEXT NOT NULL, note_id TEXT NOT NULL,
@@ -137,6 +147,11 @@ impl Prototype {
              CREATE TABLE changes(operation_id TEXT PRIMARY KEY REFERENCES operations(id),
                note_id TEXT NOT NULL REFERENCES notes(id), accepted_hash TEXT NOT NULL);"
         ))?;
+        acceptance::create_schema(&conn)?;
+        conn.execute(
+            "INSERT INTO identity VALUES(1,?1)",
+            [uuid::Uuid::new_v4().to_string()],
+        )?;
         drop(conn);
         files::sync_directory(&root)?;
         files::write_new(&root.join("prototype.json"), MARKER)?;
@@ -151,6 +166,7 @@ impl Prototype {
         }
         for path in [
             "notes",
+            "assets",
             ".repeaty",
             ".repeaty/objects",
             ".repeaty/objects/sha256",
@@ -192,7 +208,7 @@ impl Prototype {
         files::write_new(&target, bytes)?;
         let tx = self.conn.transaction()?;
         tx.execute(
-            "INSERT INTO notes VALUES(?1,?2,?3,?4,NULL)",
+            "INSERT INTO notes(id,path,path_key,accepted_hash,last_operation) VALUES(?1,?2,?3,?4,NULL)",
             params![note_id, path, path.to_lowercase(), hash],
         )?;
         for card in cards {
@@ -219,9 +235,25 @@ impl Prototype {
         &mut self,
         request: SaveRequest,
         bytes: &[u8],
+        checkpoint: impl FnMut(Checkpoint) -> Result<()>,
+    ) -> Result<SaveOutcome> {
+        self.save_with_objects(
+            request,
+            bytes,
+            |_| Err("missing-dependency-object".into()),
+            checkpoint,
+        )
+    }
+
+    pub fn save_with_objects(
+        &mut self,
+        request: SaveRequest,
+        bytes: &[u8],
+        mut object_reader: impl FnMut(&str) -> Result<Vec<u8>>,
         mut checkpoint: impl FnMut(Checkpoint) -> Result<()>,
     ) -> Result<SaveOutcome> {
         validate_request(&request)?;
+        acceptance::validate_plan(self, &request, bytes)?;
         if bytes.len() as u64 > files::MAX_TEXT_BYTES || std::str::from_utf8(bytes).is_err() {
             return Err("invalid-proposed-text".into());
         }
@@ -260,6 +292,7 @@ impl Prototype {
             files::create_private_dir(&dir)?;
         }
         self.store_object(bytes)?;
+        acceptance::prepare_objects(self, &intent.request, &mut object_reader)?;
         checkpoint(Checkpoint::ObjectDurable)?;
         write_same_or_new(&dir.join("slot"), bytes)?;
         write_same_or_new(&dir.join("intent.json"), &serialized)?;
@@ -267,6 +300,9 @@ impl Prototype {
         self.reserve(&intent)?;
         checkpoint(Checkpoint::ReservationCommitted)?;
         if let Some(reason) = self.baseline_issue(&intent)? {
+            return self.attention(&intent, reason, false);
+        }
+        if let Some(reason) = acceptance::publish_assets(self, &intent.request, &mut checkpoint)? {
             return self.attention(&intent, reason, false);
         }
         write_same_or_new(&dir.join("publish-started"), b"started\n")?;
@@ -366,6 +402,7 @@ impl Prototype {
     }
 
     fn baseline_issue(&self, intent: &Intent) -> Result<Option<&'static str>> {
+        acceptance::validate_baseline(&self.conn, &intent.request)?;
         let r = &intent.request;
         let note: Option<(String, String)> = self
             .conn
@@ -446,6 +483,16 @@ impl Prototype {
     ) -> Result<SaveOutcome> {
         self.verify_object(&intent.next_hash)?;
         let committed = self.operation_status(intent)?.as_deref() == Some("committed");
+        let is_head: bool = self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM notes WHERE id=?1 AND last_operation=?2)",
+            params![intent.request.note_id, intent.request.operation_id],
+            |row| row.get(0),
+        )?;
+        if let Some(reason) =
+            acceptance::verify_dependencies(self, &intent.request, !committed || is_head)?
+        {
+            return self.attention(intent, reason, committed);
+        }
         if let Some(path) = self.displaced(intent) {
             let Some(bytes) = read_optional(&path)? else {
                 return self.attention(intent, "displaced-file-missing", committed);
@@ -499,12 +546,13 @@ impl Prototype {
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        acceptance::validate_baseline(&tx, r)?;
         if let Some(expected) = &r.expected_hash {
             if tx.execute("UPDATE notes SET accepted_hash=?1,last_operation=?2 WHERE id=?3 AND path=?4 AND accepted_hash=?5",
                 params![intent.next_hash, r.operation_id, r.note_id, r.path, expected])? != 1 { return Err("accepted-baseline-changed".into()); }
         } else {
             tx.execute(
-                "INSERT INTO notes VALUES(?1,?2,?3,?4,?5)",
+                "INSERT INTO notes(id,path,path_key,accepted_hash,last_operation) VALUES(?1,?2,?3,?4,?5)",
                 params![
                     r.note_id,
                     r.path,
@@ -517,6 +565,7 @@ impl Prototype {
         for card in &r.new_cards {
             insert_card(&tx, &r.note_id, card)?;
         }
+        acceptance::commit_domain(&tx, r)?;
         if let Some(draft_id) = &r.draft_id
             && tx.execute("UPDATE drafts SET consumed_by=?1 WHERE id=?2 AND reserved_by=?1 AND reserved_note_id=?3 AND consumed_by IS NULL",
                 params![r.operation_id, draft_id, r.note_id])? != 1 { return Err("draft-reservation-changed".into()); }
@@ -647,7 +696,7 @@ impl Prototype {
 
 fn insert_card(conn: &Connection, note_id: &str, card: &NewCard) -> Result<()> {
     conn.execute(
-        "INSERT INTO cards VALUES(?1,?2,?3,?4)",
+        "INSERT INTO cards(id,note_id,variant,state_json) VALUES(?1,?2,?3,?4)",
         params![card.id, note_id, card.variant, card.state_json],
     )?;
     Ok(())

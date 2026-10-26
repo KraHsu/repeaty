@@ -31,6 +31,7 @@ fn update_request() -> SaveRequest {
         expected_hash: Some(files::digest(OLD.as_bytes())),
         draft_id: None,
         new_cards: vec![],
+        acceptance: None,
     }
 }
 fn draft_request() -> SaveRequest {
@@ -41,6 +42,7 @@ fn draft_request() -> SaveRequest {
         expected_hash: None,
         draft_id: Some("draft-1".into()),
         new_cards: vec![card("original-new-card-id")],
+        acceptance: None,
     }
 }
 fn setup() -> (tempfile::TempDir, Prototype) {

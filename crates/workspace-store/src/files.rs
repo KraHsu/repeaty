@@ -65,23 +65,23 @@ fn open_regular(path: &Path, writable: bool) -> io::Result<File> {
 }
 
 pub fn read_stable(path: &Path) -> io::Result<Vec<u8>> {
+    read_stable_with_limit(path, MAX_TEXT_BYTES)
+}
+
+pub fn read_stable_with_limit(path: &Path, limit: u64) -> io::Result<Vec<u8>> {
     let mut file = regular_file(path)?;
     let before = file.metadata()?;
-    if before.len() > MAX_TEXT_BYTES {
+    if before.len() > limit {
         return Err(io::ErrorKind::FileTooLarge.into());
     }
     let mut first = Vec::new();
-    (&mut file)
-        .take(MAX_TEXT_BYTES + 1)
-        .read_to_end(&mut first)?;
+    (&mut file).take(limit + 1).read_to_end(&mut first)?;
     file.rewind()?;
     let mut second = Vec::new();
-    (&mut file)
-        .take(MAX_TEXT_BYTES + 1)
-        .read_to_end(&mut second)?;
+    (&mut file).take(limit + 1).read_to_end(&mut second)?;
     let after = file.metadata()?;
     if first != second
-        || first.len() as u64 > MAX_TEXT_BYTES
+        || first.len() as u64 > limit
         || before.len() != after.len()
         || before.modified()? != after.modified()?
     {

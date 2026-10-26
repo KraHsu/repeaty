@@ -27,4 +27,20 @@ A save persists an independent content object and operation intent, reserves dra
 
 Recovery inspects the receipt, content objects and retained paths. It never exchanges files again or restores an older working file. Ambiguous publication, corrupted evidence and concurrent edits remain pending. Retained files are never garbage-collected by this prototype, so old editor handles can keep writing without losing their destination; reopening checks those paths again. A completed receipt remains completed even when its working file is later edited or deleted.
 
-Tests cover 9 interruption boundaries for both edits and draft confirmation by exiting child processes without destructors. They also cover late editor writes, target collisions, missing or corrupt evidence, draft reservations, SQLite constraint rollback and unchanged scheduling. The scope is one Markdown file, its content object and SQLite state; attachment bundles, real Markdown/domain acceptance, arbitrary paths, editor integration and durable conflict resolution remain outside this experiment.
+Tests cover 9 interruption boundaries for both edits and draft confirmation by exiting child processes without destructors. They also cover late editor writes, target collisions, missing or corrupt evidence, draft reservations, SQLite constraint rollback and unchanged scheduling.
+
+## Shared content acceptance
+
+The TypeScript [acceptance planner](../../src/workspace/acceptance.ts) reuses the Markdown codec, variant planner and existing CardDraft schema. It supplies a versioned manifest bound to exact file bytes, a stable workspace ID, existing card identities, local asset hashes, immutable source quotes and the saved draft fingerprint. Rust rechecks the manifest, objects and current SQLite baseline before one transaction retires/restores cards, accepts the content version and consumes a draft. It never regenerates the state of existing cards.
+
+Local image/audio uploads publish complete files without clobbering occupied names. Immutable objects can share bytes; different media identities keep separate mutable working files. Existing asset edits create another accepted content version even if the Markdown bytes are unchanged. Source quotes remain attached to their original UTF-16 snapshot. HTTP media remains an external URL reference and is reported as not snapshotted.
+
+The opt-in cross-language suite builds the `acceptance-fixture` example and passes plans from the actual TypeScript implementation into native SQLite/file operations:
+
+```sh
+npm run test:workspace:native
+```
+
+The example is a headless fixture driver, not a network endpoint or a Tauri command. Tests include real CardDraft-shaped image/audio data, cloze retirement/restoration, independent media files, tampered inputs and 11 process-exit boundaries through a media-backed confirmation. Ordinary `npm test` stays usable without Rust.
+
+Experiment roots now use marker version 2 and database version 1002. Earlier experiment roots are rejected, never upgraded. Product version remains 0.27.0. These experiments still do not implement the final workspace manifest/schema, application directory entry points, live MCP confirmation, arbitrary paths, editor integration or durable conflict resolution.
