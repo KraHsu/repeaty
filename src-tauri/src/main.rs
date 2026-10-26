@@ -270,6 +270,7 @@ fn main() {
             workspaces::workspace_preview_choose,
             workspaces::workspace_preview_recent,
             workspaces::workspace_preview_close,
+            workspaces::workspace_preview_restore,
             workspaces::workspace_preview_scan,
             open_external
         ])

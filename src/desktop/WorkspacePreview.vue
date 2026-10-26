@@ -103,7 +103,7 @@ onUnmounted(preview.dispose)
     </p>
     <div v-if="error || status?.restore_error" class="workspace-error" role="alert">
       <p>{{ t(workspacePreviewMessage(error || status?.restore_error || '')) }}</p>
-      <button class="button" :disabled="busy" @click="preview.refresh()">{{ t('重试') }}</button>
+      <button class="button" :disabled="busy" @click="preview.retry()">{{ t('重试') }}</button>
     </div>
     <div v-if="busy" role="status" class="form-note">{{ t('正在读取工作目录…') }}</div>
     <section v-if="status?.active" class="workspace-current" :aria-label="t('当前预览目录')">

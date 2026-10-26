@@ -78,6 +78,7 @@ pub struct Sessions {
     current: Option<Session>,
     epoch: String,
     restore_error: Option<String>,
+    restore_selection: Option<Recent>,
 }
 fn nonce() -> String {
     uuid::Uuid::new_v4().to_string()
@@ -147,11 +148,15 @@ impl Sessions {
             current: None,
             epoch: nonce(),
             restore_error: None,
+            restore_selection: None,
         };
         if let Some(selected) = selected {
             match result.open_session(Path::new(&selected.path), Some(&selected.id)) {
                 Ok(session) => result.current = Some(session),
-                Err(error) => result.restore_error = Some(error_code(error.as_ref())),
+                Err(error) => {
+                    result.restore_error = Some(error_code(error.as_ref()));
+                    result.restore_selection = Some(selected);
+                }
             }
         }
         Ok(result)
@@ -280,16 +285,44 @@ impl Sessions {
         tx.commit()?;
         self.current = Some(session);
         self.restore_error = None;
+        self.restore_selection = None;
         self.epoch = nonce();
         self.status()
     }
     pub fn close(&mut self, expected: &str) -> Result<Status> {
         self.check_epoch(expected)?;
-        self.index.execute("DELETE FROM selected", [])?;
+        let selection = self
+            .current
+            .as_ref()
+            .map(|session| Recent {
+                path: session.descriptor.path.clone(),
+                id: session.descriptor.id.clone(),
+            })
+            .or_else(|| self.restore_selection.clone());
+        if let Some(selection) = selection {
+            self.index.execute(
+                "DELETE FROM selected WHERE path=?1 AND id=?2",
+                params![selection.path, selection.id],
+            )?;
+        }
         self.current = None;
         self.restore_error = None;
+        self.restore_selection = None;
         self.epoch = nonce();
         self.status()
+    }
+    /// Retry only the remembered selection, not whichever recent folder happens to be first.
+    pub fn restore(&mut self, expected: &str) -> Result<Status> {
+        self.check_epoch(expected)?;
+        if self.current.is_some() {
+            return self.status();
+        }
+        if let Some(selected) = self.restore_selection.clone() {
+            self.recent(expected, &selected.path, &selected.id)
+        } else {
+            self.restore_error = None;
+            self.status()
+        }
     }
     pub fn scan(&self, token: &str) -> Result<Scan> {
         let session = self

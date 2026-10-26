@@ -75,6 +75,12 @@ export function createWorkspacePreview(
     busy,
     error,
     refresh: () => execute(() => api('workspace_preview_status')),
+    retry: () =>
+      execute(() =>
+        status.value?.restore_error && !status.value.active
+          ? api('workspace_preview_restore', { epoch: status.value.epoch })
+          : api('workspace_preview_status'),
+      ),
     choose: (mode: 'create' | 'open') =>
       execute(() => api('workspace_preview_choose', { epoch: status.value?.epoch, mode })),
     recent: (path: string, id: string) =>
@@ -100,6 +106,8 @@ export function workspacePreviewMessage(code: string): string {
       return '这个工作目录已在使用中。请先关闭另一会话，再重新打开。'
     case 'workspace-identity-changed':
       return '目录已被移动或替换。请通过“打开目录”重新选择。'
+    case 'unknown-recent-workspace':
+      return '最近记录已变化。请通过“打开目录”重新选择。'
     case 'workspace-missing':
       return '找不到目录或必要文件。请检查位置，再重新打开。'
     case 'stale-workspace-session':

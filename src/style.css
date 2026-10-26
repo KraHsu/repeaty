@@ -120,6 +120,7 @@ button {
   z-index: 10;
 }
 .brand {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   font-size: 1.875rem;
@@ -141,6 +142,7 @@ button {
   color: #7c9965;
 }
 .sidebar-label {
+  display: block;
   font-size: var(--text-xs);
   color: var(--muted);
   letter-spacing: 2px;
@@ -151,6 +153,11 @@ button {
   flex-direction: column;
   gap: 6px;
   margin-top: 44px;
+}
+.sidebar-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 .main-nav button {
   display: flex;
@@ -181,8 +188,6 @@ button {
 }
 .sidebar-decks {
   margin-top: 35px;
-  min-height: 0;
-  overflow-y: auto;
 }
 .sidebar-section-title {
   display: flex;
@@ -227,6 +232,7 @@ button {
   color: var(--muted);
 }
 .sidebar-bottom {
+  flex-shrink: 0;
   margin-top: auto;
   padding: 30px 11px 0;
 }
@@ -1609,6 +1615,9 @@ select {
   }
 }
 @media (max-width: 720px) {
+  .sidebar-content {
+    overflow: visible;
+  }
   .app-layout {
     display: block;
   }

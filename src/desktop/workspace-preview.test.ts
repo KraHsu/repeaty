@@ -21,6 +21,24 @@ const scan = (token: string) => ({
   issues: [],
 })
 describe('desktop preview session ownership', () => {
+  it('retries the native remembered selection when restoring a directory failed', async () => {
+    const saved = status()
+    const initial = { ...saved, active: null, restore_error: 'workspace-missing' }
+    const api = vi.fn(async (command: string) =>
+      command === 'workspace_preview_status'
+        ? initial
+        : command === 'workspace_preview_restore'
+          ? saved
+          : scan(saved.active!.token),
+    )
+    const preview = createWorkspacePreview(api as PreviewApi)
+    await preview.refresh()
+    expect(preview.status.value?.active).toBeNull()
+    await preview.retry()
+    expect(api).toHaveBeenCalledWith('workspace_preview_restore', { epoch: initial.epoch })
+    expect(preview.status.value?.active?.token).toBe(saved.active!.token)
+    expect(preview.status.value?.restore_error).toBeNull()
+  })
   it('cancelling a picker preserves the visible session without rereading files', async () => {
     const saved = status()
     const api = vi.fn(async (command: string) =>

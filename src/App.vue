@@ -796,86 +796,88 @@ async function restoreBackup() {
           >.</span
         ></a
       >
-      <span class="sidebar-label">{{ t('间隔复习') }}</span>
-      <nav class="main-nav" :aria-label="t('主导航')">
-        <button
-          v-if="WorkspaceBrowser"
-          :class="{ active: tab === 'workspace' && !review }"
-          :aria-current="tab === 'workspace' && !review ? 'page' : undefined"
-          @click="navigate('workspace')"
-        >
-          <FolderOpen :size="19" />{{ t('工作目录') }}
-        </button>
-        <button
-          :class="{ active: tab === 'overview' && !review }"
-          :aria-current="tab === 'overview' && !review ? 'page' : undefined"
-          @click="navigate('overview')"
-        >
-          <LayoutGrid :size="19" />{{ t('学习概览') }}
-        </button>
-        <button
-          :class="{ active: tab === 'cards' && !review }"
-          :aria-current="tab === 'cards' && !review ? 'page' : undefined"
-          @click="navigate('cards')"
-        >
-          <Layers :size="19" />{{ t('全部卡片')
-          }}<span class="nav-count">{{ library.cards.length }}</span>
-        </button>
-        <button
-          :class="{ active: tab === 'sources' && !review }"
-          :aria-current="tab === 'sources' && !review ? 'page' : undefined"
-          @click="navigate('sources')"
-        >
-          <FileText :size="19" />{{ t('学习材料') }}
-        </button>
-        <button
-          v-if="desktopEdition || library.practices.length"
-          :class="{ active: tab === 'history' && !review }"
-          :aria-current="tab === 'history' && !review ? 'page' : undefined"
-          @click="openHistory()"
-        >
-          <History :size="19" />{{ t('练习历史') }}
-        </button>
-        <button
-          :class="{ active: tab === 'plugins' && !review }"
-          :aria-current="tab === 'plugins' && !review ? 'page' : undefined"
-          @click="navigate('plugins')"
-        >
-          <Puzzle :size="19" />{{ t('插件') }}
-        </button>
-        <button
-          :class="{ active: tab === 'data' && !review }"
-          :aria-current="tab === 'data' && !review ? 'page' : undefined"
-          @click="navigate('data')"
-        >
-          <Database :size="19" />{{ t('数据与备份') }}
-        </button>
-      </nav>
-      <div class="sidebar-decks">
-        <div class="sidebar-section-title">
-          {{ t('我的卡组')
-          }}<button
-            class="icon-button"
-            :aria-label="t('新建卡组')"
-            :disabled="!ready || busy"
-            @click="editDeck()"
+      <div class="sidebar-content">
+        <span class="sidebar-label">{{ t('间隔复习') }}</span>
+        <nav class="main-nav" :aria-label="t('主导航')">
+          <button
+            v-if="WorkspaceBrowser"
+            :class="{ active: tab === 'workspace' && !review }"
+            :aria-current="tab === 'workspace' && !review ? 'page' : undefined"
+            @click="navigate('workspace')"
           >
-            <Plus :size="16" />
+            <FolderOpen :size="19" />{{ t('工作目录') }}
           </button>
+          <button
+            :class="{ active: tab === 'overview' && !review }"
+            :aria-current="tab === 'overview' && !review ? 'page' : undefined"
+            @click="navigate('overview')"
+          >
+            <LayoutGrid :size="19" />{{ t('学习概览') }}
+          </button>
+          <button
+            :class="{ active: tab === 'cards' && !review }"
+            :aria-current="tab === 'cards' && !review ? 'page' : undefined"
+            @click="navigate('cards')"
+          >
+            <Layers :size="19" />{{ t('全部卡片')
+            }}<span class="nav-count">{{ library.cards.length }}</span>
+          </button>
+          <button
+            :class="{ active: tab === 'sources' && !review }"
+            :aria-current="tab === 'sources' && !review ? 'page' : undefined"
+            @click="navigate('sources')"
+          >
+            <FileText :size="19" />{{ t('学习材料') }}
+          </button>
+          <button
+            v-if="desktopEdition || library.practices.length"
+            :class="{ active: tab === 'history' && !review }"
+            :aria-current="tab === 'history' && !review ? 'page' : undefined"
+            @click="openHistory()"
+          >
+            <History :size="19" />{{ t('练习历史') }}
+          </button>
+          <button
+            :class="{ active: tab === 'plugins' && !review }"
+            :aria-current="tab === 'plugins' && !review ? 'page' : undefined"
+            @click="navigate('plugins')"
+          >
+            <Puzzle :size="19" />{{ t('插件') }}
+          </button>
+          <button
+            :class="{ active: tab === 'data' && !review }"
+            :aria-current="tab === 'data' && !review ? 'page' : undefined"
+            @click="navigate('data')"
+          >
+            <Database :size="19" />{{ t('数据与备份') }}
+          </button>
+        </nav>
+        <div class="sidebar-decks">
+          <div class="sidebar-section-title">
+            {{ t('我的卡组')
+            }}<button
+              class="icon-button"
+              :aria-label="t('新建卡组')"
+              :disabled="!ready || busy"
+              @click="editDeck()"
+            >
+              <Plus :size="16" />
+            </button>
+          </div>
+          <button
+            v-for="deck in library.decks"
+            :key="deck.id"
+            class="sidebar-deck"
+            :class="{ selected: selectedDeck === deck.id }"
+            @click="openDeck(deck)"
+          >
+            <span :class="['color-dot', deck.color]" /><span class="truncate">{{ deck.name }}</span
+            ><span>{{ deckCards(deck.id) }}</span>
+          </button>
+          <p v-if="!library.decks.length" class="sidebar-empty">
+            {{ t('暂无卡组') }}
+          </p>
         </div>
-        <button
-          v-for="deck in library.decks"
-          :key="deck.id"
-          class="sidebar-deck"
-          :class="{ selected: selectedDeck === deck.id }"
-          @click="openDeck(deck)"
-        >
-          <span :class="['color-dot', deck.color]" /><span class="truncate">{{ deck.name }}</span
-          ><span>{{ deckCards(deck.id) }}</span>
-        </button>
-        <p v-if="!library.decks.length" class="sidebar-empty">
-          {{ t('暂无卡组') }}
-        </p>
       </div>
       <div class="sidebar-bottom">
         <div class="local-status">

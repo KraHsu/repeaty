@@ -1391,4 +1391,6 @@ export const en = {
     'Preview folders stay separate from your study library. Study and migration are not available here yet.',
   '文件：{p0}': 'Files: {p0}',
   文件分页: 'File pages',
+  '最近记录已变化。请通过“打开目录”重新选择。':
+    'Recent folders changed. Use “Open folder” to choose it again.',
 } as const

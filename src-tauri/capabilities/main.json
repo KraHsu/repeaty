@@ -21,6 +21,7 @@
     "allow-workspace-preview-choose",
     "allow-workspace-preview-recent",
     "allow-workspace-preview-close",
+    "allow-workspace-preview-restore",
     "allow-workspace-preview-scan",
     "allow-open-external",
     "allow-export-begin",

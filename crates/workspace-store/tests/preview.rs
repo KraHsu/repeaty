@@ -100,7 +100,7 @@ fn recent_paths_are_hints_not_permission_to_open_a_replaced_identity() {
     fs::create_dir(&path).unwrap();
     drop(Prototype::create_in_empty(&path).unwrap());
     let error = sessions
-        .recent(&epoch(&sessions), path.to_str().unwrap(), &first.id)
+        .recent(&epoch(&sessions), &first.path, &first.id)
         .unwrap_err();
     assert_eq!(error.to_string(), "workspace-identity-changed");
     assert!(sessions.status().unwrap().active.is_none());
@@ -145,6 +145,56 @@ fn stale_picker_results_cannot_replace_a_newer_session_even_after_close() {
     sessions.close(&epoch(&sessions)).unwrap();
     assert!(sessions.choose(&stale, second.path(), true).is_err());
     assert_eq!(fs::read_dir(second.path()).unwrap().count(), 0);
+}
+
+#[test]
+fn retry_reconnects_the_remembered_identity_after_the_directory_returns() {
+    let device = tempfile::tempdir().unwrap();
+    let parent = tempfile::tempdir().unwrap();
+    let path = parent.path().join("selected");
+    let offline = parent.path().join("offline");
+    fs::create_dir(&path).unwrap();
+    let mut sessions = Sessions::open(device.path()).unwrap();
+    let original = create(&mut sessions, &path);
+    drop(sessions);
+    fs::rename(&path, &offline).unwrap();
+    let mut sessions = Sessions::open(device.path()).unwrap();
+    let before = epoch(&sessions);
+    assert!(sessions.status().unwrap().restore_error.is_some());
+    assert!(sessions.restore(&before).is_err());
+    assert!(!path.exists());
+    // A different window can change the recent list. Retry must still target the selection.
+    let db = rusqlite::Connection::open(device.path().join("workspace-preview.sqlite3")).unwrap();
+    let other_path = parent.path().join("other").to_str().unwrap().to_owned();
+    let other_id = uuid::Uuid::new_v4().to_string();
+    db.execute(
+        "INSERT INTO recent VALUES(?1,?2,999)",
+        rusqlite::params![other_path, other_id],
+    )
+    .unwrap();
+    db.execute(
+        "UPDATE selected SET path=?1,id=?2",
+        rusqlite::params![other_path, other_id],
+    )
+    .unwrap();
+    fs::rename(&offline, &path).unwrap();
+    let restored = sessions.restore(&before).unwrap();
+    assert_eq!(restored.active.as_ref().unwrap().id, original.id);
+    assert_ne!(restored.active.as_ref().unwrap().token, original.token);
+    assert!(restored.restore_error.is_none());
+    assert!(sessions.restore(&before).is_err());
+    db.execute(
+        "UPDATE selected SET path=?1,id=?2",
+        rusqlite::params![other_path, other_id],
+    )
+    .unwrap();
+    sessions.close(&epoch(&sessions)).unwrap();
+    assert_eq!(
+        db.query_row("SELECT path FROM selected", [], |row| row
+            .get::<_, String>(0))
+            .unwrap(),
+        other_path
+    );
 }
 
 #[test]

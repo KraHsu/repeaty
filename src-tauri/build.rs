@@ -21,6 +21,7 @@ fn main() {
             "workspace_preview_choose",
             "workspace_preview_recent",
             "workspace_preview_close",
+            "workspace_preview_restore",
             "workspace_preview_scan",
             "open_external",
         ]),

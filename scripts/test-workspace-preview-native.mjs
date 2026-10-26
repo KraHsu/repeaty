@@ -141,7 +141,7 @@ async function picker(button, path) {
 }
 async function library() {
   return execute(
-    `return new Promise((resolve,reject)=>{const r=indexedDB.open('repeaty');r.onerror=()=>reject(r.error);r.onsuccess=async()=>{const db=r.result;try{const result={};for(const name of ['notes','cards','reviews','practices','attempts'])result[name]=await new Promise((ok,fail)=>{const q=db.transaction(name).objectStore(name).getAll();q.onsuccess=()=>ok(q.result);q.onerror=()=>fail(q.error)});resolve(result)}catch(e){reject(e)}finally{db.close()}}})`,
+    `return new Promise((resolve,reject)=>{const r=indexedDB.open('repeaty');r.onerror=()=>reject(r.error);r.onsuccess=async()=>{const db=r.result;try{const result={};for(const name of ['decks','notes','cards','reviews','media','savedSearches','practices','attempts','sources','cardDrafts'])result[name]=await new Promise((ok,fail)=>{const q=db.transaction(name).objectStore(name).getAll();q.onsuccess=()=>ok(q.result);q.onerror=()=>fail(q.error)});resolve(result)}catch(e){reject(e)}finally{db.close()}}})`,
   )
 }
 const seed = String.raw`import sys,json,sqlite3,hashlib,pathlib
@@ -297,8 +297,20 @@ try {
   assert.equal((await invoke('workspace_preview_status')).active.token, current.token)
   await command(`/session/${session}`, undefined, 'DELETE')
   session = undefined
+  const offline = join(root, 'offline')
+  await rename(selected, offline)
   await start()
   await enter()
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.workspace-preview [role=alert]')?.textContent.includes('找不到目录')",
+      ),
+    'missing remembered directory',
+  )
+  assert.equal((await invoke('workspace_preview_status')).active, null)
+  await rename(offline, selected)
+  await click('重试')
   await until(
     () =>
       execute("return document.querySelector('.workspace-file-status')?.textContent==='文件缺失'"),
@@ -307,6 +319,22 @@ try {
   const restored = (await invoke('workspace_preview_status')).active
   assert.equal(restored.id, first.id)
   assert.notEqual(restored.token, current.token)
+  await command(`/session/${session}/window/rect`, { width: 1280, height: 560 })
+  await execute(
+    "document.querySelector('.sidebar-section-title button').scrollIntoView({block:'nearest'})",
+  )
+  assert.equal(
+    await execute(
+      "const b=document.querySelector('.sidebar-section-title button');const r=b.getBoundingClientRect();return b.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))",
+    ),
+    true,
+  )
+  await execute("document.querySelector('.sidebar-section-title button').click()")
+  await until(
+    () => execute("return Boolean(document.querySelector('dialog[open]'))"),
+    'deck editor in short desktop window',
+  )
+  await execute("document.querySelector('dialog .modal-header button').click()")
   assert.deepEqual(await library(), before)
   await click('关闭目录')
   await until(
@@ -320,7 +348,7 @@ try {
   ])
   assert.deepEqual(JSON.parse(stdout), [state, 0, 0])
   console.log(
-    'Native workspace preview: picker create/open/cancel, recent sessions, external rename/change/conflict/missing files, retained versions, actual restart, revoked tokens, unchanged study library and scheduling passed',
+    'Native workspace preview: picker create/open/cancel, recent sessions, external rename/change/conflict/missing files, retained versions, actual restart, missing directory reconnect, revoked tokens, unchanged study library and scheduling passed',
   )
 } catch (error) {
   await mkdir('test-results', { recursive: true })

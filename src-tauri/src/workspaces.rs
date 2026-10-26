@@ -31,7 +31,7 @@ async fn run<T: Send + 'static>(
             .lock()
             .map_err(|_| "workspace-unavailable".to_string())?;
         // Do not touch a remembered disk or open SQLite while creating the app window.
-        if guard.sessions.is_none() {
+        if guard.sessions.as_ref().is_none_or(|result| result.is_err()) {
             guard.sessions =
                 Some(Sessions::open(&guard.directory).map_err(|e| error_code(e.as_ref())));
         }
@@ -45,6 +45,20 @@ async fn run<T: Send + 'static>(
     })
     .await
     .map_err(|_| "workspace-unavailable".to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn failed_lazy_initialization_can_retry_without_restarting_the_client() {
+        let parent = tempfile::tempdir().unwrap();
+        let directory = parent.path().join("device");
+        let state = Preview::new(&directory);
+        assert!(run(&state, |sessions| sessions.status()).await.is_err());
+        std::fs::create_dir(&directory).unwrap();
+        assert!(run(&state, |sessions| sessions.status()).await.is_ok());
+    }
 }
 
 #[tauri::command]
@@ -107,6 +121,15 @@ pub async fn workspace_preview_close(
 ) -> Result<Status, String> {
     main_window(&window)?;
     run(&state, move |s| s.close(&epoch)).await
+}
+#[tauri::command]
+pub async fn workspace_preview_restore(
+    window: tauri::WebviewWindow,
+    state: State<'_, Preview>,
+    epoch: String,
+) -> Result<Status, String> {
+    main_window(&window)?;
+    run(&state, move |s| s.restore(&epoch)).await
 }
 #[tauri::command]
 pub async fn workspace_preview_scan(
