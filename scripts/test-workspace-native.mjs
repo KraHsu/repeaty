@@ -290,7 +290,10 @@ try {
   await picker('打开目录', null)
   await click('关闭目录')
   await until(async () => (await invoke('workspace_status')).active === null, 'closed')
-  assert.equal(await execute("return Boolean(document.querySelector('.workspace-welcome'))"), true)
+  await until(
+    () => execute("return Boolean(document.querySelector('.workspace-welcome'))"),
+    'empty workspace view',
+  )
   await execute("document.querySelector('.workspace-recent-entry').click()")
   await ready()
   assert.deepEqual(await nativeLibrary(), saved)
