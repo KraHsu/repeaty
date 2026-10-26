@@ -24,6 +24,7 @@ import {
   Ellipsis,
   History,
   FileText,
+  FolderOpen,
   Layers,
   LayoutGrid,
   Leaf,
@@ -71,6 +72,7 @@ import {
   connectLearningReader,
   DraftWorkbench,
   PlatformSettings,
+  WorkspaceBrowser,
 } from '@repeaty-platform'
 import { canReviewCard, listenPluginPreferences } from './plugins'
 import type { BackupData } from './core/backups'
@@ -109,9 +111,9 @@ const { library, ready, busy, loadError, backups, backupError } = workspace
 const offline = useOffline()
 const readViews = createCardViewReader()
 const cards = computed(() => readViews(library.value))
-const tab = ref<'overview' | 'cards' | 'history' | 'plugins' | 'data' | 'sources' | 'settings'>(
-  'overview',
-)
+const tab = ref<
+  'overview' | 'cards' | 'history' | 'plugins' | 'data' | 'sources' | 'settings' | 'workspace'
+>('overview')
 const historyCardId = ref('')
 const autoStartReading = ref(false)
 const mcpSelection = ref<SourceExcerpt>()
@@ -238,6 +240,7 @@ const pageTitle = computed(
       settings: t('设置'),
       history: t('练习历史'),
       sources: t('学习材料'),
+      workspace: t('工作目录'),
     })[tab.value],
 )
 
@@ -796,6 +799,14 @@ async function restoreBackup() {
       <span class="sidebar-label">{{ t('间隔复习') }}</span>
       <nav class="main-nav" :aria-label="t('主导航')">
         <button
+          v-if="WorkspaceBrowser"
+          :class="{ active: tab === 'workspace' && !review }"
+          :aria-current="tab === 'workspace' && !review ? 'page' : undefined"
+          @click="navigate('workspace')"
+        >
+          <FolderOpen :size="19" />{{ t('工作目录') }}
+        </button>
+        <button
           :class="{ active: tab === 'overview' && !review }"
           :aria-current="tab === 'overview' && !review ? 'page' : undefined"
           @click="navigate('overview')"
@@ -951,8 +962,9 @@ async function restoreBackup() {
       </header>
       <NotificationCenter />
 
+      <WorkspaceBrowser v-if="tab === 'workspace' && WorkspaceBrowser" />
       <SettingsPage
-        v-if="tab === 'plugins' || tab === 'settings'"
+        v-else-if="tab === 'plugins' || tab === 'settings'"
         :key="tab"
         :initial-tab="tab === 'plugins' ? 'plugins' : 'general'"
         :platform-settings="PlatformSettings"

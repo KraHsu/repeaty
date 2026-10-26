@@ -6,6 +6,9 @@ import { remoteWorkspace } from '../edition'
 import { getConfig, upstreamTransport, handleExternalLinks } from '../desktop/native'
 export const desktopEndpoint = ref('')
 export const DraftWorkbench = defineAsyncComponent(() => import('../desktop/DraftWorkbench.vue'))
+export const WorkspaceBrowser = defineAsyncComponent(
+  () => import('../desktop/WorkspacePreview.vue'),
+)
 export const AccountControls = defineAsyncComponent(
   () => import('../components/AccountControls.vue'),
 )

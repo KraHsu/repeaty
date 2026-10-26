@@ -1314,4 +1314,81 @@ export const en = {
   '第 {page} 页，共 {pages} 页': 'Page {page} of {pages}',
   '这段原文已有 {count} 份摘录。': 'Existing excerpts for this selection: {count}.',
   查看已有摘录: 'Show saved excerpts',
+  工作目录: 'Workspace',
+  预览: 'Preview',
+  打开目录: 'Open folder',
+  创建预览目录: 'Create preview folder',
+  重新扫描: 'Rescan',
+  关闭目录: 'Close folder',
+  当前预览目录: 'Current preview folder',
+  目录文件: 'Workspace files',
+  查找文件: 'Find a file',
+  文件路径: 'File path',
+  '{p0} 个文件': '{p0} files',
+  最近打开: 'Recently opened',
+  文件版本: 'File version',
+  文件原文: 'Working file',
+  已接受版本: 'Accepted version',
+  未变化: 'Unchanged',
+  文件已修改: 'Modified',
+  文件已改名: 'Renamed',
+  改名并修改: 'Renamed and modified',
+  尚未接受: 'Not yet accepted',
+  '普通 Markdown': 'Plain Markdown file',
+  缺少身份: 'Missing identity',
+  需要检查: 'Needs attention',
+  存在冲突: 'Conflict',
+  文件缺失: 'Missing file',
+  '查看外部 Markdown 与已接受版本。当前学习库不会随预览切换。':
+    'Inspect external Markdown and accepted versions. Your study library stays separate.',
+  '此预览使用独立的实验目录，尚不用于日常复习。旧库迁移与自动接收文件修改尚未开放。':
+    'This preview uses a separate experimental folder. Daily study, migration, and automatic acceptance of file changes are not available here yet.',
+  '正在读取工作目录…': 'Reading workspace…',
+  '扫描未完成。缺失文件不会据此认定为已删除。':
+    'The scan is incomplete. Missing files will not be treated as deleted.',
+  '没有匹配的文件。': 'No matching files.',
+  '目录中还没有 Markdown 文件。': 'There are no Markdown files in this folder yet.',
+  '文件内容为空。': 'The file is empty.',
+  '没有可预览的正文。': 'No text is available to preview.',
+  '选择文件查看原文。预览不会执行 HTML 或插件。':
+    'Select a file to read its text. The preview does not execute HTML or plugins.',
+  '请选择一个空文件夹。目录中已有的文件不会被覆盖。':
+    'Choose an empty folder. Existing files will be kept.',
+  '暂不支持这个目录格式。请选择由工作目录预览创建的文件夹。':
+    'This folder format is not supported yet. Choose a folder created by Workspace Preview.',
+  '这个工作目录已在使用中。请先关闭另一会话，再重新打开。':
+    'This workspace is already open. Close the other session before opening it here.',
+  '目录已被移动或替换。请通过“打开目录”重新选择。':
+    'The folder was moved or replaced. Use “Open folder” to select it again.',
+  '找不到目录或必要文件。请检查位置，再重新打开。':
+    'The folder or a required file could not be found. Check its location and open it again.',
+  '目录会话已变化。请重新扫描或打开目录。':
+    'The workspace session changed. Rescan or open the folder again.',
+  '无法访问这个目录。请检查文件夹权限。': 'This folder cannot be accessed. Check its permissions.',
+  '文件数量或总大小超出本次预览范围，扫描结果不完整。':
+    'The file count or total size exceeds the preview limit. The scan is incomplete.',
+  '文件不是有效的 UTF-8 文本。请保留原文件，检查编码后重新扫描。':
+    'This file is not valid UTF-8. Keep the original, check its encoding, and rescan.',
+  '文件超过 2 MiB，未读取其正文。': 'The file exceeds 2 MiB. Its text was not read.',
+  '读取期间文件发生变化。请保存后重新扫描。':
+    'The file changed while being read. Save it and rescan.',
+  '已跳过链接或不支持的文件。扫描结果不完整。':
+    'Links or unsupported files were skipped. The scan is incomplete.',
+  '暂时无法读取工作目录。请检查文件和权限后重试。':
+    'The workspace could not be read. Check its files and permissions, then try again.',
+  '多个文件使用了同一个身份。请保留各份内容，检查后再处理。':
+    'Several files share the same identity. Keep every copy and review them before proceeding.',
+  '文件名存在大小写或 Unicode 冲突。请分别保留并检查。':
+    'File names conflict by case or Unicode spelling. Keep each file and review the names.',
+  '这个位置的笔记身份已变化。原已接受版本仍保留。':
+    'The note identity at this path changed. The original accepted version is retained.',
+  '工作文件暂时缺失，已接受的正文仍保留。':
+    'The working file is missing. Its accepted text is retained.',
+  '文件内容尚未通过校验。请检查元数据、题面与答案分隔，再重新扫描。':
+    'The file has not passed validation. Check its metadata and question/answer separator, then rescan.',
+  '浏览目录中的 Markdown 与已接受版本。': 'Browse Markdown files and accepted versions.',
+  '预览目录独立于当前学习库，暂不用于复习或旧库迁移。':
+    'Preview folders stay separate from your study library. Study and migration are not available here yet.',
+  '文件：{p0}': 'Files: {p0}',
+  文件分页: 'File pages',
 } as const
