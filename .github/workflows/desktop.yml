@@ -3,9 +3,6 @@ name: Desktop
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
-    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]
   workflow_dispatch:
 
 permissions:
@@ -13,11 +10,11 @@ permissions:
 
 concurrency:
   group: desktop-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 jobs:
   build:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    if: github.ref == 'refs/heads/main'
     name: Desktop (${{ matrix.os }})
     strategy:
       fail-fast: false

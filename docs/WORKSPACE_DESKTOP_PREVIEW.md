@@ -56,7 +56,7 @@ GSETTINGS_BACKEND=memory GTK_USE_PORTAL=0 GIO_USE_VFS=local \
 
 本地已通过 Rust 41 项、跨语言 23 项、全量单元 442 项（另 1 项既有跳过）、类型与构建检查。真实 Linux WebKit / Rust IPC 流程通过系统选择器创建 / 打开 / 取消、最近重开、外部改名 / 修改 / 重复身份 / 缺失、旧版本读取和实际应用重启；同时核对原学习库、调度 JSON、操作与变更记录不变。1280 与 720 宽度检查无横向溢出，并检查英文界面截图。桌面浏览器 58 项全量回归通过，包含三项短窗口用例；另有 Tauri 延迟初始化失败后重试的测试。
 
-直接 `cargo build` 的开发二进制需要桌面开发服务；`npm run desktop:build -- --debug --no-bundle` 生成包含前端的调试程序，可在关闭开发服务后运行原生测试。`npm run desktop:build -- --no-bundle` 生成的 release 程序也已本地通过原有完整原生流程，以及最小桌面会话中的工作目录完整流程，无需开发端口。CI 使用安装包构建的 release 程序，在原有全量原生测试之后运行本套件，保留宽 / 窄窗口截图。三平台结果按实际运行的提交另记，不用本机测试替代 Windows / macOS GUI 验收。
+直接 `cargo build` 的开发二进制需要桌面开发服务；`npm run desktop:build -- --debug --no-bundle` 生成包含前端的调试程序，可在关闭开发服务后运行原生测试。`npm run desktop:build -- --no-bundle` 生成的 release 程序也已本地通过原有完整原生流程，以及最小桌面会话中的工作目录完整流程，无需开发端口。`main` 的 Desktop CI 使用安装包构建的 release 程序，在原有全量原生测试之后运行本套件，保留宽 / 窄窗口截图。功能分支只跑单元测试。三平台结果按实际运行的提交另记，不用本机测试替代 Windows / macOS GUI 验收。
 
 ## CI 批次记录
 
@@ -71,6 +71,8 @@ GSETTINGS_BACKEND=memory GTK_USE_PORTAL=0 GIO_USE_VFS=local \
 提交 `644bd37` 的 [Desktop 复验](https://github.com/KraHsu/repeaty/actions/runs/40324978161)中，原有完整原生流程通过；新增目录流程停在 GTK 文件夹选择器。用无桌面服务的隔离 D-Bus 会话本地复现后，确认选择器没有初始目录，路径输入无法完成确认。现在由原生端明确设置主目录起点，同一隔离环境中的完整目录流程通过。CI 保留最小会话配置并执行此回归，失败时额外保存隔离 Xvfb 显示的原生窗口截图；普通运行默认不截取系统屏幕。
 
 提交 `f031955` 的 [Desktop 检查](https://github.com/KraHsu/repeaty/actions/runs/40330777765)在既有 LeetCode 浏览器用例中超时。追踪记录显示外部网页请求已被模拟并完成，耗时来自新窗口刚建立便调用关闭，直到测试清理才返回；页面中的未连接状态始终正确。用例现在等待网页加载，并检查 URL 与标题，再切回 Repeaty 验证连接状态，窗口由测试上下文统一清理。本地该用例独立执行五次、桌面 58 项全量回归均通过，原有业务断言保留。
+
+随后按新的 CI 范围取消了功能分支上的 [Desktop 运行](https://github.com/KraHsu/repeaty/actions/runs/40332566055)：今后功能分支和 PR 只跑基本单元测试，完整构建与端到端留在 `main`。本批修复已完成本地 release 原生验证，取消的三平台运行不记为通过；未完成的平台安装 / GUI 验收继续保留。
 
 ## 下一步
 
