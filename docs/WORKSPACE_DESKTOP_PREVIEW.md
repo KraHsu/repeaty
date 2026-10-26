@@ -24,6 +24,8 @@ Markdown 校验与变更分类在 Worker 中进行，界面一次渲染 50 个�
 
 较矮的桌面窗口中，导航和卡组列表共同滚动，品牌与底部状态保持固定；底部区域不会挡住新建卡组。设备配置首次读取失败后可重新尝试；关闭或重连会话只处理本窗口原先选中的目录，不会清除另一窗口的选择。
 
+系统目录选择器从用户主目录打开，不依赖桌面会话是否记住了初始位置。主目录只是选择器起点，仍须用户选择文件夹后才打开工作目录。
+
 ## 原生边界
 
 新路径只能来自系统目录选择器。最近记录只允许打开设备索引中已登记的路径 / 身份组合，前端没有通用文件系统读写接口。只有主窗口拥有这些 IPC 权限。
@@ -44,13 +46,17 @@ npm run test:workspace
 npm run test:workspace:native
 # 构建桌面程序后；Linux 另需 WebKitWebDriver、tauri-driver、Xvfb、xdotool
 xvfb-run -a node scripts/test-workspace-preview-native.mjs
+# 不依赖已登录桌面会话的 GTK / D-Bus 回归
+GSETTINGS_BACKEND=memory GTK_USE_PORTAL=0 GIO_USE_VFS=local \
+  dbus-run-session --config-file=scripts/fixtures/minimal-desktop-session.conf -- \
+  xvfb-run -a node scripts/test-workspace-preview-native.mjs
 ```
 
 原生新增 11 项测试覆盖重启、关闭与旧令牌、选择器代次、最近身份变化、索引写失败、同身份副本、非空目录、中文正文、错误编码、链接、FIFO 和目录替换。前端新增 13 项覆盖变更投影、异步会话、HTML 转义、版本切换、双语及列表分页 / 搜索。
 
 本地已通过 Rust 41 项、跨语言 23 项、全量单元 442 项（另 1 项既有跳过）、类型与构建检查。真实 Linux WebKit / Rust IPC 流程通过系统选择器创建 / 打开 / 取消、最近重开、外部改名 / 修改 / 重复身份 / 缺失、旧版本读取和实际应用重启；同时核对原学习库、调度 JSON、操作与变更记录不变。1280 与 720 宽度检查无横向溢出，并检查英文界面截图。桌面浏览器 58 项全量回归通过，包含三项短窗口用例；另有 Tauri 延迟初始化失败后重试的测试。
 
-直接 `cargo build` 的开发二进制需要桌面开发服务；`npm run desktop:build -- --debug --no-bundle` 生成包含前端的调试程序，可在关闭开发服务后运行原生测试。CI 使用安装包构建的 release 程序，无需开发端口。Desktop CI 在原有全量原生测试之后运行本套件，保留宽 / 窄窗口截图。三平台结果按实际运行的提交另记，不用本机测试替代 Windows / macOS GUI 验收。
+直接 `cargo build` 的开发二进制需要桌面开发服务；`npm run desktop:build -- --debug --no-bundle` 生成包含前端的调试程序，可在关闭开发服务后运行原生测试。`npm run desktop:build -- --no-bundle` 生成的 release 程序也已本地通过原有完整原生流程，以及最小桌面会话中的工作目录完整流程，无需开发端口。CI 使用安装包构建的 release 程序，在原有全量原生测试之后运行本套件，保留宽 / 窄窗口截图。三平台结果按实际运行的提交另记，不用本机测试替代 Windows / macOS GUI 验收。
 
 ## CI 批次记录
 
@@ -61,6 +67,8 @@ xvfb-run -a node scripts/test-workspace-preview-native.mjs
 原生回归中的导航定位改为菜单名称与当前页面状态，三个“全部卡片”入口不再绑定按钮下标。本地完整 WebKit / Rust IPC 回归已通过，覆盖上游账户、备份、LeetCode 历史、Anki、阅读与 0.27 编辑 / 渲染；目录预览另有独立的完整流程测试。
 
 后续 [Linux 原生测试](https://github.com/KraHsu/repeaty/actions/runs/40322119349)在“查看出处”超时，失败截图中弹窗尚未打开。脚本只等正文加载，没有等操作按钮解除禁用；现在统一等待可见且可用的按钮，再执行一次点击，不强制操作禁用按钮。失败时额外保留按钮禁用状态、加载状态与弹窗数量，方便定位。本地完整原生流程再次通过；三平台 Desktop 另按修复后的提交复验。
+
+提交 `644bd37` 的 [Desktop 复验](https://github.com/KraHsu/repeaty/actions/runs/40324978161)中，原有完整原生流程通过；新增目录流程停在 GTK 文件夹选择器。用无桌面服务的隔离 D-Bus 会话本地复现后，确认选择器没有初始目录，路径输入无法完成确认。现在由原生端明确设置主目录起点，同一隔离环境中的完整目录流程通过。CI 保留最小会话配置并执行此回归，失败时额外保存隔离 Xvfb 显示的原生窗口截图；普通运行默认不截取系统屏幕。
 
 ## 下一步
 

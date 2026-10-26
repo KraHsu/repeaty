@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
-use tauri::State;
+use tauri::{Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 struct Inner {
@@ -88,10 +88,17 @@ pub async fn workspace_preview_choose(
     if before.epoch != epoch {
         return Err("stale-workspace-session".into());
     }
-    let selected =
-        tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_folder())
-            .await
-            .map_err(|_| "workspace-unavailable")?;
+    let selected = tauri::async_runtime::spawn_blocking(move || {
+        let mut picker = app.dialog().file();
+        // GTK's fallback chooser may have no current folder in a fresh desktop
+        // session, leaving path entry unable to confirm even an existing directory.
+        if let Ok(home) = app.path().home_dir() {
+            picker = picker.set_directory(home);
+        }
+        picker.blocking_pick_folder()
+    })
+    .await
+    .map_err(|_| "workspace-unavailable")?;
     let Some(selected) = selected else {
         return Ok(None);
     };

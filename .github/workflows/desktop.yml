@@ -48,7 +48,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb xdotool
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb xdotool python3-pil
           cargo install tauri-driver --locked --version 2.1.0
           # Headless runners register a desktop portal that cannot start. WebKit and
           # tao otherwise wait about 30 seconds for its D-Bus activation to time out.
@@ -82,11 +82,12 @@ jobs:
         env:
           REPEATY_DESKTOP_BINARY: src-tauri/target/release/repeaty-desktop
           REPEATY_EXPECT_BUNDLED: '1'
+          REPEATY_CAPTURE_NATIVE_SCREEN: '1'
         run: |
           npm run build:server
           cargo build --locked --manifest-path server/Cargo.toml
           xvfb-run -a node scripts/test-desktop-native.mjs
-          xvfb-run -a node scripts/test-workspace-preview-native.mjs
+          GSETTINGS_BACKEND=memory GTK_USE_PORTAL=0 GIO_USE_VFS=local dbus-run-session --config-file=scripts/fixtures/minimal-desktop-session.conf -- xvfb-run -a node scripts/test-workspace-preview-native.mjs
       - name: Upload workspace preview screenshots
         if: always() && runner.os == 'Linux'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

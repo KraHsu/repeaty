@@ -103,7 +103,7 @@ async function picker(button, path) {
     const { stdout } = await exec(xdotool, ['search', '--onlyvisible', '--name', 'Select Folder'])
     return stdout.trim().split('\n').at(-1)
   }, 'native folder picker')
-  await exec(xdotool, ['windowfocus', chooser])
+  await exec(xdotool, ['windowfocus', '--sync', chooser])
   if (path === null) await exec(xdotool, ['key', '--clearmodifiers', 'Escape'])
   else {
     await exec(xdotool, ['key', '--clearmodifiers', 'ctrl+l', 'ctrl+a'])
@@ -352,6 +352,18 @@ try {
   )
 } catch (error) {
   await mkdir('test-results', { recursive: true })
+  // Capture the native chooser as well as the webview, only on an explicitly
+  // isolated test display. A WebDriver screenshot cannot include GTK windows.
+  if (process.env.REPEATY_CAPTURE_NATIVE_SCREEN === '1')
+    try {
+      await exec('/usr/bin/python3', [
+        '-c',
+        "import os,sys; from PIL import ImageGrab; ImageGrab.grab(xdisplay=os.environ['DISPLAY']).save(sys.argv[1])",
+        resolve('test-results/workspace-preview-native-screen.png'),
+      ])
+    } catch (issue) {
+      log.push(`Native display capture unavailable: ${issue}`)
+    }
   try {
     if (session)
       await writeFile(
