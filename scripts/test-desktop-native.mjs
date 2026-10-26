@@ -79,11 +79,13 @@ async function command(path, body, method = body === undefined ? 'GET' : 'POST')
   return result.value
 }
 const execute = (script, ...args) => command(`/session/${session}/execute/sync`, { script, args })
-const click = (text) =>
-  execute(
-    `const button=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===arguments[0]);if(!button)throw Error('Missing button '+arguments[0]);button.click();`,
+const click = async (text) => {
+  await waitButton(text)
+  await execute(
+    `const button=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===arguments[0]&&!b.disabled&&b.getClientRects().length);if(!button)throw Error('Missing enabled button '+arguments[0]);button.click();`,
     text,
   )
+}
 const fill = (selector, value) =>
   execute(
     `const el=document.querySelector(arguments[0]);if(!el)throw Error('Missing field');el.value=arguments[1];el.dispatchEvent(new Event('input',{bubbles:true}));`,
@@ -94,7 +96,7 @@ const waitButton = (text) =>
   until(
     () =>
       execute(
-        "return [...document.querySelectorAll('button')].some(b=>b.textContent.trim()===arguments[0]&&!b.disabled)",
+        "return [...document.querySelectorAll('button')].some(b=>b.textContent.trim()===arguments[0]&&!b.disabled&&b.getClientRects().length)",
         text,
       ),
     text,
@@ -2471,6 +2473,16 @@ try {
   console.error(log.slice(-20).join(''))
   if (session) {
     await mkdir('test-results', { recursive: true })
+    await writeFile(
+      'test-results/native-failure-state.json',
+      JSON.stringify(
+        await execute(
+          "return {headings:[...document.querySelectorAll('h1,h2,dialog h3')].map(e=>e.textContent),buttons:[...document.querySelectorAll('button')].filter(b=>b.getClientRects().length).map(b=>({text:b.textContent.trim(),disabled:b.disabled})),busy:[...document.querySelectorAll('[aria-busy]')].map(e=>({class:e.className,busy:e.getAttribute('aria-busy')})),dialogs:document.querySelectorAll('dialog').length}",
+        ).catch((issue) => ({ diagnosticError: String(issue) })),
+        null,
+        2,
+      ),
+    )
     await writeFile(
       'test-results/native-failure.png',
       Buffer.from(await command(`/session/${session}/screenshot`).catch(() => ''), 'base64'),

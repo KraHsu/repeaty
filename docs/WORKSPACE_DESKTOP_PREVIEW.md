@@ -54,11 +54,13 @@ xvfb-run -a node scripts/test-workspace-preview-native.mjs
 
 ## CI 批次记录
 
-提交 `32c6491` 的[完整 CI](https://github.com/KraHsu/repeaty/actions/runs/40318511293) 通过：Linux / macOS 各 41 项、Windows 37 项 Rust 测试，三平台各 23 项跨语言测试通过。Quality 检查包括全量单元、静态版与服务端浏览器、版本 / 发布规则和构建检查。分支验证未部署 Pages、未发布版本。
+提交 `46f68a0` 的[完整 CI](https://github.com/KraHsu/repeaty/actions/runs/40322114824) 通过：Linux / macOS 各 41 项、Windows 37 项 Rust 测试，三平台各 23 项跨语言测试通过。Quality 检查包括全量单元、静态版与服务端浏览器、版本 / 发布规则和构建检查。分支验证未部署 Pages、未发布版本。
 
 首轮暴露的[路径用例失败](https://github.com/KraHsu/repeaty/actions/runs/40312566041)来自测试把临时路径写法当作已登记路径；现在以原生会话返回的规范路径做身份校验。[桌面失败](https://github.com/KraHsu/repeaty/actions/runs/40312570755)来自短窗口侧栏底部遮挡新建卡组；已修复滚动布局，并增加三项窗口尺寸回归和原生点击位置检查。这些检查保留执行，不通过强制点击或跳过用例绕开。
 
 原生回归中的导航定位改为菜单名称与当前页面状态，三个“全部卡片”入口不再绑定按钮下标。本地完整 WebKit / Rust IPC 回归已通过，覆盖上游账户、备份、LeetCode 历史、Anki、阅读与 0.27 编辑 / 渲染；目录预览另有独立的完整流程测试。
+
+后续 [Linux 原生测试](https://github.com/KraHsu/repeaty/actions/runs/40322119349)在“查看出处”超时，失败截图中弹窗尚未打开。脚本只等正文加载，没有等操作按钮解除禁用；现在统一等待可见且可用的按钮，再执行一次点击，不强制操作禁用按钮。失败时额外保留按钮禁用状态、加载状态与弹窗数量，方便定位。本地完整原生流程再次通过；三平台 Desktop 另按修复后的提交复验。
 
 ## 下一步
 
