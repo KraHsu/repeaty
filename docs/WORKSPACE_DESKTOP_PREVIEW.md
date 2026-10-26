@@ -60,7 +60,7 @@ GSETTINGS_BACKEND=memory GTK_USE_PORTAL=0 GIO_USE_VFS=local \
 
 ## CI 批次记录
 
-提交 `46f68a0` 的[完整 CI](https://github.com/KraHsu/repeaty/actions/runs/40322114824) 通过：Linux / macOS 各 41 项、Windows 37 项 Rust 测试，三平台各 23 项跨语言测试通过。Quality 检查包括全量单元、静态版与服务端浏览器、版本 / 发布规则和构建检查。分支验证未部署 Pages、未发布版本。
+提交 `f031955` 的[完整 CI](https://github.com/KraHsu/repeaty/actions/runs/40330768609) 通过：Linux / macOS 各 41 项、Windows 37 项 Rust 测试，三平台各 23 项跨语言测试通过。Quality 检查包括全量单元 442 项（另 1 项既有跳过）、静态浏览器 73 项、服务端浏览器 46 项、发布规则 28 项及格式 / 类型 / 构建检查。分支验证未部署 Pages、未发布版本。
 
 首轮暴露的[路径用例失败](https://github.com/KraHsu/repeaty/actions/runs/40312566041)来自测试把临时路径写法当作已登记路径；现在以原生会话返回的规范路径做身份校验。[桌面失败](https://github.com/KraHsu/repeaty/actions/runs/40312570755)来自短窗口侧栏底部遮挡新建卡组；已修复滚动布局，并增加三项窗口尺寸回归和原生点击位置检查。这些检查保留执行，不通过强制点击或跳过用例绕开。
 
@@ -69,6 +69,8 @@ GSETTINGS_BACKEND=memory GTK_USE_PORTAL=0 GIO_USE_VFS=local \
 后续 [Linux 原生测试](https://github.com/KraHsu/repeaty/actions/runs/40322119349)在“查看出处”超时，失败截图中弹窗尚未打开。脚本只等正文加载，没有等操作按钮解除禁用；现在统一等待可见且可用的按钮，再执行一次点击，不强制操作禁用按钮。失败时额外保留按钮禁用状态、加载状态与弹窗数量，方便定位。本地完整原生流程再次通过；三平台 Desktop 另按修复后的提交复验。
 
 提交 `644bd37` 的 [Desktop 复验](https://github.com/KraHsu/repeaty/actions/runs/40324978161)中，原有完整原生流程通过；新增目录流程停在 GTK 文件夹选择器。用无桌面服务的隔离 D-Bus 会话本地复现后，确认选择器没有初始目录，路径输入无法完成确认。现在由原生端明确设置主目录起点，同一隔离环境中的完整目录流程通过。CI 保留最小会话配置并执行此回归，失败时额外保存隔离 Xvfb 显示的原生窗口截图；普通运行默认不截取系统屏幕。
+
+提交 `f031955` 的 [Desktop 检查](https://github.com/KraHsu/repeaty/actions/runs/40330777765)在既有 LeetCode 浏览器用例中超时。追踪记录显示外部网页请求已被模拟并完成，耗时来自新窗口刚建立便调用关闭，直到测试清理才返回；页面中的未连接状态始终正确。用例现在等待网页加载，并检查 URL 与标题，再切回 Repeaty 验证连接状态，窗口由测试上下文统一清理。本地该用例独立执行五次、桌面 58 项全量回归均通过，原有业务断言保留。
 
 ## 下一步
 

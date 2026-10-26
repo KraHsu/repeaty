@@ -761,7 +761,13 @@ test('plugin settings distinguish website login from per-site judge credentials 
   await expect(cn).toContainText('打开力扣网站并登录，不会自动连接 Repeaty')
   const popup = page.waitForEvent('popup')
   await cn.getByRole('link', { name: '打开力扣网站', exact: false }).click()
-  await (await popup).close()
+  const website = await popup
+  await website.waitForLoadState('load')
+  await expect(website).toHaveURL('https://leetcode.cn/')
+  await expect(website).toHaveTitle('LeetCode website')
+  // Return to Repeaty after the popup has committed. The context owns cleanup;
+  // closing a newly attached Chromium target here can stall until test teardown.
+  await page.bringToFront()
   await expect(cn.getByRole('status')).toContainText('未配置登录信息')
   await cn.getByText('在哪里找到这两个值？', { exact: true }).click()
   await expect(cn.getByLabel('LEETCODE_SESSION', { exact: true })).toBeVisible()
