@@ -99,6 +99,20 @@ const waitButton = (text) =>
       ),
     text,
   )
+async function navigate(label) {
+  await execute(
+    "const buttons=[...document.querySelectorAll('.main-nav button')].filter(b=>[...b.childNodes].filter(n=>n.nodeType===Node.TEXT_NODE).map(n=>n.textContent).join('').trim()===arguments[0]);if(buttons.length!==1)throw Error('Missing or ambiguous navigation '+arguments[0]);buttons[0].click();",
+    label,
+  )
+  await until(
+    () =>
+      execute(
+        "return [...document.querySelectorAll('.main-nav button')].some(b=>b.getAttribute('aria-current')==='page'&&[...b.childNodes].filter(n=>n.nodeType===Node.TEXT_NODE).map(n=>n.textContent).join('').trim()===arguments[0])",
+        label,
+      ),
+    `navigation ${label}`,
+  )
+}
 const invoke = async (name, args = {}) => {
   const result = await execute(
     'return window.__TAURI_INTERNALS__.invoke(arguments[0],arguments[1]).then(value=>({ok:true,value}),error=>({ok:false,error:String(error)}));',
@@ -631,7 +645,8 @@ try {
   )
   // Production CSP and WebKit must allow the bundled worker and SQLite wasm.
   // The generated File contains only the committed synthetic Anki fixture.
-  await execute("document.querySelectorAll('.main-nav button')[1].click()")
+  await navigate('全部卡片')
+  await waitButton('批量导入')
   await click('批量导入')
   await execute(
     "const select=document.querySelector('#import-format');select.value='anki';select.dispatchEvent(new Event('change',{bubbles:true}));",
@@ -675,7 +690,8 @@ try {
     try{return await new Promise((resolve,reject)=>{const r=db.transaction('notes').objectStore('notes').getAll();r.onsuccess=()=>resolve(r.result.filter(n=>n.id.startsWith('anki:')).length);r.onerror=()=>reject(r.error)})}finally{db.close()}})();`),
     4,
   )
-  await execute("document.querySelectorAll('.main-nav button')[1].click()")
+  await navigate('全部卡片')
+  await waitButton('批量导入')
   await click('批量导入')
   await execute(
     "const select=document.querySelector('#import-format');select.value='anki';select.dispatchEvent(new Event('change',{bubbles:true}));",
@@ -800,7 +816,11 @@ try {
     () => execute("return !document.querySelector('dialog')"),
     'native excerpt note saved',
   )
-  await execute("document.querySelectorAll('.main-nav button')[1].click()")
+  await navigate('全部卡片')
+  await until(
+    () => execute("return Boolean(document.querySelector('.search-field input'))"),
+    'native cards search ready',
+  )
   await fill('.search-field input', 'Native source question')
   await until(
     () =>

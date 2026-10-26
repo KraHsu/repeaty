@@ -50,7 +50,15 @@ xvfb-run -a node scripts/test-workspace-preview-native.mjs
 
 本地已通过 Rust 41 项、跨语言 23 项、全量单元 442 项（另 1 项既有跳过）、类型与构建检查。真实 Linux WebKit / Rust IPC 流程通过系统选择器创建 / 打开 / 取消、最近重开、外部改名 / 修改 / 重复身份 / 缺失、旧版本读取和实际应用重启；同时核对原学习库、调度 JSON、操作与变更记录不变。1280 与 720 宽度检查无横向溢出，并检查英文界面截图。桌面浏览器 58 项全量回归通过，包含三项短窗口用例；另有 Tauri 延迟初始化失败后重试的测试。
 
-本地调试构建的原生测试需要运行桌面开发服务；CI 使用安装包构建的 release 程序，无需开发端口。Desktop CI 在原有全量原生测试之后运行本套件，保留宽 / 窄窗口截图。三平台结果按实际运行的提交另记，不用本机测试替代 Windows / macOS GUI 验收。
+直接 `cargo build` 的开发二进制需要桌面开发服务；`npm run desktop:build -- --debug --no-bundle` 生成包含前端的调试程序，可在关闭开发服务后运行原生测试。CI 使用安装包构建的 release 程序，无需开发端口。Desktop CI 在原有全量原生测试之后运行本套件，保留宽 / 窄窗口截图。三平台结果按实际运行的提交另记，不用本机测试替代 Windows / macOS GUI 验收。
+
+## CI 批次记录
+
+提交 `32c6491` 的[完整 CI](https://github.com/KraHsu/repeaty/actions/runs/40318511293) 通过：Linux / macOS 各 41 项、Windows 37 项 Rust 测试，三平台各 23 项跨语言测试通过。Quality 检查包括全量单元、静态版与服务端浏览器、版本 / 发布规则和构建检查。分支验证未部署 Pages、未发布版本。
+
+首轮暴露的[路径用例失败](https://github.com/KraHsu/repeaty/actions/runs/40312566041)来自测试把临时路径写法当作已登记路径；现在以原生会话返回的规范路径做身份校验。[桌面失败](https://github.com/KraHsu/repeaty/actions/runs/40312570755)来自短窗口侧栏底部遮挡新建卡组；已修复滚动布局，并增加三项窗口尺寸回归和原生点击位置检查。这些检查保留执行，不通过强制点击或跳过用例绕开。
+
+原生回归中的导航定位改为菜单名称与当前页面状态，三个“全部卡片”入口不再绑定按钮下标。本地完整 WebKit / Rust IPC 回归已通过，覆盖上游账户、备份、LeetCode 历史、Anki、阅读与 0.27 编辑 / 渲染；目录预览另有独立的完整流程测试。
 
 ## 下一步
 

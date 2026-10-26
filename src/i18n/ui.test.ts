@@ -165,7 +165,9 @@ it('keeps persisted filter values and typed search terms unchanged across UI lan
   await start()
   button('Add starter deck').click()
   await vi.waitFor(() => expect(host.querySelector('.sidebar-deck')).not.toBeNull())
-  const cardsNav = host.querySelectorAll<HTMLButtonElement>('.main-nav button')[1]!
+  const cardsNav = [...host.querySelectorAll<HTMLButtonElement>('.main-nav button')].find(
+    (button) => button.textContent?.trim().startsWith('All cards'),
+  )!
   cardsNav.click()
   await nextTick()
   const state = host.querySelector<HTMLSelectElement>('select[aria-label="Filter by status"]')!
