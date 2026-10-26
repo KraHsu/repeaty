@@ -110,6 +110,54 @@ impl Drop for RootLock {
 }
 
 impl Prototype {
+    /// Read-only accepted projections for the desktop inspector, bounded before allocating bodies.
+    pub fn preview_files(
+        &self,
+        byte_budget: &mut usize,
+        mut read: impl FnMut(&str, usize) -> Result<Vec<u8>>,
+    ) -> Result<Vec<crate::preview::Accepted>> {
+        let mut query = self
+            .conn
+            .prepare("SELECT id,path,accepted_hash FROM notes ORDER BY path")?;
+        let mut rows = query.query([])?;
+        let mut result = Vec::new();
+        while let Some(row) = rows.next()? {
+            if result.len() >= crate::preview::MAX_FILES {
+                return Err("preview-limit".into());
+            }
+            let id: String = row.get(0)?;
+            let hash: String = row.get(2)?;
+            if !valid_hash(&hash) {
+                return Err("invalid-object-hash".into());
+            }
+            let bytes = read(&hash, *byte_budget)?;
+            if files::digest(&bytes) != hash || bytes.len() > *byte_budget {
+                return Err("invalid-accepted-object".into());
+            }
+            *byte_budget -= bytes.len();
+            let cards = self
+                .conn
+                .prepare(
+                    "SELECT id,variant,lifecycle FROM cards WHERE note_id=?1 ORDER BY variant",
+                )?
+                .query_map([&id], |row| {
+                    Ok(CardMapping {
+                        id: row.get(0)?,
+                        variant: row.get(1)?,
+                        lifecycle: row.get(2)?,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            result.push(crate::preview::Accepted {
+                id,
+                path: row.get(1)?,
+                raw: String::from_utf8(bytes)?,
+                cards,
+            });
+        }
+        Ok(result)
+    }
+
     /// Refuses nonempty roots. This marker/database cannot be opened as an existing user library.
     pub fn create_in_empty(root: &Path) -> Result<Self> {
         require_directory(root)?;

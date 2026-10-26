@@ -54,15 +54,12 @@ export async function checkVersions(root = '.') {
       ])
     }
   }
-  // The desktop lockfile also embeds the local plugin's package version.
-  versions.push([
-    'src-tauri/Cargo.lock local plugin',
-    cargoVersion(
-      await readFile(join(root, 'src-tauri/Cargo.lock'), 'utf8'),
-      'repeaty-leetcode-local',
-      true,
-    ),
-  ])
+  // The desktop lockfile embeds both local Rust packages.
+  for (const name of ['repeaty-leetcode-local', 'repeaty-workspace'])
+    versions.push([
+      'src-tauri/Cargo.lock ' + name,
+      cargoVersion(await readFile(join(root, 'src-tauri/Cargo.lock'), 'utf8'), name, true),
+    ])
   for (const [path, actual] of versions)
     if (actual !== version) throw new Error(path + ': expected ' + version + ', found ' + actual)
   if (parsed.core === '1.0.0' && !parsed.prerelease) {

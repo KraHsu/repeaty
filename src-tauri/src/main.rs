@@ -2,6 +2,7 @@
 mod exports;
 mod mcp;
 mod plugins;
+mod workspaces;
 use tauri_plugin_dialog::DialogExt;
 mod upstream;
 use plugins::Plugins;
@@ -222,6 +223,7 @@ fn main() {
                     )?,
                 )])?,
             });
+            app.manage(workspaces::Preview::new(&directory));
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Repeaty")
                 .inner_size(1280.0, 850.0)
@@ -264,6 +266,11 @@ fn main() {
             set_endpoint,
             upstream_request,
             local_plugin,
+            workspaces::workspace_preview_status,
+            workspaces::workspace_preview_choose,
+            workspaces::workspace_preview_recent,
+            workspaces::workspace_preview_close,
+            workspaces::workspace_preview_scan,
             open_external
         ])
         .run(tauri::generate_context!())

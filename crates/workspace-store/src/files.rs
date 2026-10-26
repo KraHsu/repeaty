@@ -69,8 +69,29 @@ pub fn read_stable(path: &Path) -> io::Result<Vec<u8>> {
 }
 
 pub fn read_stable_with_limit(path: &Path, limit: u64) -> io::Result<Vec<u8>> {
-    let mut file = regular_file(path)?;
+    read_stable_file(regular_file(path)?, limit)
+}
+
+/// Also used with files opened relative to a held directory capability.
+pub(crate) fn read_stable_file(mut file: File, limit: u64) -> io::Result<Vec<u8>> {
     let before = file.metadata()?;
+    if !before.is_file() {
+        return Err(io::ErrorKind::InvalidInput.into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if before.nlink() != 1 {
+            return Err(io::ErrorKind::InvalidInput.into());
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if before.file_attributes() & 0x400 != 0 {
+            return Err(io::ErrorKind::InvalidInput.into());
+        }
+    }
     if before.len() > limit {
         return Err(io::ErrorKind::FileTooLarge.into());
     }

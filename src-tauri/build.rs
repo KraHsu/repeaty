@@ -17,6 +17,11 @@ fn main() {
             "set_endpoint",
             "upstream_request",
             "local_plugin",
+            "workspace_preview_status",
+            "workspace_preview_choose",
+            "workspace_preview_recent",
+            "workspace_preview_close",
+            "workspace_preview_scan",
             "open_external",
         ]),
     ))

@@ -23,6 +23,7 @@ tauri-plugin-dialog = "2"
 tempfile = "3"
 uuid = { version = "1", features = ["v4"] }
 repeaty-leetcode-local = { path = "../crates/leetcode-local" }
+repeaty-workspace = { path = "../crates/workspace-store" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }

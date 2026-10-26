@@ -154,6 +154,16 @@ test('checks all frontend, Rust, Tauri and lockfile versions; enforces the stabl
   )
   await assert.rejects(checkVersions(root), /server\/Cargo.toml/)
   await writeFile(join(root, 'server/Cargo.toml'), original)
+  const desktopLock = await readFile(join(root, 'src-tauri/Cargo.lock'), 'utf8')
+  await writeFile(
+    join(root, 'src-tauri/Cargo.lock'),
+    desktopLock.replace(
+      'name = "repeaty-workspace"\nversion = "' + currentVersion + '"',
+      'name = "repeaty-workspace"\nversion = "0.0.0-test.mismatch"',
+    ),
+  )
+  await assert.rejects(checkVersions(root), /src-tauri\/Cargo.lock repeaty-workspace/)
+  await writeFile(join(root, 'src-tauri/Cargo.lock'), desktopLock)
   for (const file of files)
     await writeFile(
       join(root, file),
