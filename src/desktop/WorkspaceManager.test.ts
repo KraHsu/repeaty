@@ -96,3 +96,31 @@ it('accepts a valid external edit against both the accepted and observed bytes',
     { expectedHash: 'a'.repeat(64), workingHash: 'b'.repeat(64), path: 'notes/card.md' },
   ])
 })
+
+it('disposes startup before a late status response can launch a scan', async () => {
+  const read = vi.fn()
+  let release!: (value: unknown) => void
+  invoke.mockImplementation((command) => {
+    if (command === 'workspace_status')
+      return new Promise((resolve) => {
+        release = resolve
+      })
+    read(command)
+    return {}
+  })
+  const workspace = {
+    busy: ref(false),
+    library: shallowRef(fixture()),
+    acceptExternalNote: vi.fn(),
+  } as unknown as ReturnType<typeof useLibrary>
+  const host = document.createElement('div')
+  document.body.append(host)
+  const app = createApp(Manager, { workspace })
+  app.mount(host)
+  expect(host.querySelector('.workspace-manager')?.getAttribute('aria-busy')).toBe('true')
+  await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+  app.unmount()
+  release({ epoch: crypto.randomUUID(), active, recent: [], error: null })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(read).not.toHaveBeenCalled()
+})

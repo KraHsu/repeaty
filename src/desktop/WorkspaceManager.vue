@@ -22,7 +22,7 @@ import {
 } from './workspaces'
 const props = defineProps<{ workspace: ReturnType<typeof useLibrary> }>()
 const inspector = createInspector()
-const busy = ref(false),
+const busy = ref(true),
   error = ref<DisplayMessage>(''),
   files = ref<FileChange[]>([]),
   selected = ref(''),
@@ -101,11 +101,13 @@ async function run(action: () => Promise<unknown>) {
   }
 }
 async function refresh() {
+  if (!alive) return
   const active = status.value?.active
   if (!active) return
   const value = scanSchema.parse(
     await workspaceApi('workspace_read', { token: active.token, request: { type: 'scan' } }),
   )
+  if (!alive) return
   const changes = await inspector.inspect(
     previewScanSchema.parse({
       token: active.token,
@@ -181,10 +183,14 @@ async function accept() {
 onMounted(async () => {
   try {
     await initializeWorkspaces()
+    if (!alive) return
     await loadWorkspaceStatus()
-    await run(refresh)
+    if (!alive) return
+    await refresh()
   } catch (issue) {
-    error.value = issue as Error
+    if (alive) error.value = issue as Error
+  } finally {
+    if (alive) busy.value = false
   }
 })
 onUnmounted(() => {
