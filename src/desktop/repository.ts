@@ -1,3 +1,4 @@
+import { retiredNoteSchema, type RetiredNote } from './retirement'
 import { z } from 'zod'
 import {
   cardViews,
@@ -23,6 +24,7 @@ import {
   createWorkspaceMarkdown,
   readWorkspaceMarkdown,
   rewriteWorkspaceContent,
+  rewriteWorkspaceDocument,
   type JsonObject,
 } from '../workspace/markdown'
 import {
@@ -37,6 +39,7 @@ export type NativePatch = {
   id: string
   position?: number
   value?: unknown
+  positionOnly?: boolean
 }
 export interface AcceptedDocument {
   kind: 'note' | 'source'
@@ -52,6 +55,7 @@ export interface DocumentWrite {
   raw: string | null
   expectedHash: string | null
   workingHash?: string
+  missing?: boolean
 }
 const docSchema = z.object({
   kind: z.enum(['note', 'source']),
@@ -113,6 +117,7 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
         reason?: string
         consumeCardDraft?: string
         externalDocuments?: DocumentWrite[]
+        scanHash?: string
       } = {},
     ): Promise<Snapshot> {
       if (!cached) await repository.load()
@@ -127,6 +132,7 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
           throw nativeError('invalid-data')
         })
       const patches: NativePatch[] = []
+      let restoredBytes = 0
       for (const store of recordStores) {
         if (previous[store] === library[store]) continue
         const prior = new Map(
@@ -137,11 +143,25 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
           const same =
             old && (old.value === value || JSON.stringify(old.value) === JSON.stringify(value))
           if (!same || old.position !== position) {
-            // Retain complete code when a compact attempt only moves position.
+            if (same) {
+              patches.push({ store, id: value.id, position, positionOnly: true })
+              prior.delete(value.id)
+              continue
+            }
             const complete =
-              store === 'attempts' && same && !hasAttemptBody(value as Attempt)
-                ? await repository.getAttempt(value.id, expectedRevision)
+              store === 'attempts' && !hasAttemptBody(value as Attempt)
+                ? old
+                  ? await repository.getAttempt(value.id, expectedRevision)
+                  : await read({
+                      type: 'retired-attempt',
+                      id: value.id,
+                      revision: expectedRevision,
+                    })
                 : value
+            if (store === 'attempts') {
+              restoredBytes += JSON.stringify(complete).length
+              if (restoredBytes > 50 * 1024 * 1024) throw nativeError('workspace-limit')
+            }
             patches.push({
               store,
               id: value.id,
@@ -156,6 +176,7 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
       for (const asset of options.assets ?? [])
         if (library.media.some((meta) => meta.id === asset.meta.id)) await upload(asset)
       const contentPatches = patches.filter((patch) => {
+        if (patch.positionOnly) return false
         if (patch.store === 'notes') return true
         if (patch.store !== 'sources') return false
         const before = previous.sources.find((entry) => entry.id === patch.id)
@@ -174,6 +195,17 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
         (contentPatches.length ? await documents(contentPatches.map((patch) => patch.id)) : []).map(
           (doc) => [`${doc.kind}:${doc.id}`, doc],
         ),
+      )
+      const added = contentPatches
+        .filter(
+          (patch) => patch.store === 'notes' && patch.value && !accepted.has(`note:${patch.id}`),
+        )
+        .map((patch) => patch.id)
+      const retiredDocs = new Map(
+        (added.length
+          ? z.array(docSchema).parse(await read({ type: 'retired-documents', ids: added }))
+          : []
+        ).map((doc) => [doc.id, doc]),
       )
       const overrides = new Map(
         (options.externalDocuments ?? []).map((doc) => [`${doc.kind}:${doc.id}`, doc]),
@@ -202,6 +234,7 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
       for (const patch of contentPatches) {
         const kind = patch.store === 'notes' ? 'note' : 'source'
         const old = accepted.get(`${kind}:${patch.id}`)
+        const template = old ?? retiredDocs.get(patch.id)
         const override = overrides.get(`${kind}:${patch.id}`)
         if (override) {
           writes.push(override)
@@ -238,47 +271,37 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
             if (!asset) throw nativeError('not-found')
             content = { kind: 'source', body: await asset.text() }
           }
-          const parsed = old ? readWorkspaceMarkdown(old.raw) : undefined
+          const parsed = template ? readWorkspaceMarkdown(template.raw) : undefined
           if (parsed?.status === 'managed') {
             const existing = parsed.document
             const sameHeader = Object.entries(header).every(
-              ([key, value]) => JSON.stringify(existing.header[key]) === JSON.stringify(value),
+              ([key, value]) =>
+                JSON.stringify(existing.header[key] ?? (Array.isArray(value) ? [] : undefined)) ===
+                JSON.stringify(value),
             )
             const sameProperties = Object.entries(properties)
               .filter(([key]) => key !== 'repeaty')
               .every(
                 ([key, value]) =>
-                  JSON.stringify(existing.properties[key]) === JSON.stringify(value),
+                  JSON.stringify(
+                    existing.properties[key] ?? (Array.isArray(value) ? [] : undefined),
+                  ) === JSON.stringify(value),
               )
             if (sameHeader && sameProperties) {
               try {
                 raw = rewriteWorkspaceContent(existing, content)
               } catch {
-                raw = createWorkspaceMarkdown(
-                  {
-                    ...existing.properties,
-                    ...properties,
-                    repeaty: { ...existing.header, ...header },
-                  } as JsonObject,
-                  content,
-                )
+                raw = rewriteWorkspaceDocument(existing, properties as JsonObject, content)
               }
-            } else
-              raw = createWorkspaceMarkdown(
-                {
-                  ...existing.properties,
-                  ...properties,
-                  repeaty: { ...existing.header, ...header },
-                } as JsonObject,
-                content,
-              )
+            } else raw = rewriteWorkspaceDocument(existing, properties as JsonObject, content)
           } else raw = createWorkspaceMarkdown(properties as JsonObject, content)
         }
         if (!old && !patch.value) continue
         writes.push({
           kind,
           id: patch.id,
-          path: old?.path ?? `${kind === 'note' ? 'notes' : 'sources'}/${crypto.randomUUID()}.md`,
+          path:
+            template?.path ?? `${kind === 'note' ? 'notes' : 'sources'}/${crypto.randomUUID()}.md`,
           raw,
           expectedHash: old?.hash ?? null,
         })
@@ -295,6 +318,7 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
           documents: writes,
           reason: options.reason ?? null,
           consumeCardDraft: options.consumeCardDraft ?? null,
+          scanHash: options.scanHash ?? null,
         },
       })
       if (result.revision !== expectedRevision + 1) throw changed()
@@ -311,6 +335,11 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
           : library,
       }
       return cached
+    },
+    async retiredNote(id: string): Promise<RetiredNote> {
+      const result = retiredNoteSchema.parse(await read({ type: 'retired-note', id }))
+      if (result.revision !== cached?.revision) throw changed()
+      return result
     },
     async getAttempt(id: string, expectedRevision = cached?.revision, signal?: AbortSignal) {
       signal?.throwIfAborted()

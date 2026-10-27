@@ -1,3 +1,4 @@
+import { noteLifecycle } from '../desktop/retirement'
 import {
   msg,
   LocalizedError,
@@ -144,12 +145,13 @@ export function useLibrary() {
     }
   }
   async function commit(
-    update: (current: Library) => Library,
+    update: (current: Library) => Library | Promise<Library>,
     options: {
       assets?: MediaUpload[]
       reason?: string
       consumeCardDraft?: string
       externalDocuments?: DocumentWrite[]
+      scanHash?: string
       backgroundMetadata?: boolean
       undoLabel?: MessageKey | false
       undoKind?: Operation['kind']
@@ -164,7 +166,7 @@ export function useLibrary() {
     })
     try {
       const before = library.value,
-        next = update(before),
+        next = await update(before),
         entry =
           options.undoLabel === false || options.consumeCardDraft
             ? undefined
@@ -607,13 +609,17 @@ export function useLibrary() {
     },
     saveNote(input: NoteInput, id?: string, assets: MediaUpload[] = [], allowRemove = false) {
       return commit(
-        (current) =>
-          saveNote(
-            { ...current, media: [...current.media, ...assets.map((entry) => entry.meta)] },
-            input,
-            id,
-            allowRemove,
-          ),
+        async (current) => {
+          const base = {
+            ...current,
+            media: [...current.media, ...assets.map((entry) => entry.meta)],
+          }
+          if (id && 'retiredNote' in repository) {
+            const retired = await repository.retiredNote(id)
+            return noteLifecycle(base, input, id, retired, allowRemove).library
+          }
+          return saveNote(base, input, id, allowRemove)
+        },
         { assets, reason: id ? '编辑笔记前' : undefined, undoLabel: id ? '编辑卡片' : '添加卡片' },
       )
     },
@@ -708,11 +714,33 @@ export function useLibrary() {
         { assets, reason: '摘录制卡前', consumeCardDraft: draftId, undoLabel: '用摘录制卡' },
       )
     },
-    acceptExternalNote(id: string, input: NoteInput, document: DocumentWrite) {
-      return commit((current) => saveNote(current, input, id), {
+    async readRetiredNote(id: string) {
+      await savingDone
+      if (!ready.value || !('retiredNote' in repository))
+        throw new LocalizedError(msg('本地数据库尚未准备好。'))
+      return repository.retiredNote(id)
+    },
+    acceptExternalNote(id: string, input: NoteInput, document: DocumentWrite, scanHash?: string) {
+      return commit(
+        async (current) => {
+          if (!('retiredNote' in repository)) return saveNote(current, input, id)
+          const retired = await repository.retiredNote(id)
+          return noteLifecycle(current, input, id, retired, true).library
+        },
+        {
+          externalDocuments: [document],
+          scanHash,
+          reason: '接受外部修改前',
+          undoLabel: '编辑卡片',
+        },
+      )
+    },
+    removeExternalNote(id: string, document: DocumentWrite, scanHash: string) {
+      return commit((current) => removeNotes(current, new Set([id])), {
         externalDocuments: [document],
-        reason: '接受外部修改前',
-        undoLabel: '编辑卡片',
+        scanHash,
+        reason: '移除外部笔记前',
+        undoLabel: '删除笔记',
       })
     },
     deleteNotes(ids: Set<string>) {

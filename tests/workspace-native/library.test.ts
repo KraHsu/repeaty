@@ -10,9 +10,10 @@ import { statusSchema, type NativeApi } from '../../src/desktop/workspaces'
 import { fixture, input, now } from '../../src/core/test-fixtures'
 import { initializeWorkspace } from '../../src/core/onboarding'
 import { reviewCard, undoReview } from '../../src/core/scheduler'
-import { saveNote } from '../../src/core/model'
+import { saveNote, removeNotes } from '../../src/core/model'
+import { noteLifecycle } from '../../src/desktop/retirement'
 import { prepareSource, addSource, saveReadingPosition } from '../../src/core/sources'
-import { readWorkspaceMarkdown } from '../../src/workspace/markdown'
+import { readWorkspaceMarkdown, registerWorkspaceNote } from '../../src/workspace/markdown'
 import { sha256 } from '../../src/workspace/source-revisions'
 import type { CardDraft } from '../../src/core/card-draft-data'
 let binary: string
@@ -452,5 +453,392 @@ describe('the desktop workspace is the learning store', () => {
     )
     expect(restored.active!.token).not.toBe(env.active.token)
     expect(await createNativeRepository(restored.active!, env.runtime.api).load()).toEqual(saved)
+  })
+})
+
+describe('native note file lifecycle', () => {
+  async function scan(env: Awaited<ReturnType<typeof workspace>>) {
+    return env.runtime.api<{
+      scanHash: string
+      retired: { id: string; cards: number }[]
+      working: { path: string; hash: string; raw: string }[]
+    }>('workspace_read', { token: env.active.token, request: { type: 'scan' } })
+  }
+  it('retires a direction across restart, restores its original schedule, and recovers a removed note', async () => {
+    const env = await workspace()
+    await env.repo.load()
+    let library = fixture({ type: 'reversed', format: 'markdown' })
+    library.decks[0]!.burySiblings = false
+    library = reviewCard(library, library.cards[0]!.id, 3, now)
+    library = reviewCard(library, library.cards[1]!.id, 2, new Date(now.getTime() + 1000))
+    let saved = await env.repo.save(library, 0)
+    const id = library.notes[0]!.id,
+      reverse = library.cards[1]!,
+      before = structuredClone(library)
+    let doc = (await docs(env))[0]!
+    const raw = registerWorkspaceNote(doc.raw, {
+      id,
+      deckId: 'deck',
+      type: 'basic',
+      format: 'markdown',
+    }).raw
+    await writeFile(join(env.path, doc.path), raw)
+    let seen = await scan(env),
+      retired = await env.repo.retiredNote(id)
+    const reduced = noteLifecycle(
+      saved.library,
+      { ...saved.library.notes[0]!, type: 'basic' },
+      id,
+      retired,
+      true,
+    ).library
+    saved = await env.repo.save(reduced, saved.revision, {
+      scanHash: seen.scanHash,
+      externalDocuments: [
+        {
+          kind: 'note',
+          id,
+          path: doc.path,
+          raw,
+          expectedHash: doc.hash,
+          workingHash: seen.working.find((file) => file.path === doc.path)!.hash,
+        },
+      ],
+    })
+    expect(saved.library.cards).toEqual([before.cards[0]])
+    retired = await env.repo.retiredNote(id)
+    expect(retired.cards).toEqual([reverse])
+    expect(retired.reviews).toEqual([before.reviews[1]])
+    await env.runtime.stop()
+    env.runtime = host(env.device)
+    const status = statusSchema.parse(await env.runtime.api('workspace_status'))
+    env.active = status.active!
+    env.repo = createNativeRepository(env.active, env.runtime.api)
+    saved = await env.repo.load()
+    retired = await env.repo.retiredNote(id)
+    saved = await env.repo.save(
+      noteLifecycle(saved.library, { ...saved.library.notes[0]!, type: 'reversed' }, id, retired)
+        .library,
+      saved.revision,
+    )
+    expect(saved.library.cards).toEqual(before.cards)
+    expect(saved.library.reviews).toEqual(before.reviews)
+    expect((await env.repo.retiredNote(id)).cards).toEqual([])
+    doc = (await docs(env))[0]!
+    await rm(join(env.path, doc.path))
+    seen = await scan(env)
+    saved = await env.repo.save(removeNotes(saved.library, new Set([id])), saved.revision, {
+      scanHash: seen.scanHash,
+      externalDocuments: [
+        { kind: 'note', id, path: doc.path, raw: null, expectedHash: doc.hash, missing: true },
+      ],
+    })
+    expect(saved.library.notes).toEqual([])
+    expect(saved.library.reviews).toEqual([])
+    expect((await scan(env)).retired).toEqual([expect.objectContaining({ id, cards: 2 })])
+    await env.runtime.stop()
+    env.runtime = host(env.device)
+    env.active = statusSchema.parse(await env.runtime.api('workspace_status')).active!
+    env.repo = createNativeRepository(env.active, env.runtime.api)
+    saved = await env.repo.load()
+    retired = await env.repo.retiredNote(id)
+    seen = await scan(env)
+    expect(retired.document?.raw).toBe(doc.raw)
+    saved = await env.repo.save(
+      noteLifecycle(saved.library, retired.note!, id, retired, true).library,
+      saved.revision,
+      {
+        scanHash: seen.scanHash,
+        externalDocuments: [
+          {
+            kind: 'note',
+            id,
+            path: doc.path,
+            raw: retired.document!.raw,
+            expectedHash: null,
+            missing: true,
+          },
+        ],
+      },
+    )
+    expect(saved.library.cards).toEqual(before.cards)
+    expect(saved.library.reviews).toEqual(before.reviews)
+    expect(await readFile(join(env.path, doc.path), 'utf8')).toBe(doc.raw)
+    expect((await scan(env)).retired).toEqual([])
+  })
+  it('registers an ordinary external Markdown file without changing the existing cards', async () => {
+    const env = await workspace()
+    await env.repo.load()
+    let saved = await env.repo.save(fixture(), 0)
+    const cards = structuredClone(saved.library.cards),
+      id = crypto.randomUUID(),
+      path = 'notes/新增🙂.md',
+      raw = '外部题目\n<!-- repeaty:answer -->\n外部答案'
+    await writeFile(join(env.path, path), raw)
+    const seen = await scan(env)
+    const parsed = registerWorkspaceNote(raw, {
+      id,
+      deckId: 'deck',
+      format: 'markdown',
+      type: 'basic',
+    })
+    if (parsed.content.kind !== 'note') throw Error('fixture')
+    const input = {
+      deckId: 'deck',
+      type: 'basic' as const,
+      format: 'markdown' as const,
+      front: parsed.content.front,
+      back: parsed.content.back,
+      tags: [],
+      frontMedia: [],
+      backMedia: [],
+    }
+    const next = noteLifecycle(saved.library, input, id, await env.repo.retiredNote(id)).library
+    saved = await env.repo.save(next, saved.revision, {
+      scanHash: seen.scanHash,
+      externalDocuments: [
+        {
+          kind: 'note',
+          id,
+          path,
+          raw: parsed.raw,
+          expectedHash: null,
+          workingHash: seen.working.find((file) => file.path === path)!.hash,
+        },
+      ],
+    })
+    expect(saved.library.cards[0]).toEqual(cards[0])
+    expect(saved.library.cards).toHaveLength(2)
+    const disk = readWorkspaceMarkdown(await readFile(join(env.path, path), 'utf8'))
+    expect(disk.status).toBe('managed')
+    if (disk.status === 'managed') expect(disk.document.identity.id).toBe(id)
+  })
+  it('rejects stale missing-file observations and never archives records from a rolled-back transaction', async () => {
+    const env = await workspace()
+    await env.repo.load()
+    let library = fixture()
+    library = reviewCard(library, library.cards[0]!.id, 3, now)
+    const saved = await env.repo.save(library, 0),
+      id = library.notes[0]!.id,
+      doc = (await docs(env))[0]!
+    await rm(join(env.path, doc.path))
+    const missing = await scan(env)
+    await writeFile(join(env.path, 'notes/moved.md'), doc.raw)
+    const options = {
+      scanHash: missing.scanHash,
+      externalDocuments: [
+        {
+          kind: 'note' as const,
+          id,
+          path: doc.path,
+          raw: null,
+          expectedHash: doc.hash,
+          missing: true,
+        },
+      ],
+    }
+    await expect(
+      env.repo.save(removeNotes(saved.library, new Set([id])), saved.revision, options),
+    ).rejects.toThrow()
+    expect((await env.repo.load()).library).toEqual(saved.library)
+    expect((await scan(env)).retired).toEqual([])
+    await rm(join(env.path, 'notes/moved.md'))
+    const again = await scan(env)
+    await expect(
+      env.runtime.api('workspace_write', {
+        token: env.active.token,
+        request: {
+          type: 'commit',
+          input: {
+            operationId: crypto.randomUUID(),
+            expectedRevision: saved.revision,
+            reason: null,
+            consumeCardDraft: null,
+            scanHash: again.scanHash,
+            documents: options.externalDocuments,
+            patches: [
+              { store: 'notes', id },
+              { store: 'cards', id: library.cards[0]!.id },
+            ],
+          },
+        },
+      }),
+    ).rejects.toThrow()
+    expect(await env.repo.load()).toEqual(saved)
+    expect((await env.repo.retiredNote(id)).cards).toEqual([])
+    expect((await scan(env)).retired).toEqual([])
+  })
+  it('keeps full code and media after deletion and restores them without another upload', async () => {
+    const env = await workspace()
+    await env.repo.load()
+    const plugin = { id: 'leetcode', version: 1, data: { slug: 'test-problem' } }
+    const library = fixture({ type: 'plugin', plugin, format: 'markdown' })
+    const note = library.notes[0]!,
+      image = {
+        id: crypto.randomUUID(),
+        name: 'image.png',
+        type: 'image/png' as const,
+        size: 4,
+        createdAt: now.toISOString(),
+      }
+    library.media = [image]
+    note.frontMedia = [image.id]
+    library.practices = [
+      {
+        id: 'practice',
+        cardId: library.cards[0]!.id,
+        contentRevision: 'revision',
+        startedAt: now.toISOString(),
+        question: { front: 'Problem', back: 'Answer', format: 'markdown', plugin },
+      },
+    ]
+    const code = '// 中文🙂\n' + 'x'.repeat(48000)
+    library.attempts = [
+      {
+        id: 'attempt',
+        practiceId: 'practice',
+        submittedAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+        language: 'rust',
+        code,
+        elapsedMs: 5000,
+        status: 'unknown',
+      },
+    ]
+    let saved = await env.repo.save(library, 0, {
+      assets: [
+        { meta: image, blob: new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'image/png' }) },
+      ],
+    })
+    saved = await env.repo.save(removeNotes(saved.library, new Set([note.id])), saved.revision)
+    await env.runtime.stop()
+    env.runtime = host(env.device)
+    env.active = statusSchema.parse(await env.runtime.api('workspace_status')).active!
+    env.repo = createNativeRepository(env.active, env.runtime.api)
+    saved = await env.repo.load()
+    const retired = await env.repo.retiredNote(note.id)
+    expect(retired.attempts[0]).not.toHaveProperty('code')
+    expect(retired.media).toEqual([image])
+    saved = await env.repo.save(
+      noteLifecycle(saved.library, retired.note!, note.id, retired, true).library,
+      saved.revision,
+    )
+    expect((await env.repo.getAttempt('attempt')).code).toBe(code)
+    expect(new Uint8Array(await (await env.repo.getMedia(image.id))!.arrayBuffer())).toEqual(
+      new Uint8Array([1, 2, 3, 4]),
+    )
+    expect(saved.library.cards).toEqual(library.cards)
+    expect(saved.library.practices).toEqual(library.practices)
+    expect((await env.repo.retiredNote(note.id)).cards).toEqual([])
+  })
+})
+
+describe('bounded retirement work', () => {
+  it('reindexes surviving long submissions in SQLite without reading or publishing their bodies', async () => {
+    const env = await workspace()
+    const calls: {
+      command: string
+      request: {
+        type: string
+        input?: {
+          patches: { store: string; id: string; positionOnly?: boolean; value?: unknown }[]
+          documents: unknown[]
+        }
+      }
+    }[] = []
+    const api: NativeApi = (command, args) => {
+      calls.push({ command, request: args?.request as (typeof calls)[number]['request'] })
+      return env.runtime.api(command, args)
+    }
+    const repo = createNativeRepository(env.active, api)
+    await repo.load()
+    const plugin = { id: 'leetcode', version: 1, data: { slug: 'test-problem' } }
+    const library = fixture({ type: 'plugin', plugin, format: 'markdown' })
+    const original = library.notes[0]!,
+      card = library.cards[0]!
+    library.notes.push({ ...original, id: 'other-note', front: 'Other question' })
+    library.cards.push({ ...card, id: 'other-card', noteId: 'other-note' })
+    library.practices = library.cards.map((card, index) => ({
+      id: 'practice-' + index,
+      cardId: card.id,
+      contentRevision: 'revision',
+      startedAt: now.toISOString(),
+      question: { front: 'Problem', back: 'Answer', format: 'markdown', plugin },
+    }))
+    library.attempts = library.practices.map((practice, index) => ({
+      id: 'attempt-' + index,
+      practiceId: practice.id,
+      submittedAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      language: 'rust',
+      code: '// ' + index + 'x'.repeat(48000),
+      elapsedMs: 5000,
+      status: 'unknown',
+    }))
+    let saved = await repo.save(library, 0)
+    const untouched = (await docs(env)).find((doc) => doc.id === 'other-note')!
+    calls.length = 0
+    saved = await repo.save(removeNotes(saved.library, new Set([original.id])), saved.revision)
+    expect(
+      calls.some(
+        (call) => call.request.type === 'attempts' || call.request.type === 'retired-attempt',
+      ),
+    ).toBe(false)
+    const commit = calls.find((call) => call.request.type === 'commit')!.request.input!
+    expect(commit.patches.find((patch) => patch.id === 'attempt-1')).toEqual({
+      store: 'attempts',
+      id: 'attempt-1',
+      position: 0,
+      positionOnly: true,
+    })
+    expect(commit.documents).toHaveLength(1)
+    expect(await readFile(join(env.path, untouched.path), 'utf8')).toBe(untouched.raw)
+    expect((await repo.getAttempt('attempt-1')).code).toBe(library.attempts[1]!.code)
+    expect((await repo.retiredNote('other-note')).cards).toEqual([])
+    expect((await repo.retiredNote(original.id)).cards).toEqual([card])
+  })
+  it('paginates and searches removed notes, then restores the original working path', async () => {
+    const env = await workspace()
+    await env.repo.load()
+    const library = fixture(),
+      note = library.notes[0]!,
+      card = library.cards[0]!
+    library.notes = Array.from({ length: 65 }, (_, index) => ({
+      ...note,
+      id: 'note-' + index,
+      front: 'Archived ' + String(index).padStart(2, '0'),
+    }))
+    library.cards = library.notes.map((note, index) => ({
+      ...card,
+      id: 'card-' + index,
+      noteId: note.id,
+    }))
+    let saved = await env.repo.save(library, 0)
+    const doc = (await docs(env)).find((doc) => doc.id === 'note-64')!
+    saved = await env.repo.save(
+      removeNotes(saved.library, new Set(library.notes.map((note) => note.id))),
+      saved.revision,
+    )
+    const read = (query: string, offset: number) =>
+      env.runtime.api<{ notes: { id: string }[]; total: number }>('workspace_read', {
+        token: env.active.token,
+        request: { type: 'retired-list', query, offset },
+      })
+    const first = await read('', 0),
+      next = await read('', 50),
+      found = await read('Archived 64', 0)
+    expect(first.notes).toHaveLength(50)
+    expect(first.total).toBe(65)
+    expect(next.notes).toHaveLength(15)
+    expect(new Set([...first.notes, ...next.notes].map((note) => note.id)).size).toBe(65)
+    expect(found.notes).toEqual([expect.objectContaining({ id: 'note-64' })])
+    const retired = await env.repo.retiredNote('note-64')
+    saved = await env.repo.save(
+      noteLifecycle(saved.library, retired.note!, 'note-64', retired).library,
+      saved.revision,
+    )
+    expect(await readFile(join(env.path, doc.path), 'utf8')).toBe(doc.raw)
+    expect((await read('', 0)).total).toBe(64)
+    expect(saved.library.cards).toEqual([library.cards[64]])
   })
 })

@@ -606,7 +606,9 @@ function confirmDeleteDeck(deck: Deck) {
   confirmation.value = {
     title: '删除卡组',
     message: msg(
-      '确定删除「{name}」吗？其中的 {count} 张卡片及对应复习记录也会被删除。会先自动保存快照。',
+      desktopEdition
+        ? '确定删除「{name}」吗？其中的 {count} 张卡片将退出学习队列，笔记与记录仍可在工作目录中恢复。'
+        : '确定删除「{name}」吗？其中的 {count} 张卡片及对应复习记录也会被删除。会先自动保存快照。',
       { name: deck.name, count },
     ),
     action: async () => {
@@ -622,10 +624,15 @@ function confirmDeleteNotes(ids: string[]) {
   const count = library.value.cards.filter((card) => selected.has(card.noteId)).length
   confirmation.value = {
     title: '删除笔记',
-    message: msg('确定删除 {notes} 条笔记及其 {cards} 张关联卡片和复习记录吗？会先自动保存快照。', {
-      notes: selected.size,
-      cards: count,
-    }),
+    message: msg(
+      desktopEdition
+        ? '确定移除 {notes} 条笔记及其 {cards} 张关联卡片吗？笔记与学习记录仍可在工作目录中恢复。'
+        : '确定删除 {notes} 条笔记及其 {cards} 张关联卡片和复习记录吗？会先自动保存快照。',
+      {
+        notes: selected.size,
+        cards: count,
+      },
+    ),
     action: () => workspace.deleteNotes(selected),
   }
   modal.value = 'confirm'
@@ -971,6 +978,7 @@ async function restoreBackup() {
           (tab === 'workspace' || (!workspaceAvailable && tab !== 'settings' && tab !== 'plugins'))
         "
         :workspace="workspace"
+        @changed="refreshClock"
       />
       <SettingsPage
         v-else-if="tab === 'plugins' || tab === 'settings'"

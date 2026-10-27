@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { desktopEdition } from '../edition'
 import { t, msg, LocalizedError, type DisplayMessage } from '../i18n'
 
 import { computed, defineAsyncComponent, nextTick, reactive, ref } from 'vue'
@@ -415,9 +416,14 @@ async function keepDraft() {
         </details>
         <label v-if="removed.length" class="check-line import-warning">
           <input v-model="allowRemove" type="checkbox" required />{{
-            t('确认移除不再生成的 {p0} 张卡片及其复习记录（会先保存快照）。', {
-              p0: removed.length,
-            })
+            t(
+              desktopEdition
+                ? '确认让不再生成的 {p0} 张卡片暂不复习，记录保留，重新添加后恢复。'
+                : '确认移除不再生成的 {p0} 张卡片及其复习记录（会先保存快照）。',
+              {
+                p0: removed.length,
+              },
+            )
           }}
         </label>
       </div>

@@ -39,6 +39,8 @@ pub struct Patch {
     pub id: String,
     pub position: Option<i64>,
     pub value: Option<Value>,
+    #[serde(default, rename = "positionOnly")]
+    pub position_only: bool,
 }
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(tag = "mode", rename_all = "camelCase", deny_unknown_fields)]
@@ -52,7 +54,7 @@ pub struct Database {
     validators: HashMap<String, jsonschema::Validator>,
 }
 fn valid_id(id: &str) -> bool {
-    !id.is_empty() && id.chars().count() <= 100
+    !id.is_empty() && id.encode_utf16().count() <= 150
 }
 fn revision(db: &Connection) -> Result<i64> {
     Ok(
@@ -226,6 +228,14 @@ impl Database {
         commit: Commit,
         finish: impl FnOnce(&Transaction<'_>) -> Result<()>,
     ) -> Result<i64> {
+        self.commit_callbacks(commit, |_| Ok(()), finish)
+    }
+    pub(crate) fn commit_callbacks(
+        &mut self,
+        commit: Commit,
+        begin: impl FnOnce(&Transaction<'_>) -> Result<()>,
+        finish: impl FnOnce(&Transaction<'_>) -> Result<()>,
+    ) -> Result<i64> {
         if commit.expected_revision < 0
             || commit.patches.len() > 1_000_000
             || commit.reason.as_ref().is_some_and(|s| s.len() > 160)
@@ -239,6 +249,16 @@ impl Database {
                 || !seen.insert((&patch.store, &patch.id))
             {
                 return Err(Error::invalid());
+            }
+            if patch.position_only {
+                if patch.value.is_some()
+                    || patch
+                        .position
+                        .is_none_or(|position| !(0..=500000).contains(&position))
+                {
+                    return Err(Error::invalid());
+                }
+                continue;
             }
             if let Some(value) = &patch.value {
                 if value["id"] != patch.id
@@ -296,8 +316,23 @@ impl Database {
         // Remember what each patched row looked like before, so validation can skip records
         // whose content did not change (reading-position saves are the common case).
         let mut changed: Vec<(&Patch, Option<Value>)> = Vec::new();
+        begin(&tx)?;
         for patch in &commit.patches {
             let store = &patch.store;
+            if patch.position_only {
+                if retain {
+                    tx.execute(&format!("INSERT INTO history SELECT ?1,'{store}',id,position,data FROM {store} WHERE id=?2"),params![current+1,patch.id])?;
+                }
+                if tx.execute(
+                    &format!("UPDATE {store} SET position=?1 WHERE id=?2"),
+                    params![patch.position, patch.id],
+                )? != 1
+                {
+                    return Err(Error::conflict());
+                }
+                changed.push((patch, None));
+                continue;
+            }
             let previous: Option<(i64, String)> = tx
                 .query_row(
                     &format!("SELECT position,data FROM {store} WHERE id=?1"),
@@ -367,7 +402,9 @@ impl Database {
             }
         }
         for (patch, previous) in &changed {
-            Self::validate_patch(&tx, patch, previous.as_ref())?;
+            if !patch.position_only {
+                Self::validate_patch(&tx, patch, previous.as_ref())?;
+            }
         }
         finish(&tx)?;
         tx.execute("UPDATE workspace SET revision=?1 WHERE id=1", [current + 1])?;
@@ -738,7 +775,7 @@ impl Database {
     }
     fn collect_assets(tx: &Transaction<'_>) -> Result<()> {
         // Unreferenced uploads are staged for a day, so an interrupted import can retry.
-        tx.execute("DELETE FROM assets WHERE created < unixepoch()-86400 AND id NOT IN (SELECT id FROM media) AND id NOT IN (SELECT id FROM history WHERE store='media' AND data IS NOT NULL) AND id NOT IN (SELECT json_extract(u.value,'$.meta.id') FROM card_drafts d,json_each(json_extract(d.data,'$.uploads')) u)", [])?;
+        tx.execute("DELETE FROM assets WHERE created < unixepoch()-86400 AND id NOT IN (SELECT id FROM media) AND id NOT IN (SELECT id FROM history WHERE store='media' AND data IS NOT NULL) AND id NOT IN (SELECT id FROM retired_media) AND id NOT IN (SELECT json_extract(u.value,'$.meta.id') FROM card_drafts d,json_each(json_extract(d.data,'$.uploads')) u)", [])?;
         Ok(())
     }
     pub fn backup_now(&mut self, force: bool) -> Result<()> {

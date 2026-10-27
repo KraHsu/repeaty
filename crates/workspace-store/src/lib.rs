@@ -1,4 +1,4 @@
-//! Isolated workspace experiments; not an active-library repository or migration API.
+//! Desktop workspace storage and isolated file protocol experiments.
 #![deny(unsafe_op_in_unsafe_fn)]
 
 pub mod atomic;
@@ -12,3 +12,5 @@ pub mod records;
 pub mod library;
 
 pub mod sessions;
+
+mod retirement;

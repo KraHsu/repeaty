@@ -53,6 +53,8 @@ async function mount(changed: string) {
               },
             ],
             attention: [],
+            scanHash: 'c'.repeat(64),
+            retired: [],
           },
   )
   const accepted = vi.fn().mockResolvedValue(undefined)
@@ -60,6 +62,16 @@ async function mount(changed: string) {
     busy: ref(false),
     library: shallowRef(library),
     acceptExternalNote: accepted,
+    readRetiredNote: vi.fn(async () => ({
+      revision: 0,
+      note: null,
+      document: null,
+      cards: [],
+      reviews: [],
+      practices: [],
+      attempts: [],
+      media: [],
+    })),
   } as unknown as ReturnType<typeof useLibrary>
   const host = document.createElement('div')
   document.body.append(host)
@@ -89,11 +101,24 @@ it('accepts a valid external edit against both the accepted and observed bytes',
   )!
   expect(button).toBeDefined()
   button.click()
+  await vi.waitFor(() => expect(host.querySelector('dialog')).not.toBeNull())
+  expect(accepted).not.toHaveBeenCalled()
+  await vi.waitFor(() =>
+    expect(
+      [...host.querySelectorAll('button')].find(
+        (button) => button.textContent?.trim() === '确认接受',
+      )?.disabled,
+    ).toBe(false),
+  )
+  ;[...host.querySelectorAll('button')]
+    .find((button) => button.textContent?.trim() === '确认接受')!
+    .click()
   await vi.waitFor(() => expect(accepted).toHaveBeenCalledOnce())
   expect(accepted.mock.calls[0]).toMatchObject([
     note.id,
     { front: '外部编辑' },
     { expectedHash: 'a'.repeat(64), workingHash: 'b'.repeat(64), path: 'notes/card.md' },
+    'c'.repeat(64),
   ])
 })
 

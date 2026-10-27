@@ -296,3 +296,102 @@ export function workspaceBytes(raw: string): Uint8Array {
     fail('invalid-unicode')
   return result
 }
+
+/** Register an external note without rewriting its body or discarding YAML comments. */
+export function registerWorkspaceNote(
+  raw: string,
+  defaults: {
+    id: string
+    deckId: string
+    type: 'basic' | 'reversed' | 'cloze' | 'plugin'
+    format: 'plain' | 'markdown'
+  },
+): WorkspaceDocument {
+  const existing = readWorkspaceMarkdown(raw)
+  if (existing.status === 'pending') fail(existing.reason)
+  if (
+    existing.status === 'managed' &&
+    (existing.document.identity.kind !== 'note' || existing.document.identity.id !== defaults.id)
+  )
+    fail('not-a-note')
+  const opening = /^(?:\uFEFF)?---(\r?\n)/.exec(raw)
+  const eol = (opening?.[1] ?? (raw.includes('\r\n') ? '\r\n' : '\n')) as '\n' | '\r\n'
+  let body = raw.replace(/^\uFEFF/, ''),
+    header: string
+  const values = { version: 1, kind: 'note', ...defaults }
+  if (opening) {
+    const close = /^---(\r?\n|$)/gm
+    close.lastIndex = opening[0].length
+    const closing = close.exec(raw)
+    if (!closing) fail('unclosed-frontmatter')
+    const source = raw.slice(opening[0].length, closing.index)
+    metadata(source)
+    const yaml = parseDocument(source, { schema: 'core', uniqueKeys: true })
+    const previous = yaml.get('repeaty', true)
+    if (previous !== undefined && !isMap(previous)) fail('invalid-repeaty-metadata')
+    if (previous === undefined) yaml.set('repeaty', yaml.createNode({}))
+    let changed = previous === undefined
+    for (const [key, value] of Object.entries(values)) {
+      if (yaml.getIn(['repeaty', key]) !== value) {
+        yaml.setIn(['repeaty', key], value)
+        changed = true
+      }
+    }
+    header = changed
+      ? `${raw.startsWith('\uFEFF') ? '\uFEFF' : ''}---${eol}${yaml.toString({ lineWidth: 0 }).replace(/\r?\n/g, eol)}---${eol}`
+      : raw.slice(0, closing.index + closing[0].length)
+    body = raw.slice(closing.index + closing[0].length)
+  } else
+    header = `${raw.startsWith('\uFEFF') ? '\uFEFF' : ''}---${eol}${stringify({ repeaty: values }, { lineWidth: 0 }).replace(/\r?\n/g, eol)}---${eol}`
+  const preflight = readWorkspaceMarkdown(header + body)
+  if (
+    defaults.type === 'cloze' &&
+    preflight.status === 'pending' &&
+    preflight.reason === 'missing-answer-boundary'
+  )
+    body += `${eol}<!-- repeaty:answer -->${eol}`
+  const result = readWorkspaceMarkdown(header + body)
+  if (result.status !== 'managed') fail(result.status === 'pending' ? result.reason : result.status)
+  return result.document
+}
+
+/** Change known metadata and faces together, retaining comments and unrelated YAML fields. */
+export function rewriteWorkspaceDocument(
+  document: WorkspaceDocument,
+  properties: JsonObject,
+  content: WorkspaceContent,
+): string {
+  const opening = /^(?:\uFEFF)?---(\r?\n)/.exec(document.headerRaw)!
+  const closing = /^---(\r?\n|$)/gm
+  closing.lastIndex = opening[0].length
+  const end = closing.exec(document.headerRaw)!
+  const yaml = parseDocument(document.headerRaw.slice(opening[0].length, end.index), {
+    schema: 'core',
+    uniqueKeys: true,
+  })
+  for (const [key, value] of Object.entries(properties)) {
+    if (key === 'repeaty' && object(value))
+      for (const [field, item] of Object.entries(value)) yaml.setIn(['repeaty', field], item)
+    else yaml.set(key, value)
+  }
+  if (object(properties.repeaty) && properties.repeaty.type !== 'plugin')
+    yaml.deleteIn(['repeaty', 'plugin'])
+  const eol = document.framingEol
+  let body: string
+  if (content.kind === 'source') body = content.body
+  else {
+    let marker = document.header.answerMarker ?? DEFAULT_MARKER
+    for (
+      let suffix = 1;
+      markerLines(content.front, marker).length || markerLines(content.back, marker).length;
+      suffix++
+    )
+      marker = `repeaty-answer-${suffix}`
+    if (marker !== DEFAULT_MARKER) yaml.setIn(['repeaty', 'answerMarker'], marker)
+    body = `${content.front}${eol}${markerText(marker)}${eol}${content.back}`
+  }
+  const result = `${document.raw.startsWith('\uFEFF') ? '\uFEFF' : ''}---${eol}${yaml.toString({ lineWidth: 0 }).replace(/\r?\n/g, eol)}---${eol}${body}`
+  const parsed = readWorkspaceMarkdown(result)
+  if (parsed.status !== 'managed') fail(parsed.status === 'pending' ? parsed.reason : parsed.status)
+  return result
+}

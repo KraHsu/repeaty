@@ -5,6 +5,7 @@ use crate::{
     error::{Error, Result},
     files,
     records::{Commit, Database},
+    retirement,
 };
 use cap_std::fs::Dir;
 use rusqlite::{OptionalExtension, params};
@@ -37,6 +38,8 @@ pub struct Document {
     /// An explicit external acceptance checks the observed disk bytes independently.
     #[serde(default)]
     pub working_hash: Option<String>,
+    #[serde(default)]
+    pub missing: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -47,6 +50,8 @@ pub struct Save {
     pub documents: Vec<Document>,
     pub reason: Option<String>,
     pub consume_card_draft: Option<String>,
+    #[serde(default)]
+    pub scan_hash: Option<String>,
 }
 struct Lock(File);
 impl Drop for Lock {
@@ -98,7 +103,7 @@ impl Library {
         }
         let marker = Marker {
             format: FORMAT.into(),
-            version: 1,
+            version: 2,
             id: Uuid::new_v4().to_string(),
         };
         // Publish the marker only after the database has been initialized.
@@ -125,6 +130,7 @@ impl Library {
           CREATE TABLE receipts(id TEXT PRIMARY KEY,digest TEXT NOT NULL,revision INTEGER NOT NULL);
           CREATE TABLE card_drafts(id TEXT PRIMARY KEY,data TEXT NOT NULL);
           CREATE TABLE values_store(namespace TEXT NOT NULL,id TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(namespace,id));")?;
+        retirement::schema(&db.connection)?;
         db.connection
             .execute("INSERT INTO workspace_identity VALUES(?1)", [id])?;
         db.connection
@@ -147,7 +153,7 @@ impl Library {
         }
         let marker: Marker =
             serde_json::from_slice(&files::read_stable(&root.join("workspace.json"))?)?;
-        if marker.format != FORMAT || marker.version != 1 || Uuid::parse_str(&marker.id).is_err() {
+        if marker.format != FORMAT || marker.version != 2 || Uuid::parse_str(&marker.id).is_err() {
             return Err(fail("workspace-incompatible"));
         }
         let lock_path = root.join(".repeaty/workspace.lock");
@@ -318,10 +324,15 @@ impl Library {
         Ok(hash)
     }
     pub fn documents(&self, ids: Option<&[String]>) -> Result<Value> {
-        let mut stmt = self
-            .db
-            .connection
-            .prepare("SELECT kind,id,path,hash FROM documents WHERE ?1 IS NULL OR id IN (SELECT value FROM json_each(?1)) ORDER BY path")?;
+        self.document_rows(ids, false)
+    }
+    fn document_rows(&self, ids: Option<&[String]>, retired: bool) -> Result<Value> {
+        let table = if retired {
+            "(SELECT 'note' AS kind,id,path,hash FROM retired_documents)"
+        } else {
+            "documents"
+        };
+        let mut stmt=self.db.connection.prepare(&format!("SELECT kind,id,path,hash FROM {table} WHERE ?1 IS NULL OR id IN (SELECT value FROM json_each(?1)) ORDER BY path"))?;
         let rows = stmt
             .query_map([ids.map(serde_json::to_string).transpose()?], |r| {
                 Ok((
@@ -355,7 +366,16 @@ impl Library {
         for folder in ["notes", "sources"] {
             self.walk(folder, 0, &mut working, &mut bytes)?;
         }
-        Ok(json!({"accepted":accepted,"working":working,"attention":self.attention()?}))
+        working.sort_by(|a, b| a["path"].as_str().cmp(&b["path"].as_str()));
+        let hashes = working
+            .iter()
+            .map(|file| json!([file["path"], file["hash"]]))
+            .collect::<Vec<_>>();
+        let scan_hash = files::digest(&serde_json::to_vec(&hashes)?);
+        let retired = retirement::listing(&self.db.connection, "", 0)?;
+        Ok(
+            json!({"accepted":accepted,"working":working,"scanHash":scan_hash,"retired":retired["notes"],"retiredCount":retired["total"],"attention":self.attention()?}),
+        )
     }
     fn walk(
         &self,
@@ -414,11 +434,21 @@ impl Library {
             self.recover()?;
             return Ok(json!({"revision":revision,"attention":self.attention()?}));
         }
+        if let Some(expected) = &request.scan_hash
+            && self.scan()?["scanHash"].as_str() != Some(expected)
+        {
+            return Err(fail("working-file-changed"));
+        }
         let mut documents = Vec::new();
         for doc in &request.documents {
             if !["note", "source"].contains(&doc.kind.as_str())
                 || doc.id.is_empty()
-                || doc.id.len() > 100
+                || doc.id.encode_utf16().count() > 150
+                || (doc.missing && doc.working_hash.is_some())
+                || (doc.kind == "note"
+                    && doc.raw.is_none()
+                    && doc.missing
+                    && request.scan_hash.is_none())
             {
                 return Err(Error::invalid());
             }
@@ -431,6 +461,7 @@ impl Library {
             if !doc.path.starts_with(&format!("{store}/"))
                 || !request.patches.iter().any(|patch| {
                     patch.store == store
+                        && !patch.position_only
                         && patch.id == doc.id
                         && patch.value.is_some() == doc.raw.is_some()
                 })
@@ -452,12 +483,14 @@ impl Library {
             let disk = self
                 .read_working(&doc.path)?
                 .map(|data| files::digest(&data));
-            if disk
-                != doc
-                    .working_hash
+            let expected_disk = if doc.missing {
+                None
+            } else {
+                doc.working_hash
                     .clone()
                     .or_else(|| doc.expected_hash.clone())
-            {
+            };
+            if disk != expected_disk {
                 return Err(fail("working-file-changed"));
             }
             let next = doc
@@ -470,6 +503,7 @@ impl Library {
         // Every changed note must have its editable Markdown accepted in the same transaction.
         for patch in &request.patches {
             if patch.store == "notes"
+                && !patch.position_only
                 && !request
                     .documents
                     .iter()
@@ -480,7 +514,21 @@ impl Library {
         }
         let consume = request.consume_card_draft;
         let operation = request.operation_id;
-        let revision=self.db.commit_with(Commit {expected_revision:request.expected_revision,patches:request.patches,reason:request.reason},|tx| {
+        let patches = request.patches;
+        let metadata = patches
+            .iter()
+            .map(|patch| crate::records::Patch {
+                store: patch.store.clone(),
+                id: patch.id.clone(),
+                position: None,
+                value: patch.value.as_ref().map(|_| Value::Null),
+                position_only: patch.position_only,
+            })
+            .collect::<Vec<_>>();
+        let capture = &metadata;
+        let reactivate = &metadata;
+        let revision=self.db.commit_callbacks(Commit {expected_revision:request.expected_revision,patches,reason:request.reason},|tx|retirement::capture(tx,capture),|tx| {
+            retirement::reactivate(tx,reactivate)?;
             if let Some(id)=consume && tx.execute("DELETE FROM card_drafts WHERE id=?1",[id])?!=1 { return Err(Error::conflict()); }
             for (doc,hash) in &documents {
                 // A newly accepted observation supersedes older incomplete publication
@@ -489,7 +537,7 @@ impl Library {
                 if let Some(hash)=hash {
                     tx.execute("INSERT INTO documents VALUES(?1,?2,?3,?4) ON CONFLICT(kind,id) DO UPDATE SET path=excluded.path,hash=excluded.hash",params![doc.kind,doc.id,doc.path,hash])?;
                 } else { tx.execute("DELETE FROM documents WHERE kind=?1 AND id=?2",params![doc.kind,doc.id])?; }
-                tx.execute("INSERT INTO publications(operation,path,hash,expected) VALUES(?1,?2,?3,?4)",params![operation,doc.path,hash,doc.working_hash.clone().or_else(||doc.expected_hash.clone())])?;
+                tx.execute("INSERT INTO publications(operation,path,hash,expected) VALUES(?1,?2,?3,?4)",params![operation,doc.path,hash,if doc.missing {None}else{doc.working_hash.clone().or_else(||doc.expected_hash.clone())}])?;
             }
             tx.execute("INSERT INTO receipts VALUES(?1,?2,?3)",params![operation,fingerprint,request.expected_revision+1])?;
             Ok(())
@@ -626,7 +674,47 @@ impl Library {
                     })
                     .as_deref(),
             ),
+            "retired-documents" => {
+                let ids = request["ids"]
+                    .as_array()
+                    .ok_or_else(Error::invalid)?
+                    .iter()
+                    .map(|id| id.as_str().map(str::to_owned).ok_or_else(Error::invalid))
+                    .collect::<Result<Vec<_>>>()?;
+                if ids.len() > 100000 {
+                    return Err(Error::invalid());
+                }
+                self.document_rows(Some(&ids), true)
+            }
             "scan" => self.scan(),
+            "retired-list" => retirement::listing(
+                &self.db.connection,
+                request["query"].as_str().ok_or_else(Error::invalid)?,
+                request["offset"].as_i64().ok_or_else(Error::invalid)?,
+            ),
+            "retired-note" => {
+                let mut value = retirement::note(
+                    &self.db.connection,
+                    request["id"].as_str().ok_or_else(Error::invalid)?,
+                )?;
+                if let Some(doc) = value["document"].as_object_mut() {
+                    let hash = doc["hash"].as_str().ok_or_else(Error::invalid)?;
+                    let bytes = files::read_stable(&self.object(hash)?)?;
+                    if files::digest(&bytes) != hash {
+                        return Err(fail("corrupt-content-object"));
+                    }
+                    doc.insert(
+                        "raw".into(),
+                        Value::String(String::from_utf8(bytes).map_err(|_| Error::invalid())?),
+                    );
+                }
+                Ok(value)
+            }
+            "retired-attempt" => retirement::attempt(
+                &self.db.connection,
+                request["id"].as_str().ok_or_else(Error::invalid)?,
+                request["revision"].as_i64().ok_or_else(Error::invalid)?,
+            ),
             "settings" => {
                 let mut stmt = self
                     .db

@@ -1,5 +1,38 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  查找: 'Find',
+  '确定删除「{name}」吗？其中的 {count} 张卡片将退出学习队列，笔记与记录仍可在工作目录中恢复。':
+    'Delete “{name}”? Its {count} cards will leave study. Notes and history can still be restored from Workspace.',
+  '确定移除 {notes} 条笔记及其 {cards} 张关联卡片吗？笔记与学习记录仍可在工作目录中恢复。':
+    'Remove {notes} notes and their {cards} cards from study? Notes and history can still be restored from Workspace.',
+
+  查找已移除的笔记: 'Find removed notes',
+  '共 {count} 条': '{count} notes',
+  '{count} 张卡片': '{count} cards',
+  '修改后部分卡片将暂不复习，已有记录会保留。请确认后继续。':
+    'Some cards will leave the study queue. Their records will be kept. Confirm to continue.',
+  '确认让不再生成的 {p0} 张卡片暂不复习，记录保留，重新添加后恢复。':
+    'Retire {p0} cards. Keep their history and restore it when the variants are added again.',
+  '题面和答案之间请单独放一行 <!-- repeaty:answer -->。':
+    'Separate the question and answer with a line containing <!-- repeaty:answer -->.',
+  '文件路径必须位于 notes/ 下，并以 .md 结尾。':
+    'The file path must be under notes/ and end with .md.',
+  移除这条笔记: 'Remove this note',
+  已移除的笔记: 'Removed notes',
+  '笔记和学习记录仍保存在目录中，可以恢复后继续学习。':
+    'Notes and study history are kept in the folder. Restore them to continue learning.',
+  恢复笔记: 'Restore note',
+  确认移除笔记: 'Remove note',
+  接受文件修改: 'Accept file changes',
+  '磁盘文件已不存在。确认后，{count} 张卡片将退出学习队列，笔记和历史记录仍可恢复。':
+    'The file is missing. Confirm to remove {count} cards from study. The note and its history can still be restored.',
+  '保留 {keep} 张，恢复 {restore} 张，新增 {create} 张，退役 {retire} 张。':
+    'Keep {keep}, restore {restore}, create {create}, retire {retire} cards.',
+  '退役卡片不再进入复习，历史记录保留；重新添加相同方向或挖空编号时恢复。':
+    'Retired cards leave the study queue. Their history returns when the same direction or cloze number is added again.',
+  确认接受: 'Accept changes',
+  确认恢复: 'Restore',
+
   '文件中的笔记身份已被移除，请恢复后再接受修改。':
     'The note identity was removed. Restore it before accepting changes.',
   '文件身份与原笔记不同，请检查文件头。':
