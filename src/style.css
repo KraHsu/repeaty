@@ -108,6 +108,15 @@ button {
   display: flex;
   min-height: 100vh;
 }
+.app-layout.desktop-window {
+  --desktop-titlebar-height: 36px;
+  padding-top: var(--desktop-titlebar-height);
+}
+@media (min-width: 721px) {
+  .desktop-window > .sidebar {
+    top: var(--desktop-titlebar-height);
+  }
+}
 .sidebar {
   width: 230px;
   background: #f0f2ec;

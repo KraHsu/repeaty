@@ -208,6 +208,9 @@ fn main() {
             app.manage(workspaces::Workspaces::new(&directory));
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Repeaty")
+                .decorations(false)
+                .resizable(true)
+                .shadow(true)
                 .inner_size(1280.0, 850.0)
                 .min_inner_size(720.0, 560.0)
                 .on_navigation(|url| {

@@ -17,6 +17,7 @@ export {
   createExportFile,
   connectLearningReader,
   DraftWorkbench,
+  DesktopTitlebar,
   PlatformSettings,
   workspaceAvailable,
   connectWorkspaceMonitor,

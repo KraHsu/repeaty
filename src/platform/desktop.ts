@@ -12,6 +12,7 @@ import { handleExternalLinks } from '../desktop/native'
 export const AccountControls: Component | undefined = undefined
 export const ServerConnection: Component | undefined = undefined
 export const WorkspaceNotice: Component | undefined = undefined
+export const DesktopTitlebar = defineAsyncComponent(() => import('../desktop/DesktopTitlebar.vue'))
 export const DraftWorkbench = defineAsyncComponent(() => import('../desktop/DraftWorkbench.vue'))
 export const WorkspaceBrowser = defineAsyncComponent(
   () => import('../desktop/WorkspaceManager.vue'),

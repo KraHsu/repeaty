@@ -18,6 +18,7 @@ import {
   PlatformSettings,
   WorkspaceBrowser,
   WorkspaceNotice,
+  DesktopTitlebar,
   workspaceAvailable,
 } from '@repeaty-platform'
 import { createApplication } from './app/createApplication'
@@ -41,7 +42,8 @@ const {
 } = application
 </script>
 <template>
-  <div class="app-layout">
+  <div class="app-layout" :class="{ 'desktop-window': DesktopTitlebar }">
+    <component v-if="DesktopTitlebar" :is="DesktopTitlebar" />
     <AppSidebar />
     <main class="main-content">
       <AppHeader /><NotificationCenter />

@@ -1,5 +1,11 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  窗口控制: 'Window controls',
+  最小化窗口: 'Minimize window',
+  最大化窗口: 'Maximize window',
+  还原窗口: 'Restore window',
+  关闭窗口: 'Close window',
+  '窗口操作失败，请重试。': 'The window action failed. Try again.',
   卡片: 'Cards',
   复习记录: 'Review history',
   工作目录试用: 'Workspace trial',

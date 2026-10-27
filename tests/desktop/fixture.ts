@@ -64,6 +64,39 @@ export const test = base.extend<{ native: void; emptyWorkspace: void }>({
         let watchId = 0
         let watching: { id: string; timer: ReturnType<typeof setInterval> } | undefined
         const pending = new Map<string, (value: unknown) => void>()
+        const callbacks = new Map<number, (value: unknown) => void>()
+        const listeners = new Map<number, { event: string; callback: number }>()
+        let listenerId = 0
+        const desktopWindow = {
+          maximized: false,
+          focused: true,
+          calls: [] as string[],
+          failNext: '',
+          update(state: { maximized?: boolean; focused?: boolean }) {
+            if (state.maximized !== undefined) {
+              desktopWindow.maximized = state.maximized
+              emitWindowEvent('tauri://resize', { width: innerWidth, height: innerHeight })
+            }
+            if (state.focused !== undefined) {
+              desktopWindow.focused = state.focused
+              emitWindowEvent(state.focused ? 'tauri://focus' : 'tauri://blur', null)
+            }
+          },
+        }
+        function emitWindowEvent(event: string, payload: unknown) {
+          for (const [id, listener] of listeners)
+            if (listener.event === event) callbacks.get(listener.callback)?.({ event, id, payload })
+        }
+        Object.defineProperty(window, '__repeatyTestWindow', { value: desktopWindow })
+        Object.defineProperty(window, '__TAURI_EVENT_PLUGIN_INTERNALS__', {
+          value: {
+            unregisterListener: (_event: string, id: number) => {
+              const listener = listeners.get(id)
+              if (listener) callbacks.delete(listener.callback)
+              listeners.delete(id)
+            },
+          },
+        })
         Object.defineProperty(window, '__repeatyTestMcpFailReply', { value: false, writable: true })
         Object.defineProperty(window, '__repeatyTestDropWatchEvents', {
           value: false,
@@ -90,9 +123,47 @@ export const test = base.extend<{ native: void; emptyWorkspace: void }>({
         })
         Object.defineProperty(window, '__TAURI_INTERNALS__', {
           value: {
-            transformCallback: () => ++callbackId,
-            unregisterCallback: () => {},
+            metadata: {
+              currentWindow: { label: 'main' },
+              currentWebview: { label: 'main', windowLabel: 'main' },
+            },
+            transformCallback: (callback: (value: unknown) => void, once = false) => {
+              const id = ++callbackId
+              callbacks.set(id, (value) => {
+                if (once) callbacks.delete(id)
+                callback(value)
+              })
+              return id
+            },
+            unregisterCallback: (id: number) => callbacks.delete(id),
             invoke: async (command: string, args: Record<string, unknown>) => {
+              if (command === 'plugin:event|listen') {
+                const id = ++listenerId
+                listeners.set(id, { event: args.event as string, callback: args.handler as number })
+                return id
+              }
+              if (command === 'plugin:event|unlisten') {
+                listeners.delete(args.eventId as number)
+                return
+              }
+              if (command.startsWith('plugin:window|')) {
+                const action = command.slice('plugin:window|'.length)
+                if (args.label !== 'main') throw Error('Unexpected window label')
+                if (action === 'is_maximized') return desktopWindow.maximized
+                if (action === 'is_focused') return desktopWindow.focused
+                if (action === 'is_fullscreen') return false
+                desktopWindow.calls.push(action)
+                if (desktopWindow.failNext === action) {
+                  desktopWindow.failNext = ''
+                  throw Error('test-window-operation-failed')
+                }
+                if (action === 'toggle_maximize')
+                  desktopWindow.update({ maximized: !desktopWindow.maximized })
+                else if (!['minimize', 'close', 'start_dragging'].includes(action))
+                  throw Error(`Unexpected window operation: ${action}`)
+                // This fixture records requests only; it never controls an OS window.
+                return
+              }
               if (command === 'workspace_watch') {
                 if (watching) clearInterval(watching.timer)
                 const id = 'watch-' + ++watchId
