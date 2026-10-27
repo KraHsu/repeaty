@@ -43,10 +43,10 @@ CI 使用两个 Chromium worker，禁止提交 `test.only`，失败时保留浏�
 浏览器回归使用 Rust 运行时创建并关闭真实目录，所以执行 `test:e2e` 需要 Rust；基本单元测试和静态构建无需编译原生程序。目录选择回退、真实目录句柄传入 Worker、取消、失败保护、评分撤销、媒体、旧材料、代码、完整导出、千张卡和离线打开位于 `tests/browser-workspace.spec.ts`，Rust / WASM 联测位于 `tests/workspace-native/browser.test.ts`。
 
 ```bash
-npx vitest run src/browser
+npm test -- src/browser
 npm run test:workspace:native
 VITE_BASE_PATH=/repeaty/ npm run build
-VITE_BASE_PATH=/repeaty/ npx playwright test tests/browser-workspace.spec.ts --workers=2
+VITE_BASE_PATH=/repeaty/ npx playwright test --config config/playwright.config.ts tests/browser-workspace.spec.ts --workers=2
 ```
 
 并行运行静态与桌面浏览器套件时，应分别传入 `--output=/tmp/repeaty-web-tests` 和 `--output=/tmp/repeaty-desktop-tests`，避免两个进程清理同一个 trace 目录。千张卡的浏览器回归会在该测试输出目录保存 `rating-responsiveness.json`，记录操作耗时和帧间隔，测量口径见[性能记录](PERFORMANCE.md#浏览器工作目录试用)。
@@ -165,7 +165,12 @@ Anki `.apkg` 在同源 Worker 中通过 sql.js 读取，HTML 用 parse5 作为�
 
 Anki 集成只规划导入，不计划提供 Repeaty → Anki 导出。尚未实现 Anki 进度迁移、自定义字段 / HTML 模板、所见即所得富文本编辑器、图片遮挡、嵌套挖空、FSRS 参数训练。
 
+仓库根目录也是 Vite 的前端项目根，`index.html` 保留为页面入口；Rust 服务与桌面宿主分别在自己的子目录中。Vite、Playwright 和原生联测配置集中在 `config/`，三个版本的部署插件清单集中在 `config/plugins/`。npm 脚本显式指定配置路径；直接调用工具时也需传入对应的 `--config`。`tsconfig.json` 和编辑、格式工具配置保留在根目录，供工具自动发现。
+
 ```text
+index.html          # Vite 页面入口
+config/             # Vite、Playwright 与原生联测配置
+  plugins/          # static / server / desktop 部署插件清单
 src/core/
   model.ts           # v13 笔记 / 卡片 / 媒体 / 练习模型与卡片生成
   practice-data.ts   # 练习、代码提交与结果 Schema
@@ -189,12 +194,11 @@ src/core/
   archive.ts         # 流式 ZIP / NDJSON 备份与原始媒体
   backups.ts         # 旧版 JSON 备份兼容
   media.ts           # 附件校验
-src/plugins/        # 题目 / 答案接口、应用插件开关、LeetCode 题型
+src/plugins/        # 插件接口、运行时注册与开关、内置题型和答题历史
 src/backend/        # HTTP 客户端、SQLite 服务的增量存储适配
 src/platform/       # 构建时选择桌面、浏览器或既有服务端适配器
 src/browser/        # 只读目录、SQLite WASM Worker 与页面内试用副本
 src/desktop/        # 原生连接、MCP 桥接、持久草稿与确认界面
-repeaty.plugins.*.ts # 静态 / 后端版部署插件清单
 examples/plugins/   # 可安装的纯前端插件示例
 server/             # Rust 账户服务、每账户 SQLite、Schema 与测试
 src-tauri/          # Tauri 桌面入口、工作目录 IPC、MCP 与本地插件接口

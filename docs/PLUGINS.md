@@ -6,10 +6,10 @@
 
 ## 两类插件
 
-| 类型       | 声明               | 安装位置                                        | 可用版本 |
-| ---------- | ------------------ | ----------------------------------------------- | -------- |
-| 纯前端插件 | `kind: 'frontend'` | `repeaty.plugins.static.ts`                     | 所有版本 |
-| 本地插件   | `kind: 'local'`    | `repeaty.plugins.desktop.ts` 和桌面 Rust 注册表 | 仅桌面版 |
+| 类型       | 声明               | 安装位置                                       | 可用版本 |
+| ---------- | ------------------ | ---------------------------------------------- | -------- |
+| 纯前端插件 | `kind: 'frontend'` | `config/plugins/static.ts`                     | 所有版本 |
+| 本地插件   | `kind: 'local'`    | `config/plugins/desktop.ts` 和桌面 Rust 注册表 | 仅桌面版 |
 
 后端版和桌面版继承纯前端清单。默认前端清单内置答题历史，桌面清单另内置 LeetCode。开源服务没有插件路由。构建选择清单与存储适配器，静态产物不包含账户客户端、Tauri 或 LeetCode 模块。
 
@@ -64,12 +64,12 @@ interface QuestionPlugin {
 
 [`examples/plugins/typed-answer`](../examples/plugins/typed-answer) 提供了完整的“输入答案”插件：输入内容与标准答案比较，忽略大小写及两端空白，匹配后允许选择四档评分。无需任何 API。示例文案使用英文，正式插件可提供自己的语言包。
 
-将 `repeaty.plugins.static.ts` 改为：
+将 `config/plugins/static.ts` 改为：
 
 ```ts
-import type { FrontendPluginInstallation } from './src/plugins/types'
-import reviewHistory from './src/plugins/review-history'
-import typedAnswer from './examples/plugins/typed-answer'
+import type { FrontendPluginInstallation } from '../../src/plugins/types'
+import reviewHistory from '../../src/plugins/review-history'
+import typedAnswer from '../../examples/plugins/typed-answer'
 
 export default [
   { plugin: reviewHistory, builtin: true, enabledByDefault: true },
@@ -83,7 +83,7 @@ export default [
 
 ## 本地接口
 
-本地插件的 Vue 模块仍实现上述接口，声明 `kind: 'local'`，注册到 `repeaty.plugins.desktop.ts`。原生部分实现 [`src-tauri/src/plugins.rs`](../src-tauri/src/plugins.rs) 的接口：
+本地插件的 Vue 模块仍实现上述接口，声明 `kind: 'local'`，注册到 `config/plugins/desktop.ts`。原生部分实现 [`src-tauri/src/plugins.rs`](../src-tauri/src/plugins.rs) 的接口：
 
 ```rust
 pub trait LocalPlugin: Send + Sync {

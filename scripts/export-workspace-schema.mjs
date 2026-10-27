@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { format } from 'prettier'
 import { readFile, writeFile } from 'node:fs/promises'
 const vite = await createServer({
+  configFile: 'config/vite.config.ts',
   server: { middlewareMode: true, watch: null },
   appType: 'custom',
 })

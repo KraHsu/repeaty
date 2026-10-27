@@ -12,7 +12,7 @@
 
 ```bash
 VITE_BASE_PATH=/repeaty/ npm run build
-VITE_BASE_PATH=/repeaty/ npx playwright test tests/browser-workspace.spec.ts --grep thousand-card --workers=1
+VITE_BASE_PATH=/repeaty/ npx playwright test --config config/playwright.config.ts tests/browser-workspace.spec.ts --grep thousand-card --workers=1
 ```
 
 结果保存在对应测试输出目录的 `rating-responsiveness.json`。同一用例还核对了操作前后原目录的文件集合和 SHA256；独立用例覆盖已有网页学习库隔离、长文本、多媒体、历史版本、完整代码与导出。读取上限和浏览器验收范围见[工作目录说明](WORKSPACE_MODE.md#无后端在线工作目录)。
