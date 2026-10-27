@@ -150,11 +150,14 @@ mod tests {
             temp.path().join("assets/hard.png"),
         )
         .unwrap();
+        let _socket =
+            std::os::unix::net::UnixListener::bind(temp.path().join("assets/socket.png")).unwrap();
         let root = Dir::open_ambient_dir(temp.path(), cap_std::ambient_authority()).unwrap();
         for path in [
             "assets/linked/a.png",
             "assets/file.png",
             "assets/hard.png",
+            "assets/socket.png",
             "assets",
         ] {
             assert!(read(&root, path).is_err());

@@ -373,6 +373,166 @@ try {
       ),
     'file refresh completed',
   )
+  // Exercise source/attachment acceptance in the bundled WebKit client, rather
+  // than relying on Chromium or calling the repository directly from the page.
+  const sourcePath = 'sources/原生材料.md'
+  const firstImage = await readFile('src/core/starter/recall.png')
+  const secondImage = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/hfoAAAAASUVORK5CYII=',
+    'base64',
+  )
+  const audio = Buffer.alloc(16044)
+  audio.write('RIFF', 0)
+  audio.writeUInt32LE(audio.length - 8, 4)
+  audio.write('WAVEfmt ', 8)
+  audio.writeUInt32LE(16, 16)
+  audio.writeUInt16LE(1, 20)
+  audio.writeUInt16LE(1, 22)
+  audio.writeUInt32LE(8000, 24)
+  audio.writeUInt32LE(16000, 28)
+  audio.writeUInt16LE(2, 32)
+  audio.writeUInt16LE(16, 34)
+  audio.write('data', 36)
+  audio.writeUInt32LE(16000, 40)
+  await writeFile(join(selected, 'assets/native.png'), firstImage)
+  await writeFile(join(selected, 'assets/native.wav'), audio)
+  const sourceBody =
+    '# 原生材料\n\n原版摘录🙂\n\n' +
+    'Long source and 中文。\n\n'.repeat(400) +
+    '![图片](../assets/native.png)\n\n<audio src="../assets/native.wav" controls></audio>\n'
+  await writeFile(join(selected, sourcePath), sourceBody)
+  const selectSourceFile = async () => {
+    await click('重新扫描')
+    await until(
+      () =>
+        execute(
+          "return document.querySelector('.workspace-manager')?.getAttribute('aria-busy')==='false'",
+        ),
+      'source scan settled',
+    )
+    await execute(
+      "[...document.querySelectorAll('.workspace-file')].find(b=>b.textContent.includes(arguments[0])).click()",
+      sourcePath,
+    )
+  }
+  const acceptSourceFile = async () => {
+    await click('接受修改')
+    await click('确认接受')
+    await until(
+      () =>
+        execute(
+          "return !document.querySelector('dialog')&&document.querySelector('.workspace-manager')?.getAttribute('aria-busy')==='false'",
+        ),
+      'source acceptance completed',
+    )
+  }
+  await selectSourceFile()
+  await acceptSourceFile()
+  const firstSource = (await nativeLibrary()).library.sources.find(
+    (source) => source.title === '原生材料',
+  )
+  assert.ok(firstSource)
+  await click('学习材料')
+  await until(
+    () =>
+      execute("return document.querySelector('.source-text')?.value===arguments[0]", sourceBody),
+    'source text loaded',
+  )
+  await click('阅读 Markdown 预览')
+  const previewReady = (selector, width) =>
+    execute(
+      'const p=document.querySelector(arguments[0]);return Boolean(p?.querySelector("img")?.naturalWidth' +
+        (width === 1 ? '===1' : '>1') +
+        '&&Number.isFinite(p?.querySelector("audio")?.duration))',
+      selector,
+    )
+  const showMedia = async (selector, width) => {
+    await until(
+      () =>
+        execute(
+          'return Boolean(document.querySelector(arguments[0])?.querySelector("img"))',
+          selector,
+        ),
+      'media elements rendered',
+    )
+    await execute(
+      'document.querySelector(arguments[0]).querySelector("img").scrollIntoView({block:"center"})',
+      selector,
+    )
+    await until(() => previewReady(selector, width), 'native image and audio decoded')
+  }
+  await showMedia('.source-markdown-preview', 2)
+  await enter()
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.workspace-manager')?.getAttribute('aria-busy')==='false'",
+      ),
+    'source reader closed',
+  )
+  active = (await invoke('workspace_status')).active
+  const [sourceDoc] = await invoke('workspace_read', {
+    token: active.token,
+    request: { type: 'documents', ids: [firstSource.id] },
+  })
+  const changedBody =
+    '# 第二版\n\n新的正文。\n\n![图片](../assets/native.png)\n\n<audio src="../assets/native.wav" controls></audio>\n'
+  await writeFile(join(selected, sourcePath), sourceDoc.raw.replace(sourceBody, changedBody))
+  await writeFile(join(selected, 'assets/native.png'), secondImage)
+  await selectSourceFile()
+  await acceptSourceFile()
+  const changedSource = (await nativeLibrary()).library.sources.find(
+    (source) => source.id === firstSource.id,
+  )
+  assert.equal(changedSource.versions[0].mediaId, firstSource.mediaId)
+  assert.notEqual(changedSource.inlineMedia[0].mediaId, firstSource.inlineMedia[0].mediaId)
+  await click('学习材料')
+  await until(
+    () =>
+      execute("return document.querySelector('.source-text')?.value===arguments[0]", changedBody),
+    'changed source loaded',
+  )
+  await click('阅读 Markdown 预览')
+  await showMedia('.source-markdown-preview', 1)
+  await click('历史版本')
+  await execute('document.querySelector(".source-version-list button").click()')
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.source-original')?.textContent===arguments[0]",
+        sourceBody,
+      ),
+    'original source version loaded',
+  )
+  await click('阅读 Markdown 预览')
+  await showMedia('dialog .card-content', 2)
+  await writeFile(
+    'test-results/workspace-source-native.png',
+    Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
+  )
+  await click('关闭')
+  await enter()
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.workspace-manager')?.getAttribute('aria-busy')==='false'",
+      ),
+    'source versions persisted',
+  )
+  saved = await nativeLibrary()
+  await command(`/session/${session}`, undefined, 'DELETE')
+  session = undefined
+  await start()
+  await ready()
+  assert.deepEqual(await nativeLibrary(), saved)
+  await enter()
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.workspace-manager')?.getAttribute('aria-busy')==='false'",
+      ),
+    'source versions reopened',
+  )
   await writeFile(
     'test-results/workspace-active-wide.png',
     Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
@@ -402,9 +562,18 @@ try {
   assert.deepEqual(await nativeLibrary(), saved)
   assert.deepEqual(await execute('return indexedDB.databases().then(d=>d.map(x=>x.name))'), [])
   console.log(
-    'Native workspace: create/open/cancel, automatic starter, actual card edit and rating, external Markdown rename/acceptance, stable schedules, graded note deletion and restoration across process restart, recent reopen, no account mode and no IndexedDB passed',
+    'Native workspace: create/open/cancel, automatic starter, actual card edit and rating, external Markdown acceptance, stable schedules, graded note restoration across restart, source versions with old image/audio snapshots, recent reopen and no IndexedDB passed',
   )
 } catch (error) {
+  try {
+    log.push(
+      JSON.stringify(
+        await execute(
+          'return [...document.querySelectorAll(".source-markdown-preview img, .source-markdown-preview audio, dialog img, dialog audio")].map(n=>({tag:n.tagName,src:n.getAttribute("src"),width:n.naturalWidth,ready:n.readyState,error:n.error?.code}))',
+        ),
+      ),
+    )
+  } catch {}
   await mkdir('test-results', { recursive: true })
   // Capture the native chooser as well as the webview, only on an explicitly
   // isolated test display. A WebDriver screenshot cannot include GTK windows.
