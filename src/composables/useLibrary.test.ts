@@ -7,6 +7,8 @@ import { addSource, prepareSource } from '../core/sources'
 import { useLibrary } from './useLibrary'
 import { recordAttempt } from '../core/practice'
 import { openDB } from 'idb'
+import { createBrowserRepository } from '../browser/repository'
+import { emptyLibrary } from '../core/model'
 
 vi.mock('@repeaty-platform', () => ({ createWorkspaceRepository: vi.fn() }))
 const workspaces: ReturnType<typeof useLibrary>[] = []
@@ -34,6 +36,76 @@ async function setup(library = fixture(), assets: import('../core/model').MediaU
   expect(workspace.ready.value).toBe(true)
   return { workspace, repository }
 }
+
+it('keeps the current repository intact if a candidate cannot load', async () => {
+  const { workspace, repository } = await setup()
+  const original = workspace.library.value,
+    scope = workspace.scope.value
+  const oldClose = vi.spyOn(repository, 'close')
+  const candidate = createRepository('failed-candidate-' + crypto.randomUUID())
+  vi.spyOn(candidate, 'load').mockRejectedValue(new Error('Synthetic snapshot failure'))
+  const failedClose = vi.spyOn(candidate, 'close')
+  await expect(workspace.replaceRepository(candidate)).rejects.toThrow('Synthetic snapshot failure')
+  expect(workspace.library.value).toBe(original)
+  expect(workspace.scope.value).toBe(scope)
+  expect(workspace.ready.value).toBe(true)
+  expect(workspace.busy.value).toBe(false)
+  expect(oldClose).not.toHaveBeenCalled()
+  expect(failedClose).toHaveBeenCalledTimes(1)
+  await workspace.review(original.cards[0]!.id, 3)
+  expect(workspace.library.value.reviews).toHaveLength(1)
+})
+
+it('opens an empty trial without seeding it and returns to the untouched browser library', async () => {
+  const { workspace, repository } = await setup()
+  const original = workspace.library.value,
+    originalScope = workspace.scope.value
+  const source = {
+    snapshot: { id: crypto.randomUUID(), name: '空目录', revision: 0, library: emptyLibrary() },
+    media: vi.fn(async () => undefined),
+    attempts: vi.fn(async () => []),
+    close: vi.fn(),
+  }
+  const trial = createBrowserRepository(source)
+  await workspace.replaceRepository(trial)
+  expect(workspace.scope.value).toBe(trial.scope())
+  expect(workspace.library.value).toEqual(emptyLibrary())
+  await workspace.saveDeck({ ...original.decks[0]!, name: '只在副本中' })
+  const reopened = createRepository(repository.scope().slice('local:'.length))
+  await workspace.replaceRepository(reopened)
+  expect(workspace.library.value).toEqual(original)
+  expect(workspace.scope.value).toBe(originalScope)
+  expect(source.close).toHaveBeenCalledTimes(1)
+  expect(workspace.lastOperation.value).toBeUndefined()
+})
+
+it('rejects a source read from the previous library after a successful switch', async () => {
+  const prepared = prepareSource({
+    title: '旧材料',
+    url: '',
+    format: 'plain',
+    content: 'old content',
+  })
+  const { workspace, repository } = await setup(
+    addSource(fixture(), prepared.source, prepared.asset),
+    [prepared.asset],
+  )
+  let release!: (blob: Blob) => void
+  const pending = vi.spyOn(repository, 'getMedia').mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        release = resolve
+      }),
+  )
+  const reading = workspace.getSource(prepared.source.id)
+  const rejected = expect(reading).rejects.toThrow('已不存在')
+  await vi.waitFor(() => expect(pending).toHaveBeenCalled())
+  const candidate = createRepository('next-scope-' + crypto.randomUUID())
+  await workspace.replaceRepository(candidate)
+  release(prepared.asset.blob)
+  await rejected
+  expect(workspace.library.value.sources).toHaveLength(0)
+})
 
 it('keeps failed writes out of history and retains a failed undo for one safe retry', async () => {
   const { workspace, repository } = await setup()

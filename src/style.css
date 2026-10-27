@@ -1653,15 +1653,17 @@ select {
     flex-direction: row;
     margin-top: 17px;
     gap: 5px;
-    justify-content: center;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: thin;
   }
   .main-nav button {
     padding: 0 6px;
     gap: 6px;
     height: 43px;
     justify-content: center;
-    flex: 1;
-    min-width: 0;
+    flex: 0 0 88px;
+    min-width: 88px;
     border-radius: 6px 6px 0 0;
     font-size: var(--text-sm);
     white-space: normal;

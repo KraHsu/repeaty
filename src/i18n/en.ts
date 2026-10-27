@@ -1,5 +1,39 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  卡片: 'Cards',
+  复习记录: 'Review history',
+  工作目录试用: 'Workspace trial',
+  '正在试用「{name}」': 'Trying “{name}”',
+  '修改和评分只保留在本页，原目录不变。':
+    'Edits and ratings stay on this page. The original folder is unchanged.',
+  在浏览器中打开工作目录: 'Open a workspace in your browser',
+  '查看本地卡片、材料和学习记录，无需上传或连接服务器。':
+    'View local cards, sources and study history without uploading them or connecting to a server.',
+  '原目录只读。可在独立副本中复习和编辑，试用进度只保留在当前页面。':
+    'The original folder is read-only. Review and edit a separate copy; trial progress lasts for this page only.',
+  '先在桌面版中关闭学习库，再选择包含 workspace.json 的整个文件夹。':
+    'Close the library in the desktop app, then select the entire folder containing workspace.json.',
+  打开本地工作目录: 'Open local workspace',
+  使用文件夹选择: 'Use folder selection',
+  选择工作目录文件夹: 'Select workspace folder',
+  工作目录预览: 'Workspace preview',
+  '目录格式 {version}': 'Folder format {version}',
+  '使用桌面已接受的内容；尚未接受的外部编辑不会用于本次试用。':
+    'Uses content accepted in the desktop app. Pending external edits are excluded from this trial.',
+  开始试用: 'Start trial',
+  当前试用副本: 'Current trial copy',
+  '可以从侧栏进入卡片和材料。离开前，可在「数据与备份」中导出试用副本。':
+    'Open cards and sources from the sidebar. Export the trial copy from Data & backup before leaving.',
+  '文件更新、接受外部修改和自动检测请使用桌面版。':
+    'Use the desktop app to update files, accept external changes or detect file changes automatically.',
+  返回浏览器学习库: 'Return to browser library',
+  '打开试用副本不会覆盖已有的浏览器学习库。':
+    'Opening a trial copy keeps your existing browser library.',
+  结束当前试用: 'End current trial',
+  '当前试用的修改将不再保留。需要保存时，请先到「数据与备份」导出副本。原目录不受影响。':
+    'Edits in this trial will be discarded. Export a copy from Data & backup first if you want to keep them. The original folder is unaffected.',
+  继续试用: 'Keep trying',
+  结束试用: 'End trial',
   '请选择完整的 Repeaty 工作目录，包括隐藏的 .repeaty 文件夹。':
     'Select the complete Repeaty workspace, including its hidden .repeaty folder.',
   '这个工作目录的格式暂不受支持，请使用当前桌面版创建的目录。':

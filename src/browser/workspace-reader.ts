@@ -3,7 +3,12 @@ import { z } from 'zod'
 import { workspaceLibrarySchema, type Library } from '../core/model'
 import { recordStores } from '../core/storage'
 import { readWorkspaceMarkdown, MAX_WORKSPACE_TEXT_BYTES } from '../workspace/markdown'
-import { attemptSchema, sameAttemptSummary, type Attempt } from '../core/practice-data'
+import {
+  attemptSchema,
+  sameAttemptSummary,
+  type Attempt,
+  type AttemptRecord,
+} from '../core/practice-data'
 import { WorkspaceReadError } from './errors'
 import {
   collectWorkspaceFiles,
@@ -47,12 +52,15 @@ export interface BrowserWorkspaceSnapshot {
 
 /** SQLite is an immutable in-memory copy. No native open, lock, migration or checkpoint. */
 export class BrowserWorkspaceReader {
+  private attemptIndex: Map<string, AttemptRecord>
   private constructor(
     private db: Database,
     private files: WorkspaceFiles,
     readonly snapshot: BrowserWorkspaceSnapshot,
     private assets: Map<string, z.infer<typeof assetSchema>>,
-  ) {}
+  ) {
+    this.attemptIndex = new Map(snapshot.library.attempts.map((record) => [record.id, record]))
+  }
   static async open(
     SQL: SqlJsStatic,
     selection: WorkspaceSelection,
@@ -243,7 +251,7 @@ export class BrowserWorkspaceReader {
         statement.bind([id])
         if (!statement.step()) throw new WorkspaceReadError('invalid')
         const value = attemptSchema.parse(JSON.parse(String(statement.get()[0])))
-        const summary = this.snapshot.library.attempts.find((entry) => entry.id === id)
+        const summary = this.attemptIndex.get(id)
         if (!summary || !sameAttemptSummary(summary, value)) throw new WorkspaceReadError('invalid')
         statement.reset()
         return value
@@ -255,6 +263,7 @@ export class BrowserWorkspaceReader {
   close() {
     this.db.close()
     this.assets.clear()
+    this.attemptIndex.clear()
   }
 }
 function scalar(db: Database, sql: string): SqlValue | undefined {

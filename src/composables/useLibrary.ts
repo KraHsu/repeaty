@@ -75,6 +75,7 @@ import { remoteWorkspace, desktopEdition } from '../edition'
 import type { createServerRepository } from '../backend/repository'
 import type { createNativeRepository, DocumentWrite } from '../desktop/repository'
 import type { createRepository, BackupSummary } from '../core/storage'
+import type { createBrowserRepository } from '../browser/repository'
 import { createWorkspaceRepository } from '@repeaty-platform'
 import { readLearning, LearningQueryError, type LearningQuery } from '../core/learning-reader'
 import type { CardDraft } from '../core/card-draft-data'
@@ -108,6 +109,7 @@ export function useLibrary() {
     | ReturnType<typeof createRepository>
     | ReturnType<typeof createServerRepository>
     | ReturnType<typeof createNativeRepository>
+    | ReturnType<typeof createBrowserRepository>
   let savingDone: Promise<void> = Promise.resolve()
   let backupRead = 0
   async function refreshBackups() {
@@ -142,6 +144,38 @@ export function useLibrary() {
         remoteWorkspace.value || desktopEdition
           ? (error as Error)
           : '无法读取本地数据库。请确认浏览器允许本站使用存储，再刷新页面。已有数据不会被自动覆盖。'
+    } finally {
+      busy.value = false
+    }
+  }
+  async function replaceRepository(next: typeof repository) {
+    if (next === repository) return
+    if (busy.value) {
+      await next.close()
+      throw new LocalizedError(msg('正在保存，请稍候。'))
+    }
+    busy.value = true
+    const previous = repository
+    try {
+      // A failed candidate must not close or replace the user's current library.
+      const saved = await next.load()
+      const entries = await next.listBackups()
+      repository = next
+      ++backupRead
+      library.value = saved.library
+      revision = saved.revision
+      backups.value = entries
+      readingUndo.value = undefined
+      operations.value = []
+      legacyUndo = true
+      loadError.value = ''
+      backupError.value = ''
+      ready.value = true
+      scope.value = next.scope()
+      await previous?.close().catch(() => {})
+    } catch (error) {
+      if (repository !== next) await next.close()
+      throw error
     } finally {
       busy.value = false
     }
@@ -399,6 +433,7 @@ export function useLibrary() {
       draftRepository(scope).updateCardDraft(draft),
     discardCardDraft: (scope: string, id: string) => draftRepository(scope).discardCardDraft(id),
     init,
+    replaceRepository,
     getAttempt,
     getSource,
     async saveSourceReading(update: ReadingUpdate, at: Date) {

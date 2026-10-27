@@ -73,6 +73,7 @@ import {
   DraftWorkbench,
   PlatformSettings,
   WorkspaceBrowser,
+  WorkspaceNotice,
   workspaceAvailable,
   connectWorkspaceMonitor,
   workspacePendingCount,
@@ -122,6 +123,9 @@ const historyCardId = ref('')
 const autoStartReading = ref(false)
 const mcpSelection = ref<SourceExcerpt>()
 watch(workspace.scope, () => {
+  selectedDeck.value = ''
+  searchQuery.value = ''
+  filterState.value = 'all'
   historyCardId.value = ''
   autoStartReading.value = false
   mcpSelection.value = undefined
@@ -996,6 +1000,12 @@ async function restoreBackup() {
         </div>
       </header>
       <NotificationCenter />
+      <component
+        :is="WorkspaceNotice"
+        v-if="WorkspaceNotice"
+        :scope="workspace.scope.value"
+        @open="navigate('workspace')"
+      />
 
       <WorkspaceBrowser
         v-if="
