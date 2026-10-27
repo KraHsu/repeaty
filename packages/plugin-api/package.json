@@ -1,0 +1,26 @@
+{
+  "name": "@repeaty/plugin-api",
+  "version": "1.0.0",
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "private": true,
+  "description": "Public types for independently built Repeaty plugins; runtime supplied by Repeaty.",
+  "types": "index.d.ts",
+  "bin": {
+    "repeaty-plugin": "build.mjs"
+  },
+  "type": "module",
+  "files": [
+    "index.d.ts",
+    "build.mjs"
+  ],
+  "dependencies": {
+    "vite": "^8.3.4",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "vue": "^3.5.44"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  }
+}

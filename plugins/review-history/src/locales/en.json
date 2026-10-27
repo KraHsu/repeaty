@@ -1,0 +1,14 @@
+{
+  "可显示 1–50 次，仅统计当前卡片已保存的评分。": "Show 1–50 ratings saved for this card.",
+  "困难": "Hard",
+  "在当前卡片上方显示最近的评分，虚线圆表示本次作答。": "Show recent ratings above the current card. A dashed circle marks this attempt.",
+  "当前卡片的答题历史": "Review history for this card",
+  "显示最近几次评分": "Number of recent ratings",
+  "本次作答": "Current attempt",
+  "答题历史": "Review history",
+  "简单": "Easy",
+  "翻面后才显示历史": "Show history after revealing the answer",
+  "良好": "Good",
+  "设置已生效，但未能保存；下次打开时可能恢复默认设置。": "Settings applied, but could not be saved. Defaults may return next time.",
+  "重来": "Again"
+}
