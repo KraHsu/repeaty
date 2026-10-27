@@ -57,3 +57,5 @@ Unit tests 是独立工作流，不替代发布所需的同一 `main` 提交的�
 也可以在 Actions 中对 `main` 手动运行 Desktop 工作流：它会重新检查、构建并按相同规则发布。CI 失败时应先修复；发布任务等待同一提交的 CI，不能使用其他提交的绿色结果。
 
 本地可执行 `node --test scripts/release.test.mjs` 验证发布规则。`plan` 模式只读取 GitHub 状态，不创建标签或 Release；需提供 `GITHUB_REPOSITORY`、`GITHUB_SHA`、`GITHUB_RUN_ID` 和只读令牌。
+
+链接拒绝用例在 Windows 使用临时目录联接（junction），无需管理员权限或开发者模式；其他平台使用临时文件符号链接。两者均验证发布扫描拒绝链接，测试不跳过此检查，链接及目标均位于同一临时夹具内。

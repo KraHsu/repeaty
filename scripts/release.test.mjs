@@ -312,7 +312,14 @@ test('rejects empty files and symlinks instead of publishing misleading installe
   await writeFile(path, '')
   await assert.rejects(installerFiles(directory, version), /empty/)
   await rm(path)
-  await symlink('/etc/passwd', path)
+  const windows = process.platform === 'win32'
+  const target = join(directory, platforms[1].artifact, 'bundle')
+  // Junctions exercise the same link guard without requiring Windows symlink privileges.
+  await symlink(
+    windows ? target : join(target, 'Repeaty_' + version + '_' + platforms[1].suffix),
+    path,
+    windows ? 'junction' : 'file',
+  )
   await assert.rejects(installerFiles(directory, version), /symlinks/)
 })
 
