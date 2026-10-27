@@ -30,11 +30,13 @@ Windows / macOS 安装包尚未配置代码签名或公证。自动构建、MCP 
 发布一个新版本时，在同一分支更新：
 
 - `package.json` 与 `package-lock.json` 的根包版本。
-- `server/Cargo.toml`、`src-tauri/Cargo.toml`、`crates/leetcode-local/Cargo.toml`、`crates/workspace-store/Cargo.toml`。
-- 对应四个 `Cargo.lock` 中的自身包版本，以及桌面锁文件中嵌入的本地插件版本。
+- `server/Cargo.toml`、`src-tauri/Cargo.toml`、`crates/workspace-store/Cargo.toml`。
+- 对应三个 `Cargo.lock` 中的自身包版本，以及桌面锁文件中嵌入的本地存储包版本。
 - `src-tauri/tauri.conf.json`。
 
 运行 `node scripts/release.mjs check` 核对版本，再完成正常测试与 PR。合并后自动发布；已有公开 Release 的同版本提交只做正常检查和部署，不替换下载文件。需要发布后续修复时，增加版本号。
+
+插件代码有独立版本，不随主程序版本机械递增。官方插件先在各自项目完成测试和构建，再更新固定的 `plugins/packages/*.repeaty-plugin`；主程序构建只复制这些已有包，不调用插件编译器。插件包版本、SDK 协议版本及笔记数据版本分别管理，见[插件开发](PLUGINS.md)。
 
 带预发布标识的版本（如 `1.0.0-rc.1`）自动标记为 Pre-release，不替换 Latest。稳定的 `1.0.0` 还要求 [发布清单](RELEASE_1_0.md) 全部完成，脚本不会代为勾选或跳过验收。
 

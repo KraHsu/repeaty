@@ -1157,11 +1157,14 @@ mod tests {
             let member = root.path().join(name);
             let moved = fs::rename(&member, root.path().join("old"));
             if cfg!(windows)
-                && moved
-                    .as_ref()
-                    .is_err_and(|error| error.kind() == io::ErrorKind::PermissionDenied)
+                && name == ".repeaty/state.sqlite3"
+                && moved.as_ref().is_err_and(|error| {
+                    error.kind() == io::ErrorKind::PermissionDenied
+                        || matches!(error.raw_os_error(), Some(32 | 33))
+                })
             {
-                // Windows may deny replacing an open SQLite file itself.
+                // Open SQLite files can also report ERROR_SHARING_VIOLATION (32)
+                // or ERROR_LOCK_VIOLATION (33), classified as Uncategorized by Rust.
                 library.guard(&library.token).unwrap();
                 continue;
             }

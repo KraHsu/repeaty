@@ -1,99 +1,205 @@
 # 应用插件
 
-[返回开发文档](DEVELOPMENT.md) · [后端部署](SELF_HOSTING.md)
+[返回开发文档](DEVELOPMENT.md) · [LeetCode](LEETCODE.md)
 
-插件是 Repeaty 的应用模块。部署者将模块加入清单，重新构建并部署；用户在「插件」中选择开启或关闭。没有插件商店、远程脚本安装或浏览器扩展。
+本页描述当前开发分支的外置插件机制，尚未随新安装包发布。发布页既有的 0.27.0 安装包不代表本分支的实现，也不能作为这套插件机制的安装或 GUI 验收产物。
 
-## 两类插件
+Repeaty 在运行时加载外置插件。官方答题历史、LeetCode 和第三方插件使用同一包格式与公开 SDK；安装、更新或移除插件不需要重新编译主程序。普通卡片渲染和缺失插件提示保留为核心能力。
 
-| 类型       | 声明               | 安装位置                                       | 可用版本 |
-| ---------- | ------------------ | ---------------------------------------------- | -------- |
-| 纯前端插件 | `kind: 'frontend'` | `config/plugins/static.ts`                     | 所有版本 |
-| 本地插件   | `kind: 'local'`    | `config/plugins/desktop.ts` 和桌面 Rust 注册表 | 仅桌面版 |
+插件的 JavaScript 在应用 WebView 中运行，共用宿主提供的 Vue。运行环境不是 Node.js，不提供 Node 文件系统、`require()` 或任意原生模块；桌面能力通过公开 SDK 调用。开发者可以使用 TypeScript 和 Vue 单文件组件，单独构建成可安装的 JavaScript 包。
 
-后端版和桌面版继承纯前端清单。默认前端清单内置答题历史，桌面清单另内置 LeetCode。开源服务没有插件路由。构建选择清单与存储适配器，静态产物不包含账户客户端、Tauri 或 LeetCode 模块。
+安装和运行预构建插件的使用者无需安装 Node.js、npm 或编译器。编写和构建插件的开发者需要 Node.js 24.15+，以及 SDK 与插件自身的开发依赖。
 
-关闭插件保留题目与进度。要从安装包移除插件代码，需移出清单并重新构建。
+## 安装与管理
 
-## 复习显示插件
+1. 获取可信来源的 `.repeaty-plugin` 文件。
+2. 在「插件」页面选择插件包，核对标识、版本及所需能力后安装。同一标识的新包用于更新已有插件。
+3. 可以关闭、重新启用、移除或重新加载插件。正在复习或编辑时，先结束当前操作，避免替换仍在使用的组件。
 
-显示插件通过 `ReviewPanelPlugin` 在卡片上方提供可选界面，与题目类型分别注册。它声明 `kind: 'frontend'`，复用清单、开关和可选 `settings`，提供 `reviewPanel: Component`，不提供 `showQuestion` / `showAnswer`。组件接收 `ReviewPanelProps`：当前 `card`、只读的 `reviews` 和 `revealed`，不能据此自动评分。
+关闭题目插件后，相应题目暂停参与复习；关闭显示插件后隐藏其界面。移除插件代码保留卡片、调度、评分、练习、完整提交、草稿与插件数据；重新安装兼容的数据版本后可继续使用。通过安装包更新失败时显示具体错误，并保留此前的有效版本。手工替换目录文件后重新扫描，如新文件损坏或未获信任，则须修复、重新安装或确认启用，不能假定旧磁盘文件仍可恢复。
 
-内置 `review-history` 显示当前卡片最近的 1–50 次已保存评分，按保存顺序从左到右排列：重来为红色、困难为黄色、良好为绿色、简单为蓝色；末尾的虚线圆代表本次作答。默认翻面后显示，可在「设置 → 插件 → 答题历史」调整。圆球提供评分和日期文本，撤销后直接反映学习库中的记录。只练习不会生成历史评分；它不是 LeetCode 提交代码的历史视图。
+更新会暂存文件并重命名目录，不是跨崩溃的原子目录交换。若进程在切换期间意外退出，插件目录可能暂时缺失并留下中间目录；当前不自动恢复这些目录，可重新安装可信插件包恢复代码。题目、调度、评分、完整历史和插件业务数据保存在代码目录之外，不因代码路径暂时缺失而删除。
 
-显示插件的开关不改变卡片的可复习状态。设置和开关保存在当前浏览器 / 应用，不包含在学习库备份中。
+插件属于可信代码，与应用处于同一 JavaScript 环境，不是隔离沙箱。安装与启用意味着信任其代码。能力声明用于限制宿主提供的原生接口，不代表可以隔离恶意插件。
+
+## 存放位置与复制目录
+
+| 内容           | 桌面版                                                                             | 浏览器版                         |
+| -------------- | ---------------------------------------------------------------------------------- | -------------------------------- |
+| 已安装代码     | 学习目录的 `.repeaty/plugins/<id>/`，包含 `manifest.json`、`main.js`、`styles.css` | 独立浏览器存储中的插件副本       |
+| 开关与显示设置 | 随当前工作目录保存，由 SDK 按插件命名空间读写                                      | 当前浏览器的插件设置，不写原目录 |
+| 草稿等业务数据 | 按插件和工作目录作用域保存                                                         | 按浏览器学习库或试用作用域保存   |
+| 登录凭据       | 设备私有的 `plugin-secrets.sqlite3`，不进入学习目录                                | 不提供桌面凭据能力               |
+| 代码信任记录   | 设备私有，绑定插件包内容摘要                                                       | 用户在当前浏览器主动安装的代码   |
+
+复制学习目录可以携带插件代码、设置及业务数据，但不会携带本机凭据或另一设备的代码信任。在新设备上，未知代码不会仅因出现在目录中而执行；用户须在插件页确认启用。外部替换插件代码后重新加载，内容摘要变化也会要求重新确认。
+
+完整目录复制与 `.repeaty` 学习备份用途不同。学习备份保存笔记、评分和完整提交等学习内容，不隐式安装插件代码，也不包含设备凭据、信任记录或所有插件私有草稿。
+
+浏览器只读打开工作目录时不修改原目录，也不自动执行原目录中复制来的插件代码。可安装的前端插件保存在浏览器副本中。原有网页制卡、复习、阅读、导入导出及前端插件能力仍可使用；需要原生网络或凭据能力的插件保留在桌面版。
+
+## 插件项目与包格式
+
+一个插件项目通常包含：
+
+```
+my-plugin/
+  package.json
+  manifest.json
+  tsconfig.json
+  src/
+    index.ts
+    Panel.vue
+```
+
+清单示例：
+
+```json
+{
+  "id": "rating-count",
+  "name": "Rating count",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "dataVersion": 1,
+  "kind": "frontend"
+}
+```
+
+| 字段          | 含义                                                                   |
+| ------------- | ---------------------------------------------------------------------- |
+| `id`          | 稳定的插件标识：小写字母开头，可含小写字母、数字和连字符，最长 64 字符 |
+| `version`     | 插件代码版本，如 `1.2.3` 或 `1.2.3-beta.1`，独立于主程序版本           |
+| `apiVersion`  | 所需公开 SDK 协议版本，目前为 `1`                                      |
+| `dataVersion` | 笔记中 `plugin.version` 的数据版本；修复代码时无需改变它               |
+| `kind`        | `frontend` 不依赖桌面能力；`local` 需要桌面原生接口                    |
+| `permissions` | 可选的桌面网络源、凭据和插件文件能力声明                               |
+
+`flashcard` 和 `unavailable` 是宿主保留标识。安装包中的定义必须与清单的标识、种类及数据版本一致。
+
+构建输出为 `dist/manifest.json`、`dist/main.js`、`dist/styles.css` 和 `<id>.repeaty-plugin`。后者是包含 `manifest`、`main`、可选 `styles` 的 JSON 包，不是可直接执行的系统程序。当前单包读取上限为 8 MiB，入口代码上限 4 MiB，样式上限 1 MiB。
+
+## 独立开发与构建
+
+公开 SDK 位于 [packages/plugin-api](../packages/plugin-api)。它提供类型和独立构建命令 `repeaty-plugin`，运行时实现由 Repeaty 提供。插件作者只需要 SDK、Vue 和自己使用的依赖，不需要复制或导入主程序源码。
+
+SDK 当前是本地 workspace 包，尚未发布到 npm。可以在 Repeaty 仓库根目录将它打包，然后在另一个独立插件仓库中安装生成的 tarball：
+
+```bash
+# Repeaty 仓库根目录
+npm pack --workspace @repeaty/plugin-api
+
+# 独立插件仓库；将路径替换为实际生成的 SDK 包
+npm install vue
+npm install --save-dev /path/to/repeaty-plugin-api-1.0.0.tgz typescript vue-tsc
+```
+
+类型从已安装的 SDK 包解析，不设置指向 Repeaty 仓库的 TypeScript `paths`，也不导入应用源码。插件的 package.json 可配置：
+
+```json
+{
+  "type": "module",
+  "scripts": {
+    "build": "repeaty-plugin .",
+    "dev": "repeaty-plugin . --watch",
+    "typecheck": "vue-tsc --noEmit"
+  }
+}
+```
+
+在本仓库开发官方插件时：
+
+```bash
+npm ci
+npm run typecheck --prefix plugins/review-history
+npm test --prefix plugins/review-history
+npm run build --prefix plugins/review-history
+npm run dev --prefix plugins/review-history
+```
+
+`npm run dev` 监视插件自己的源码并重新构建到 `dist/`，不重新构建或启动 Repeaty。将 `dist/review-history.repeaty-plugin` 安装到应用即可验证修改。
+
+开发时先在 Repeaty 中创建独立的临时学习目录，避免使用日常学习库。进入插件项目后，也可以把构建输出直接放入该测试目录：
+
+```bash
+npm run dev -- --outdir /path/to/test-library/.repeaty/plugins/review-history
+```
+
+Windows 可使用 `D:/tmp/repeaty-plugin-dev/.repeaty/plugins/review-history` 这样的绝对路径。等待构建成功后，在应用中点击「重新扫描插件」，再确认启用已变化的代码。监视构建不会自动执行或信任代码；复习或编辑期间先结束当前操作。整个流程不需要重新编译主程序。
+
+仓库中的 [plugins/review-history](../plugins/review-history)、[plugins/leetcode](../plugins/leetcode) 和 [plugins/typed-answer](../plugins/typed-answer) 是独立项目；测试使用自己的宿主适配器，不导入主程序内部模块。
+
+官方预构建包固定在 `plugins/packages/*.repeaty-plugin`。更新官方插件时，先独立构建、测试并更新对应包。`npm run build`、桌面构建和开发服务器只复制或提供这些已有产物，不编译插件源码，也不会在用户安装时调用 npm 或 Rust 编译器。
 
 ## 前端接口
 
-接口位于 [`src/plugins/types.ts`](../src/plugins/types.ts)：
+在 `src/index.ts` 导出定义：
 
 ```ts
-interface QuestionPlugin {
-  id: string
-  kind: 'frontend' | 'local'
-  label: string
-  version: number
-  showQuestion: Component
-  showAnswer: Component
-  editor?: Component
-  description?: string
-  settings?: Component
-  history?: Component
-}
+import type { ReviewPanelPlugin } from '@repeaty/plugin-api'
+import Panel from './Panel.vue'
+
+export default {
+  id: 'rating-count',
+  kind: 'frontend',
+  label: 'Rating count',
+  version: 1,
+  reviewPanel: Panel,
+} satisfies ReviewPanelPlugin
 ```
 
-`showQuestion` 与 `showAnswer` 接收 `QuestionProps`：
+`Panel.vue` 使用公开类型和宿主共享的 Vue：
 
-- `card`：当前题面、答案、调度状态与 `card.plugin.data`。
-- `media`、`getMedia(id)`：媒体元数据与按需读取 Blob 的接口，兼容本地与服务端存储。
-- `revealed`：宿主是否已经翻面。
-- `state`：插件设置 `allowedGrades`、可选 `suggestedGrade`、`assessment` 与 `busy`。评分为 1 重来、2 困难、3 良好、4 简单；忙碌时宿主禁止评分。可提供 `complete()`，宿主仅在评分成功保存后调用。
-- `workspaceScope`、`practices`、`attempts`：当前学习库作用域、当前卡片的练习和库内的提交记录。使用 `saveAttempt(practice, attempt, workspaceScope)` 保存原始提交；宿主核对作用域、所属卡片和状态转换。通过 `state.practiceId` 将本轮练习交给宿主，在用户确认评分时关联复习记录。
+```vue
+<script setup lang="ts">
+import { computed } from 'vue'
+import { t, type ReviewPanelProps } from '@repeaty/plugin-api'
 
-宿主负责复习队列、翻面、FSRS、持久化与撤销。`editor` 使用 `NoteInput` 的 `v-model`，写入 `front`、`back` 和 `plugin: { id, version, data }`。可复用宿主表单样式，校验自己的插件数据；组件卸载时清理计时器和网络请求。题目、答案可复用宿主的 `CardContent`：支持经过清理的 HTML 与局部样式，不执行内容中的脚本。不要将导入内容直接交给 `v-html`。
+const props = defineProps<ReviewPanelProps>()
+const count = computed(
+  () => props.reviews.filter((review) => review.cardId === props.card.id).length,
+)
+</script>
 
-可选的 `history` 组件接收 `PracticeHistoryProps`：`practices`、`attempts`、`getAttempt(id, signal?)`、可选 `activeId` 和 `standalone`。它只显示已保存记录，不调用裁判或更新评分；历史代码成功显示后发送 `reveal(practiceId)`，由宿主记录未完成练习的答案查看状态。主导航和复习中的历史每页 20 次练习。没有对应组件或插件未启用时，宿主使用通用视图显示代码和结果，不加载插件专用界面。
-
-`QuestionProps.attempts` 和 `PracticeHistoryProps.attempts` 接收 `AttemptRecord[]`，其中可能只有摘要。使用 `hasAttemptBody(record)` 判断；需要原始代码或裁判详情时调用 `getAttempt`，不能把未加载的 `code` 当作空字符串。关闭详情、切换题目或卸载组件时取消请求并释放正文；读取失败保留摘要并允许重试。宿主会核对账户、工作空间和记录状态。摘要仅供运行时使用，提交记录的备份与保存仍要求完整正文。
-
-`data` 仅接受 JSON，最大 200,000 字符。每条插件笔记生成一张独立调度的卡片。插件 ID 唯一，采用小写字母、数字和连字符；`flashcard`、`unavailable` 为保留 ID。当前只加载与 `version` 完全匹配的数据，不自动迁移插件版本。
-
-未知、关闭或版本不匹配的插件题目仍能保留、备份、导出；不会进入复习与专项练习队列，也不占每日额度。开关存于当前来源的 `localStorage`，同源标签页会同步开关；它不是服务端权限控制。
-
-## 运行纯前端示例
-
-[`examples/plugins/typed-answer`](../examples/plugins/typed-answer) 提供了完整的“输入答案”插件：输入内容与标准答案比较，忽略大小写及两端空白，匹配后允许选择四档评分。无需任何 API。示例文案使用英文，正式插件可提供自己的语言包。
-
-将 `config/plugins/static.ts` 改为：
-
-```ts
-import type { FrontendPluginInstallation } from '../../src/plugins/types'
-import reviewHistory from '../../src/plugins/review-history'
-import typedAnswer from '../../examples/plugins/typed-answer'
-
-export default [
-  { plugin: reviewHistory, builtin: true, enabledByDefault: true },
-  { plugin: typedAnswer, enabledByDefault: true },
-] satisfies FrontendPluginInstallation[]
+<template>
+  <p>{{ t('Saved ratings: {count}', { count }) }}</p>
+</template>
 ```
 
-运行 `npm run dev`，添加卡片时选择「插件题目 → Typed answer」。`npm run build` 将示例打包到静态站点；`npm run build:server` 与 `npm run build:desktop` 也会包含它。该示例没有替换内置答题历史，默认不部署到本仓库的 GitHub Pages。
+题目插件实现 `QuestionPlugin`：必须提供 `showQuestion`、`showAnswer`，可选 `editor`、`settings` 和 `history`。编辑器通过 `NoteInput` 的 `v-model` 更新表单；显示插件实现 `ReviewPanelPlugin`，提供只读的 `reviewPanel`。
 
-插件与应用在同一 JavaScript 环境执行，不是隔离沙箱。只安装信任的本地或 npm 模块；备份只携带数据，不安装或执行插件代码。
+题面和答案通过 `QuestionProps` 获取当前卡片、媒体和读取回调。`state.allowedGrades` 控制可用评分，`busy` 表示处理中；`complete()` 只在评分成功保存后调用。练习回调携带当前工作目录作用域，插件不能用旧作用域写入另一个学习库。
 
-## 本地接口
+历史数据可能只有提交摘要。用 `hasAttemptBody()` 判断，需要正文时调用 `getAttempt()`，关闭视图时取消并释放读取。通用 `PracticeHistory`、`AttemptBody`、`CardContent` 和 `MediaList` 由 SDK 提供，不需要导入宿主组件文件。
 
-本地插件的 Vue 模块仍实现上述接口，声明 `kind: 'local'`，注册到 `config/plugins/desktop.ts`。原生部分实现 [`src-tauri/src/plugins.rs`](../src-tauri/src/plugins.rs) 的接口：
+未知、关闭或数据版本不匹配的插件数据仍会保存、备份和导出；对应题目不进入复习队列，也不占每日额度。备份保存学习内容，不隐式安装或执行代码。
 
-```rust
-pub trait LocalPlugin: Send + Sync {
-    fn id(&self) -> &'static str;
-    fn call(&self, operation: String, payload: Value) -> PluginFuture<'_>;
-}
-```
+## 设置、存储与清理
 
-在桌面启动时加入 `Plugins::new` 清单。前端通过 `localPlugin(id, operation, payload)` 调用；宿主使用 Tauri IPC，不借道上游 HTTP 服务。未知插件或操作返回错误，插件负责参数、目标域名和响应校验。新增原生模块需要重新编译桌面应用，不动态加载下载的库。
+- `readSetting()` / `writeSetting()` 管理当前插件的设置，宿主自动增加插件命名空间。可通过写入失败回调显示未保存状态。
+- `pluginData.get()` / `set()` 按插件和工作目录作用域存储草稿等 JSON 数据；不会混用其他学习库的数据。
+- `pluginFiles.read()` / `write()` 在声明 `files` 能力后访问插件自己的工作目录数据区。只接受相对路径，不能遍历父目录；当前单文件上限 2 MiB。
+- 用 `onDispose()` 注册计时器、事件、订阅和请求取消的清理函数；也可以提供定义的 `dispose()`。更新、关闭、移除及切换作用域时会释放对应资源。
+- 插件自行维护显示设置和词典；通过 SDK `locale` 响应语言切换，可调用 SDK `t()` 处理通用宿主文案。
 
-LeetCode 实现位于 `crates/leetcode-local`，只连接固定的中国站与国际站。Cookie 存于本机独立文件；学习库在上游时，判题仍由本机执行。凭据不放入 `card.plugin.data`。
+## 桌面能力
 
-原生命令只授权安装包内的主窗口，不授权远程网址；上游只提供学习数据，不提供执行代码。前端和本地插件均属于可信应用代码，不是安全沙箱。安装桌面插件意味着信任它访问本机所授权的资源。
+`nativePlugin()` 仅调用通用宿主能力。`permissions.origins` 声明允许访问的 HTTPS 源，`secrets` 控制设备凭据存储，`files` 控制插件私有数据文件。宿主负责检查当前工作目录令牌、插件代码摘要、允许的源、响应体与文件大小，以及不安全路径和链接；凭据不会返回为普通插件配置值。
+
+LeetCode 的请求、解析、账号状态、提交恢复和建议评分逻辑均在外置插件中。宿主只提供通用 HTTP、凭据和存储接口，不再编译 LeetCode 专用原生模块。网络测试使用受控响应，不向真实账号提交。
+
+首次初始化空的插件目录时可装入软件随附的固定官方包；卸载后不会自动补回。其他安装和更新由用户主动执行。当前没有远程插件商店、后台下载第三方代码或后台自动更新。
+
+插件管理和本地开发不等同于跨平台 GUI、安装包或发布验收；具体已完成的检查按实际运行记录。
+
+## 本分支验证记录
+
+2026-10-27，在 Windows 本地完成：
+
+- 主程序单元测试在 `TZ=Asia/Shanghai` 和 `TZ=UTC` 下均为 501 项通过、1 项既有跳过；独立插件 36 项测试及各自类型检查通过。
+- SDK 打包后，在仓库外的独立临时项目中安装并完成类型检查、Vue 插件构建和 `--outdir` 输出；不使用宿主源码、workspace 链接或指向仓库的类型路径。
+- Chromium 静态完整回归 78 项通过；桌面浏览器回归分批覆盖全部 67 项。新增用例覆盖运行时创建的独立代码安装、界面和样式、开关清理、更新失败恢复、卸载保留数据、复制与修改包后的重新确认。
+- 原生桌面 Rust 测试 29 项通过，其中通用插件宿主 15 项；包含 Windows junction / hardlink 拒绝、凭据修订、坏包移除和重装，以及与前端共用固定 SHA256 期望的校验。工作目录 Rust 测试 46 项、跨语言联测 41 项通过。
+- 静态 `/repeaty/` 子路径、桌面和既有服务版前端构建通过，静态隔离与离线资源检查通过。既有服务版复习、历史和设置浏览器回归 3 项通过。
+- Windows Tauri 调试客户端构建、真实 MCP stdio、Rust 格式与 Clippy、共享 Schema、发布元数据、28 项发布规则检查通过；未生成或发布新安装包。
+
+桌面浏览器回归使用真实 Rust 学习库，并在测试夹具中适配系统对话框与插件 IPC；原生通用能力另外通过 Rust 测试验证。这些结果不等同于 Windows WebView 实机交互、macOS / Linux 新插件机制、客户端安装或正式发布验收。LeetCode 联网用例使用受控响应，不访问真实账号。

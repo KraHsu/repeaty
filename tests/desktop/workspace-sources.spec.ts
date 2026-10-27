@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 import type { Source } from '../../src/core/source-data'
 import type { Card, Note } from '../../src/core/model'
+import { saveReading } from '../fixtures/reading-flow'
 
 const picture = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/hfoAAAAASUVORK5CYII=',
@@ -80,6 +81,7 @@ test('source file acceptance keeps old quotes, positions and card progress; medi
   await previewSource(page)
   await saveSource(page)
   await createExcerptCard(page)
+  await saveReading(page)
   await files(page)
   const before = await storedLibrary(page),
     source = values<Source>(before.sources)[0]!

@@ -39,7 +39,9 @@ npm run desktop:build
 
 「学习材料」保存原文快照、摘录、阅读位置、阅读安排和理解反馈。材料可独立阅读，也可从学习概览进入混合队列。位置与评分在重启后保留；本轮队列不跨重启恢复。见[阅读用法](SOURCES.md)。
 
-在「设置」中调整通知、答题历史及插件开关。纯前端插件和内置 LeetCode 本地插件共用当前学习库；LeetCode 判题在本机执行。登录凭据保存在设备的独立凭据库，不进入工作目录。复制学习库到新设备后需重新配置登录信息。见[LeetCode 配置](LEETCODE.md)。
+在「设置」中调整通知和插件设置；在「插件」中安装、更新、关闭、移除或重新加载外置插件。官方答题历史和 LeetCode 也以独立包提供，不需要重编译客户端。代码保存在 `.repeaty/plugins/<id>/`，设置和业务数据随当前工作目录保存；复制来的未知代码须主动确认启用。关闭或移除代码保留题目、草稿、完整提交和进度。
+
+LeetCode 协议在外置插件中实现，宿主只提供通用网络与凭据能力。登录凭据和代码信任记录保存在设备的私有存储，不进入工作目录；复制学习库到新设备后需重新确认代码并配置登录信息。见[插件开发](PLUGINS.md)和[LeetCode 配置](LEETCODE.md)。
 
 在「设置 → MCP 连接」连接 Codex、Claude Code 或 Claude Desktop。MCP 默认关闭；分享摘录和接收草稿需要主动开启。待确认草稿、附件和编辑内容保存在当前目录，重启后可以继续确认；MCP 密钥及分享授权不会随目录复制。见[MCP](MCP.md)。
 
@@ -52,7 +54,7 @@ npm run test:workspace:native
 npm run test:e2e:desktop
 cargo test --locked --manifest-path crates/workspace-store/Cargo.toml
 cargo test --locked --manifest-path src-tauri/Cargo.toml
-cargo test --locked --manifest-path crates/leetcode-local/Cargo.toml
+npm test --prefix plugins/leetcode
 npm run desktop:build -- --debug --no-bundle
 # Linux：需 tauri-driver、WebKitWebDriver、Xvfb、xdotool
 GSETTINGS_BACKEND=memory GTK_USE_PORTAL=0 GIO_USE_VFS=local \
@@ -61,5 +63,7 @@ GSETTINGS_BACKEND=memory GTK_USE_PORTAL=0 GIO_USE_VFS=local \
 ```
 
 浏览器回归通过测试桥连接真实 Rust 存储，只替代文件选择器、MCP 连接和插件联网。原生测试另外验证真实系统选择器、Tauri IPC、WebKit 与进程重启；均使用临时目录，不读取平时使用的数据，也不向真实 LeetCode 提交。
+
+维护官方插件时分别运行插件项目的测试、类型检查和构建，再更新固定的 `plugins/packages/*.repeaty-plugin`。客户端构建只携带这些预构建包，不在构建主程序时编译插件源码。
 
 完整构建与三平台打包 CI 仅运行于 main，功能分支与 PR 只做基本单元测试。本机 Linux 通过不代替 Windows / macOS GUI 验收。

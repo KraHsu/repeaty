@@ -3,7 +3,8 @@ import { spawn, execFileSync } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { once } from 'node:events'
 import { join } from 'node:path'
-let binary: string | undefined
+// Allow callers to build once before Playwright's per-test fixture timeout starts.
+let binary = process.env.REPEATY_WORKSPACE_RUNTIME_BINARY
 export function workspaceRuntime(device: string) {
   if (!binary) {
     execFileSync(

@@ -129,7 +129,10 @@ test('client configurations can be copied before enabling MCP and reused after r
     ).toBeGreaterThanOrEqual(16)
     await mcp.getByRole('button', { name: '复制配置' }).click()
     await expect(mcp.getByRole('button', { name: '已复制' })).toBeVisible()
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(configuration)
+    // Windows clipboard text uses CRLF; textarea values use LF on every platform.
+    expect((await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, '\n')).toBe(
+      configuration,
+    )
   }
   await mcp.getByRole('button', { name: '隐藏连接配置' }).click()
   await expect(mcp.locator('textarea')).toHaveCount(0)

@@ -111,7 +111,11 @@ it('keeps drafts and revealed answers while translating authoring, statuses, and
   expect(host.querySelector('dialog')!.textContent).toContain('保存卡片')
   setLocale('en')
   await submitForm()
-  await vi.waitFor(() => expect(host.querySelector('tbody')!.textContent).toContain('学习空间'))
+  // Saving opens the lazy card table; wait for its import before checking the translated row.
+  await vi.dynamicImportSettled()
+  await vi.waitFor(() => expect(host.querySelector('tbody')?.textContent).toContain('学习空间'), {
+    timeout: 5000,
+  })
   expect(host.querySelector('.status-chip')!.textContent).toBe('New')
   button('Review').click()
   await nextTick()

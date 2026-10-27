@@ -17,7 +17,7 @@ npm run desktop:dev
 npm run format:check # 格式检查；npm run format 自动整理
 npm run typecheck    # Vue / TypeScript 类型检查
 npm test             # 核心逻辑、离线缓存、语言偏好与 DOM 交互测试
-npm run build        # 纯前端构建到 dist/，检查不包含后端 / LeetCode 模块
+npm run build        # 纯前端构建到 dist/，复制已构建插件包并检查宿主模块隔离
 npm run build:server # 后端版网页到 dist-server/，不生成离线缓存
 npm run preview      # 本地预览生产构建
 npm run test:e2e     # 构建后执行 Playwright，使用生产站点而非开发服务器
@@ -165,12 +165,17 @@ Anki `.apkg` 在同源 Worker 中通过 sql.js 读取，HTML 用 parse5 作为�
 
 Anki 集成只规划导入，不计划提供 Repeaty → Anki 导出。尚未实现 Anki 进度迁移、自定义字段 / HTML 模板、所见即所得富文本编辑器、图片遮挡、嵌套挖空、FSRS 参数训练。
 
-仓库根目录也是 Vite 的前端项目根，`index.html` 保留为页面入口；Rust 服务与桌面宿主分别在自己的子目录中。Vite、Playwright 和原生联测配置集中在 `config/`，三个版本的部署插件清单集中在 `config/plugins/`。npm 脚本显式指定配置路径；直接调用工具时也需传入对应的 `--config`。`tsconfig.json` 和编辑、格式工具配置保留在根目录，供工具自动发现。
+仓库根目录也是 Vite 的前端项目根，`index.html` 保留为页面入口；Rust 服务与桌面宿主分别在自己的子目录中。Vite、Playwright 和原生联测配置集中在 `config/`。插件源码是 `plugins/` 中的独立项目，公开 SDK 与构建命令位于 `packages/plugin-api/`，宿主构建只复制 `plugins/packages/` 中固定的预构建包。npm 脚本显式指定配置路径；直接调用工具时也需传入对应的 `--config`。`tsconfig.json` 和编辑、格式工具配置保留在根目录，供工具自动发现。
 
 ```text
 index.html          # Vite 页面入口
 config/             # Vite、Playwright 与原生联测配置
-  plugins/          # static / server / desktop 部署插件清单
+packages/plugin-api/ # 公开 SDK 类型与独立 repeaty-plugin 构建命令
+plugins/
+  review-history/   # 独立答题历史插件项目
+  leetcode/         # 独立 LeetCode 界面与协议实现
+  typed-answer/     # 独立输入答案示例项目
+  packages/         # 固定的预构建 .repeaty-plugin 分发包
 src/core/
   model.ts           # v13 笔记 / 卡片 / 媒体 / 练习模型与卡片生成
   practice-data.ts   # 练习、代码提交与结果 Schema
@@ -194,15 +199,14 @@ src/core/
   archive.ts         # 流式 ZIP / NDJSON 备份与原始媒体
   backups.ts         # 旧版 JSON 备份兼容
   media.ts           # 附件校验
-src/plugins/        # 插件接口、运行时注册与开关、内置题型和答题历史
+src/plugins/        # 外部包校验、运行时、SDK 桥与核心卡片适配
 src/backend/        # HTTP 客户端、SQLite 服务的增量存储适配
 src/platform/       # 构建时选择桌面、浏览器或既有服务端适配器
 src/browser/        # 只读目录、SQLite WASM Worker 与页面内试用副本
 src/desktop/        # 原生连接、MCP 桥接、持久草稿与确认界面
-examples/plugins/   # 可安装的纯前端插件示例
 server/             # Rust 账户服务、每账户 SQLite、Schema 与测试
-src-tauri/          # Tauri 桌面入口、工作目录 IPC、MCP 与本地插件接口
-crates/leetcode-local/ # 本机 LeetCode 请求和凭据存储
+src-tauri/          # Tauri 桌面入口、工作目录 IPC、MCP 与通用插件能力
+crates/workspace-store/ # Markdown、SQLite、文件检测与事务存储
 src/i18n/           # 双语词典、语言偏好、格式化与 DOM 回归测试
 src/App.vue         # 页面与弹窗组合入口
 src/app/            # 应用组装、类型上下文、视图与交互控制器
@@ -220,11 +224,11 @@ docs/               # 使用指南、开发文档与 README 插图
 
 ## 题目插件
 
-插件按部署安装，前端接口统一为 `showQuestion` / `showAnswer`，可选编辑器和设置页。`kind: 'frontend'` 可在所有版本使用，`kind: 'local'` 只在桌面版使用。服务端不加载插件。纯前端清单的类型仅接受前端插件；Vite 通过构建别名隔离模块，而不是在运行时隐藏菜单。
+插件在运行时安装和加载，官方插件也不进入宿主编译图。题目接口为 `showQuestion` / `showAnswer`，可选编辑器、设置和历史页；显示插件提供 `reviewPanel`。`kind: 'frontend'` 可在所有版本使用，`kind: 'local'` 依赖桌面通用原生能力。插件 JavaScript 运行于 WebView，不是 Node.js；账户服务不执行插件代码。
 
-接口、完整示例、本地注册方式及版本兼容规则见[插件开发](PLUGINS.md)。内置 LeetCode 的登录配置、判题规则和限制见[LeetCode 插件](LEETCODE.md)。
+独立开发时运行对应项目的类型检查和测试，使用 `npm run build --prefix plugins/review-history` 单次构建，或 `npm run dev --prefix plugins/review-history` 监视插件源码。可用 `--outdir` 输出到专门的临时学习目录，构建成功后在应用中重新扫描并确认启用，不使用日常学习库。SDK 当前通过 `npm pack --workspace @repeaty/plugin-api` 交付本地 tarball，尚未发布到 npm；独立插件仓库只安装 SDK 与自身依赖，无需应用源码。更新官方分发产物时单独更新 `plugins/packages/`；主程序构建和安装插件都不编译插件源码。接口、开发示例、存储与信任边界见[插件开发](PLUGINS.md)。官方 LeetCode 的登录配置、判题规则和限制见[LeetCode 插件](LEETCODE.md)。
 
-桌面构建与原生 WebKit 测试见[桌面版开发说明](DESKTOP.md#测试)。桌面 CI 为 Linux、Windows、macOS 分别构建安装包；LeetCode UI 测试模拟 IPC，Rust 测试使用受控上游服务，均不提交到真实账号。
+桌面构建与原生 WebKit 测试见[桌面版开发说明](DESKTOP.md#本地验证)。桌面 CI 为 Linux、Windows、macOS 分别构建安装包；LeetCode 插件协议测试和通用宿主网络测试使用受控响应，均不提交到真实账号。
 
 桌面安装程序支持 `--mcp-stdio --connection-file <绝对路径>`，在创建 Tauri 窗口前进入无界面 MCP 模式。它只代理运行中应用的本机接口，不读取 IndexedDB 或直接写入卡片。客户端配置生成、独占连接文件与协议限制见 [ADR 013](adr/013-mcp-clients.md)。构建后运行 `node scripts/test-mcp-stdio.mjs` 检查真实进程的初始化、工具发现、离线错误与 stdin EOF；三平台 CI 均运行此检查。Linux 原生测试再覆盖本机 HTTP、stdio 到 WebView 的查询、草稿确认和重启恢复，不调用付费模型或修改开发者的 Codex / Claude 配置。
 

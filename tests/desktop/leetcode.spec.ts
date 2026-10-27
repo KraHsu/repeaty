@@ -229,7 +229,11 @@ test('international site, English, manual rating, and pending judge recovery do 
       const { active } = (await invoke('workspace_status')) as { active: { token: string } }
       return invoke('workspace_read', {
         token: active.token,
-        request: { type: 'value', namespace: 'settings', id: 'repeaty.leetcode.site' },
+        request: {
+          type: 'value',
+          namespace: 'settings',
+          id: 'plugin:leetcode:repeaty.leetcode.site',
+        },
       })
     }),
   ).toBe('leetcode.com')
@@ -678,7 +682,7 @@ test('pending official submissions recover from library records when the tempora
     for (const card of library.cards)
       await invoke('workspace_write', {
         token: active.token,
-        request: { type: 'value', namespace: 'leetcode', id: card.id, value: null },
+        request: { type: 'value', namespace: 'plugin:leetcode', id: card.id, value: null },
       })
   })
   remote.allowChecks()
@@ -727,7 +731,7 @@ test('revealing an answer remains recorded when the temporary draft is lost', as
     for (const card of library.cards)
       await invoke('workspace_write', {
         token: active.token,
-        request: { type: 'value', namespace: 'leetcode', id: card.id, value: null },
+        request: { type: 'value', namespace: 'plugin:leetcode', id: card.id, value: null },
       })
   })
   remote.allowChecks()

@@ -3,6 +3,7 @@ import { workspaceRuntime } from '../fixtures/workspace-runtime'
 import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { installPluginHostFixture } from '../fixtures/plugin-host'
 export { storedLibrary } from '../fixtures/stored-library'
 export const test = base.extend<{ native: void; emptyWorkspace: void }>({
   native: [
@@ -13,6 +14,7 @@ export const test = base.extend<{ native: void; emptyWorkspace: void }>({
       const runtime = workspaceRuntime(join(root, 'device'))
       const status = await runtime.call<{ epoch: string }>('workspace_status')
       await runtime.call('workspace_choose', { epoch: status.epoch, mode: 'create', path })
+      await installPluginHostFixture(context, runtime, root)
       let choices = 0
       await context.exposeBinding(
         '__repeatyWorkspace',
@@ -270,19 +272,12 @@ export const test = base.extend<{ native: void; emptyWorkspace: void }>({
                 window.open(args.url as string, '_blank')
                 return
               }
-              if (command === 'local_plugin') {
-                const response = await fetch(
-                  `/__native/${args.id}${args.operation === 'credentials' ? '/credentials' : ''}`,
-                  {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(args.payload),
-                  },
-                )
-                const value = await response.json()
-                if (!response.ok) throw value.error
-                return value
-              }
+              if (command === 'plugin_host')
+                return (
+                  window as unknown as {
+                    __repeatyPluginInvoke(args: Record<string, unknown>): Promise<unknown>
+                  }
+                ).__repeatyPluginInvoke(args)
               throw `Unexpected command: ${command}`
             },
           },
@@ -291,6 +286,8 @@ export const test = base.extend<{ native: void; emptyWorkspace: void }>({
       try {
         await use()
       } finally {
+        // Stop browser watchers before ending the native host's input stream.
+        await context.close()
         await runtime.close()
         await rm(root, { recursive: true, force: true })
       }
