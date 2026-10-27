@@ -2,6 +2,7 @@
 mod exports;
 mod mcp;
 mod plugins;
+mod window_frame;
 mod workspaces;
 use plugins::Plugins;
 use std::sync::Arc;
@@ -20,6 +21,20 @@ fn main_window(window: &tauri::WebviewWindow) -> Result<(), String> {
     } else {
         Err("library-unavailable".into())
     }
+}
+#[tauri::command]
+async fn window_snap_epoch(window: tauri::WebviewWindow) -> Result<Option<u64>, String> {
+    main_window(&window)?;
+    window_frame::claim(window).await
+}
+#[tauri::command]
+async fn window_snap_region(
+    window: tauri::WebviewWindow,
+    epoch: u64,
+    rect: Option<window_frame::Region>,
+) -> Result<bool, String> {
+    main_window(&window)?;
+    window_frame::update(window, epoch, rect).await
 }
 #[tauri::command]
 fn mcp_attach(
@@ -206,35 +221,39 @@ fn main() {
                 plugins: Plugins::new(&directory)?,
             });
             app.manage(workspaces::Workspaces::new(&directory));
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                .title("Repeaty")
-                .decorations(false)
-                .resizable(true)
-                .shadow(true)
-                .inner_size(1280.0, 850.0)
-                .min_inner_size(720.0, 560.0)
-                .on_navigation(|url| {
-                    let bundled = matches!(
-                        (url.scheme(), url.host_str()),
-                        ("tauri", Some("localhost")) | ("http" | "https", Some("tauri.localhost"))
-                    );
-                    let development = cfg!(debug_assertions)
-                        && url.as_str().starts_with("http://localhost:4178/");
-                    bundled || development
-                })
-                .on_new_window(|url, _| {
-                    let _ = external(url.as_str());
-                    tauri::webview::NewWindowResponse::Deny
-                })
-                .on_page_load(|window, payload| {
-                    if payload.event() == tauri::webview::PageLoadEvent::Started {
-                        window.state::<Desktop>().mcp.detach();
-                        window
-                            .state::<workspaces::Workspaces>()
-                            .invalidate_watches();
-                    }
-                })
-                .build()?;
+            let window =
+                WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                    .title("Repeaty")
+                    .decorations(false)
+                    .resizable(true)
+                    .shadow(true)
+                    .inner_size(1280.0, 850.0)
+                    .min_inner_size(500.0, 400.0)
+                    .on_navigation(|url| {
+                        let bundled = matches!(
+                            (url.scheme(), url.host_str()),
+                            ("tauri", Some("localhost"))
+                                | ("http" | "https", Some("tauri.localhost"))
+                        );
+                        let development = cfg!(debug_assertions)
+                            && url.as_str().starts_with("http://localhost:4178/");
+                        bundled || development
+                    })
+                    .on_new_window(|url, _| {
+                        let _ = external(url.as_str());
+                        tauri::webview::NewWindowResponse::Deny
+                    })
+                    .on_page_load(|window, payload| {
+                        if payload.event() == tauri::webview::PageLoadEvent::Started {
+                            window_frame::page_started(&window);
+                            window.state::<Desktop>().mcp.detach();
+                            window
+                                .state::<workspaces::Workspaces>()
+                                .invalidate_watches();
+                        }
+                    })
+                    .build()?;
+            window_frame::install(&window);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -251,6 +270,8 @@ fn main() {
             export_finish,
             export_cancel,
             plugin_host,
+            window_snap_epoch,
+            window_snap_region,
             workspaces::workspace_status,
             workspaces::workspace_choose,
             workspaces::workspace_recent,

@@ -72,6 +72,18 @@ export const test = base.extend<{ native: void; emptyWorkspace: void }>({
           focused: true,
           calls: [] as string[],
           failNext: '',
+          snapEpoch: 0,
+          snapSupported: true,
+          snapRequests: [] as { epoch: number; rect: unknown }[],
+          snapState(state: { epoch?: number; hovered: boolean; pressed: boolean }) {
+            emitWindowEvent('window-snap-state', {
+              ...state,
+              epoch: state.epoch ?? desktopWindow.snapEpoch,
+            })
+          },
+          invalidateSnap() {
+            emitWindowEvent('window-snap-invalidated', { epoch: desktopWindow.snapEpoch })
+          },
           update(state: { maximized?: boolean; focused?: boolean }) {
             if (state.maximized !== undefined) {
               desktopWindow.maximized = state.maximized
@@ -137,6 +149,16 @@ export const test = base.extend<{ native: void; emptyWorkspace: void }>({
             },
             unregisterCallback: (id: number) => callbacks.delete(id),
             invoke: async (command: string, args: Record<string, unknown>) => {
+              if (command === 'window_snap_epoch')
+                return desktopWindow.snapSupported ? ++desktopWindow.snapEpoch : null
+              if (command === 'window_snap_region') {
+                desktopWindow.snapRequests.push({ epoch: args.epoch as number, rect: args.rect })
+                return (
+                  desktopWindow.snapSupported &&
+                  args.epoch === desktopWindow.snapEpoch &&
+                  args.rect !== null
+                )
+              }
               if (command === 'plugin:event|listen') {
                 const id = ++listenerId
                 listeners.set(id, { event: args.event as string, callback: args.handler as number })

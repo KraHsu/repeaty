@@ -14,6 +14,8 @@ fn main() {
             "export_finish",
             "export_cancel",
             "plugin_host",
+            "window_snap_epoch",
+            "window_snap_region",
             "workspace_status",
             "workspace_choose",
             "workspace_recent",

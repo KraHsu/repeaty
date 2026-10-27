@@ -25,11 +25,15 @@ npm run desktop:build
 
 Windows、macOS 和 Linux 使用同一套应用绘制的标题栏与窗口按钮，跟随 Repeaty 的界面样式。拖动标题栏空白处移动窗口，双击切换最大化和还原；最小化、最大化与关闭通过 Tauri 调用系统窗口操作。窗口边缘缩放、最小尺寸、阴影及最大化后的工作区仍由原生窗口管理，具体外观可能随系统而异。关闭按钮沿用关闭请求流程，不强制销毁窗口，也不改变原有草稿和保存机制。
 
-自绘按钮不自动获得所有系统标题栏能力。Windows 11 的最大化按钮悬停 Snap Layouts 菜单需要额外的原生命中测试，本次尚未接入；macOS 的原生交通灯菜单以及系统提供的移动、对齐交互也不能由自绘按钮完整替代。相关平台限制见 [Tauri 窗口定制](https://v2.tauri.app/learn/window-customization/)及 [Windows Snap Layouts 接入要求](https://learn.microsoft.com/windows/apps/desktop/modernize/apply-snap-layout-menu)。
+Windows 11 的最大化 / 还原按钮接入系统 Snap Layouts 悬停菜单，布局选择由 Windows 处理，不绘制仿制菜单。窗口最小内容区为 500×400 逻辑像素；显示缩放和工作区会影响可用的布局分区。macOS / Linux 不启用 Windows Snap 接入；macOS 的原生交通灯菜单以及系统提供的移动、对齐交互也不能由自绘按钮完整替代。相关平台限制见 [Tauri 窗口定制](https://v2.tauri.app/learn/window-customization/)及 [Windows Snap Layouts 接入要求](https://learn.microsoft.com/windows/apps/desktop/modernize/apply-snap-layout-menu)。
 
 标题栏的浏览器夹具测试只验证布局、按钮调用及状态更新。系统拖动、双击、边缘缩放、多屏缩放、macOS 窗口行为和 Linux 窗口管理器兼容性须分别通过原生客户端实机验证；未运行的平台用例不标记为通过。
 
-2026-10-27，本地完成 505 项主程序单元测试（1 项既有跳过），其中 4 项覆盖窗口状态、迟到读取和监听清理；标题栏、导航和复习相关 Chromium 回归 11 项通过，包含 3 种窗口尺寸与嵌套弹窗。静态隔离构建和 Windows Tauri 调试构建通过。独立应用标识的 Windows WebView 程序已检查自绘栏显示、最大化，以及弹窗打开时仍可最大化；完整拖动、双击、边缘缩放、最小化 / 关闭与多屏用例尚未完成，macOS / Linux 尚未实机验证。
+Snap 接入及剩余窗口操作由用户按[窗口手动验收清单](DESKTOP_WINDOW_TESTS.md)测试，本轮不使用 computer-use。清单包含启动方式、Snap 设置、拖动与八方向缩放、最小化和两种关闭方式、弹窗、重启数据保留及多屏 / DPI 反馈格式；当前人工结果均待填写，自动检查不等同于实机验收通过。
+
+此前自绘窗口栏阶段（2026-10-27）完成 505 项主程序单元测试（1 项既有跳过），其中 4 项覆盖窗口状态、迟到读取和监听清理；标题栏、导航和复习相关 Chromium 回归 11 项通过，包含 3 种窗口尺寸与嵌套弹窗。静态隔离构建和 Windows Tauri 调试构建通过。独立应用标识的 Windows WebView 程序已检查自绘栏显示、最大化，以及弹窗打开时仍可最大化；完整拖动、双击、边缘缩放、最小化 / 关闭与多屏用例尚未完成，macOS / Linux 尚未实机验证。
+
+本次 Snap 接入的自动检查：主程序单元 509 项通过、1 项既有跳过；桌面 Rust 33 项通过，其中 4 项覆盖命中区缩放、边缘缩放优先、单次按压和旧注册清理；无头 Chromium 的 HTML / IPC 夹具回归 13 项通过，包含 500×400 布局、热区坐标和失效重报。类型、格式、Rust Clippy、静态隔离构建、Windows 调试构建及无界面 MCP stdio 检查通过。本批未启动或控制真实窗口；上述结果不代表系统 Snap 菜单或剩余窗口操作已通过人工验收。
 
 ## 工作目录
 

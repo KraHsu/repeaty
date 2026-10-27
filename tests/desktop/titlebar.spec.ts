@@ -4,6 +4,20 @@ import type { Page } from '@playwright/test'
 interface WindowFixture {
   calls: string[]
   failNext: string
+  snapEpoch: number
+  snapRequests: {
+    epoch: number
+    rect: {
+      left: number
+      top: number
+      width: number
+      height: number
+      viewportWidth: number
+      viewportHeight: number
+    } | null
+  }[]
+  snapState(state: { epoch?: number; hovered: boolean; pressed: boolean }): void
+  invalidateSnap(): void
   update(state: { maximized?: boolean; focused?: boolean }): void
 }
 const windowFixture = (page: Page) =>
@@ -15,6 +29,7 @@ for (const [width, height] of [
   [1280, 720],
   [900, 600],
   [720, 560],
+  [500, 400],
 ] as const) {
   test(`custom titlebar leaves the desktop workspace accessible at ${width}x${height}`, async ({
     page,
@@ -86,6 +101,79 @@ test('window controls follow native state events, support keyboard input and kee
   await expect.poll(() => windowFixture(page)).toEqual(['minimize', 'toggle_maximize', 'close'])
   expect(await storedLibrary(page)).toEqual(before)
   await expect(page.locator('.main-content')).toBeVisible()
+})
+
+test('native Snap registration follows the maximize button and ignores previous registration events', async ({
+  page,
+}) => {
+  const maximize = page
+    .locator('.desktop-titlebar')
+    .getByRole('button', { name: '最大化窗口', exact: true })
+  await expect(maximize).toHaveAttribute('data-native-snap', 'true')
+  const geometry = () =>
+    page.evaluate(() => {
+      const element = document.querySelector<HTMLButtonElement>('[data-native-snap]')!
+      const { left, top, width, height } = element.getBoundingClientRect()
+      const fixture = (window as unknown as { __repeatyTestWindow: WindowFixture })
+        .__repeatyTestWindow
+      return {
+        expected: {
+          left,
+          top,
+          width,
+          height,
+          viewportWidth: innerWidth,
+          viewportHeight: innerHeight,
+        },
+        actual: fixture.snapRequests.at(-1)?.rect,
+      }
+    })
+  await expect.poll(geometry).toEqual(
+    expect.objectContaining({
+      actual: expect.objectContaining({ width: 44, viewportWidth: 1280 }),
+    }),
+  )
+  let value = await geometry()
+  expect(value.actual).toEqual(value.expected)
+  await page.setViewportSize({ width: 900, height: 600 })
+  await expect.poll(async () => (await geometry()).actual?.viewportWidth).toBe(900)
+  value = await geometry()
+  expect(value.actual).toEqual(value.expected)
+  await page.evaluate(() => {
+    const fixture = (window as unknown as { __repeatyTestWindow: WindowFixture })
+      .__repeatyTestWindow
+    fixture.snapState({ epoch: fixture.snapEpoch - 1, hovered: true, pressed: true })
+  })
+  await expect(maximize).not.toHaveClass(/is-native-hovered/)
+  await page.evaluate(() =>
+    (window as unknown as { __repeatyTestWindow: WindowFixture }).__repeatyTestWindow.snapState({
+      hovered: true,
+      pressed: true,
+    }),
+  )
+  await expect(maximize).toHaveClass(/is-native-hovered/)
+  await expect(maximize).toHaveClass(/is-native-pressed/)
+  const count = await page.evaluate(
+    () =>
+      (window as unknown as { __repeatyTestWindow: WindowFixture }).__repeatyTestWindow.snapRequests
+        .length,
+  )
+  await page.evaluate(() =>
+    (
+      window as unknown as { __repeatyTestWindow: WindowFixture }
+    ).__repeatyTestWindow.invalidateSnap(),
+  )
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { __repeatyTestWindow: WindowFixture }).__repeatyTestWindow
+            .snapRequests.length,
+      ),
+    )
+    .toBeGreaterThan(count)
+  expect(await geometry()).toEqual({ expected: value.expected, actual: value.expected })
+  expect(await windowFixture(page)).toEqual([])
 })
 
 test('a failed window request is visible and can be retried without leaving the workspace', async ({

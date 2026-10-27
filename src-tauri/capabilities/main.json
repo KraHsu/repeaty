@@ -18,6 +18,8 @@
     "core:window:allow-close",
     "core:window:allow-start-dragging",
     "allow-plugin-host",
+    "allow-window-snap-epoch",
+    "allow-window-snap-region",
     "allow-workspace-status",
     "allow-workspace-choose",
     "allow-workspace-recent",
