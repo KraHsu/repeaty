@@ -1,5 +1,22 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  '请选择完整的 Repeaty 工作目录，包括隐藏的 .repeaty 文件夹。':
+    'Select the complete Repeaty workspace, including its hidden .repeaty folder.',
+  '这个工作目录的格式暂不受支持，请使用当前桌面版创建的目录。':
+    'This workspace format is not supported. Use a workspace created by the current desktop version.',
+  '工作目录还有未完成的保存。请在桌面版中关闭学习库，再重新选择目录。':
+    'This workspace has unfinished saves. Close the library in the desktop app, then select it again.',
+  '读取期间文件发生变化。请关闭桌面学习库，再重新选择目录。':
+    'Files changed while being read. Close the desktop library, then select the folder again.',
+  '工作目录中的数据损坏或不完整，未替换当前学习库。':
+    'The workspace is damaged or incomplete. Your current library has been kept.',
+  '工作目录超过浏览器读取上限，请使用桌面版打开。':
+    'This workspace exceeds the browser reading limit. Open it in the desktop app.',
+  '无法读取所选目录，请检查文件访问权限后重试。':
+    'Cannot read the selected folder. Check file access permissions and try again.',
+  '无法启动工作目录读取器，请重新加载页面后重试。':
+    'Cannot start the workspace reader. Reload the page and try again.',
+  '试用副本已关闭，请重新选择工作目录。': 'This trial copy is closed. Select the workspace again.',
   '{count} 项文件修改待检查': '{count} file changes to review',
   '文件检测需要检查，请打开工作目录。': 'Check Workspace for file detection issues.',
   '自动检测暂不可用，可手动重新扫描；返回窗口时会补检。':
