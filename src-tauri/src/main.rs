@@ -102,13 +102,20 @@ fn mcp_client_configuration(
         .map_err(str::to_owned)
 }
 #[tauri::command]
-async fn local_plugin(
+async fn plugin_host(
+    window: tauri::WebviewWindow,
     state: State<'_, Desktop>,
+    workspaces: State<'_, workspaces::Workspaces>,
+    token: String,
     id: String,
     operation: String,
     payload: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    state.plugins.call(&id, operation, payload).await
+    main_window(&window)?;
+    state
+        .plugins
+        .call(&workspaces, token, id, operation, payload)
+        .await
 }
 fn external(url: &str) -> Result<(), String> {
     let parsed = reqwest::Url::parse(url).map_err(|_| "invalid-url")?;
@@ -196,11 +203,7 @@ fn main() {
                 mcp: Arc::new(mcp::Mcp::with_connection_file(
                     directory.join("mcp.connection.json"),
                 )),
-                plugins: Plugins::new(vec![Arc::new(
-                    repeaty_leetcode_local::leetcode::LeetCode::open(
-                        &directory.join("leetcode.credentials.sqlite3"),
-                    )?,
-                )])?,
+                plugins: Plugins::new(&directory)?,
             });
             app.manage(workspaces::Workspaces::new(&directory));
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
@@ -244,7 +247,7 @@ fn main() {
             export_write,
             export_finish,
             export_cancel,
-            local_plugin,
+            plugin_host,
             workspaces::workspace_status,
             workspaces::workspace_choose,
             workspaces::workspace_recent,

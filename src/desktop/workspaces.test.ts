@@ -29,7 +29,7 @@ describe('desktop workspace lifecycle', () => {
     expect(forbidden).not.toHaveBeenCalled()
     expect(invoke.mock.calls.map((call) => call[0])).toEqual(['workspace_status'])
   })
-  it('hydrates only the selected workspace settings and binds code drafts to its identity', async () => {
+  it('hydrates only the selected workspace settings and rejects plugin data from another identity', async () => {
     const selected = active()
     invoke.mockImplementation(async (command) =>
       command === 'workspace_status'
@@ -50,9 +50,21 @@ describe('desktop workspace lifecycle', () => {
         request: { type: 'value', namespace: 'settings', id: 'repeaty.locale', value: 'zh-CN' },
       }),
     )
-    const drafts = await import('../plugins/leetcode/drafts')
+    const { createPluginApi } = await import('../plugins/sdk')
+    const api = createPluginApi(
+      {
+        id: 'example',
+        name: 'Example',
+        version: '1.0.0',
+        apiVersion: 1,
+        dataVersion: 1,
+        kind: 'frontend',
+      },
+      'local:workspace:' + selected.id,
+      [],
+    )
     await expect(
-      drafts.readDraft('card', 'v1', 'local:workspace:' + crypto.randomUUID()),
+      api.pluginData.get('card', 'local:workspace:' + crypto.randomUUID()),
     ).rejects.toThrow()
     expect(
       invoke.mock.calls.filter(

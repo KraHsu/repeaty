@@ -43,7 +43,6 @@ export async function checkVersions(root = '.') {
   for (const [directory, name] of [
     ['server', 'repeaty-server'],
     ['src-tauri', 'repeaty-desktop'],
-    ['crates/leetcode-local', 'repeaty-leetcode-local'],
     ['crates/workspace-store', 'repeaty-workspace'],
   ]) {
     for (const extension of ['toml', 'lock']) {
@@ -55,7 +54,7 @@ export async function checkVersions(root = '.') {
     }
   }
   // The desktop lockfile embeds both local Rust packages.
-  for (const name of ['repeaty-leetcode-local', 'repeaty-workspace'])
+  for (const name of ['repeaty-workspace'])
     versions.push([
       'src-tauri/Cargo.lock ' + name,
       cargoVersion(await readFile(join(root, 'src-tauri/Cargo.lock'), 'utf8'), name, true),

@@ -93,32 +93,34 @@ pub(crate) fn restrict(file: &File) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::leetcode_credentials::CredentialStore;
-    use std::{collections::HashMap, fs::OpenOptions, os::windows::fs::OpenOptionsExt};
     use windows_sys::Win32::{
-        Foundation::{GENERIC_READ, GENERIC_WRITE, LocalFree},
+        Foundation::LocalFree,
         Security::{
-            Authorization::{
-                ConvertStringSecurityDescriptorToSecurityDescriptorW, GetSecurityInfo,
-            },
-            EqualSid, GetAce, GetSecurityDescriptorControl, GetSecurityDescriptorDacl,
-            PSECURITY_DESCRIPTOR, SE_DACL_PROTECTED,
+            Authorization::GetSecurityInfo, EqualSid, GetAce, GetSecurityDescriptorControl,
+            SE_DACL_PROTECTED,
         },
-        Storage::FileSystem::WRITE_DAC,
     };
-
-    struct Descriptor(PSECURITY_DESCRIPTOR);
-    impl Drop for Descriptor {
-        fn drop(&mut self) {
-            // SAFETY: the Windows security APIs allocate these descriptors with LocalAlloc.
-            unsafe { LocalFree(self.0) };
-        }
-    }
-
-    fn assert_private(file: &File) {
+    #[test]
+    fn generic_secret_store_only_grants_the_current_user_and_persists_after_reopen() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("plugin-secrets.sqlite3");
+        let mut store = super::super::secrets::Secrets::open(&path).unwrap();
+        let permissions = super::super::Permissions {
+            origins: vec!["https://example.org".into()],
+            secrets: true,
+            files: false,
+        };
+        store.operation("sample",&permissions,serde_json::json!({"action":"set","slot":"site","origin":"https://example.org","values":{"session":"kept"}})).unwrap();
+        drop(store);
+        let store = super::super::secrets::Secrets::open(&path).unwrap();
+        assert_eq!(
+            store.snapshot("sample", "site").unwrap().unwrap().values["session"],
+            "kept"
+        );
+        let file = File::open(&path).unwrap();
         let mut acl = null_mut();
         let mut descriptor = null_mut();
-        // SAFETY: all output slots are valid, and the file handle is borrowed and live.
+        // SAFETY: the file handle is live and all output pointers are valid.
         assert_eq!(
             unsafe {
                 GetSecurityInfo(
@@ -134,108 +136,41 @@ mod tests {
             },
             ERROR_SUCCESS
         );
-        let descriptor = Descriptor(descriptor);
+        assert!(!descriptor.is_null());
+        assert!(!acl.is_null());
         let mut control = 0;
         let mut revision = 0;
-        // SAFETY: the returned descriptor and its ACL remain live until the end of this scope.
+        // SAFETY: GetSecurityInfo returned a valid descriptor and ACL retained until LocalFree below.
         unsafe {
             assert_ne!(
-                GetSecurityDescriptorControl(descriptor.0, &mut control, &mut revision),
+                GetSecurityDescriptorControl(descriptor, &mut control, &mut revision),
                 0
             );
             assert_ne!(control & SE_DACL_PROTECTED, 0);
-            assert!(!acl.is_null());
             assert_eq!((*acl).AceCount, 1);
             let mut ace = null_mut();
             assert_ne!(GetAce(acl, 0, &mut ace), 0);
             let ace = &*ace.cast::<ACCESS_ALLOWED_ACE>();
-            assert_eq!(ace.Header.AceType, 0); // ACCESS_ALLOWED_ACE_TYPE
+            assert_eq!(ace.Header.AceType, 0);
             assert_eq!(ace.Header.AceFlags, 0);
             assert_eq!(ace.Mask, FILE_ALL_ACCESS);
             let user = current_user().unwrap();
             assert_ne!(
                 EqualSid(
                     (&ace.SidStart as *const u32).cast_mut().cast(),
-                    (*user.as_ptr().cast::<TOKEN_USER>()).User.Sid,
+                    (*user.as_ptr().cast::<TOKEN_USER>()).User.Sid
                 ),
                 0
             );
+            LocalFree(descriptor);
         }
     }
-
     #[test]
-    fn credential_store_replaces_broad_grants_and_stays_readable_after_restart() {
+    fn permission_errors_are_returned_before_the_store_is_used() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("力扣 credentials.sqlite3");
-        let file = OpenOptions::new()
-            .write(true)
-            .access_mode(GENERIC_READ | GENERIC_WRITE | WRITE_DAC)
-            .create_new(true)
-            .open(&path)
-            .unwrap();
-        // Simulate a legacy file with a broad explicit grant, beyond inherited permissions.
-        let sddl: Vec<u16> = "D:(A;;FA;;;WD)".encode_utf16().chain(Some(0)).collect();
-        let mut descriptor = null_mut();
-        // SAFETY: the SDDL is NUL-terminated, and the descriptor is freed by its guard.
-        unsafe {
-            assert_ne!(
-                ConvertStringSecurityDescriptorToSecurityDescriptorW(
-                    sddl.as_ptr(),
-                    1,
-                    &mut descriptor,
-                    null_mut()
-                ),
-                0
-            );
-        }
-        let descriptor = Descriptor(descriptor);
-        let mut present = 0;
-        let mut defaulted = 0;
-        let mut acl = null_mut();
-        // SAFETY: the descriptor, ACL and file stay live through the permission change.
-        unsafe {
-            assert_ne!(
-                GetSecurityDescriptorDacl(descriptor.0, &mut present, &mut acl, &mut defaulted),
-                0
-            );
-            assert_ne!(present, 0);
-            assert_eq!(
-                SetSecurityInfo(
-                    file.as_raw_handle(),
-                    SE_FILE_OBJECT,
-                    DACL_SECURITY_INFORMATION,
-                    null_mut(),
-                    null_mut(),
-                    acl,
-                    null_mut()
-                ),
-                ERROR_SUCCESS
-            );
-        }
-        drop(file);
-        let mut store = CredentialStore::open(&path, HashMap::new()).unwrap();
-        assert_private(&File::open(&path).unwrap());
-        store
-            .set(
-                "leetcode.cn",
-                Some(crate::leetcode::Credentials {
-                    session: "test-session".into(),
-                    csrf: "test-csrf".into(),
-                }),
-            )
-            .unwrap();
-        drop(store);
-        let store = CredentialStore::open(&path, HashMap::new()).unwrap();
-        assert_eq!(store.get("leetcode.cn").unwrap().session, "test-session");
-        assert_private(&File::open(&path).unwrap());
-    }
-
-    #[test]
-    fn permission_failures_are_returned_instead_of_ignored() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("credentials.sqlite3");
+        let path = directory.path().join("read-only.sqlite3");
         File::create(&path).unwrap();
-        let read_only = File::open(path).unwrap();
-        assert_eq!(restrict(&read_only).unwrap_err().raw_os_error(), Some(5));
+        let file = File::open(path).unwrap();
+        assert_eq!(restrict(&file).unwrap_err().raw_os_error(), Some(5));
     }
 }

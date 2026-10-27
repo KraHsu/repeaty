@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import { offlinePlugin } from '../build/offline.ts'
+import { externalPlugins } from '../build/external-plugins.ts'
 import { fileURLToPath } from 'node:url'
 
 export default defineConfig(({ mode }) => {
@@ -14,10 +15,12 @@ export default defineConfig(({ mode }) => {
     server: { watch: { ignored: ['**/target/**'] } },
     resolve: {
       alias: {
+        '@repeaty-plugin-host': fileURLToPath(
+          new URL(`../src/plugins/platform-${desktop ? 'desktop' : 'browser'}.ts`, import.meta.url),
+        ),
         '@repeaty-platform': fileURLToPath(
           new URL(`../src/platform/${edition}.ts`, import.meta.url),
         ),
-        '@repeaty-plugins': fileURLToPath(new URL(`./plugins/${edition}.ts`, import.meta.url)),
       },
     },
     build: {
@@ -26,7 +29,11 @@ export default defineConfig(({ mode }) => {
       manifest: true,
     },
     worker: { format: 'es' },
-    plugins: [vue(), ...(server || desktop ? [] : [offlinePlugin()])],
-    test: { include: ['src/**/*.test.ts'], environment: 'node' },
+    plugins: [vue(), externalPlugins(desktop), ...(server || desktop ? [] : [offlinePlugin()])],
+    test: {
+      include: ['src/**/*.test.ts'],
+      environment: 'node',
+      setupFiles: ['tests/setup-external-plugins.ts'],
+    },
   }
 })

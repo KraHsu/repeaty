@@ -82,6 +82,8 @@ jobs:
           node --test scripts/release.test.mjs
       - name: Check static edition
         run: npm run check
+      - name: Check independent plugin packages
+        run: npm run plugins:test
       - name: Check desktop record schema
         run: node scripts/export-workspace-schema.mjs --check
       - name: Upload browser failure report

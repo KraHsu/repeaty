@@ -4,7 +4,8 @@ import { Search } from '@lucide/vue'
 import { t } from '../i18n'
 import type { Library } from '../core/model'
 import type { Attempt, AttemptRecord } from '../core/practice-data'
-import { questionPlugin } from '../plugins'
+import { usePlugins } from '../plugins'
+const { questionPlugin } = usePlugins()
 import PracticeHistory from './PracticeHistory.vue'
 
 const props = defineProps<{

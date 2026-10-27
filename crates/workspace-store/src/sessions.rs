@@ -195,6 +195,12 @@ impl Sessions {
             None => Err(Error("workspace-not-open")),
         }
     }
+    /// Return a held directory capability only after validating the active session and identity.
+    pub fn plugin_root(&self, token: &str) -> Result<cap_std::fs::Dir> {
+        let active = self.active.as_ref().ok_or(Error("workspace-not-open"))?;
+        active.library.guard(token)?;
+        Ok(active.library.anchor.try_clone()?)
+    }
     pub fn write(&mut self, token: &str, request: Value) -> Result<Value> {
         let active = self.active.as_mut().ok_or(Error("workspace-not-open"))?;
         active.library.guard(token)?;

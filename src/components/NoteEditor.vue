@@ -17,7 +17,13 @@ import { prepareMedia } from '../core/media'
 import MediaList from './MediaList.vue'
 import MediaAttachments from './MediaAttachments.vue'
 const CardContent = defineAsyncComponent(() => import('./CardContent.vue'))
-import { enabledEditorPlugins, canReviewCard } from '../plugins'
+import { usePlugins } from '../plugins'
+import { usePluginManager } from '../plugins/manager'
+const { enabledEditorPlugins, canReviewCard } = usePlugins()
+const { holdPluginRuntime } = usePluginManager()
+import { onUnmounted } from 'vue'
+const releasePluginRuntime = holdPluginRuntime()
+onUnmounted(releasePluginRuntime)
 import { insertCloze } from '../core/authoring'
 const props = defineProps<{
   library: Library
@@ -125,10 +131,10 @@ async function addCloze() {
     error.value = issue as Error
   }
 }
-function selectLeetCode() {
-  if (!pluginChoices.value.some((plugin) => plugin.id === 'leetcode')) return
+function selectQuestionPlugin(id: string) {
+  if (!pluginChoices.value.some((plugin) => plugin.id === id)) return
   form.type = 'plugin'
-  selectedPluginId.value = 'leetcode'
+  selectedPluginId.value = id
 }
 function shortcut(event: KeyboardEvent) {
   // Enter/Shift+C while an IME composition is open belongs to the IME, not to the form.
@@ -287,12 +293,13 @@ async function keepDraft() {
             }}
           </p>
           <button
-            v-if="!draft && pluginChoices.some((plugin) => plugin.id === 'leetcode')"
+            v-for="plugin in !draft ? pluginChoices.filter((entry) => entry.createLabel) : []"
+            :key="plugin.id"
             type="button"
             class="text-button plugin-shortcut"
-            @click="selectLeetCode"
+            @click="selectQuestionPlugin(plugin.id)"
           >
-            {{ t('添加 LeetCode 题目') }}
+            {{ t(plugin.createLabel!) }}
           </button>
         </div>
         <component

@@ -1,54 +1,542 @@
-use repeaty_leetcode_local::leetcode::{CredentialRequest, LeetCode, Request};
-use serde_json::Value;
-use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
-
-pub type PluginResult = Result<Value, String>;
-pub type PluginFuture<'a> = Pin<Box<dyn Future<Output = PluginResult> + Send + 'a>>;
-/// Local plugins are compiled into the desktop application; no server-supplied code runs here.
-pub trait LocalPlugin: Send + Sync {
-    fn id(&self) -> &'static str;
-    fn call(&self, operation: String, payload: Value) -> PluginFuture<'_>;
+//! Runtime packages and generic native capabilities; no plugin business code is linked here.
+mod http;
+mod secrets;
+#[cfg(test)]
+mod tests;
+#[cfg(windows)]
+mod windows_permissions;
+use cap_std::fs::{Dir, OpenOptions};
+use serde::Deserialize;
+use serde_json::{Value, json};
+use std::{
+    collections::HashSet,
+    fs::File,
+    io::{self, Read, Seek, Write},
+    path::{Component, Path},
+    sync::{Arc, Mutex},
+};
+pub type Result<T> = std::result::Result<T, String>;
+const CODE_LIMIT: usize = 4 * 1024 * 1024;
+const STYLE_LIMIT: usize = 1024 * 1024;
+const FILE_LIMIT: usize = 2 * 1024 * 1024;
+fn invalid() -> String {
+    "invalid-plugin".into()
 }
-impl LocalPlugin for LeetCode {
-    fn id(&self) -> &'static str {
-        "leetcode"
-    }
-    fn call(&self, operation: String, payload: Value) -> PluginFuture<'_> {
-        Box::pin(async move {
-            match operation.as_str() {
-                "request" => self
-                    .request(
-                        serde_json::from_value::<Request>(payload).map_err(|_| "invalid-data")?,
-                    )
-                    .await
-                    .map_err(|e| e.1.to_string()),
-                "credentials" => self
-                    .configure(
-                        serde_json::from_value::<CredentialRequest>(payload)
-                            .map_err(|_| "invalid-data")?,
-                    )
-                    .map_err(|e| e.1.to_string()),
-                _ => Err("unknown-operation".into()),
-            }
-        })
+// Explicit sorting also works when another dependency enables serde_json/preserve_order.
+fn canonical(value: &Value) -> String {
+    match value {
+        Value::Object(object) => {
+            let mut keys: Vec<_> = object.keys().collect();
+            keys.sort_by(|a, b| a.encode_utf16().cmp(b.encode_utf16()));
+            format!(
+                "{{{}}}",
+                keys.into_iter()
+                    .map(|key| format!(
+                        "{}:{}",
+                        serde_json::to_string(key).expect("string"),
+                        canonical(&object[key])
+                    ))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+        }
+        Value::Array(values) => format!(
+            "[{}]",
+            values.iter().map(canonical).collect::<Vec<_>>().join(",")
+        ),
+        _ => value.to_string(),
     }
 }
-pub struct Plugins(HashMap<&'static str, Arc<dyn LocalPlugin>>);
-impl Plugins {
-    pub fn new(entries: Vec<Arc<dyn LocalPlugin>>) -> Result<Self, String> {
-        let mut plugins = HashMap::new();
-        for plugin in entries {
-            if plugins.insert(plugin.id(), plugin).is_some() {
-                return Err("duplicate-plugin".into());
+fn disk(error: io::Error) -> String {
+    match error.kind() {
+        io::ErrorKind::NotFound => "plugin-unavailable",
+        io::ErrorKind::PermissionDenied => "permission-denied",
+        _ => "plugin-storage-error",
+    }
+    .into()
+}
+fn id_valid(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 64
+        && id.as_bytes()[0].is_ascii_lowercase()
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+fn link(metadata: &std::fs::Metadata) -> bool {
+    if metadata.file_type().is_symlink() {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if metadata.file_attributes() & 0x400 != 0 {
+            return true;
+        }
+    }
+    false
+}
+fn directory(parent: &Dir, name: &str, create: bool) -> Result<Option<Dir>> {
+    if create {
+        match parent.create_dir(name) {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(disk(e)),
+        }
+    }
+    let held = parent.try_clone().map_err(disk)?.into_std_file();
+    let file = match cap_primitives::fs::open_dir_nofollow(&held, Path::new(name)) {
+        Ok(file) => file,
+        Err(e) if !create && e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(disk(e)),
+    };
+    if link(&file.metadata().map_err(disk)?) {
+        return Err("unsafe-plugin-file".into());
+    }
+    Ok(Some(Dir::from_std_file(file)))
+}
+fn private(root: &Dir, name: &str, create: bool) -> Result<Option<Dir>> {
+    let state = directory(root, ".repeaty", false)?.ok_or_else(invalid)?;
+    directory(&state, name, create)
+}
+fn regular(file: &File) -> Result<()> {
+    let metadata = file.metadata().map_err(disk)?;
+    if !metadata.is_file() || link(&metadata) {
+        return Err("unsafe-plugin-file".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.nlink() != 1 {
+            return Err("unsafe-plugin-file".into());
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::Storage::FileSystem::{
+            BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
+        };
+        // SAFETY: this plain output structure is initialized before the live file handle is queried.
+        let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+        // SAFETY: file owns the handle and info is a valid writable output pointer.
+        if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) } == 0 {
+            return Err(disk(io::Error::last_os_error()));
+        }
+        if info.nNumberOfLinks != 1 {
+            return Err("unsafe-plugin-file".into());
+        }
+    }
+    Ok(())
+}
+fn open_regular(dir: &Dir, name: &str) -> Result<Option<File>> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use cap_std::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    #[cfg(windows)]
+    {
+        use cap_std::fs::OpenOptionsExt;
+        options.custom_flags(0x00200000);
+    }
+    let file = match dir.open_with(name, &options) {
+        Ok(file) => file.into_std(),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(disk(e)),
+    };
+    regular(&file)?;
+    Ok(Some(file))
+}
+fn read_text(dir: &Dir, name: &str, limit: usize) -> Result<Option<String>> {
+    let Some(mut file) = open_regular(dir, name)? else {
+        return Ok(None);
+    };
+    let before = file.metadata().map_err(disk)?;
+    if before.len() > limit as u64 {
+        return Err("plugin-limit".into());
+    }
+    let mut first = Vec::new();
+    (&mut file)
+        .take(limit as u64 + 1)
+        .read_to_end(&mut first)
+        .map_err(disk)?;
+    file.rewind().map_err(disk)?;
+    let mut second = Vec::new();
+    (&mut file)
+        .take(limit as u64 + 1)
+        .read_to_end(&mut second)
+        .map_err(disk)?;
+    let after = file.metadata().map_err(disk)?;
+    if first != second
+        || first.len() > limit
+        || before.len() != after.len()
+        || before.modified().map_err(disk)? != after.modified().map_err(disk)?
+    {
+        return Err("plugin-file-changed".into());
+    }
+    String::from_utf8(first).map(Some).map_err(|_| invalid())
+}
+fn write_new(dir: &Dir, name: &str, text: &str) -> Result<()> {
+    let mut options = OpenOptions::new();
+    options.create_new(true).write(true);
+    let mut file = dir.open_with(name, &options).map_err(disk)?;
+    file.write_all(text.as_bytes()).map_err(disk)?;
+    file.sync_all().map_err(disk)
+}
+#[derive(Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Permissions {
+    #[serde(default)]
+    origins: Vec<String>,
+    #[serde(default)]
+    secrets: bool,
+    #[serde(default)]
+    files: bool,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Manifest {
+    id: String,
+    name: String,
+    version: String,
+    api_version: u32,
+    data_version: Option<u32>,
+    kind: String,
+    #[serde(default)]
+    permissions: Permissions,
+}
+struct Package {
+    raw: Value,
+    manifest: Manifest,
+}
+impl Package {
+    fn parse(raw: Value, id: &str) -> Result<Self> {
+        let manifest: Manifest =
+            serde_json::from_value(raw["manifest"].clone()).map_err(|_| invalid())?;
+        let main = raw["main"].as_str().ok_or_else(invalid)?;
+        if !id_valid(id)
+            || manifest.id != id
+            || manifest.name.trim().is_empty()
+            || manifest.name.len() > 300
+            || manifest.version.is_empty()
+            || manifest.version.len() > 64
+            || !manifest
+                .version
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b".+-".contains(&b))
+            || manifest.api_version != 1
+            || manifest.data_version == Some(0)
+            || !["frontend", "local"].contains(&manifest.kind.as_str())
+            || main.is_empty()
+            || main.len() > CODE_LIMIT
+            || raw["manifest"].to_string().len() > 64 * 1024
+            || raw
+                .get("styles")
+                .is_some_and(|v| !v.is_string() || v.as_str().unwrap_or("").len() > STYLE_LIMIT)
+            || manifest.permissions.origins.len() > 32
+        {
+            return Err(invalid());
+        }
+        let mut origins = HashSet::new();
+        for value in &manifest.permissions.origins {
+            if http::origin(value)? != *value || !origins.insert(value) {
+                return Err(invalid());
             }
         }
-        Ok(Self(plugins))
+        Ok(Self { raw, manifest })
     }
-    pub async fn call(&self, id: &str, operation: String, payload: Value) -> PluginResult {
-        self.0
-            .get(id)
-            .ok_or("plugin-unavailable")?
-            .call(operation, payload)
+    fn hash(&self) -> String {
+        repeaty_workspace::files::digest(canonical(&json!({"manifest":self.raw["manifest"],"main":self.raw["main"],"styles":self.raw.get("styles").and_then(Value::as_str).unwrap_or("")})).as_bytes())
+    }
+}
+fn package(root: &Dir, id: &str) -> Result<Package> {
+    let packages = private(root, "plugins", false)?.ok_or("plugin-unavailable")?;
+    let dir = directory(&packages, id, false)?.ok_or("plugin-unavailable")?;
+    let manifest = read_text(&dir, "manifest.json", 64 * 1024)?.ok_or_else(invalid)?;
+    let main = read_text(&dir, "main.js", CODE_LIMIT)?.ok_or_else(invalid)?;
+    let styles = read_text(&dir, "styles.css", STYLE_LIMIT)?;
+    let mut raw = json!({"manifest":serde_json::from_str::<Value>(&manifest).map_err(|_|invalid())?,"main":main});
+    if let Some(styles) = styles {
+        raw["styles"] = Value::String(styles);
+    }
+    Package::parse(raw, id)
+}
+fn tree_plain(dir: &Dir, depth: usize, count: &mut usize) -> Result<()> {
+    if depth > 8 {
+        return Err("plugin-limit".into());
+    }
+    for entry in dir.entries().map_err(disk)? {
+        *count += 1;
+        if *count > 256 {
+            return Err("plugin-limit".into());
+        }
+        let entry = entry.map_err(disk)?;
+        let name = entry.file_name().into_string().map_err(|_| invalid())?;
+        if entry.file_type().map_err(disk)?.is_dir() {
+            let child = directory(dir, &name, false)?.ok_or_else(invalid)?;
+            tree_plain(&child, depth + 1, count)?;
+        } else {
+            // Cleanup checks file identity and links without interpreting damaged package bytes.
+            drop(open_regular(dir, &name)?.ok_or_else(invalid)?);
+        }
+    }
+    Ok(())
+}
+fn install(root: &Dir, id: &str, payload: Value) -> Result<Value> {
+    let value = Package::parse(payload, id)?;
+    let packages = private(root, "plugins", true)?.ok_or_else(invalid)?;
+    let stage = format!(".staging-{}", uuid::Uuid::new_v4());
+    let retained = format!(".retained-{}", uuid::Uuid::new_v4());
+    let staging = directory(&packages, &stage, true)?.ok_or_else(invalid)?;
+    let result = (|| {
+        write_new(
+            &staging,
+            "manifest.json",
+            &value.raw["manifest"].to_string(),
+        )?;
+        write_new(
+            &staging,
+            "main.js",
+            value.raw["main"].as_str().ok_or_else(invalid)?,
+        )?;
+        if let Some(styles) = value.raw.get("styles").and_then(Value::as_str) {
+            write_new(&staging, "styles.css", styles)?;
+        }
+        drop(staging);
+        let existing = directory(&packages, id, false)?;
+        if let Some(existing) = &existing {
+            tree_plain(existing, 0, &mut 0)?;
+        }
+        let existed = existing.is_some();
+        drop(existing);
+        if existed {
+            packages.rename(id, &packages, &retained).map_err(disk)?;
+        }
+        if let Err(error) = packages.rename(&stage, &packages, id) {
+            if existed {
+                let _ = packages.rename(&retained, &packages, id);
+            }
+            return Err(disk(error));
+        }
+        if let Some(old) = directory(&packages, &retained, false)? {
+            tree_plain(&old, 0, &mut 0)?;
+            drop(old);
+            packages.remove_dir_all(&retained).map_err(disk)?;
+        }
+        Ok(value.raw)
+    })();
+    if result.is_err()
+        && let Ok(Some(stage_dir)) = directory(&packages, &stage, false)
+        && tree_plain(&stage_dir, 0, &mut 0).is_ok()
+    {
+        drop(stage_dir);
+        let _ = packages.remove_dir_all(&stage);
+    }
+    result
+}
+fn remove(root: &Dir, id: &str) -> Result<Value> {
+    let Some(packages) = private(root, "plugins", false)? else {
+        return Ok(Value::Null);
+    };
+    let Some(dir) = directory(&packages, id, false)? else {
+        return Ok(Value::Null);
+    };
+    tree_plain(&dir, 0, &mut 0)?;
+    drop(dir);
+    let retained = format!(".retained-{}", uuid::Uuid::new_v4());
+    packages.rename(id, &packages, &retained).map_err(disk)?;
+    packages.remove_dir_all(retained).map_err(disk)?;
+    Ok(Value::Null)
+}
+fn plugin_file(root: &Dir, id: &str, payload: Value) -> Result<Value> {
+    let path = payload["path"].as_str().ok_or_else(invalid)?;
+    if path.is_empty()
+        || path.len() > 512
+        || path.contains(['\\', ':', '\0'])
+        || Path::new(path)
+            .components()
+            .any(|p| !matches!(p, Component::Normal(_)))
+    {
+        return Err("unsafe-plugin-file".into());
+    }
+    let write = payload["action"] == "write";
+    if !write && payload["action"] != "read" {
+        return Err(invalid());
+    }
+    let Some(data) = private(root, "plugin-data", write)? else {
+        return Ok(Value::Null);
+    };
+    let Some(mut dir) = directory(&data, id, write)? else {
+        return Ok(Value::Null);
+    };
+    let parts: Vec<_> = path.split('/').collect();
+    for part in &parts[..parts.len() - 1] {
+        let Some(next) = directory(&dir, part, write)? else {
+            return Ok(Value::Null);
+        };
+        dir = next;
+    }
+    let name = parts[parts.len() - 1];
+    if !write {
+        return read_text(&dir, name, FILE_LIMIT)
+            .map(|text| text.map(Value::String).unwrap_or(Value::Null));
+    }
+    let text = payload["body"]
+        .as_str()
+        .filter(|text| text.len() <= FILE_LIMIT)
+        .ok_or_else(invalid)?;
+    read_text(&dir, name, FILE_LIMIT)?;
+    let candidate = format!(".write-{}", uuid::Uuid::new_v4());
+    write_new(&dir, &candidate, text)?;
+    if let Err(error) = dir.rename(&candidate, &dir, name) {
+        let _ = dir.remove_file(candidate);
+        return Err(disk(error));
+    }
+    Ok(Value::Null)
+}
+#[derive(Clone)]
+pub struct Plugins {
+    secrets: Arc<Mutex<secrets::Secrets>>,
+    client: reqwest::Client,
+}
+impl Plugins {
+    pub fn new(directory: &Path) -> Result<Self> {
+        Ok(Self {
+            secrets: Arc::new(Mutex::new(secrets::Secrets::open(
+                &directory.join("plugin-secrets.sqlite3"),
+            )?)),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(20))
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .map_err(|_| "plugin-network-error")?,
+        })
+    }
+    fn trusted(&self, package: &Package) -> Result<()> {
+        if self
+            .secrets
+            .lock()
+            .map_err(|_| "plugin-storage-error")?
+            .trusted(&package.hash())?
+        {
+            Ok(())
+        } else {
+            Err("plugin-not-trusted".into())
+        }
+    }
+    fn operation(&self, root: Dir, id: &str, operation: &str, payload: Value) -> Result<Value> {
+        match operation {
+            "list" => {
+                let Some(packages) = private(&root, "plugins", false)? else {
+                    return Ok(json!([]));
+                };
+                let mut ids = Vec::new();
+                for (index, entry) in packages.entries().map_err(disk)?.enumerate() {
+                    if index >= 512 {
+                        return Err("plugin-limit".into());
+                    }
+                    let entry = entry.map_err(disk)?;
+                    let id = entry.file_name().into_string().map_err(|_| invalid())?;
+                    if id.starts_with('.') {
+                        continue;
+                    }
+                    ids.push(id);
+                    if ids.len() > 128 {
+                        return Err("plugin-limit".into());
+                    }
+                }
+                if ids.len() > 128 {
+                    return Err("plugin-limit".into());
+                }
+                ids.sort();
+                Ok(Value::Array(
+                    ids.into_iter()
+                        .map(|id| {
+                            if !id_valid(&id) {
+                                return json!({"id":id,"error":"invalid-plugin"});
+                            }
+                            match package(&root, &id) {
+                                Ok(package) => package.raw,
+                                Err(error) => json!({"id":id,"error":error}),
+                            }
+                        })
+                        .collect(),
+                ))
+            }
+            "trust-state" => self
+                .secrets
+                .lock()
+                .map_err(|_| "plugin-storage-error")?
+                .trust_state(),
+            _ => {
+                if !id_valid(id) {
+                    return Err(invalid());
+                }
+                match operation {
+                    "read" => Ok(package(&root, id)?.raw),
+                    "install" => install(&root, id, payload),
+                    "remove" => remove(&root, id),
+                    "trust" => {
+                        let hash = package(&root, id)?.hash();
+                        if payload["hash"].as_str() != Some(&hash) {
+                            return Err("plugin-file-changed".into());
+                        }
+                        self.secrets
+                            .lock()
+                            .map_err(|_| "plugin-storage-error")?
+                            .trust(&hash)?;
+                        Ok(Value::Null)
+                    }
+                    "files" | "secrets" => {
+                        let package = package(&root, id)?;
+                        self.trusted(&package)?;
+                        if operation == "files" && package.manifest.permissions.files {
+                            plugin_file(&root, id, payload)
+                        } else if operation == "secrets" && package.manifest.permissions.secrets {
+                            self.secrets
+                                .lock()
+                                .map_err(|_| "plugin-storage-error")?
+                                .operation(id, &package.manifest.permissions, payload)
+                        } else {
+                            Err("permission-denied".into())
+                        }
+                    }
+                    _ => Err("unknown-operation".into()),
+                }
+            }
+        }
+    }
+    pub async fn call(
+        &self,
+        workspaces: &crate::workspaces::Workspaces,
+        token: String,
+        id: String,
+        operation: String,
+        payload: Value,
+    ) -> Result<Value> {
+        let host = self.clone();
+        if operation == "http" {
+            let prepared =
+                crate::workspaces::with_plugin_workspace(workspaces, token.clone(), move |root| {
+                    if !id_valid(&id) {
+                        return Err(invalid());
+                    }
+                    let package = package(&root, &id)?;
+                    host.trusted(&package)?;
+                    http::prepare(&host, &id, &package.manifest.permissions, payload)
+                })
+                .await?;
+            let response = http::send(self, prepared).await;
+            crate::workspaces::with_plugin_workspace(workspaces, token, |_| Ok(())).await?;
+            response
+        } else {
+            crate::workspaces::with_plugin_workspace(workspaces, token, move |root| {
+                host.operation(root, &id, &operation, payload)
+            })
             .await
+        }
     }
 }

@@ -3,6 +3,7 @@ import { useEventListener, useIntervalFn } from '@vueuse/core'
 import { connectLearningReader, connectWorkspaceMonitor } from '@repeaty-platform'
 import { listenPluginPreferences } from '../plugins'
 import { listenPreferences } from '../preferences'
+import type { PluginManager } from '../plugins/manager'
 import type { useLibrary } from '../composables/useLibrary'
 
 const defaults = {
@@ -16,10 +17,12 @@ export function useApplicationLifecycle(
     workspace,
     globalKeydown,
     tick,
+    plugins,
   }: {
     workspace: ReturnType<typeof useLibrary>
     globalKeydown: (event: KeyboardEvent) => void
     tick: () => void
+    plugins?: PluginManager
   },
   bindings = defaults,
 ) {
@@ -40,17 +43,22 @@ export function useApplicationLifecycle(
   onMounted(() => {
     // Attach after child review/editor shortcuts, preserving defaultPrevented ordering.
     own(useEventListener(window, 'keydown', globalKeydown))
-    own(bindings.listenPluginPreferences())
+    own(plugins ? plugins.listenPluginPreferences() : bindings.listenPluginPreferences())
     own(bindings.listenPreferences())
     void bindings.connectLearningReader(workspace).then(own)
     void bindings.connectWorkspaceMonitor(workspace).then(own)
-    void workspace.init()
+    void (plugins?.initializePlugins() ?? Promise.resolve())
+      .catch(() => {})
+      .then(() => {
+        if (alive) return workspace.init()
+      })
     backupTimer.resume()
     clockTimer.resume()
   })
   onUnmounted(() => {
     alive = false
     for (const stop of stops.splice(0)) stop()
+    void plugins?.dispose()
     void workspace.close()
   })
 }

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { defineAsyncComponent, onMounted } from 'vue'
-import type { QuestionProps } from '../types'
-import MediaList from '../../components/MediaList.vue'
-const CardContent = defineAsyncComponent(() => import('../../components/CardContent.vue'))
+import type { QuestionProps } from '../../plugins/types'
+import MediaList from '../MediaList.vue'
+const CardContent = defineAsyncComponent(() => import('../CardContent.vue'))
 const props = defineProps<QuestionProps>()
 onMounted(() => {
   props.state.allowedGrades = [1, 2, 3, 4]

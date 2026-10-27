@@ -30,7 +30,12 @@ import {
   type StudySession,
 } from '../core/model'
 import { studyCards } from '../core/search'
-import { questionPlugin, canReviewCard, enabledReviewPanels } from '../plugins'
+import { usePlugins } from '../plugins'
+import { usePluginManager } from '../plugins/manager'
+const { questionPlugin, canReviewCard, enabledReviewPanels } = usePlugins()
+const { holdPluginRuntime } = usePluginManager()
+const releasePluginRuntime = holdPluginRuntime()
+onUnmounted(releasePluginRuntime)
 import type { QuestionState } from '../plugins/types'
 import type { Assessment } from '../plugins/data'
 import type { Practice, Attempt } from '../core/practice-data'

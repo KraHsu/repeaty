@@ -56,19 +56,15 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           npx playwright install --with-deps chromium
-          npm test -- --mode desktop src/plugins/plugins.test.ts src/plugins/frontend-example.test.ts
+          npm test -- --mode desktop src/plugins/plugins.test.ts
           npm run test:e2e:desktop
           cargo fmt --manifest-path src-tauri/Cargo.toml --check
-          cargo fmt --manifest-path crates/leetcode-local/Cargo.toml --check
           cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
-          cargo test --manifest-path crates/leetcode-local/Cargo.toml --locked
           cargo test --manifest-path src-tauri/Cargo.toml --locked
       - name: Check Windows credentials and native commands
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          cargo clippy --manifest-path crates/leetcode-local/Cargo.toml --locked --all-targets -- -D warnings
-          cargo test --manifest-path crates/leetcode-local/Cargo.toml --locked
           cargo test --manifest-path src-tauri/Cargo.toml --locked
       - name: Build installer
         run: npm run desktop:build -- --bundles ${{ matrix.bundles }}

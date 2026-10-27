@@ -4,9 +4,10 @@ import { createLibraryState } from '../composables/library-state'
 import { createLibraryService } from '../application/library'
 import { createWorkspaceRepository } from '@repeaty-platform'
 import { remoteWorkspace, desktopEdition } from '../edition'
-import { canReviewCard } from '../plugins'
+import { usePlugins } from '../plugins'
 
 export const useLibraryStore = defineStore('library', () => {
+  const { canReviewCard } = usePlugins()
   const state = createLibraryState()
   const service = createLibraryService(state, {
     createWorkspaceRepository,

@@ -1,7 +1,7 @@
 import { t } from '../i18n'
 import { computed } from 'vue'
 import { deckStudyCounts } from '../core/deck-status'
-import { canReviewCard } from '../plugins'
+import { usePlugins } from '../plugins'
 import { localDay, createCardViewReader } from '../core/model'
 import { queuedSources } from '../core/source-queue'
 import { blockedByLimit, dayKey, dueCards, weekActivity } from '../core/scheduler'
@@ -21,6 +21,7 @@ export function useLibraryQueries({
   selectedDeck: ReturnType<typeof useAppNavigation>['selectedDeck']
   tab: ReturnType<typeof useAppNavigation>['tab']
 }) {
+  const { canReviewCard } = usePlugins()
   const readViews = createCardViewReader()
   const cards = computed(() => readViews(library.value))
   const due = computed(() => dueCards(library.value, coarseNow.value, undefined, canReviewCard))

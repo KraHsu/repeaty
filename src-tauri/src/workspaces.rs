@@ -31,6 +31,29 @@ impl Workspaces {
         self.1.fetch_add(1, Ordering::AcqRel);
     }
 }
+/// Serialize plugin filesystem operations with workspace switching and use a held root capability.
+pub async fn with_plugin_workspace<T: Send + 'static>(
+    state: &Workspaces,
+    token: String,
+    task: impl FnOnce(cap_std::fs::Dir) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    let manager = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut guard = manager.lock().map_err(|_| "storage-error".to_owned())?;
+        if guard.sessions.is_none() {
+            guard.sessions = Some(Sessions::open(&guard.directory).map_err(|e| e.0.to_owned())?);
+        }
+        let root = guard
+            .sessions
+            .as_ref()
+            .ok_or("workspace-not-open")?
+            .plugin_root(&token)
+            .map_err(|e| e.0.to_owned())?;
+        task(root)
+    })
+    .await
+    .map_err(|_| "storage-error".to_owned())?
+}
 #[tauri::command]
 pub async fn workspace_watch(
     window: tauri::WebviewWindow,

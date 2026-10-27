@@ -44,6 +44,8 @@ export interface QuestionPlugin {
   settings?: Component
   /** Read-only practice history. Receives PracticeHistoryProps. */
   history?: Component
+  createLabel?: string
+  dispose?: () => void | Promise<void>
 }
 
 export interface ReviewPanelProps {
@@ -60,6 +62,7 @@ export interface ReviewPanelPlugin {
   description?: string
   reviewPanel: Component
   settings?: Component
+  dispose?: () => void | Promise<void>
 }
 export function isQuestionPlugin(
   plugin: QuestionPlugin | ReviewPanelPlugin,

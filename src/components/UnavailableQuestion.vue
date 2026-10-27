@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t } from '../i18n'
-import type { QuestionProps } from './types'
+import type { QuestionProps } from '../plugins/types'
 defineProps<QuestionProps>()
 </script>
 <template>

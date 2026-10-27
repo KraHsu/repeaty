@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { defineAsyncComponent } from 'vue'
 import { t } from '../../i18n'
-import type { QuestionProps } from '../types'
-import MediaList from '../../components/MediaList.vue'
-const CardContent = defineAsyncComponent(() => import('../../components/CardContent.vue'))
+import type { QuestionProps } from '../../plugins/types'
+import MediaList from '../MediaList.vue'
+const CardContent = defineAsyncComponent(() => import('../CardContent.vue'))
 defineProps<QuestionProps>()
 </script>
 <template>

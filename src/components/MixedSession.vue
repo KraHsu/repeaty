@@ -4,7 +4,8 @@ import { t } from '../i18n'
 import { type Library, localDay } from '../core/model'
 import { dueCards } from '../core/scheduler'
 import { sourceQueueState } from '../core/source-queue'
-import { canReviewCard } from '../plugins'
+import { usePlugins } from '../plugins'
+const { canReviewCard } = usePlugins()
 import type { Operation } from '../core/operations'
 import {
   startMixedRound,

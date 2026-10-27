@@ -1162,6 +1162,31 @@ export const en = {
   '有一次提交未取得编号，尝试次数可能不完整。本轮请手动评分，再次提交前请先检查 LeetCode 提交记录。':
     'A submission ID was not received, so the attempt count may be incomplete. Use a manual rating this round and check your LeetCode history before resubmitting.',
   插件: 'Plugins',
+  '插件将在应用中执行代码。确认安装并启用 {name}？':
+    'Plugins run code inside the app. Install and enable {name}?',
+  '插件将在应用中执行代码。确认启用 {name}？': 'Plugins run code inside the app. Enable {name}?',
+  '卸载插件代码？题目、历史、设置和插件数据会保留。':
+    'Remove plugin code? Questions, history, settings and plugin data will be kept.',
+  '插件独立安装和更新，无需重新编译 Repeaty。':
+    'Install and update plugins independently, without rebuilding Repeaty.',
+  '插件代码保存在当前学习目录中，随目录移动。新设备首次启用时需确认，登录凭据留在设备上。':
+    'Plugin code stays in the current library folder and moves with it. Confirm it before first use on a new device; credentials stay on the device.',
+  '前端插件保存在此浏览器的独立副本中，不写入只读打开的原目录。':
+    'Frontend plugins are saved in a separate copy in this browser. The original read-only folder is unchanged.',
+  安装插件包: 'Install plugin package',
+  联网域名: 'Allowed websites',
+  设备凭据: 'Device credentials',
+  插件文件: 'Plugin files',
+  无原生能力: 'No native capabilities',
+  安装或更新官方插件: 'Install or update official plugins',
+  重新扫描插件: 'Rescan plugins',
+  '请先结束复习或关闭编辑器，再修改插件。':
+    'Finish the review or close the editor before changing plugins.',
+  卸载插件: 'Uninstall plugin',
+  '此设备尚未信任此插件包。启用前请确认代码来源。':
+    'This device has not trusted this plugin package. Check its source before enabling it.',
+  '当前学习库尚未安装插件。普通卡片可正常使用。':
+    'No plugins are installed in this library. Standard cards remain available.',
   内置: 'Built in',
   '将 LeetCode 题目加入卡组，编写代码并提交判题，按结果安排复习。':
     'Add LeetCode problems to a deck, submit code for judging, and schedule reviews from the results.',
@@ -1555,4 +1580,12 @@ export const en = {
   '在侧边栏“工作目录”中创建、打开或关闭学习库。':
     'Use Workspace in the sidebar to create, open or close a workspace.',
   保存在工作目录中: 'Saved in your workspace folder',
+  '插件包格式或 API 版本不受支持。': 'The plugin package format or API version is not supported.',
+  '插件文件已变化，请重新扫描后再试。': 'The plugin files changed. Rescan them and try again.',
+  '插件目录包含链接或不支持的文件，请检查后重新安装。':
+    'The plugin folder contains a link or unsupported file. Check it and reinstall the plugin.',
+  '无法访问插件文件，请检查文件夹权限。':
+    'Cannot access the plugin files. Check the folder permissions.',
+  '无法读写插件文件，请检查磁盘空间和文件权限。':
+    'Cannot read or write the plugin files. Check free space and folder permissions.',
 } as const

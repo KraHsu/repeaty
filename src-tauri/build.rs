@@ -13,7 +13,7 @@ fn main() {
             "export_write",
             "export_finish",
             "export_cancel",
-            "local_plugin",
+            "plugin_host",
             "workspace_status",
             "workspace_choose",
             "workspace_recent",

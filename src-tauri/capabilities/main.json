@@ -13,7 +13,7 @@
     "allow-mcp-configuration",
     "allow-mcp-client-configuration",
     "core:default",
-    "allow-local-plugin",
+    "allow-plugin-host",
     "allow-workspace-status",
     "allow-workspace-choose",
     "allow-workspace-recent",

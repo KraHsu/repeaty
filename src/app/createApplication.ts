@@ -13,9 +13,12 @@ import { useSourceActions } from './useSourceActions'
 import { useStudyActions } from './useStudyActions'
 import { useBackupActions } from './useBackupActions'
 import { useApplicationLifecycle } from './useApplicationLifecycle'
+import { providePluginManager, usePluginManager } from '../plugins/manager'
 
 /** One composition root owns UI controllers and connects the selected storage adapter. */
 export function createApplication() {
+  const plugins = usePluginManager()
+  providePluginManager(plugins)
   const { clearNotifications } = useNotifications()
 
   const workspace = useLibrary()
@@ -53,8 +56,14 @@ export function createApplication() {
     navigation.resetLibrary()
     editor.resetEditor()
     clearNotifications()
+    void plugins.initializePlugins(workspace.scope.value).catch(() => {})
   })
-  useApplicationLifecycle({ workspace, globalKeydown: study.globalKeydown, tick: clock.tick })
+  useApplicationLifecycle({
+    workspace,
+    plugins,
+    globalKeydown: study.globalKeydown,
+    tick: clock.tick,
+  })
   return {
     ...base,
     ...clock,

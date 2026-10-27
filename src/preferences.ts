@@ -6,8 +6,6 @@ export const PREFERENCES_KEY = 'repeaty.preferences.v1'
 export const notificationLevels = ['info', 'warning', 'error'] as const
 export type NotificationLevel = (typeof notificationLevels)[number]
 const schema = z.object({
-  historyLength: z.number().int().min(1).max(50).catch(10),
-  historyAfterReveal: z.boolean().catch(true),
   popupInfo: z.boolean().catch(true),
   popupWarning: z.boolean().catch(true),
   popupError: z.boolean().catch(true),

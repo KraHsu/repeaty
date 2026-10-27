@@ -139,9 +139,10 @@ test('checks all frontend, Rust, Tauri and lockfile versions; enforces the stabl
     'package-lock.json',
     'src-tauri/tauri.conf.json',
     'docs/RELEASE_1_0.md',
-    ...['server', 'src-tauri', 'crates/leetcode-local', 'crates/workspace-store'].flatMap(
-      (directory) => [directory + '/Cargo.toml', directory + '/Cargo.lock'],
-    ),
+    ...['server', 'src-tauri', 'crates/workspace-store'].flatMap((directory) => [
+      directory + '/Cargo.toml',
+      directory + '/Cargo.lock',
+    ]),
   ]
   for (const file of files) {
     await mkdir(join(root, file, '..'), { recursive: true })

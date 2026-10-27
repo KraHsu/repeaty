@@ -3237,11 +3237,14 @@ version = "0.27.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
+ "cap-primitives",
+ "cap-std",
+ "libc",
  "open",
- "repeaty-leetcode-local",
  "repeaty-workspace",
  "reqwest",
  "rmcp",
+ "rusqlite",
  "serde",
  "serde_json",
  "tauri",
@@ -3251,17 +3254,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "uuid",
-]
-
-[[package]]
-name = "repeaty-leetcode-local"
-version = "0.27.0"
-dependencies = [
- "reqwest",
- "rusqlite",
- "serde",
- "serde_json",
- "tokio",
  "windows-sys 0.61.2",
 ]
 

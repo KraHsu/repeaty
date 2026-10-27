@@ -3,7 +3,6 @@ import { shallowRef, ref } from 'vue'
 import { z } from 'zod'
 import { LocalizedError, msg, initI18n, type MessageKey } from '../i18n'
 import { useSettingsStore } from '../settings-store'
-import { useDraftStorage } from '../plugins/leetcode/drafts'
 export type NativeApi = <T>(command: string, args?: Record<string, unknown>) => Promise<T>
 export const statusSchema = z.object({
   epoch: z.uuid(),
@@ -32,25 +31,6 @@ export function installWorkspaceStores() {
         request: { type: 'value', namespace: 'settings', id: key, value },
       })
       settings.set(key, value)
-    },
-  })
-  async function scopeToken(scope: string) {
-    const active = await currentWorkspace()
-    if (scope !== `local:workspace:${active.id}`) throw nativeError('stale-workspace-session')
-    return active.token
-  }
-  useDraftStorage({
-    async read(id, scope) {
-      return workspaceApi('workspace_read', {
-        token: await scopeToken(scope),
-        request: { type: 'value', namespace: 'leetcode', id },
-      })
-    },
-    async write(id, value, scope) {
-      await workspaceApi('workspace_write', {
-        token: await scopeToken(scope),
-        request: { type: 'value', namespace: 'leetcode', id, value: value ?? null },
-      })
     },
   })
 }

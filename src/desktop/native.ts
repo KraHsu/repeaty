@@ -1,7 +1,4 @@
 import { invoke } from '@tauri-apps/api/core'
-export function localPlugin<T>(id: string, operation: string, payload: unknown): Promise<T> {
-  return invoke<T>('local_plugin', { id, operation, payload })
-}
 export function handleExternalLinks() {
   document.addEventListener(
     'click',

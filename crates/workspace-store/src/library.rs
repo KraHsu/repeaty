@@ -998,7 +998,15 @@ impl Library {
             "value" => {
                 let ns = request["namespace"].as_str().ok_or_else(Error::invalid)?;
                 let id = request["id"].as_str().ok_or_else(Error::invalid)?;
-                if !["leetcode", "settings"].contains(&ns)
+                let plugin_namespace = ns.strip_prefix("plugin:").is_some_and(|id| {
+                    !id.is_empty()
+                        && id.len() <= 64
+                        && id.as_bytes()[0].is_ascii_lowercase()
+                        && id
+                            .bytes()
+                            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+                });
+                if !(["leetcode", "settings"].contains(&ns) || plugin_namespace)
                     || id.len() > 512
                     || request["value"].to_string().len() > 2 * 1024 * 1024
                 {
@@ -1022,6 +1030,56 @@ impl Library {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn plugin_values_are_namespaced_and_survive_reopen_without_changing_legacy_values() {
+        let root = tempfile::tempdir().unwrap();
+        let mut library = Library::create(root.path()).unwrap();
+        for ns in [
+            "leetcode",
+            "settings",
+            "plugin:sample-plugin",
+            "plugin:other",
+        ] {
+            library
+                .write(json!({"type":"value","namespace":ns,"id":"draft","value":{"owner":ns}}))
+                .unwrap();
+        }
+        for ns in [
+            "plugin:",
+            "plugin:../escape",
+            "plugin:Upper",
+            "plugin:1bad",
+            "foreign",
+        ] {
+            assert!(
+                library
+                    .write(json!({"type":"value","namespace":ns,"id":"draft","value":1}))
+                    .is_err()
+            );
+        }
+        drop(library);
+        let mut library = Library::open(root.path()).unwrap();
+        for ns in [
+            "leetcode",
+            "settings",
+            "plugin:sample-plugin",
+            "plugin:other",
+        ] {
+            assert_eq!(
+                library
+                    .read(json!({"type":"value","namespace":ns,"id":"draft"}))
+                    .unwrap(),
+                json!({"owner":ns})
+            );
+        }
+        library.write(json!({"type":"value","namespace":"plugin:sample-plugin","id":"draft","value":null})).unwrap();
+        assert_eq!(
+            library
+                .read(json!({"type":"value","namespace":"plugin:other","id":"draft"}))
+                .unwrap(),
+            json!({"owner":"plugin:other"})
+        );
+    }
     fn fixture(
         old: &str,
         next: Option<&str>,

@@ -85,7 +85,7 @@ it('excludes unavailable plugins before applying daily quotas', () => {
 
 it.runIf(desktopEdition)(
   'persists plugin switches without changing stored notes or review progress',
-  () => {
+  async () => {
     const storage = new Map<string, string>()
     vi.stubGlobal('localStorage', {
       getItem: (key: string) => storage.get(key) ?? null,
@@ -96,12 +96,12 @@ it.runIf(desktopEdition)(
       const library = fixture({ type: 'plugin', plugin: { id: 'leetcode', version: 1, data: {} } })
       const before = JSON.stringify(library)
       expect(canReviewCard(cardViews(library)[0]!)).toBe(true)
-      setPluginEnabled('leetcode', false)
+      await setPluginEnabled('leetcode', false)
       expect(enabledEditorPlugins.value).toHaveLength(0)
       expect(canReviewCard(cardViews(library)[0]!)).toBe(false)
       restorePluginPreferences()
       expect(pluginEnabled('leetcode')).toBe(false)
-      setPluginEnabled('leetcode', true)
+      await setPluginEnabled('leetcode', true)
       expect(canReviewCard(cardViews(library)[0]!)).toBe(true)
       expect(JSON.stringify(library)).toBe(before)
       setPluginEnabled('flashcard', false)

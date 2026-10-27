@@ -32,4 +32,5 @@ jobs:
       - name: Run unit tests
         run: |
           npm test
+          npm run plugins:test
           node --test scripts/release.test.mjs
