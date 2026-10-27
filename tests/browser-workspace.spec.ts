@@ -1,3 +1,4 @@
+import { setInterfaceLanguage } from './fixtures/settings-flow'
 import { test, expect, type Page } from '@playwright/test'
 import { openAsBlob } from 'node:fs'
 import { readFile, writeFile, mkdir, rm } from 'node:fs/promises'
@@ -211,7 +212,7 @@ test('the read-only directory picker runs in a real Worker and the English narro
       const state = window as unknown as { __directory: FileSystemDirectoryHandle }
       state.__directory = root
     }, entries)
-    await page.getByLabel('界面语言').selectOption('en')
+    await setInterfaceLanguage(page, 'en')
     await page.setViewportSize({ width: 390, height: 844 })
     await page.getByRole('button', { name: 'Workspace', exact: true }).click()
     await page.getByRole('button', { name: 'Open local workspace', exact: true }).click()

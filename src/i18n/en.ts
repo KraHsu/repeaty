@@ -1,5 +1,6 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  调整侧栏宽度: 'Resize sidebar',
   窗口控制: 'Window controls',
   最小化窗口: 'Minimize window',
   最大化窗口: 'Maximize window',

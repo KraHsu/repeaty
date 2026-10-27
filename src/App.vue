@@ -24,6 +24,7 @@ import {
 import { createApplication } from './app/createApplication'
 import { provideApplication } from './app/context'
 import { PracticeHistoryPanel, SettingsPage } from './app/view-components'
+import { SIDEBAR_MIN_WIDTH, useSidebarLayout } from './app/useSidebarLayout'
 const application = createApplication()
 provideApplication(application)
 const {
@@ -40,11 +41,50 @@ const {
   navigate,
   run,
 } = application
+const {
+  width: sidebarWidth,
+  maxWidth: sidebarMaxWidth,
+  collapsed: sidebarCollapsed,
+  resizing: sidebarResizing,
+  vertical: verticalSidebar,
+  startResize,
+  moveResize,
+  endResize,
+  cancelResize,
+  resizeWithKeyboard,
+  resetWidth,
+} = useSidebarLayout({ desktop: !!DesktopTitlebar, scope: workspace.scope, ready })
 </script>
 <template>
-  <div class="app-layout" :class="{ 'desktop-window': DesktopTitlebar }">
+  <div
+    class="app-layout"
+    :class="{
+      'desktop-window': DesktopTitlebar,
+      'sidebar-collapsed': sidebarCollapsed,
+      'sidebar-resizing': sidebarResizing,
+    }"
+    :style="{ '--sidebar-width': `${sidebarWidth}px` }"
+  >
     <component v-if="DesktopTitlebar" :is="DesktopTitlebar" />
     <AppSidebar />
+    <div
+      v-if="verticalSidebar"
+      class="sidebar-resizer"
+      role="separator"
+      tabindex="0"
+      aria-orientation="vertical"
+      :aria-label="t('调整侧栏宽度')"
+      :aria-valuemin="SIDEBAR_MIN_WIDTH"
+      :aria-valuemax="sidebarMaxWidth"
+      :aria-valuenow="sidebarWidth"
+      @pointerdown="startResize"
+      @pointermove="moveResize"
+      @pointerup="endResize"
+      @pointercancel="cancelResize"
+      @lostpointercapture="cancelResize"
+      @keydown="resizeWithKeyboard"
+      @dblclick="resetWidth"
+    />
     <main class="main-content">
       <AppHeader /><NotificationCenter />
       <component

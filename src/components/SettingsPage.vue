@@ -74,17 +74,19 @@ const popupOptions = computed(() => [
       <template v-if="selected === 'general'">
         <section class="settings-section">
           <h2>{{ t('界面') }}</h2>
-          <label for="settings-language">{{ t('偏好语言') }}</label
-          ><select
-            id="settings-language"
-            :value="locale"
-            @change="
-              setLocale(($event.target as HTMLSelectElement).value === 'en' ? 'en' : 'zh-CN')
-            "
-          >
-            <option value="en">English</option>
-            <option value="zh-CN">中文（简体）</option>
-          </select>
+          <label class="language-picker" for="settings-language">
+            <span>{{ t('界面语言') }}</span>
+            <select
+              id="settings-language"
+              :value="locale"
+              @change="
+                setLocale(($event.target as HTMLSelectElement).value === 'en' ? 'en' : 'zh-CN')
+              "
+            >
+              <option value="en">English</option>
+              <option value="zh-CN">中文（简体）</option>
+            </select>
+          </label>
         </section>
         <section class="settings-section">
           <h2>{{ t('弹出通知') }}</h2>

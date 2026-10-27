@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 import { test, expect, storedLibrary } from './fixture'
 import { richLibrary } from '../fixtures/rich-library'
+import { openSettings, setInterfaceLanguage } from '../fixtures/settings-flow'
 import {
   createSourceDeck,
   previewSource,
@@ -167,7 +168,8 @@ test('shared excerpts become editable drafts, save all three types with provenan
   await expect(queue().locator('.draft-list li')).toHaveCount(1)
   expect(await storedLibrary(page)).toEqual(saved)
   await queue().getByRole('button', { name: '关闭弹窗' }).click()
-  await page.getByLabel('界面语言').selectOption('en')
+  await setInterfaceLanguage(page, 'en')
+  await page.getByRole('button', { name: 'Sources', exact: true }).click()
   await page.getByRole('button', { name: 'Card drafts (1)' }).click()
   await page.setViewportSize({ width: 720, height: 850 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -178,7 +180,7 @@ test('shared excerpts become editable drafts, save all three types with provenan
   await expect(restored.locator('.draft-list li')).toHaveCount(1)
   await expect(restored.getByText('Shared excerpt', { exact: true })).toHaveCount(0)
   await restored.getByRole('button', { name: 'Close dialog' }).click()
-  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await openSettings(page)
   await expect(page.getByRole('region', { name: 'MCP connection' }).getByRole('status')).toHaveText(
     'Disabled',
   )

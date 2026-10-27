@@ -1,4 +1,5 @@
 import { test, expect } from './fixture'
+import { setInterfaceLanguage } from '../fixtures/settings-flow'
 
 for (const [width, height, language] of [
   [1280, 720, 'zh-CN'],
@@ -9,7 +10,10 @@ for (const [width, height, language] of [
     page,
   }) => {
     await page.setViewportSize({ width, height })
-    await page.locator('.language-picker select').selectOption(language)
+    await setInterfaceLanguage(page, language)
+    await page
+      .getByRole('button', { name: language === 'en' ? 'Overview' : '学习概览', exact: true })
+      .click()
     const create = page.locator('.sidebar-section-title button')
     await create.click()
     await expect(page.getByRole('dialog')).toBeVisible()

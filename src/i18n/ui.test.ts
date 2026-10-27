@@ -24,9 +24,9 @@ async function input(selector: string, value: string) {
   await nextTick()
 }
 async function language(value: string) {
-  const select = host.querySelector<HTMLSelectElement>('.language-picker select')!
-  select.value = value
-  select.dispatchEvent(new Event('change', { bubbles: true }))
+  // Changing the locale is reactive even while a dialog or review is mounted.
+  // The Settings UI itself is covered separately below: navigating there ends review.
+  setLocale(value === 'en' ? 'en' : 'zh-CN')
   await nextTick()
 }
 async function start() {
@@ -84,15 +84,28 @@ it('switches the mounted app, document metadata, and persists the explicit choic
     'manifest.en.webmanifest',
   )
   expect(localStorage.getItem(LOCALE_STORAGE_KEY)).toBeNull()
-  await language('zh-CN')
+  expect(host.querySelector('.topbar select')).toBeNull()
+  button('Settings').click()
+  await vi.dynamicImportSettled()
+  await vi.waitFor(() => expect(host.querySelector('#settings-language')).not.toBeNull())
+  const languageSelect = host.querySelector<HTMLSelectElement>('#settings-language')!
+  expect(languageSelect.labels?.[0]?.textContent).toContain('Interface language')
+  languageSelect.value = 'zh-CN'
+  languageSelect.dispatchEvent(new Event('change', { bubbles: true }))
+  await nextTick()
+  expect(host.querySelector('h1')!.textContent).toContain('设置')
+  button('学习概览').click()
+  await nextTick()
   expect(host.querySelector('h1')!.textContent).toContain('学习概览')
   expect(document.documentElement.lang).toBe('zh-CN')
   expect(document.title).toBe('Repeaty · 卡片与间隔复习')
   expect(localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('zh-CN')
   app!.unmount()
   await start()
-  expect(host.querySelector<HTMLSelectElement>('.language-picker select')!.value).toBe('zh-CN')
   expect(host.querySelector('h1')!.textContent).toContain('学习概览')
+  button('设置').click()
+  await nextTick()
+  expect(host.querySelector<HTMLSelectElement>('#settings-language')!.value).toBe('zh-CN')
 })
 
 it('keeps drafts and revealed answers while translating authoring, statuses, and review controls', async () => {

@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { practiceHistoryFixture } from '../fixtures/practice-history'
 import { importReading, readingText } from '../fixtures/reading-flow'
 import { startMixed } from '../fixtures/adaptive-mixed-flow'
+import { openPluginSettings, setInterfaceLanguage } from '../fixtures/settings-flow'
 
 const question = {
   questionId: '1',
@@ -93,7 +94,7 @@ async function connect(
     },
   }
 }
-async function create(page: Page, site = 'leetcode.cn') {
+async function create(page: Page, site = 'leetcode.cn', language: 'zh-CN' | 'en' = 'zh-CN') {
   await page.goto('./')
   await page.getByRole('button', { name: '创建卡组', exact: true }).last().click()
   await page.getByLabel('卡组名称').fill('Algorithms')
@@ -108,8 +109,15 @@ async function create(page: Page, site = 'leetcode.cn') {
   await page.getByLabel('解题笔记').fill('Return the value unchanged.')
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  await page.getByRole('button', { name: '复习', exact: true }).click()
-  await expect(page.getByLabel('代码', { exact: true })).toBeEnabled()
+  if (language === 'en') {
+    // Settings navigation ends review sessions, so select the language before entering one.
+    await setInterfaceLanguage(page, language)
+    await page.getByRole('button', { name: 'All cards', exact: true }).click()
+  }
+  await page
+    .getByRole('button', { name: language === 'en' ? 'Review' : '复习', exact: true })
+    .click()
+  await expect(page.getByLabel(language === 'en' ? 'Code' : '代码', { exact: true })).toBeEnabled()
 }
 
 test('local transport loads, judges, restores drafts, and saves an automatic rating', async ({
@@ -197,8 +205,7 @@ test('international site, English, manual rating, and pending judge recovery do 
 }) => {
   const remote = await connect(context, { site: 'leetcode.com', checkFails: true })
   const page = await context.newPage()
-  await create(page, 'leetcode.com')
-  await page.getByLabel('界面语言').selectOption('en')
+  await create(page, 'leetcode.com', 'en')
   await expect(page.getByRole('heading', { name: '1. Test problem' })).toBeVisible()
   await page.getByLabel('Programming language').selectOption('javascript')
   await page.getByLabel('Code', { exact: true }).fill('function solve(value) { return value; }')
@@ -422,10 +429,9 @@ test('a recovered international submission survives another disconnect and resum
     submitFails: true,
     checkFails: true,
   })
-  await create(page, 'leetcode.com')
-  await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
-  await page.getByRole('button', { name: '提交到 LeetCode' }).click()
-  await page.getByLabel('界面语言').selectOption('en')
+  await create(page, 'leetcode.com', 'en')
+  await page.getByLabel('Code', { exact: true }).fill('def solve(value): return value')
+  await page.getByRole('button', { name: 'Submit to LeetCode' }).click()
   await page.getByLabel('Submission ID or detail link').fill('1001')
   await page.getByRole('button', { name: 'Link and check' }).click()
   await expect(page.locator('.leetcode-question > [role="alert"]')).toContainText(
@@ -523,7 +529,7 @@ test('independent history filters, paginates, opens from cards, and stays readab
   await page.screenshot({ path: 'test-results/independent-history-mobile.png', fullPage: true })
   await page.screenshot({ path: 'test-results/independent-history-viewport-zh.png' })
   expect(await storedLibrary(page)).toEqual(before)
-  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await openPluginSettings(page)
   await page.getByRole('switch', { name: '启用 LeetCode' }).click()
   await page.getByRole('button', { name: '练习历史', exact: true }).click()
   await expect(page.locator('.practice-history')).toHaveCount(20)
@@ -531,7 +537,8 @@ test('independent history filters, paginates, opens from cards, and stays readab
   await page.locator('.attempt-history > summary').first().click()
   await expect(page.locator('.attempt-code code').first()).toBeVisible()
   expect(remote.submissions()).toBe(0)
-  await page.getByLabel('界面语言').selectOption('en')
+  await setInterfaceLanguage(page, 'en')
+  await page.getByRole('button', { name: 'Practice history', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Practice history' })).toBeVisible()
   await expect(page.getByLabel('Judge result')).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -750,17 +757,17 @@ test('plugin switches persist in the workspace without changing questions or pro
   await connect(context)
   await create(page)
   const before = await storedLibrary(page)
-  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await openPluginSettings(page)
   await expect(page.getByRole('switch', { name: '启用 LeetCode' })).toBeChecked()
   await page.getByRole('switch', { name: '启用 LeetCode' }).click()
   await page.reload()
-  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await openPluginSettings(page)
   await expect(page.getByRole('switch', { name: '启用 LeetCode' })).not.toBeChecked()
   await page.getByRole('button', { name: '全部卡片' }).click()
   await page.getByRole('button', { name: '复习', exact: true }).click()
   await expect(page.getByLabel('代码', { exact: true })).toHaveCount(0)
   expect(await storedLibrary(page)).toEqual(before)
-  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await openPluginSettings(page)
   await page.getByRole('switch', { name: '启用 LeetCode' }).click()
   await page.getByRole('button', { name: '全部卡片' }).click()
   await page.getByRole('button', { name: '复习', exact: true }).click()
@@ -788,7 +795,7 @@ test('plugin settings distinguish website login from per-site judge credentials 
     route.fulfill({ contentType: 'text/html', body: '<title>LeetCode website</title>' }),
   )
   await page.goto('./')
-  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await openPluginSettings(page)
   const cn = page.getByRole('region', { name: '中国站 · leetcode.cn', exact: true })
   const com = page.getByRole('region', { name: '国际站 · leetcode.com', exact: true })
   await expect(cn.getByRole('status')).toContainText('未配置登录信息')
@@ -819,7 +826,8 @@ test('plugin settings distinguish website login from per-site judge credentials 
   fail = false
   await cn.getByRole('button', { name: '刷新状态' }).click()
   await expect(cn.getByRole('status')).toContainText('登录有效')
-  await page.getByLabel('界面语言').selectOption('en')
+  await setInterfaceLanguage(page, 'en')
+  await openPluginSettings(page)
   await expect(cn.getByRole('status')).toHaveCount(0)
   await expect(
     page.getByRole('region', { name: 'China · leetcode.cn', exact: true }).getByRole('status'),
@@ -830,7 +838,7 @@ test('credentials can be saved, replaced and cleared per site without exposing s
   page,
 }) => {
   await page.goto('./')
-  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await openPluginSettings(page)
   const cn = page.getByRole('region', { name: '中国站 · leetcode.cn', exact: true })
   const com = page.getByRole('region', { name: '国际站 · leetcode.com', exact: true })
   await expect(cn.getByRole('status')).toContainText('未配置登录信息')
@@ -855,7 +863,7 @@ test('credentials can be saved, replaced and cleared per site without exposing s
   await expect(com.getByRole('status')).toContainText('登录有效')
   await expect(com.getByText('当前账号：tester-com', { exact: true })).toBeVisible()
   await page.reload()
-  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await openPluginSettings(page)
   await expect(cn.getByRole('status')).toContainText('登录有效')
   await expect(com.getByRole('status')).toContainText('登录有效')
   await expect(cn.getByLabel('LEETCODE_SESSION', { exact: true })).toHaveValue('')
@@ -877,7 +885,8 @@ test('credentials can be saved, replaced and cleared per site without exposing s
   await expect(cn.getByRole('status')).toContainText('未配置登录信息')
   await expect(com.getByRole('status')).toContainText('登录有效')
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByLabel('界面语言').selectOption('en')
+  await setInterfaceLanguage(page, 'en')
+  await openPluginSettings(page)
   const english = page.getByRole('region', { name: 'China · leetcode.cn', exact: true })
   await expect(english.getByRole('button', { name: 'Save credentials', exact: true })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)

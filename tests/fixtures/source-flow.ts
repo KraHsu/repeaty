@@ -47,7 +47,7 @@ export async function saveSource(page: Page) {
 }
 export async function selectSourceExcerpt(page: Page) {
   const start = sourceText.lastIndexOf(sourceQuote)
-  await page.getByRole('textbox', { name: '材料正文', exact: true }).evaluate(
+  await page.getByRole('textbox', { name: /^(材料正文|Source text)$/ }).evaluate(
     (el: HTMLTextAreaElement, { start, end }) => {
       el.focus()
       el.setSelectionRange(start, end)
@@ -55,7 +55,9 @@ export async function selectSourceExcerpt(page: Page) {
     },
     { start, end: start + sourceQuote.length },
   )
-  await expect(page.getByRole('button', { name: '用摘录制卡', exact: true })).toBeEnabled()
+  await expect(
+    page.getByRole('button', { name: /^(用摘录制卡|Create card from excerpt)$/ }),
+  ).toBeEnabled()
 }
 export async function createExcerptCard(page: Page) {
   await selectSourceExcerpt(page)

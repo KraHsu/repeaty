@@ -1,3 +1,5 @@
+import { setResponsiveViewport } from './viewport-flow'
+import { setInterfaceLanguage } from './settings-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import type { Library } from '../../src/core/model'
@@ -42,9 +44,15 @@ export async function sourceDetailsFlow(page: Page, read: () => Promise<Library>
   const rootUrl = 'https://example.org/revised?from=repeaty#source'
   await dialog.getByLabel('材料标题', { exact: true }).fill(rootTitle)
   await dialog.getByLabel('来源链接（可选）', { exact: true }).fill(rootUrl)
-  await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByLabel('界面语言').selectOption('en')
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await setResponsiveViewport(page, 390, 844)
+  await setInterfaceLanguage(page, 'en')
+  await page.getByRole('button', { name: 'Sources', exact: true }).click()
+  await page.locator('.source-list-title').filter({ hasText: data.root.title }).click()
+  await page.getByRole('button', { name: 'Edit source details', exact: true }).click()
   const english = page.getByRole('dialog', { name: 'Edit source details', exact: true })
+  await english.getByLabel('Source title', { exact: true }).fill(rootTitle)
+  await english.getByLabel('Source URL (optional)', { exact: true }).fill(rootUrl)
   await expect(english.getByLabel('Source title', { exact: true })).toHaveValue(rootTitle)
   await expect(english.getByLabel('Source URL (optional)', { exact: true })).toHaveValue(rootUrl)
   expect(await english.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
@@ -55,7 +63,14 @@ export async function sourceDetailsFlow(page: Page, read: () => Promise<Library>
     ).toBeGreaterThanOrEqual(16)
   }
   await page.screenshot({ path: info.outputPath('source-details-en.png'), fullPage: true })
-  await page.getByLabel('Interface language').selectOption('zh-CN')
+  await english.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await setInterfaceLanguage(page, 'zh-CN')
+  await page.getByRole('button', { name: '学习材料', exact: true }).click()
+  await page.locator('.source-list-title').filter({ hasText: data.root.title }).click()
+  await page.getByLabel('搜索材料', { exact: true }).fill(data.root.title)
+  dialog = await openSourceDetails(page)
+  await dialog.getByLabel('材料标题', { exact: true }).fill(rootTitle)
+  await dialog.getByLabel('来源链接（可选）', { exact: true }).fill(rootUrl)
   await page.screenshot({ path: info.outputPath('source-details-zh.png'), fullPage: true })
   await dialog.getByLabel('材料标题', { exact: true }).press('Enter')
   await expect(dialog).toHaveCount(0)

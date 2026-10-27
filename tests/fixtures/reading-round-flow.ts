@@ -1,3 +1,5 @@
+import { setResponsiveViewport } from './viewport-flow'
+import { setInterfaceLanguage } from './settings-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import type { Library } from '../../src/core/model'
 import { readFile } from 'node:fs/promises'
@@ -85,7 +87,7 @@ export async function readingRoundFlow(page: Page, read: () => Promise<Library>,
     await page.locator('.source-markdown-preview').evaluate((element) => element.scrollTop),
   ).toBeGreaterThan(500)
   await expect(page.getByRole('region', { name: '本轮阅读' })).toContainText('第 1 篇，共 1 篇')
-  await page.setViewportSize({ width: 390, height: 844 })
+  await setResponsiveViewport(page, 390, 844)
   await expect(page.locator('.source-markdown-preview')).toHaveAttribute('aria-busy', 'false')
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.locator('.source-markdown-preview').scrollIntoViewIfNeeded()
@@ -96,7 +98,10 @@ export async function readingRoundFlow(page: Page, read: () => Promise<Library>,
     }),
   ).toBe(true)
   await page.screenshot({ path: info.outputPath('reading-round-zh.png'), fullPage: true })
-  await page.getByLabel('界面语言').selectOption('en')
+  await page.getByRole('button', { name: '结束本轮', exact: true }).click()
+  await setInterfaceLanguage(page, 'en')
+  await page.getByRole('button', { name: 'Sources', exact: true }).click()
+  await page.getByRole('button', { name: 'Start a reading round', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Reading round', exact: true })).toContainText(
     'Source 1 of 1',
   )
@@ -108,7 +113,7 @@ export async function readingRoundFlow(page: Page, read: () => Promise<Library>,
   await page.getByRole('button', { name: 'Start another round', exact: true }).click()
   await page.getByRole('button', { name: 'End round', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Reading round', exact: true })).toHaveCount(0)
-  await page.getByLabel('Interface language').selectOption('zh-CN')
+  await setInterfaceLanguage(page, 'zh-CN')
 
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
   const download = page.waitForEvent('download')

@@ -1,3 +1,5 @@
+import { setResponsiveViewport } from './viewport-flow'
+import { setInterfaceLanguage } from './settings-flow'
 import { notesAfterSourceRekey } from './source-flow'
 import { expect, type Page, type TestInfo, type Locator } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
@@ -199,7 +201,7 @@ export async function navigationFlow(page: Page, read: () => Promise<Library>, i
   await expect(reader).toHaveAttribute('aria-busy', 'false')
   await selectForExcerpt(page)
   await page.getByRole('button', { name: '查看已有摘录', exact: true }).click()
-  await page.setViewportSize({ width: 390, height: 844 })
+  await setResponsiveViewport(page, 390, 844)
   await expect(list.locator('li.matched')).toHaveCount(2)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   expect(
@@ -210,7 +212,11 @@ export async function navigationFlow(page: Page, read: () => Promise<Library>, i
   ).toBeGreaterThanOrEqual(16)
   await list.scrollIntoViewIfNeeded()
   await page.screenshot({ path: info.outputPath('source-excerpts-zh.png'), fullPage: true })
-  await page.getByLabel('界面语言').selectOption('en')
+  await setInterfaceLanguage(page, 'en')
+  await page.getByRole('button', { name: 'Sources', exact: true }).click()
+  await page.locator('.source-list-title').filter({ hasText: '导航原文' }).click()
+  await selectForExcerpt(page)
+  await page.getByRole('button', { name: 'Show saved excerpts', exact: true }).click()
   await expect(
     page.getByRole('heading', { name: 'Excerpts from this source (8)', exact: true }),
   ).toBeVisible()
@@ -219,7 +225,11 @@ export async function navigationFlow(page: Page, read: () => Promise<Library>, i
   )
   await expect(page.locator('.source-excerpt-pages')).toContainText('Page 2 of 2')
   await page.screenshot({ path: info.outputPath('source-excerpts-en.png'), fullPage: true })
-  await page.getByLabel('Interface language').selectOption('zh-CN')
+  await setInterfaceLanguage(page, 'zh-CN')
+  await page.getByRole('button', { name: '学习材料', exact: true }).click()
+  await page.locator('.source-list-title').filter({ hasText: '导航原文' }).click()
+  await selectForExcerpt(page)
+  await page.getByRole('button', { name: '查看已有摘录', exact: true }).click()
   await page.setViewportSize({ width: 1280, height: 900 })
   await page.getByRole('button', { name: '开始一轮阅读', exact: true }).click()
   const round = page.getByRole('region', { name: '本轮阅读', exact: true })

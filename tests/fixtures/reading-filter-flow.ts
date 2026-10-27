@@ -1,3 +1,5 @@
+import { setResponsiveViewport } from './viewport-flow'
+import { setInterfaceLanguage } from './settings-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import type { Library, MediaUpload } from '../../src/core/model'
 import { fixture, now } from '../../src/core/test-fixtures'
@@ -131,10 +133,13 @@ export async function readingFilterFlow(page: Page, read: () => Promise<Library>
   await priority.selectOption('high')
   await query.fill('topic')
 
-  await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByLabel('界面语言').selectOption('en')
+  await setResponsiveViewport(page, 390, 844)
+  await setInterfaceLanguage(page, 'en')
+  await page.getByRole('button', { name: 'Sources', exact: true }).click()
   const englishKind = page.getByLabel('Source type', { exact: true })
   const englishPriority = page.getByLabel('Filter by priority', { exact: true })
+  await englishKind.selectOption('excerpt')
+  await page.getByLabel('Search sources', { exact: true }).fill('topic')
   await englishKind.focus()
   await englishKind.press('End')
   await englishKind.press('Tab')
@@ -155,7 +160,11 @@ export async function readingFilterFlow(page: Page, read: () => Promise<Library>
   }
   await expect(counter).toHaveText('21 sources in this list · 21 ready to read')
   await page.screenshot({ path: info.outputPath('reading-filters-en.png'), fullPage: true })
-  await page.getByLabel('Interface language').selectOption('zh-CN')
+  await setInterfaceLanguage(page, 'zh-CN')
+  await page.getByRole('button', { name: '学习材料', exact: true }).click()
+  await kind.selectOption('excerpt')
+  await priority.selectOption('high')
+  await query.fill('topic')
   await page.screenshot({ path: info.outputPath('reading-filters-zh.png'), fullPage: true })
   await page.setViewportSize({ width: 1280, height: 900 })
   await page

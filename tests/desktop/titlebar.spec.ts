@@ -1,5 +1,6 @@
 import { test, expect, storedLibrary } from './fixture'
 import type { Page } from '@playwright/test'
+import { setInterfaceLanguage } from '../fixtures/settings-flow'
 
 interface WindowFixture {
   calls: string[]
@@ -94,7 +95,8 @@ test('window controls follow native state events, support keyboard input and kee
     }),
   )
   await expect(titlebar).not.toHaveClass(/is-unfocused/)
-  await page.locator('.language-picker select').selectOption('en')
+  await setInterfaceLanguage(page, 'en')
+  await page.getByRole('button', { name: 'Overview', exact: true }).click()
   await expect(titlebar.getByRole('button', { name: 'Minimize window', exact: true })).toBeVisible()
   await expect(titlebar.getByRole('button', { name: 'Maximize window', exact: true })).toBeVisible()
   await titlebar.getByRole('button', { name: 'Close window', exact: true }).click()

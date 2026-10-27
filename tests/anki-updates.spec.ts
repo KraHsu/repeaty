@@ -1,3 +1,4 @@
+import { setInterfaceLanguage } from './fixtures/settings-flow'
 import { test, expect } from './fixtures/empty-workspace'
 import { createImportDeck, previewAnki, confirmAnki } from './fixtures/anki-flow'
 import { ankiNoteId } from '../src/core/anki/types'
@@ -41,14 +42,20 @@ test('compares repeated exports, updates selected content and media, and confirm
   await expect(basic.locator('audio')).toHaveCount(2)
   await expect(basic.getByRole('img', { name: 'pixel.png' })).toHaveCount(3)
   await page.screenshot({ path: testInfo.outputPath('comparison-desktop.png'), fullPage: true })
-  await page.locator('.language-picker select').selectOption('en')
+  await page.getByRole('button', { name: '取消', exact: true }).click()
+  await setInterfaceLanguage(page, 'en')
+  await previewAnki(page, 'updated')
+  await basic.getByRole('button', { name: 'Compare content', exact: true }).click()
   await page.setViewportSize({ width: 320, height: 844 })
   await expect(basic).toContainText('Content in Repeaty')
   expect(await page.locator('dialog').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
   expect(await basic.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
   await page.screenshot({ path: testInfo.outputPath('comparison-mobile-en.png'), fullPage: true })
   await page.setViewportSize({ width: 1280, height: 900 })
-  await page.locator('.language-picker select').selectOption('zh-CN')
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await setInterfaceLanguage(page, 'zh-CN')
+  await previewAnki(page, 'updated')
+  await basic.getByRole('button', { name: '查看内容比较', exact: true }).click()
   await basic.getByLabel('采用文件内容').check()
   await expect(page.locator('.anki-preview')).toContainText('已选择更新 1 条笔记')
   await expect(page.locator('.anki-card-impact')).toHaveCount(0)

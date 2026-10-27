@@ -1,3 +1,4 @@
+import { setInterfaceLanguage } from './settings-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import type { Library } from '../../src/core/model'
@@ -104,10 +105,15 @@ export async function readingFlow(page: Page, read: () => Promise<Library>, info
       .evaluate((element) => element.scrollWidth <= element.clientWidth),
   ).toBe(true)
   await page.screenshot({ path: info.outputPath('reading-zh.png'), fullPage: true })
-  await page.getByLabel('界面语言').selectOption('en')
+  await setInterfaceLanguage(page, 'en')
+  await page.getByRole('button', { name: 'Sources', exact: true }).click()
+  await page.locator('.source-list-title').filter({ hasText: markdown.title }).click()
+  await page.getByRole('button', { name: 'Save reading position', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Continue reading', exact: true })).toHaveCount(2)
   await expect(page.getByRole('status').filter({ hasText: 'Reading position saved' })).toBeVisible()
-  await page.getByLabel('Interface language').selectOption('zh-CN')
+  await setInterfaceLanguage(page, 'zh-CN')
+  await page.getByRole('button', { name: '学习材料', exact: true }).click()
+  await page.locator('.source-list-title').filter({ hasText: markdown.title }).click()
   // Capture the state being exported after focus and layout changes settle.
   await saveReading(page)
   const backedUp = (await read()).sources.find((source) => source.id === markdown.id)!.reading!

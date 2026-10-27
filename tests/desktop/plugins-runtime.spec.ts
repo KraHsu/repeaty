@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 import { fixture } from '../../src/core/test-fixtures'
 import type { PluginBundle } from '../../src/plugins/package'
+import { openPluginSettings } from '../fixtures/settings-flow'
 
 function standaloneBundle(version = '1.0.0', id = 'external-check'): PluginBundle {
   const color = version === '1.0.0' ? 'rgb(17, 34, 51)' : 'rgb(51, 68, 85)'
@@ -106,7 +107,7 @@ test('installs independent code, reloads versions and retains records and privat
   await page.getByRole('button', { name: '替换并恢复', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   const original = await storedLibrary(page)
-  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await openPluginSettings(page)
   await install(page, standaloneBundle())
   await expect(panel(page).getByTestId('external-version')).toHaveText('1.0.0')
   await expect(panel(page).locator('.external-check-view')).toHaveCSS('color', 'rgb(17, 34, 51)')
@@ -151,7 +152,7 @@ test('installs independent code, reloads versions and retains records and privat
   await expect(page.getByRole('heading', { name: '本轮复习结束' })).toBeVisible()
   const studied = await storedLibrary(page)
   expect(studied.reviews).toHaveLength(1)
-  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await openPluginSettings(page)
   await install(page, standaloneBundle('2.0.0'))
   await expect(panel(page).getByTestId('external-version')).toHaveText('2.0.0')
   await expect(panel(page).locator('.external-check-view')).toHaveCSS('color', 'rgb(51, 68, 85)')
@@ -205,7 +206,7 @@ test('installs independent code, reloads versions and retains records and privat
     code: 'ENOENT',
   })
   await page.reload()
-  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await openPluginSettings(page)
   await expect(panel(page)).toHaveCount(0)
   expect(await storedLibrary(page)).toEqual(studied)
 })
@@ -221,7 +222,7 @@ test('discovers copied package files without executing them until their exact co
   await writeFile(join(packageDirectory, 'main.js'), copied.main)
   await writeFile(join(packageDirectory, 'styles.css'), copied.styles!)
   const before = await storedLibrary(page)
-  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await openPluginSettings(page)
   await page.getByRole('button', { name: '重新扫描插件', exact: true }).click()
   await expect(panel(page)).toContainText('此设备尚未信任此插件包')
   await expect(panel(page).getByRole('switch')).not.toBeChecked()

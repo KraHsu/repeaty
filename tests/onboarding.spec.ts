@@ -1,3 +1,4 @@
+import { setInterfaceLanguage } from './fixtures/settings-flow'
 import { expect, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 
@@ -90,7 +91,8 @@ test('deleting the welcome deck persists; adding another language preserves exis
   await page.getByRole('button', { name: '显示答案' }).click()
   await page.getByRole('button', { name: /良好/ }).click()
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
-  await page.getByLabel('界面语言').selectOption('en')
+  await setInterfaceLanguage(page, 'en')
+  await page.getByRole('button', { name: 'Data & backups', exact: true }).click()
   await page.getByRole('button', { name: 'Add starter deck', exact: true }).click()
   await expect(page.getByRole('status')).toContainText('Starter deck added')
   await page.reload()

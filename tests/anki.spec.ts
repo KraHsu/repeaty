@@ -1,3 +1,4 @@
+import { setInterfaceLanguage } from './fixtures/settings-flow'
 import { test, expect } from './fixtures/empty-workspace'
 import { createImportDeck, previewAnki, confirmAnki } from './fixtures/anki-flow'
 import { parseArchive } from '../src/core/archive'
@@ -100,8 +101,8 @@ test('legacy packages import, malformed input preserves data, and the preview fi
   await expect(page.getByRole('alert')).toContainText('Anki 文件损坏')
   await page.getByRole('button', { name: '取消', exact: true }).click()
   await expect(page.locator('tbody tr')).toHaveCount(6)
+  await setInterfaceLanguage(page, 'en')
   await previewAnki(page)
-  await page.locator('.language-picker select').selectOption('en')
   await page.setViewportSize({ width: 320, height: 844 })
   await expect(page.locator('.anki-preview')).toContainText('4 already present, 3 skipped')
   await page.getByText('Import report', { exact: false }).click()

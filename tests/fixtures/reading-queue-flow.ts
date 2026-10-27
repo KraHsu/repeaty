@@ -1,3 +1,5 @@
+import { setResponsiveViewport } from './viewport-flow'
+import { setInterfaceLanguage } from './settings-flow'
 import { notesAfterSourceRekey } from './source-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
@@ -117,7 +119,7 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
     today,
   )
   await dialog.getByRole('button', { name: '取消', exact: true }).click()
-  await page.setViewportSize({ width: 390, height: 844 })
+  await setResponsiveViewport(page, 390, 844)
   await page.getByRole('button', { name: '稍后阅读', exact: true }).click()
   await expect(dialog.getByLabel('下次阅读日期')).toHaveValue(tomorrow)
   expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
@@ -150,10 +152,16 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
   expect(planned.queue).toEqual({ state: 'active', availableOn: later })
   expect(planned.priority).toBe('high')
   expect(planned.reading!.offset).toBeGreaterThan(500)
-  await page.setViewportSize({ width: 390, height: 844 })
+  await setResponsiveViewport(page, 390, 844)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: info.outputPath('reading-queue-zh.png'), fullPage: true })
-  await page.getByLabel('界面语言').selectOption('en')
+  await setInterfaceLanguage(page, 'en')
+  await page.getByRole('button', { name: 'Sources', exact: true }).click()
+  await page
+    .getByRole('navigation', { name: 'Reading queue', exact: true })
+    .getByRole('button', { name: /^Read later/ })
+    .click()
+  await page.locator('.source-list-title').filter({ hasText: 'Queue A' }).click()
   await expect(
     page
       .getByRole('navigation', { name: 'Reading queue' })
@@ -191,7 +199,7 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
   expect((await read()).sources.find((source) => source.id === first.id)!.queue).toEqual(
     planned.queue,
   )
-  await page.getByLabel('Interface language').selectOption('zh-CN')
+  await setInterfaceLanguage(page, 'zh-CN')
 
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
   const download = page.waitForEvent('download')

@@ -1,3 +1,5 @@
+import { setResponsiveViewport } from './viewport-flow'
+import { setInterfaceLanguage } from './settings-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { fixture, input, now } from '../../src/core/test-fixtures'
@@ -89,12 +91,12 @@ export async function adaptiveFlow(page: Page, read: () => Promise<Library>, inf
   const bytes = await readFile((await file.path())!)
   const restored = await parseArchive(new Blob([new Uint8Array(bytes)]))
   expect(restored.library.sources[0]!.adaptiveReading).toEqual(source.adaptiveReading)
-  await page.getByLabel('界面语言').selectOption('en')
+  await setInterfaceLanguage(page, 'en')
   await page.getByRole('button', { name: 'Sources', exact: true }).click()
   await page.getByRole('button', { name: /^Read later 1$/ }).click()
   await page.getByRole('button', { name: 'Read and schedule next', exact: true }).click()
   await page.getByLabel('Interval method', { exact: true }).selectOption('adaptive')
-  await page.setViewportSize({ width: 390, height: 844 })
+  await setResponsiveViewport(page, 390, 844)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: info.outputPath('adaptive-reading-en.png'), fullPage: true })
 }
@@ -159,7 +161,7 @@ export async function mixedFlow(page: Page, read: () => Promise<Library>, info: 
   expect(restarted.reviews).toEqual(after.reviews)
   expect(restarted.sources).toEqual(after.sources)
   await page.getByRole('button', { name: '开始混合学习', exact: true }).click()
-  await page.setViewportSize({ width: 390, height: 844 })
+  await setResponsiveViewport(page, 390, 844)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: info.outputPath('mixed-study-narrow.png'), fullPage: true })
 }

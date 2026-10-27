@@ -1,3 +1,5 @@
+import { setResponsiveViewport } from './viewport-flow'
+import { setInterfaceLanguage } from './settings-flow'
 import { notesAfterSourceRekey } from './source-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
@@ -65,7 +67,7 @@ export async function readingIntervalFlow(
     '第 1 篇，共 1 篇',
   )
   dialog = await openReadSchedule(page, 1)
-  await page.setViewportSize({ width: 390, height: 844 })
+  await setResponsiveViewport(page, 390, 844)
   expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
   expect(
     await dialog
@@ -103,7 +105,13 @@ export async function readingIntervalFlow(
 
   await queueView(page, '稍后阅读')
   await selectSource(page, root.title)
-  await page.getByLabel('界面语言').selectOption('en')
+  await setInterfaceLanguage(page, 'en')
+  await page.getByRole('button', { name: 'Sources', exact: true }).click()
+  await page
+    .getByRole('navigation', { name: 'Reading queue', exact: true })
+    .getByRole('button', { name: /^Read later/ })
+    .click()
+  await selectSource(page, root.title)
   await page.getByRole('button', { name: 'Read and schedule next', exact: true }).click()
   const english = page.getByRole('dialog', { name: 'Read and schedule next', exact: true })
   await expect(english.locator('[aria-current="step"]')).toHaveText('3 days')
@@ -118,7 +126,10 @@ export async function readingIntervalFlow(
   })
   await english.getByRole('button', { name: 'Save reading schedule', exact: true }).click()
   await expect(english).toHaveCount(0)
-  await page.getByLabel('Interface language').selectOption('zh-CN')
+  await setInterfaceLanguage(page, 'zh-CN')
+  await page.getByRole('button', { name: '学习材料', exact: true }).click()
+  await queueView(page, '稍后阅读')
+  await selectSource(page, root.title)
   const second = (await read()).sources.find((source) => source.id === root.id)!
   expect(second.readingIntervalDays).toBe(3)
   expect(second.queue!.availableOn).toBe(threeDays)

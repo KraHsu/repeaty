@@ -1,3 +1,4 @@
+import { setInterfaceLanguage } from './fixtures/settings-flow'
 import { expect, test } from './fixtures/empty-workspace'
 import type { Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
@@ -124,7 +125,9 @@ test('desktop sample dashboard renders cleanly', async ({ page }) => {
   await page.goto('./')
   await page.getByRole('button', { name: '添加入门卡组', exact: true }).click()
   await expect(
-    page.getByRole('button', { name: '从这里开始：FSRS 与 Repeaty', exact: true }),
+    page
+      .locator('.dashboard')
+      .getByRole('button', { name: '从这里开始：FSRS 与 Repeaty', exact: true }),
   ).toBeVisible()
   await page.screenshot({ path: 'test-results/desktop-dashboard.png', fullPage: true })
 })
@@ -139,10 +142,12 @@ test('reverse cards share note content, preserve independent progress and suppor
   await expect(page.locator('tbody tr')).toHaveCount(2)
   await expect(page.locator('tbody .tag').filter({ hasText: '正面 → 背面' })).toBeVisible()
   await expect(page.locator('tbody .tag').filter({ hasText: '背面 → 正面' })).toBeVisible()
-  await page.getByLabel('界面语言').selectOption('en')
+  await setInterfaceLanguage(page, 'en')
+  await page.getByRole('button', { name: /^All cards/ }).click()
   await expect(page.locator('tbody .tag').filter({ hasText: 'Front → Back' })).toBeVisible()
   await expect(page.locator('tbody .tag').filter({ hasText: 'Back → Front' })).toBeVisible()
-  await page.getByLabel('Interface language').selectOption('zh-CN')
+  await setInterfaceLanguage(page, 'zh-CN')
+  await page.getByRole('button', { name: /^全部卡片/ }).click()
   await page.getByRole('button', { name: '复习', exact: true }).click()
   await expect(page.locator('.card-question')).toHaveText('What is active recall?')
   const question = await page.locator('.card-question').innerText()

@@ -5,6 +5,7 @@ import type { Library } from '../../src/core/model'
 import { seedPolish } from './polish-flow'
 import { importReading, moveReading, saveReading, readingText } from './reading-flow'
 import { startMixed } from './adaptive-mixed-flow'
+import { modalOutsidePoint, setResponsiveViewport } from './viewport-flow'
 
 async function undoAction(page: Page, shortcut = 'Control+z') {
   // A new question can render before the surrounding save promise has settled.
@@ -87,7 +88,7 @@ export async function rendering027Flow(page: Page, info: TestInfo) {
   expect(
     await page.evaluate(() => (window as Window & { cardExecuted?: boolean }).cardExecuted),
   ).toBeUndefined()
-  await page.setViewportSize({ width: 390, height: 844 })
+  await setResponsiveViewport(page, 390, 844)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: info.outputPath('rendering-027-mobile.png'), fullPage: true })
 }
@@ -100,7 +101,13 @@ export async function modal027Flow(page: Page) {
   await dialog.getByLabel('正面 · 问题', { exact: true }).fill('Keep this draft')
   const field = (await dialog.getByLabel('正面 · 问题', { exact: true }).boundingBox())!
   const inside = { x: field.x + 25, y: field.y + 25 },
-    outside = { x: 5, y: 5 }
+    outside = await modalOutsidePoint(page)
+  expect(
+    await dialog.evaluate((element, point) => {
+      const box = element.getBoundingClientRect()
+      return point.x < box.left || point.x > box.right || point.y < box.top || point.y > box.bottom
+    }, outside),
+  ).toBe(true)
   for (const [start, end] of [
     [inside, outside],
     [outside, inside],
