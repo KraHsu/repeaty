@@ -1,5 +1,5 @@
 import { onUnmounted, shallowRef, watch, type MaybeRefOrGetter, toValue } from 'vue'
-import { inlineReferences, type InlineMedia } from '../core/inline-media'
+import type { InlineMedia } from '../core/inline-media-data'
 
 /** Only immutable, accepted media are turned into URLs. Working paths never reach the webview. */
 export function useInlineMedia(
@@ -25,6 +25,8 @@ export function useInlineMedia(
       clear()
       error.value = false
       if (!read || !media?.length) return
+      const { inlineReferences } = await import('../core/inline-media')
+      if (sequence !== generation) return
       const used = new Set(
         inlineReferences(text)
           .filter((ref) => ref.media)

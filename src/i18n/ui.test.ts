@@ -112,8 +112,13 @@ it('keeps drafts and revealed answers while translating authoring, statuses, and
   await vi.waitFor(() => expect(host.querySelector('tbody')!.textContent).toContain('学习空间'))
   expect(host.querySelector('.status-chip')!.textContent).toBe('New')
   button('Review').click()
-  await vi.waitFor(() =>
-    expect(host.querySelector('.card-question')!.textContent!.trim()).toBe('学习空间'),
+  await nextTick()
+  // The review shell appears before its lazy card renderer. Wait for those
+  // imports explicitly; cold CI workers can take longer than waitFor's 1s default.
+  await vi.dynamicImportSettled()
+  await vi.waitFor(
+    () => expect(host.querySelector('.card-question')!.textContent!.trim()).toBe('学习空间'),
+    { timeout: 5000 },
   )
   button('Show answer').click()
   await vi.waitFor(() =>
