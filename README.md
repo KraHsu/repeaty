@@ -95,7 +95,7 @@ npm run desktop:build
 
 本轮将桌面学习存储接入[工作目录](docs/WORKSPACE_MODE.md)，取消桌面本地 / 上游分支。项目暂无其他使用者，因此直接采用新格式，不开发旧库过渡或自动迁移，也不删除旧数据。已支持外部笔记新建、移除、恢复和变体退役，以及材料版本和 Markdown 相对路径图片、音频。旧摘录保留原文和附件快照。外部修改会自动检测并提示，确认后用于学习。在线版已接入本地目录的只读试用，同步仍未完成。
 
-界面使用 Vue 3、TypeScript 和 Vite；原生存储使用 Rust 与 SQLite；调度使用 [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)。
+界面使用 Vue 3、TypeScript、Pinia 和 Vite；原生存储使用 Rust 与 SQLite；调度使用 [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)。页面、应用服务和共享状态的分工见[前端结构](docs/FRONTEND_ARCHITECTURE.md)。
 
 ```bash
 npm run desktop:dev

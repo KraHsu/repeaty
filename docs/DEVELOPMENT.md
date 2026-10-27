@@ -127,7 +127,9 @@ Fork 后需在自己的仓库启用 Pages 的 GitHub Actions 发布源，并单�
 
 ## 技术边界与结构
 
-纯前端版独立运行于浏览器；带后端版使用 Rust + Axum + SQLite，由同一服务托管网页与 API。带后端版提供基本账户；范围不包含订阅、支付、商业云同步或团队协作。
+桌面直接使用工作目录，是当前主要产品入口；在线版独立运行于浏览器。既有服务端适配器使用 Rust + Axum + SQLite，保留基本账户，但桌面不再连接上游服务。本轮不包含订阅、支付、商业云同步或团队协作。
+
+根组件只组合视图，由 `src/app/createApplication.ts` 连接控制器。共享学习库、导航、通知与在线试用状态分别由 Pinia store 管理；应用服务拆到 `src/application/`，不依赖 Vue 或 Pinia。VueUse 仅用于重复的界面定时器、事件和通知尺寸观察。状态归属、异步隔离与验证入口见[前端结构](FRONTEND_ARCHITECTURE.md)。
 
 Anki `.apkg` 在同源 Worker 中通过 sql.js 读取，HTML 用 parse5 作为纯数据转换，单独打包的 SQLite Wasm 随应用离线缓存。新版压缩使用有大小检查的 fzstd 解码。Anki 的 `unicase` 排序规则仅在临时内存副本的模型表定义中替换为 BINARY，查询只按数值身份与序号读取，不按名称比较；原包不改写。解析不访问学习库；随后按 GUID 比较当前库，附件逐个计算 SHA-256 并复用相同文件的已有引用，比较结果绑定工作空间与修订。确认后批量更新笔记，按变体保留原卡片，只在明确确认时移除变体及关联历史；沿用现有存储事务和操作前快照，GUID 编码为稳定笔记 ID，无需改变学习数据、SQLite 或备份版本。[格式、边界与实际 Anki 样例](ANKI.md)。
 
@@ -189,15 +191,20 @@ src/core/
   media.ts           # 附件校验
 src/plugins/        # 题目 / 答案接口、应用插件开关、LeetCode 题型
 src/backend/        # HTTP 客户端、SQLite 服务的增量存储适配
-src/platform/       # 构建时选择 IndexedDB 或后端适配器
+src/platform/       # 构建时选择桌面、浏览器或既有服务端适配器
+src/browser/        # 只读目录、SQLite WASM Worker 与页面内试用副本
 src/desktop/        # 原生连接、MCP 桥接、持久草稿与确认界面
 repeaty.plugins.*.ts # 静态 / 后端版部署插件清单
 examples/plugins/   # 可安装的纯前端插件示例
 server/             # Rust 账户服务、每账户 SQLite、Schema 与测试
-src-tauri/          # Tauri 桌面入口、上游客户端与本地插件接口
+src-tauri/          # Tauri 桌面入口、工作目录 IPC、MCP 与本地插件接口
 crates/leetcode-local/ # 本机 LeetCode 请求和凭据存储
 src/i18n/           # 双语词典、语言偏好、格式化与 DOM 回归测试
-src/composables/     # 工作空间状态与离线更新状态
+src/App.vue         # 页面与弹窗组合入口
+src/app/            # 应用组装、类型上下文、视图与交互控制器
+src/application/    # 框架无关的学习库服务、命令与作用域检查
+src/stores/         # 按应用实例隔离的 Pinia 共享状态
+src/composables/     # 学习库 ref 接口、阅读进度与离线更新状态
 src/components/      # 笔记编辑、卡片列表、导入、复习和媒体展示
 build/              # 构建时生成预缓存清单与 Service Worker
 public/             # PWA 元数据、图标及 CSV 示例
