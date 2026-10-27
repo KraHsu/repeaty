@@ -2,6 +2,21 @@
 
 [开发文档](DEVELOPMENT.md#大数据量存储) · [LeetCode 使用](LEETCODE.md)
 
+## 浏览器工作目录试用
+
+2026-10-27，`4712061`，本机 Chromium 回归读取由真实 Rust 存储创建并关闭的工作目录，包含 1,000 张普通卡片、2 张插件卡、材料新旧版本、代码历史、图片与 8 MiB WAV。SQLite 查询和正文校验在 Worker 中运行；媒体和完整代码按需读取，评分保存不扫描目录。
+
+连续三次自动点击「良好」到下一题文本更新的记录为 **88 / 84 / 78 ms**，期间 `requestAnimationFrame` 的最大间隔为 **42 ms**。[原始记录](benchmarks/web-workspace-trial-2026-10-27.json)。这是一轮浏览器回归记录，包含 Playwright 的动作等待，未使用 CPU 降速；下面的正式评分基准另计两帧绘制，测量口径不同。
+
+复现：
+
+```bash
+VITE_BASE_PATH=/repeaty/ npm run build
+VITE_BASE_PATH=/repeaty/ npx playwright test tests/browser-workspace.spec.ts --grep thousand-card --workers=1
+```
+
+结果保存在对应测试输出目录的 `rating-responsiveness.json`。同一用例还核对了操作前后原目录的文件集合和 SHA256；独立用例覆盖已有网页学习库隔离、长文本、多媒体、历史版本、完整代码与导出。读取上限和浏览器验收范围见[工作目录说明](WORKSPACE_MODE.md#无后端在线工作目录)。
+
 ## 撤销与渲染改动后的复测（0.27.0）
 
 2026-10-21 对 `ec7d3d1` 使用下面同一份真实 Vue / IndexedDB 基准，在同一台机器、同样的 4 倍 CPU 降速下各运行三轮。评分撤销步骤只保存本次记录与卡片的标识，不复制整库或遍历全部记录；保存成功后才加入历史。

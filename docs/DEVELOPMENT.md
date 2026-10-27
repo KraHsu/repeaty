@@ -36,6 +36,21 @@ VITE_BASE_PATH=/repeaty/ npm run check
 
 CI 使用两个 Chromium worker，禁止提交 `test.only`，失败时保留浏览器 trace 和 HTML 报告。测试在独立浏览器上下文中运行，不读写日常浏览器的学习库。
 
+### 浏览器工作目录
+
+`src/browser/` 提供无后端的目录读取与试用。`workspace-files.ts` 只暴露读接口；`workspace-reader.ts` 在 Worker 中通过已有 `sql.js` WASM 读取 SQLite 副本，校验身份、引用和接受版本。`repository.ts` 适配共享学习接口，修改仅保存在页面内存中；原有 IndexedDB 学习库独立保留。
+
+浏览器回归使用 Rust 运行时创建并关闭真实目录，所以执行 `test:e2e` 需要 Rust；基本单元测试和静态构建无需编译原生程序。目录选择回退、真实目录句柄传入 Worker、取消、失败保护、评分撤销、媒体、旧材料、代码、完整导出、千张卡和离线打开位于 `tests/browser-workspace.spec.ts`，Rust / WASM 联测位于 `tests/workspace-native/browser.test.ts`。
+
+```bash
+npx vitest run src/browser
+npm run test:workspace:native
+VITE_BASE_PATH=/repeaty/ npm run build
+VITE_BASE_PATH=/repeaty/ npx playwright test tests/browser-workspace.spec.ts --workers=2
+```
+
+并行运行静态与桌面浏览器套件时，应分别传入 `--output=/tmp/repeaty-web-tests` 和 `--output=/tmp/repeaty-desktop-tests`，避免两个进程清理同一个 trace 目录。千张卡的浏览器回归会在该测试输出目录保存 `rating-responsiveness.json`，记录操作耗时和帧间隔，测量口径见[性能记录](PERFORMANCE.md#浏览器工作目录试用)。
+
 ## 界面文案
 
 标题使用功能名或当前状态，按钮写明操作。提示说明操作结果、限制和下一步，不添加励志口号、装饰性英文或无关说明。中英文一起维护，修改时保留计数参数与用户内容；已存储的筛选状态和快照原因不能随文案改名。
@@ -58,7 +73,7 @@ CI 使用两个 Chromium worker，禁止提交 `test.only`，失败时保留浏�
 
 评分热路径按变更记录保存，验证不变的历史前缀后只校验追加评分；其他导入、删除和历史修改继续完整校验。`createCardViewReader` 仅供使用不可变快照的界面复用未变化的卡片，普通 `cardViews` 仍是无缓存的纯函数。每日额度不再为统计生成整库题面，也不在每条历史上重复计算日期。评分和撤销等到事务成功才切题，快照列表在后台更新；响应检查库作用域和请求顺序。
 
-「设置」页独立于学习库加载状态，上游断连或未登录时仍可修改桌面 endpoint。界面偏好和插件开关使用当前来源的本地存储，不进入学习数据或备份。通知按级别控制顶部弹出 / 页内显示，信息自动关闭，警告和错误保留关闭按钮；开始新操作时清除上一条信息提示，避免把旧成功提示误认为本次已保存。
+「设置」页独立于学习库加载状态，桌面不再提供上游 endpoint。桌面的界面偏好和插件开关随工作目录保存，网页偏好保存在当前浏览器；凭据不进入学习目录。通知按级别控制顶部弹出 / 页内显示，信息自动关闭，警告和错误保留关闭按钮；开始新操作时清除上一条信息提示，避免把旧成功提示误认为本次已保存。切换学习库后，旧备份和操作的迟到响应不能改写新库的状态提示。
 
 Markdown 使用 [highlight.js 的显式语言接口](https://highlightjs.readthedocs.io/en/latest/api.html)，未识别语言和超过 100,000 字符的代码块保持转义文本，不做自动语言检测。中文闭合加粗通过行内 token 修正，只在渲染结果中补空格，不更改原文、代码或阅读定位。AI 制卡 skill 位于 `public/skills/repeaty-cards`，通过现有 CSV 导入；两个文件加入静态离线缓存。
 
