@@ -17,3 +17,9 @@ export async function createWorkspaceRepository(onBlocked: () => void) {
 
 export const createExportFile:
   ((filename: string) => Promise<WritableStream<Uint8Array>>) | undefined = undefined
+
+export const workspacePendingCount = ref(0)
+export const workspaceDetectionError = ref(false)
+export async function connectWorkspaceMonitor(_reader: LearningReader): Promise<() => void> {
+  return () => {}
+}

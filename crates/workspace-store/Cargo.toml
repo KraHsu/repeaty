@@ -17,6 +17,7 @@ cap-std = "4.0.3"
 cap-primitives = "4.0.3"
 same-file = "1"
 base64 = "0.22"
+notify = "8.2.0"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

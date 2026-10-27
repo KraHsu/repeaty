@@ -29,3 +29,9 @@ export async function createWorkspaceRepository(_onBlocked: () => void) {
 }
 export { createExportFile } from '../desktop/exports'
 export { connectLearningReader } from '../desktop/mcp'
+
+export {
+  connectWorkspaceMonitor,
+  workspacePendingCount,
+  workspaceDetectionError,
+} from '../desktop/workspace-monitor'

@@ -17,6 +17,7 @@ impl Drop for IdentityLock {
 }
 struct Active {
     library: Library,
+    watch: crate::watch::DirectoryWatch,
     _identity_lock: IdentityLock,
 }
 pub struct Sessions {
@@ -90,6 +91,7 @@ impl Sessions {
         lock.try_lock()
             .map_err(|_| Error("workspace-already-open"))?;
         Ok(Active {
+            watch: crate::watch::DirectoryWatch::new(library.path()),
             library,
             _identity_lock: IdentityLock(lock),
         })
@@ -179,6 +181,19 @@ impl Sessions {
         let active = self.active.as_mut().ok_or(Error("workspace-not-open"))?;
         active.library.guard(token)?;
         active.library.read(request)
+    }
+    pub fn changes(&self, token: &str) -> Result<Option<crate::watch::Changes>> {
+        self.watch_session(token)?;
+        let active = self.active.as_ref().ok_or(Error("workspace-not-open"))?;
+        // Idle notification drains perform no SQLite queries or filesystem reads.
+        Ok(active.watch.take())
+    }
+    pub fn watch_session(&self, token: &str) -> Result<()> {
+        match &self.active {
+            Some(active) if active.library.token == token => Ok(()),
+            Some(_) => Err(Error("stale-workspace-session")),
+            None => Err(Error("workspace-not-open")),
+        }
     }
     pub fn write(&mut self, token: &str, request: Value) -> Result<Value> {
         let active = self.active.as_mut().ok_or(Error("workspace-not-open"))?;

@@ -129,6 +129,94 @@ async function docs(env: Awaited<ReturnType<typeof workspace>>) {
   })
 }
 describe('the desktop workspace is the learning store', () => {
+  it('observes OS hints incrementally, distinguishes accepted self writes and leaves pending text alone when grading', async () => {
+    const env = await workspace()
+    await env.repo.load()
+    let saved = await env.repo.save(
+      saveNote(fixture({ format: 'markdown' }), {
+        ...input,
+        front: 'Other note',
+        format: 'markdown',
+      }),
+      0,
+    )
+    const document = (await docs(env))[0]!
+    async function hint() {
+      const deadline = Date.now() + 6000
+      while (Date.now() < deadline) {
+        const event = await env.runtime.api<{ paths: string[]; full: boolean } | null>(
+          'workspace_changes',
+          { token: env.active.token },
+        )
+        if (event) return event
+        await new Promise((resolve) => setTimeout(resolve, 20))
+      }
+      throw Error('Missing native filesystem notification')
+    }
+    await hint()
+    const read = <T>(request: unknown) =>
+      env.runtime.api<T>('workspace_read', { token: env.active.token, request })
+    const first = await read<{ accepted: AcceptedDocument[]; working: { raw: string }[] }>({
+      type: 'observe',
+      paths: [document.path],
+      known: [document.id],
+    })
+    expect(first.accepted).toHaveLength(1)
+    expect(first.working[0]!.raw).toBe(document.raw)
+    const external = document.raw
+      .replace('Question', '外部修改🙂')
+      .replace('Other note', '外部修改🙂')
+    await writeFile(join(env.path, document.path), external)
+    expect((await hint()).paths).toContain(document.path)
+    const observed = await read<{
+      accepted: AcceptedDocument[]
+      working: { raw: string; path: string }[]
+    }>({ type: 'observe', paths: [document.path], known: [document.id] })
+    expect(observed.accepted[0]!.raw).toBe(document.raw)
+    expect(observed.working).toEqual([
+      {
+        path: document.path,
+        raw: external,
+        hash: await sha256(new TextEncoder().encode(external)),
+      },
+    ])
+    expect(await env.repo.load()).toEqual(saved)
+    saved = await env.repo.save(
+      reviewCard(saved.library, saved.library.cards[0]!.id, 3, now),
+      saved.revision,
+    )
+    await new Promise((resolve) => setTimeout(resolve, 450))
+    expect(await env.runtime.api('workspace_changes', { token: env.active.token })).toBeNull()
+    expect(await readFile(join(env.path, document.path), 'utf8')).toBe(external)
+    const state = statusSchema.parse(await env.runtime.api('workspace_status'))
+    await env.runtime.api('workspace_close', { epoch: state.epoch })
+    await expect(
+      env.runtime.api('workspace_changes', { token: env.active.token }),
+    ).rejects.toThrow()
+  })
+  it('hashes only requested working assets and preserves both file contents and library revision', async () => {
+    const env = await workspace()
+    await env.repo.load()
+    const saved = await env.repo.save(fixture(), 0)
+    await writeFile(join(env.path, 'assets/a.png'), 'first')
+    await writeFile(join(env.path, 'assets/b.wav'), 'untouched')
+    const request = (paths: string[]) =>
+      env.runtime.api('workspace_read', {
+        token: env.active.token,
+        request: { type: 'inspect-assets', paths },
+      })
+    expect(await request(['assets/a.png'])).toEqual([
+      { path: 'assets/a.png', hash: await sha256(new TextEncoder().encode('first')) },
+    ])
+    expect(await request(['assets/missing.png'])).toMatchObject([
+      { path: 'assets/missing.png', hash: null },
+    ])
+    await expect(request(['assets/../workspace.json'])).rejects.toThrow()
+    await expect(request(['.repeaty/state.sqlite3'])).rejects.toThrow()
+    await expect(request(Array.from({ length: 5 }, () => 'assets/a.png'))).rejects.toThrow()
+    expect(await env.repo.load()).toEqual(saved)
+    expect(await readFile(join(env.path, 'assets/b.wav'), 'utf8')).toBe('untouched')
+  })
   it('accepts source versions with old excerpt anchors and locations intact across restart and complete backup', async () => {
     const env = await workspace()
     await env.repo.load()

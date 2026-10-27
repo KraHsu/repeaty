@@ -10,6 +10,7 @@ use tauri_plugin_dialog::DialogExt;
 struct Inner {
     directory: PathBuf,
     sessions: Option<Sessions>,
+    subscription: Option<String>,
 }
 pub struct Workspaces(Arc<Mutex<Inner>>);
 impl Workspaces {
@@ -17,8 +18,74 @@ impl Workspaces {
         Self(Arc::new(Mutex::new(Inner {
             directory: directory.into(),
             sessions: None,
+            subscription: None,
         })))
     }
+}
+#[tauri::command]
+pub async fn workspace_watch(
+    window: tauri::WebviewWindow,
+    state: State<'_, Workspaces>,
+    token: String,
+    on_change: tauri::ipc::Channel<repeaty_workspace::watch::Changes>,
+) -> Result<String, String> {
+    main_window(&window)?;
+    let expected = token.clone();
+    run(&state, move |sessions| sessions.watch_session(&expected)).await?;
+    let manager = state.0.clone();
+    let id = uuid::Uuid::new_v4().to_string();
+    manager.lock().map_err(|_| "storage-error")?.subscription = Some(id.clone());
+    let subscription = id.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut ticks = tokio::time::interval(std::time::Duration::from_millis(150));
+        loop {
+            ticks.tick().await;
+            let manager = manager.clone();
+            let subscription = subscription.clone();
+            let token = token.clone();
+            let event = tauri::async_runtime::spawn_blocking(move || {
+                let guard = manager.lock().map_err(|_| ())?;
+                if guard.subscription.as_deref() != Some(&subscription) {
+                    return Err(());
+                }
+                guard
+                    .sessions
+                    .as_ref()
+                    .ok_or(())?
+                    .changes(&token)
+                    .map_err(|_| ())
+            })
+            .await;
+            match event {
+                Ok(Ok(Some(event))) => {
+                    if on_change.send(event).is_err() {
+                        break;
+                    }
+                }
+                Ok(Ok(None)) => {}
+                _ => break,
+            }
+        }
+    });
+    Ok(id)
+}
+#[tauri::command]
+pub async fn workspace_unwatch(
+    window: tauri::WebviewWindow,
+    state: State<'_, Workspaces>,
+    id: String,
+) -> Result<(), String> {
+    main_window(&window)?;
+    let manager = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut guard = manager.lock().map_err(|_| "storage-error".to_owned())?;
+        if guard.subscription.as_deref() == Some(&id) {
+            guard.subscription = None;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|_| "storage-error".to_owned())?
 }
 async fn run<T: Send + 'static>(
     state: &Workspaces,

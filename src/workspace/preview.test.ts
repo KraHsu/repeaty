@@ -1,6 +1,13 @@
-import { describe, expect, it } from 'vitest'
-import { inspectPreview, previewScanSchema, type PreviewScan } from './preview'
-import { createWorkspaceMarkdown } from './markdown'
+import { describe, expect, it, vi } from 'vitest'
+import {
+  inspectPreview,
+  previewScanSchema,
+  createPreviewInspector,
+  createPreviewReceiver,
+  previewPatch,
+  type PreviewScan,
+} from './preview'
+import { createWorkspaceMarkdown, readWorkspaceMarkdown } from './markdown'
 const raw = (front = '问题🙂', id = 'note') =>
   createWorkspaceMarkdown(
     {
@@ -23,6 +30,36 @@ const snapshot = (): PreviewScan => ({
   observations: [],
 })
 describe('desktop scan projection', () => {
+  it('parses unchanged Markdown once while still checking duplicate identities across the whole snapshot', () => {
+    const parse = vi.fn(readWorkspaceMarkdown),
+      inspect = createPreviewInspector(parse),
+      scan = snapshot()
+    scan.observations = [{ path: 'notes/original.md', raw: raw() }]
+    expect(inspect(scan)[0]!.status).toBe('unchanged')
+    expect(parse).toHaveBeenCalledTimes(1)
+    inspect(structuredClone(scan))
+    expect(parse).toHaveBeenCalledTimes(1)
+    scan.observations.push({ path: 'notes/copy.md', raw: raw('second copy') })
+    expect(inspect(scan).every((file) => file.status === 'conflict')).toBe(true)
+    expect(parse).toHaveBeenCalledTimes(2)
+  })
+  it('transfers only changed bodies to the worker and rejects another session’s delta', () => {
+    const receiver = createPreviewReceiver(),
+      before = snapshot()
+    before.observations = [{ path: 'notes/original.md', raw: raw() }]
+    receiver({ scan: before })
+    const after = structuredClone(before)
+    after.observations.push({ path: 'notes/new.md', raw: raw('New', 'other-note') })
+    const patch = previewPatch(before, after)
+    expect(patch.accepted).toEqual([])
+    expect(patch.observations.map((entry) => entry.path)).toEqual(['notes/new.md'])
+    expect(receiver({ patch })).toEqual(inspectPreview(after))
+    expect(() => receiver({ patch: { ...patch, token: crypto.randomUUID() } })).toThrow(
+      'invalid-scan-session',
+    )
+    const removed = { ...after, observations: after.observations.slice(1) }
+    expect(receiver({ patch: previewPatch(after, removed) })).toEqual(inspectPreview(removed))
+  })
   it('uses stable identities for moves and keeps unchanged card mappings', () => {
     const scan = snapshot()
     scan.observations = [{ path: 'notes/中文/new.md', raw: raw('外部修改') }]

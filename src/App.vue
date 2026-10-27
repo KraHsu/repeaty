@@ -74,6 +74,9 @@ import {
   PlatformSettings,
   WorkspaceBrowser,
   workspaceAvailable,
+  connectWorkspaceMonitor,
+  workspacePendingCount,
+  workspaceDetectionError,
 } from '@repeaty-platform'
 import { canReviewCard, listenPluginPreferences } from './plugins'
 import type { BackupData } from './core/backups'
@@ -248,6 +251,8 @@ const pageTitle = computed(
 let stopPluginPreferences: (() => void) | undefined
 let stopPreferences: (() => void) | undefined
 let stopLearningReader: (() => void) | undefined
+let stopWorkspaceMonitor: (() => void) | undefined
+let appAlive = true
 let ticker: ReturnType<typeof setInterval>
 let backupTicker: ReturnType<typeof setInterval>
 onMounted(() => {
@@ -256,6 +261,10 @@ onMounted(() => {
   stopPreferences = listenPreferences()
   void connectLearningReader(workspace).then((stop) => {
     stopLearningReader = stop
+  })
+  void connectWorkspaceMonitor(workspace).then((stop) => {
+    if (appAlive) stopWorkspaceMonitor = stop
+    else stop()
   })
   void workspace.init()
   backupTicker = setInterval(() => {
@@ -276,7 +285,9 @@ onUnmounted(() => {
   window.removeEventListener('keydown', globalKeydown)
   stopPreferences?.()
   stopPluginPreferences?.()
+  appAlive = false
   stopLearningReader?.()
+  stopWorkspaceMonitor?.()
   clearInterval(ticker)
   clearInterval(backupTicker)
   void workspace.close()
@@ -811,9 +822,23 @@ async function restoreBackup() {
             v-if="WorkspaceBrowser"
             :class="{ active: tab === 'workspace' && !review }"
             :aria-current="tab === 'workspace' && !review ? 'page' : undefined"
+            :aria-label="t('工作目录')"
             @click="navigate('workspace')"
           >
-            <FolderOpen :size="19" />{{ t('工作目录') }}
+            <FolderOpen :size="19" />{{ t('工作目录')
+            }}<span
+              v-if="workspacePendingCount"
+              class="nav-count"
+              aria-hidden="true"
+              :title="t('{count} 项文件修改待检查', { count: workspacePendingCount })"
+              >{{ workspacePendingCount }}</span
+            ><span
+              v-else-if="workspaceDetectionError"
+              class="nav-count"
+              aria-hidden="true"
+              :title="t('文件检测需要检查，请打开工作目录。')"
+              >!</span
+            >
           </button>
           <button
             :class="{ active: tab === 'overview' && !review }"

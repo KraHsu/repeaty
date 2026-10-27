@@ -1,10 +1,10 @@
 import type { FileChange } from '../workspace/changes'
-import type { PreviewScan } from '../workspace/preview'
+import { previewPatch, type PreviewScan } from '../workspace/preview'
 export interface Inspector {
   inspect(scan: PreviewScan): Promise<FileChange[]>
   dispose(): void
 }
-/** Parse YAML away from the UI thread. Only explicit scans start work; grading never does. */
+/** Parse YAML off the UI thread and transfer only changed file bodies after the first scan. */
 export function createInspector(): Inspector {
   let worker: Worker | undefined,
     sequence = 0
@@ -12,9 +12,11 @@ export function createInspector(): Inspector {
     number,
     { resolve(value: FileChange[]): void; reject(error: Error): void }
   >()
+  let previous: PreviewScan | undefined
   function dispose() {
     worker?.terminate()
     worker = undefined
+    previous = undefined
     for (const request of pending.values()) request.reject(new Error('workspace-unavailable'))
     pending.clear()
   }
@@ -40,7 +42,12 @@ export function createInspector(): Inspector {
       return new Promise((resolve, reject) => {
         pending.set(id, { resolve, reject })
         try {
-          worker!.postMessage({ id, scan })
+          worker!.postMessage(
+            previous?.token === scan.token
+              ? { id, patch: previewPatch(previous, scan) }
+              : { id, scan },
+          )
+          previous = scan
         } catch (error) {
           pending.delete(id)
           reject(error)

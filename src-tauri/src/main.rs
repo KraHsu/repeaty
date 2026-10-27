@@ -249,6 +249,8 @@ fn main() {
             workspaces::workspace_restore,
             workspaces::workspace_read,
             workspaces::workspace_write,
+            workspaces::workspace_watch,
+            workspaces::workspace_unwatch,
             open_external
         ])
         .run(tauri::generate_context!())

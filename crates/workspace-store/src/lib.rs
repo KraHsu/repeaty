@@ -12,7 +12,10 @@ pub mod records;
 pub mod library;
 
 pub mod sessions;
+pub mod watch;
 
 mod retirement;
 
 mod working_media;
+
+mod detection;

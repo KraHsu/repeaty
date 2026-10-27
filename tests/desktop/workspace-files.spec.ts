@@ -180,6 +180,7 @@ test('duplicate identities cannot be accepted and changed files invalidate a del
   await scan(page, doc.path)
   await page.getByRole('button', { name: '移除这条笔记', exact: true }).click()
   const remove = page.getByRole('dialog', { name: '确认移除笔记', exact: true })
+  await expect(remove).toBeVisible()
   await writeFile(join(directory, 'notes/renamed.md'), doc.raw)
   await remove.getByRole('button', { name: '确认移除', exact: true }).click()
   await expect(remove.getByRole('alert')).toContainText('文件已在外部修改')

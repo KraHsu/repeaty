@@ -1,5 +1,12 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  '{count} 项文件修改待检查': '{count} file changes to review',
+  '文件检测需要检查，请打开工作目录。': 'Check Workspace for file detection issues.',
+  '自动检测暂不可用，可手动重新扫描；返回窗口时会补检。':
+    'Automatic detection is unavailable. Rescan manually; returning to this window also checks for changes.',
+  '外部修改会自动列出，确认接受后用于学习。':
+    'External changes appear here automatically. Accept them to update your study content.',
+
   '正文引用的附件已变化，接受后保存新的附件版本。':
     'An attachment used in this document has changed. Accept it to save a new version.',
   编辑材料: 'Edit source',

@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, reactive } from 'vue'
+import { computed, onMounted, onUnmounted, ref, reactive, watch } from 'vue'
 import { FolderOpen, FolderPlus, RefreshCw, X, Check } from '@lucide/vue'
 import { t, validationMessage, type DisplayMessage } from '../i18n'
 import type { useLibrary } from '../composables/useLibrary'
 import type { ChangeStatus, FileChange } from '../workspace/changes'
 import { previewScanSchema } from '../workspace/preview'
 import { createInspector } from './workspace-inspector'
+import { workspaceMonitor } from './workspace-monitor'
+import { scanSchema, type WorkspaceScan } from './workspace-scan'
 import { z } from 'zod'
 import AppModal from '../components/AppModal.vue'
 import { noteLifecycle, retiredSummarySchema, type RetiredNote } from './retirement'
@@ -44,23 +46,7 @@ const busy = ref(true),
   showAccepted = ref(false),
   query = ref(''),
   page = ref(1)
-const scanSchema = z.object({
-  accepted: z.array(
-    z.object({
-      kind: z.enum(['note', 'source']),
-      id: z.string(),
-      path: z.string(),
-      hash: z.string(),
-      raw: z.string(),
-    }),
-  ),
-  working: z.array(z.object({ path: z.string(), hash: z.string(), raw: z.string() })),
-  attention: z.array(z.object({ path: z.string(), status: z.string() })),
-  scanHash: z.string(),
-  retired: z.array(retiredSummarySchema),
-  retiredCount: z.number().int().nonnegative().default(0),
-})
-const scan = ref<z.infer<typeof scanSchema>>()
+const scan = ref<WorkspaceScan>()
 const archived = ref<{ notes: z.infer<typeof retiredSummarySchema>[]; total: number }>({
   notes: [],
   total: 0,
@@ -172,6 +158,13 @@ async function refresh() {
   if (!alive) return
   const active = status.value?.active
   if (!active) return
+  const monitor = workspaceMonitor.value
+  if (monitor?.active.token === active.token) {
+    await monitor.refresh()
+    if (alive && monitor.snapshot.value)
+      await applyScan(monitor.snapshot.value, monitor.changes.value, true)
+    return
+  }
   const value = scanSchema.parse(
     await workspaceApi('workspace_read', { token: active.token, request: { type: 'scan' } }),
   )
@@ -196,14 +189,23 @@ async function refresh() {
     }),
   )
   if (!alive) return
+  await applyScan(value, changes, true)
+}
+let displaySequence = 0
+async function applyScan(value: WorkspaceScan, changes: FileChange[], resetPage = false) {
+  if (!alive) return
+  const sequence = ++displaySequence
   scan.value = value
   if (archiveQuery.value || archivePage.value > 1) await loadArchive(archivePage.value)
   else archived.value = { notes: value.retired, total: value.retiredCount }
+  if (!alive || sequence !== displaySequence) return
   files.value = changes
   workspaceAttention.value = value.attention
   if (!changes.some((file) => file.path === selected.value)) selected.value = changes[0]?.path ?? ''
-  page.value = 1
-  await checkMedia(selected.value)
+  page.value = resetPage
+    ? 1
+    : Math.min(page.value, Math.max(1, Math.ceil(filtered.value.length / 50)))
+  if (resetPage || !workspaceMonitor.value) await checkMedia(selected.value)
 }
 type Action = {
   mode: 'accept' | 'remove' | 'restore'
@@ -239,8 +241,11 @@ const sourceAction = ref<{
   scanHash: string
 }>()
 const sourceForm = reactive({ title: '', url: '', format: 'markdown' as 'plain' | 'markdown' })
-function prepareSourceFile() {
-  if (!observed.value || !scan.value) return
+async function prepareSourceFile() {
+  const path = selected.value
+  await refresh()
+  if (selected.value !== path) throw nativeError('working-file-changed')
+  if (!observed.value?.raw || !observed.value.hash || !scan.value) return
   const parsed = readWorkspaceMarkdown(observed.value.raw)
   const doc = parsed.status === 'managed' ? parsed.document : undefined
   if (
@@ -334,6 +339,9 @@ function actionError(issue: unknown): DisplayMessage {
   return issue instanceof Error ? issue : '内容无效，修改未保存。'
 }
 async function prepare(mode: Action['mode'], retiredId?: string) {
+  const pathBefore = selected.value
+  await refresh()
+  if (mode !== 'restore' && selected.value !== pathBefore) throw nativeError('working-file-changed')
   if (!scan.value) return
   const file = current.value,
     doc = accepted.value,
@@ -444,6 +452,22 @@ async function confirmAction() {
     error.value = actionError(issue)
   }
 }
+watch(
+  [() => workspaceMonitor.value?.changes.value, () => locked.value, action, sourceAction],
+  async () => {
+    const monitor = workspaceMonitor.value
+    if (
+      !alive ||
+      locked.value ||
+      action.value ||
+      sourceAction.value ||
+      !monitor?.snapshot.value ||
+      monitor.active.token !== status.value?.active?.token
+    )
+      return
+    await applyScan(monitor.snapshot.value, monitor.changes.value)
+  },
+)
 onMounted(async () => {
   try {
     await initializeWorkspaces()
@@ -487,6 +511,15 @@ onUnmounted(() => {
       </div>
     </header>
     <p v-if="workspaceLoading" role="status">{{ t('正在读取工作目录…') }}</p>
+    <p v-if="workspaceMonitor?.error.value" class="import-warning" role="alert">
+      {{ t(workspaceMonitor.error.value) }}
+    </p>
+    <p v-if="workspaceMonitor?.available.value === false" class="form-note">
+      {{ t('自动检测暂不可用，可手动重新扫描；返回窗口时会补检。') }}
+    </p>
+    <p v-else-if="status?.active" class="form-note">
+      {{ t('外部修改会自动列出，确认接受后用于学习。') }}
+    </p>
     <p v-if="error" class="import-warning" role="alert">{{ t(error) }}</p>
     <div v-if="status?.error" class="workspace-card" role="alert">
       <p>{{ t(nativeError(status.error)) }}</p>

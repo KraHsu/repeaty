@@ -70,6 +70,7 @@ export interface FileChange {
   variants?: VariantPlan
 }
 export interface ScanOptions {
+  parse?: typeof readWorkspaceMarkdown
   // An event batch is never sufficient evidence of deletion.
   completeScan: boolean
   caseSensitive?: boolean
@@ -120,7 +121,7 @@ export function classifyWorkspaceChanges(
                 ? 'symbolic-link'
                 : 'unreadable-file',
           }
-        : readWorkspaceMarkdown(file.raw)
+        : (options.parse ?? readWorkspaceMarkdown)(file.raw)
     const identity =
       result.status === 'managed'
         ? result.document.identity

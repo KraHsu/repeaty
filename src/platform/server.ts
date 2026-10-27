@@ -18,4 +18,7 @@ export {
   PlatformSettings,
   WorkspaceBrowser,
   workspaceAvailable,
+  connectWorkspaceMonitor,
+  workspacePendingCount,
+  workspaceDetectionError,
 } from './static'

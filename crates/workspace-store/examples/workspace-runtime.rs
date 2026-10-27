@@ -32,6 +32,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 args["token"].as_str().unwrap_or(""),
                 args["request"].clone(),
             ),
+            "workspace_changes" => sessions
+                .changes(args["token"].as_str().unwrap_or(""))
+                .map(|value| serde_json::to_value(value).unwrap()),
             "workspace_write" => sessions.write(
                 args["token"].as_str().unwrap_or(""),
                 args["request"].clone(),

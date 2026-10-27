@@ -62,8 +62,8 @@ impl Drop for Lock {
     }
 }
 pub struct Library {
-    root: PathBuf,
-    anchor: Arc<Dir>,
+    pub(crate) root: PathBuf,
+    pub(crate) anchor: Arc<Dir>,
     identity: same_file::Handle,
     members: Vec<(String, same_file::Handle)>,
     pub id: String,
@@ -280,7 +280,7 @@ impl Library {
         }
         Ok(target)
     }
-    fn read_working(&self, path: &str) -> Result<Option<Vec<u8>>> {
+    pub(crate) fn read_working(&self, path: &str) -> Result<Option<Vec<u8>>> {
         self.target(path)?;
         let mut options = cap_std::fs::OpenOptions::new();
         options.read(true);
@@ -382,7 +382,7 @@ impl Library {
             json!({"accepted":accepted,"working":working,"scanHash":scan_hash,"retired":retired["notes"],"retiredCount":retired["total"],"attention":self.attention()?}),
         )
     }
-    fn walk(
+    pub(crate) fn walk(
         &self,
         path: &str,
         depth: usize,
@@ -732,6 +732,8 @@ impl Library {
                 self.document_rows(Some(&ids), true)
             }
             "scan" => self.scan(),
+            "observe" => self.observe(&request),
+            "inspect-assets" => self.inspect_assets(&request),
             "retired-list" => retirement::listing(
                 &self.db.connection,
                 request["query"].as_str().ok_or_else(Error::invalid)?,

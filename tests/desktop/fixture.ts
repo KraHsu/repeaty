@@ -59,8 +59,18 @@ export const test = base.extend<{ native: void; emptyWorkspace: void }>({
           mcpKey = 0,
           requestId = 0
         let channel: { onmessage(request: unknown): void } | undefined
+        let watchId = 0
+        let watching: { id: string; timer: ReturnType<typeof setInterval> } | undefined
         const pending = new Map<string, (value: unknown) => void>()
         Object.defineProperty(window, '__repeatyTestMcpFailReply', { value: false, writable: true })
+        Object.defineProperty(window, '__repeatyTestDropWatchEvents', {
+          value: false,
+          writable: true,
+        })
+        Object.defineProperty(window, '__repeatyTestDroppedWatchEvents', {
+          value: 0,
+          writable: true,
+        })
         const status = () => ({
           enabled: mcpEnabled,
           available: mcpAvailable,
@@ -81,6 +91,45 @@ export const test = base.extend<{ native: void; emptyWorkspace: void }>({
             transformCallback: () => ++callbackId,
             unregisterCallback: () => {},
             invoke: async (command: string, args: Record<string, unknown>) => {
+              if (command === 'workspace_watch') {
+                if (watching) clearInterval(watching.timer)
+                const id = 'watch-' + ++watchId
+                const listener = args.onChange as { onmessage(event: unknown): void }
+                let waiting = false
+                const timer = setInterval(async () => {
+                  if (waiting || watching?.id !== id) return
+                  waiting = true
+                  try {
+                    const value = await (
+                      window as unknown as {
+                        __repeatyWorkspace(command: string, args: unknown): Promise<unknown>
+                      }
+                    ).__repeatyWorkspace('workspace_changes', { token: args.token })
+                    if (value && watching?.id === id) {
+                      const controls = window as unknown as {
+                        __repeatyTestDropWatchEvents: boolean
+                        __repeatyTestDroppedWatchEvents: number
+                      }
+                      if (controls.__repeatyTestDropWatchEvents)
+                        controls.__repeatyTestDroppedWatchEvents++
+                      else listener.onmessage(value)
+                    }
+                  } catch {
+                    clearInterval(timer)
+                  } finally {
+                    waiting = false
+                  }
+                }, 100)
+                watching = { id, timer }
+                return id
+              }
+              if (command === 'workspace_unwatch') {
+                if (watching && watching.id === args.id) {
+                  clearInterval(watching.timer)
+                  watching = undefined
+                }
+                return
+              }
               if (command === 'mcp_attach') {
                 channel = args.onRequest as typeof channel
                 mcpEnabled = false

@@ -233,13 +233,12 @@ try {
     join(selected, moved),
     original.replace('Native workspace question🙂', '外部编辑后的题目🙂'),
   )
-  await click('重新扫描')
   await until(
     () =>
       execute(
         "return [...document.querySelectorAll('.workspace-file')].some(b=>b.textContent.includes('改名并修改'))",
       ),
-    'external rename detected',
+    'external rename detected automatically',
   )
   await execute(
     "[...document.querySelectorAll('.workspace-file')].find(b=>b.textContent.includes('改名并修改')).click()",

@@ -1,7 +1,10 @@
-import { inspectPreview, type PreviewScan } from './preview'
-self.onmessage = (event: MessageEvent<{ id: number; scan: PreviewScan }>) => {
+import { createPreviewReceiver, type PreviewScan, type PreviewPatch } from './preview'
+const inspect = createPreviewReceiver()
+self.onmessage = (
+  event: MessageEvent<{ id: number; scan?: PreviewScan; patch?: PreviewPatch }>,
+) => {
   try {
-    self.postMessage({ id: event.data.id, changes: inspectPreview(event.data.scan) })
+    self.postMessage({ id: event.data.id, changes: inspect(event.data) })
   } catch (error) {
     self.postMessage({
       id: event.data.id,
