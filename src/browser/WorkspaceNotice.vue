@@ -2,7 +2,11 @@
 import { onMounted, onUnmounted } from 'vue'
 import { FolderOpen } from '@lucide/vue'
 import { t } from '../i18n'
-import { browserWorkspace } from './state'
+import { storeToRefs } from 'pinia'
+import { useBrowserWorkspaceStore } from '../stores/browser-workspace'
+const browserState = useBrowserWorkspaceStore()
+const { active: browserWorkspace } = storeToRefs(browserState)
+
 const props = defineProps<{ scope: string }>()
 defineEmits<{ open: [] }>()
 function beforeUnload(event: BeforeUnloadEvent) {

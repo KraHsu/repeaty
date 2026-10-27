@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { notifications } from '../notifications'
+import { useNotifications } from '../notifications'
 import { popupEnabled } from '../preferences'
 import NotificationToast from './NotificationToast.vue'
+const { notifications } = useNotifications()
+
 const floating = computed(() => notifications.value.filter((entry) => popupEnabled(entry.level)))
 const inline = computed(() => notifications.value.filter((entry) => !popupEnabled(entry.level)))
 const top = ref(90)

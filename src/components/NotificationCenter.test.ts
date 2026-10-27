@@ -1,12 +1,15 @@
+import { createPinia } from 'pinia'
 // @vitest-environment happy-dom
 import { createApp, nextTick } from 'vue'
 import { expect, it, vi } from 'vitest'
 import NotificationCenter from './NotificationCenter.vue'
-import { notify, clearNotifications, dismissNotificationContext } from '../notifications'
+import { useNotifications } from '../notifications'
 import { restorePreferences, setPreference } from '../preferences'
 import { setLocale } from '../i18n'
 
 it('expires only info, pauses its timer on hover, and keeps warnings/errors dismissible when popups are disabled', async () => {
+  const pinia = createPinia()
+  const { notify, clearNotifications, dismissNotificationContext } = useNotifications(pinia)
   vi.useFakeTimers()
   localStorage.clear()
   restorePreferences()
@@ -14,7 +17,7 @@ it('expires only info, pauses its timer on hover, and keeps warnings/errors dism
   setLocale('en')
   const host = document.createElement('div')
   document.body.append(host)
-  const app = createApp(NotificationCenter)
+  const app = createApp(NotificationCenter).use(pinia)
   app.mount(host)
   try {
     notify('Information')

@@ -9,7 +9,10 @@ import { readBrowserWorkspace } from './worker-client'
 import { createBrowserRepository, type BrowserWorkspaceSource } from './repository'
 import { WorkspaceReadError, workspaceReadCode } from './errors'
 import type { ReadDirectoryHandle, WorkspaceSelection } from './workspace-files'
-import { browserWorkspace } from './state'
+import { storeToRefs } from 'pinia'
+import { useBrowserWorkspaceStore } from '../stores/browser-workspace'
+const browserState = useBrowserWorkspaceStore()
+const { active: browserWorkspace } = storeToRefs(browserState)
 
 const props = defineProps<{ workspace: ReturnType<typeof useLibrary> }>()
 const emit = defineEmits<{ changed: [] }>()
@@ -103,18 +106,17 @@ async function activate(confirmed = false) {
   const source = candidate.value
   candidate.value = undefined // Ownership transfers to the repository, including on failure.
   const repo = createBrowserRepository(source, () => {
-    if (browserWorkspace.value?.scope === repo.scope())
-      browserWorkspace.value = { ...browserWorkspace.value, changed: true }
+    browserState.markChanged(repo.scope())
   })
   try {
     await props.workspace.replaceRepository(repo)
-    browserWorkspace.value = {
+    browserState.open({
       scope: repo.scope(),
       id: source.snapshot.id,
       name: source.snapshot.name,
       revision: source.snapshot.revision,
       changed: false,
-    }
+    })
     if (alive) emit('changed')
   } catch (issue) {
     if (alive) error.value = issue as Error
@@ -131,7 +133,7 @@ async function finish(confirmed = false) {
     await props.workspace.replaceRepository(
       createRepository('repeaty', undefined, { compactHistory: true }),
     )
-    browserWorkspace.value = null
+    browserState.clear()
     if (alive) emit('changed')
   } catch (issue) {
     if (alive) error.value = issue as Error

@@ -1,6 +1,6 @@
 import { type DisplayMessage } from '../i18n'
 import { ref, watch } from 'vue'
-import { notify, dismissInfoNotifications } from '../notifications'
+import { useNotifications } from '../notifications'
 import { onScopeDispose } from 'vue'
 import type { useLibrary } from '../composables/useLibrary'
 import type { useStudyClock } from './useStudyClock'
@@ -12,6 +12,8 @@ export function useOperationRunner({
   workspace: ReturnType<typeof useLibrary>
   refreshClock: ReturnType<typeof useStudyClock>['refreshClock']
 }) {
+  const { notify, dismissInfoNotifications } = useNotifications()
+
   let appAlive = true
   onScopeDispose(() => {
     appAlive = false

@@ -2,7 +2,9 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { X, Info, TriangleAlert, CircleAlert } from '@lucide/vue'
 import { t } from '../i18n'
-import { dismissNotification, type Notification } from '../notifications'
+import { useNotifications, type Notification } from '../notifications'
+const { dismissNotification } = useNotifications()
+
 const props = defineProps<{ entry: Notification; inline?: boolean }>()
 const icon = computed(() =>
   props.entry.level === 'error'

@@ -1,3 +1,4 @@
+import { installApplicationState } from '../stores'
 // @vitest-environment happy-dom
 import 'fake-indexeddb/auto'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -31,6 +32,7 @@ async function language(value: string) {
 async function start() {
   initI18n()
   app = createApp(App)
+  installApplicationState(app)
   app.mount(host)
   await vi.waitFor(() => expect(host.querySelector('.dashboard')).not.toBeNull())
   // Loading the library reveals the dashboard before snapshot metadata finishes.

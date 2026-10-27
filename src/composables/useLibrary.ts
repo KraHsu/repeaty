@@ -1,21 +1,19 @@
-import { computed, readonly } from 'vue'
-import { createLibraryState } from './library-state'
-import { createLibraryService } from '../application/library'
-import { createWorkspaceRepository } from '@repeaty-platform'
-import { remoteWorkspace, desktopEdition } from '../edition'
-import { canReviewCard } from '../plugins'
+import { readonly } from 'vue'
+import { storeToRefs, type Pinia } from 'pinia'
+import { useLibraryStore } from '../stores/library'
+import type { createLibraryService } from '../application/library'
 
-/** Vue view of the application service; persistence and commands have no component owner. */
-export function useLibrary() {
-  const state = createLibraryState()
-  const service = createLibraryService(state, {
-    createWorkspaceRepository,
-    remoteWorkspace,
-    desktopEdition,
-    canReviewCard,
-  })
+/** Ref-based reader port shared by views, MCP and directory adapters. */
+export function useLibrary(pinia?: Pinia) {
+  const store = useLibraryStore(pinia)
+  const state = storeToRefs(store)
+  const actions = Object.fromEntries(
+    Object.entries(store).filter(
+      ([key, value]) => !key.startsWith('$') && !key.startsWith('_') && typeof value === 'function',
+    ),
+  ) as ReturnType<typeof createLibraryService>['commands']
   return {
-    ...service.commands,
+    ...actions,
     library: state.library,
     scope: readonly(state.scope),
     ready: readonly(state.ready),
@@ -24,8 +22,8 @@ export function useLibrary() {
     backups: readonly(state.backups),
     backupError: readonly(state.backupError),
     readingUndo: readonly(state.readingUndo),
-    lastOperation: computed(service.getters.lastOperation),
-    canUndoOperation: computed(service.getters.canUndoOperation),
-    canUndoReading: computed(service.getters.canUndoReading),
+    lastOperation: state.lastOperation,
+    canUndoOperation: state.canUndoOperation,
+    canUndoReading: state.canUndoReading,
   }
 }

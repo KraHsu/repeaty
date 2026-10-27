@@ -44,14 +44,36 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
   let repository: LibraryRepository
   let savingDone: Promise<void> = Promise.resolve()
   let backupRead = 0
+  let epoch = 0
+  let initialization: Promise<void> | undefined
+  const closing = new WeakMap<LibraryRepository, Promise<void>>()
+  function release(target?: LibraryRepository) {
+    if (!target) return Promise.resolve()
+    let pending = closing.get(target)
+    if (!pending) {
+      pending = Promise.resolve().then(() => target.close())
+      closing.set(target, pending)
+    }
+    return pending
+  }
   async function refreshBackups() {
     const target = repository,
       request = ++backupRead
     const entries = await target.listBackups()
     if (target === repository && request === backupRead) backups.value = entries
   }
-  async function init() {
-    if (busy.value) return
+  function init(): Promise<void> {
+    if (initialization) return initialization
+    if (busy.value) return Promise.resolve()
+    const pending = load()
+    initialization = pending
+    return pending.finally(() => {
+      if (initialization === pending) initialization = undefined
+    })
+  }
+  async function load() {
+    const owner = ++epoch
+    const owns = () => owner === epoch
     busy.value = true
     ready.value = false
     scope.value = ''
@@ -59,12 +81,21 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
     operations.value = []
     legacyUndo = true
     try {
-      await repository?.close()
-      repository = await createWorkspaceRepository(() => {
+      await savingDone
+      await release(repository)
+      if (!owns()) return
+      const candidate = await createWorkspaceRepository(() => {
+        if (!owns()) return
         loadError.value =
           '数据库升级正在等待旧版本标签页关闭。请关闭其他 Repeaty 页面，完成后会自动继续。'
       })
-      const saved = await initializeWorkspace(repository)
+      if (!owns()) {
+        await release(candidate)
+        return
+      }
+      repository = candidate
+      const saved = await initializeWorkspace(candidate)
+      if (!owns()) return
       library.value = saved.library
       scope.value = repository.scope()
       revision = saved.revision
@@ -72,26 +103,34 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
       loadError.value = ''
       await refreshBackups()
     } catch (error) {
+      if (!owns()) return
       loadError.value =
         remoteWorkspace.value || desktopEdition
           ? (error as Error)
           : '无法读取本地数据库。请确认浏览器允许本站使用存储，再刷新页面。已有数据不会被自动覆盖。'
     } finally {
-      busy.value = false
+      if (owns()) busy.value = false
     }
   }
   async function replaceRepository(next: typeof repository) {
     if (next === repository) return
     if (busy.value) {
-      await next.close()
+      await release(next)
       throw new LocalizedError(msg('正在保存，请稍候。'))
     }
     busy.value = true
     const previous = repository
+    let owner = epoch
     try {
+      await savingDone
       // A failed candidate must not close or replace the user's current library.
       const saved = await next.load()
       const entries = await next.listBackups()
+      if (owner !== epoch) {
+        await release(next)
+        throw new LocalizedError(msg('学习库内容已变化，请重新载入。'))
+      }
+      owner = ++epoch
       repository = next
       ++backupRead
       library.value = saved.library
@@ -104,12 +143,12 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
       backupError.value = ''
       ready.value = true
       scope.value = next.scope()
-      await previous?.close().catch(() => {})
+      await release(previous).catch(() => {})
     } catch (error) {
-      if (repository !== next) await next.close()
+      if (repository !== next) await release(next)
       throw error
     } finally {
-      busy.value = false
+      if (owner === epoch) busy.value = false
     }
   }
   async function commit(
@@ -128,6 +167,12 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
   ) {
     if (busy.value) throw new LocalizedError(msg('正在保存，请稍候。'))
     if (!ready.value) throw new LocalizedError(msg('本地数据库尚未准备好。'))
+    const owner = epoch,
+      targetRepository = repository,
+      ownerScope = scope.value,
+      ownerRevision = revision
+    const owns = () =>
+      owner === epoch && targetRepository === repository && ownerScope === scope.value
     busy.value = true
     let finishSave!: () => void
     savingDone = new Promise((resolve) => {
@@ -150,18 +195,20 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
             !change.after &&
             !hasAttemptBody(change.before as import('../core/practice-data').AttemptRecord)
           )
-            change.before = await repository.getAttempt(change.id, revision)
+            change.before = await targetRepository.getAttempt(change.id, ownerRevision)
       }
       const priorReading = readingUndo.value
       const removedAssets: MediaUpload[] = []
       if (entry)
         for (const change of entry.changes) {
           if (change.store === 'media' && change.before && !change.after) {
-            const blob = await repository.getMedia(change.id)
+            const blob = await targetRepository.getMedia(change.id)
             if (blob) removedAssets.push({ meta: change.before as Library['media'][number], blob })
           }
         }
-      const saved = await repository.save(next, revision, options)
+      if (!owns()) throw new LocalizedError(msg('学习库内容已变化，请重新载入。'))
+      const saved = await targetRepository.save(next, ownerRevision, options)
+      if (!owns()) return
       library.value = saved.library
       revision = saved.revision
       if (entry)
@@ -196,7 +243,7 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
         throw new LocalizedError(msg('本地数据库版本已更新，请刷新当前页面后重试。'))
       throw error
     } finally {
-      busy.value = false
+      if (owns()) busy.value = false
       finishSave()
     }
   }
@@ -403,8 +450,15 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
         }
       },
       close() {
+        ++epoch
+        ++backupRead
+        initialization = undefined
+        ready.value = false
+        busy.value = false
+        scope.value = ''
         operations.value = []
-        return repository?.close()
+        const target = repository
+        return savingDone.then(() => release(target))
       },
       queryCards(
         filter: SearchFilter,

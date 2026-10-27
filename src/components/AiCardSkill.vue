@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import { t } from '../i18n'
-import { notify } from '../notifications'
+import { useNotifications } from '../notifications'
 import { createExportFile } from '@repeaty-platform'
+const { notify } = useNotifications()
+
 const url = `${import.meta.env.BASE_URL}skills/repeaty-cards/SKILL.md`
 const text = ref(''),
   loading = ref(true),

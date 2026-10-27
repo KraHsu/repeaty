@@ -2,7 +2,7 @@ import { watch } from 'vue'
 import { useLibrary } from '../composables/useLibrary'
 import { useReadingProgress } from '../composables/useReadingProgress'
 import { useOffline } from '../composables/useOffline'
-import { clearNotifications } from '../notifications'
+import { useNotifications } from '../notifications'
 import { useStudyClock } from './useStudyClock'
 import { useAppNavigation } from './useAppNavigation'
 import { useLibraryQueries } from './useLibraryQueries'
@@ -16,6 +16,8 @@ import { useApplicationLifecycle } from './useApplicationLifecycle'
 
 /** One composition root owns UI controllers and connects the selected storage adapter. */
 export function createApplication() {
+  const { clearNotifications } = useNotifications()
+
   const workspace = useLibrary()
   const readingProgress = useReadingProgress(workspace)
   const offline = useOffline()

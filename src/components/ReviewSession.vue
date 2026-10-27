@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t, msg } from '../i18n'
-import { notify } from '../notifications'
+import { useNotifications } from '../notifications'
 
 import { defineAsyncComponent, computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import {
@@ -34,6 +34,7 @@ import { questionPlugin, canReviewCard, enabledReviewPanels } from '../plugins'
 import type { QuestionState } from '../plugins/types'
 import type { Assessment } from '../plugins/data'
 import type { Practice, Attempt } from '../core/practice-data'
+const { notify } = useNotifications()
 
 const SourceContext = defineAsyncComponent(() => import('./SourceContext.vue'))
 const props = defineProps<{

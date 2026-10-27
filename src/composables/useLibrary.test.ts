@@ -1,3 +1,4 @@
+import { createPinia } from 'pinia'
 import 'fake-indexeddb/auto'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createWorkspaceRepository } from '@repeaty-platform'
@@ -30,7 +31,7 @@ async function setup(library = fixture(), assets: import('../core/model').MediaU
     }
     return createRepository(name, undefined, { compactHistory: true })
   })
-  const workspace = useLibrary()
+  const workspace = useLibrary(createPinia())
   workspaces.push(workspace)
   await workspace.init()
   expect(workspace.ready.value).toBe(true)

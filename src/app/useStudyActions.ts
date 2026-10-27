@@ -2,7 +2,7 @@ import { t, msg } from '../i18n'
 import { computed, nextTick, ref } from 'vue'
 import { shortcutBlocked } from '../shortcuts'
 import type { Operation } from '../core/operations'
-import { dismissNotificationContext } from '../notifications'
+import { useNotifications } from '../notifications'
 import type { BatchEdit } from '../core/batch'
 import type { AnkiImportPlan, AnkiSelection } from '../core/anki/changes'
 import type { CardAction } from '../core/scheduler'
@@ -57,6 +57,8 @@ export function useStudyActions({
   sourceDraft: ReturnType<typeof useEditorActions>['sourceDraft']
   selectedDeck: ReturnType<typeof useAppNavigation>['selectedDeck']
 }) {
+  const { dismissNotificationContext } = useNotifications()
+
   const mixedRatio = ref(3)
   const undoingAction = ref(false)
   const reviewBindings = computed(() => ({
