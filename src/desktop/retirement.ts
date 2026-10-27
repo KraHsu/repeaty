@@ -54,6 +54,7 @@ export function noteLifecycle(
   const note = noteSchema.parse({
     ...input,
     excerpt: input.excerpt ?? previous?.excerpt,
+    inlineMedia: input.inlineMedia ?? previous?.inlineMedia,
     id,
     createdAt: previous?.createdAt ?? now.toISOString(),
     updatedAt: now.toISOString(),
@@ -99,7 +100,14 @@ export function noteLifecycle(
   }
   const media = new Map(library.media.map((meta) => [meta.id, meta]))
   for (const meta of retired?.media ?? [])
-    if ([...note.frontMedia, ...note.backMedia].includes(meta.id) && !media.has(meta.id))
+    if (
+      [
+        ...note.frontMedia,
+        ...note.backMedia,
+        ...(note.inlineMedia ?? []).map((ref) => ref.mediaId),
+      ].includes(meta.id) &&
+      !media.has(meta.id)
+    )
       media.set(meta.id, meta)
   const next = pruneMedia({
     ...library,

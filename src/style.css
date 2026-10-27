@@ -2294,10 +2294,21 @@ select {
   margin-bottom: 0;
 }
 .markdown-content img,
+.markdown-content audio,
 .markdown-content svg:not(.katex svg) {
   display: block;
   max-width: 100%;
   margin-inline: auto;
+}
+.source-version-list {
+  display: grid;
+  gap: 1rem;
+  padding: 0;
+  list-style: none;
+}
+.source-version-list li {
+  display: grid;
+  gap: 0.5rem;
 }
 .plain-paragraph {
   margin: 0 0 1em;

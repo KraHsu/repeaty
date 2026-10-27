@@ -14,6 +14,7 @@ jsonschema = { version = "0.37", default-features = false }
 sha2 = "0.10"
 uuid = { version = "1", features = ["v4"] }
 cap-std = "4.0.3"
+cap-primitives = "4.0.3"
 same-file = "1"
 base64 = "0.22"
 

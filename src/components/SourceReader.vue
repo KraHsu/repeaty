@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { t } from '../i18n'
+import { useInlineMedia } from '../composables/useInlineMedia'
 import type { Source, SourceOrigin, ReadingPosition, ReadingUpdate } from '../core/source-data'
 import { sourceExcerpt } from '../core/sources'
 import { renderReadingMarkdown } from '../core/content'
@@ -11,7 +12,12 @@ import {
   previewSourceOffset,
 } from './reading-position'
 
-const props = defineProps<{ source: Source; text: string; scope: string }>()
+const props = defineProps<{
+  source: Source
+  text: string
+  scope: string
+  getMedia?: (id: string) => Promise<Blob | undefined>
+}>()
 const emit = defineEmits<{
   select: [sourceId: string, start: number, end: number]
   position: [update: ReadingUpdate]
@@ -19,7 +25,12 @@ const emit = defineEmits<{
 const preview = ref(props.source.reading?.view === 'preview' && props.source.format === 'markdown')
 const reader = ref<HTMLTextAreaElement>(),
   rendered = ref<HTMLElement>()
-const html = computed(() => renderReadingMarkdown(props.text))
+const media = useInlineMedia(() => ({
+  text: props.text,
+  media: preview.value ? props.source.inlineMedia : undefined,
+  read: props.getMedia,
+}))
+const html = computed(() => renderReadingMarkdown(props.text, media.urls.value))
 let mirror: TextareaPosition | undefined, observer: ResizeObserver | undefined
 const restoring = ref(true)
 let alive = true
@@ -176,6 +187,9 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
     @mouseup="selected"
     @touchend="selected"
   />
+  <p v-if="media.error.value" role="alert" class="form-note">
+    {{ t('部分媒体无法读取，请从完整备份恢复。') }}
+  </p>
 </template>
 
 <style scoped>

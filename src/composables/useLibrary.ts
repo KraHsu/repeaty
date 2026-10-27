@@ -40,7 +40,9 @@ import {
   removeSource,
   saveReadingPosition,
   prepareSourceExcerpt,
+  replaceSourceContent,
 } from '../core/sources'
+import { sourceAtVersion } from '../core/source-data'
 import type {
   SourceInput,
   SourceExcerpt,
@@ -152,6 +154,7 @@ export function useLibrary() {
       consumeCardDraft?: string
       externalDocuments?: DocumentWrite[]
       scanHash?: string
+      assetObservations?: { path: string; hash: string }[]
       backgroundMetadata?: boolean
       undoLabel?: MessageKey | false
       undoKind?: Operation['kind']
@@ -320,12 +323,13 @@ export function useLibrary() {
       throw new LocalizedError(msg('练习记录已变化，请重新打开题目后重试。'))
     return attempt
   }
-  async function getSource(id: string, signal?: AbortSignal) {
+  async function getSource(id: string, signal?: AbortSignal, mediaId?: string) {
     const target = repository,
       expectedScope = scope.value
     await savingDone
     signal?.throwIfAborted()
-    const source = library.value.sources.find((entry) => entry.id === id)
+    const entry = library.value.sources.find((entry) => entry.id === id)
+    const source = entry && sourceAtVersion(entry, mediaId)
     if (!source || !expectedScope || expectedScope !== scope.value || target !== repository)
       throw new LocalizedError(msg('材料已不存在，请刷新后重试。'))
     const base = library.value
@@ -335,7 +339,8 @@ export function useLibrary() {
     if (
       target !== repository ||
       expectedScope !== scope.value ||
-      current?.mediaId !== source.mediaId
+      !current ||
+      !sourceAtVersion(current, source.mediaId)
     )
       throw new LocalizedError(msg('材料已不存在，请刷新后重试。'))
     return content
@@ -694,7 +699,7 @@ export function useLibrary() {
       if (draftId) draftRepository(expectedScope)
       busy.value = true
       try {
-        const text = await getSource(excerpt.sourceId)
+        const text = await getSource(excerpt.sourceId, undefined, excerpt.mediaId)
         if (
           text.slice(excerpt.start, excerpt.end) !== excerpt.quote ||
           expectedScope !== scope.value
@@ -720,18 +725,108 @@ export function useLibrary() {
         throw new LocalizedError(msg('本地数据库尚未准备好。'))
       return repository.retiredNote(id)
     },
-    acceptExternalNote(id: string, input: NoteInput, document: DocumentWrite, scanHash?: string) {
+    async acceptExternalNote(
+      id: string,
+      input: NoteInput,
+      document: DocumentWrite,
+      scanHash?: string,
+    ) {
+      const target = repository
+      const media =
+        scanHash && document.raw && 'externalMedia' in target
+          ? await target.externalMedia(document.raw, document.path)
+          : { inlineMedia: input.inlineMedia, assets: [], assetObservations: [] }
+      if (target !== repository) throw new LocalizedError(msg('材料已变化，请重新打开后继续阅读。'))
       return commit(
         async (current) => {
           if (!('retiredNote' in repository)) return saveNote(current, input, id)
           const retired = await repository.retiredNote(id)
-          return noteLifecycle(current, input, id, retired, true).library
+          return noteLifecycle(
+            { ...current, media: [...current.media, ...media.assets.map((asset) => asset.meta)] },
+            { ...input, inlineMedia: media.inlineMedia },
+            id,
+            retired,
+            true,
+          ).library
         },
         {
           externalDocuments: [document],
           scanHash,
           reason: '接受外部修改前',
           undoLabel: '编辑卡片',
+          assets: media.assets,
+          assetObservations: media.assetObservations,
+        },
+      )
+    },
+    async acceptExternalSource(
+      id: string,
+      input: SourceInput,
+      document: DocumentWrite,
+      scanHash: string,
+    ) {
+      const target = repository
+      const media =
+        document.raw && 'externalMedia' in target
+          ? await target.externalMedia(document.raw, document.path)
+          : { inlineMedia: [], assets: [], assetObservations: [] }
+      if (target !== repository) throw new LocalizedError(msg('材料已变化，请重新打开后继续阅读。'))
+      const previous = library.value.sources.find((source) => source.id === id)
+      const oldText = previous ? await getSource(id) : undefined
+      const prepared =
+        previous &&
+        (oldText !== input.content.replace(/\r\n?/g, '\n') ||
+          previous.format !== input.format ||
+          JSON.stringify(previous.inlineMedia ?? []) !== JSON.stringify(media.inlineMedia))
+          ? replaceSourceContent(library.value, id, input)
+          : undefined
+      const added = !previous ? prepareSource(input) : undefined
+      if (added) added.source.id = id
+      if (prepared) prepared.source.inlineMedia = media.inlineMedia
+      if (added) added.source.inlineMedia = media.inlineMedia
+      const assets = [
+        ...(prepared ? [prepared.asset] : added ? [added.asset] : []),
+        ...media.assets,
+      ]
+      return commit(
+        (current) => {
+          if (previous && current.sources.find((source) => source.id === id) !== previous)
+            throw new LocalizedError(msg('材料已变化，请重新打开后继续阅读。'))
+          if (prepared)
+            return {
+              ...current,
+              sources: current.sources.map((source) =>
+                source.id === id ? prepared.source : source,
+              ),
+              media: [...current.media, ...assets.map((asset) => asset.meta)],
+            }
+          if (added)
+            return addSource(
+              { ...current, media: [...current.media, ...media.assets.map((asset) => asset.meta)] },
+              added.source,
+              added.asset,
+            )
+          const next = editSourceDetails(
+            current,
+            id,
+            previous!.mediaId,
+            { title: previous!.title, url: previous!.url },
+            input,
+          )
+          return {
+            ...next,
+            sources: next.sources.map((source) =>
+              source.id === id ? { ...source, acceptedAt: new Date().toISOString() } : source,
+            ),
+          }
+        },
+        {
+          assets,
+          externalDocuments: [document],
+          scanHash,
+          reason: '接受外部修改前',
+          undoLabel: '编辑材料',
+          assetObservations: media.assetObservations,
         },
       )
     },

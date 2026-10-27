@@ -5,11 +5,13 @@ import {
   librarySchema,
   workspaceLibrarySchema,
   validateLibraryReferences,
+  mediaSchema,
   recordSchemas,
   type Library,
   type MediaUpload,
   type SearchFilter,
 } from '../core/model'
+import type { InlineMedia } from '../core/inline-media-data'
 import {
   attemptSchema,
   hasAttemptBody,
@@ -118,6 +120,7 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
         consumeCardDraft?: string
         externalDocuments?: DocumentWrite[]
         scanHash?: string
+        assetObservations?: { path: string; hash: string }[]
       } = {},
     ): Promise<Snapshot> {
       if (!cached) await repository.load()
@@ -179,6 +182,8 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
         if (patch.positionOnly) return false
         if (patch.store === 'notes') return true
         if (patch.store !== 'sources') return false
+        if (options.externalDocuments?.some((doc) => doc.kind === 'source' && doc.id === patch.id))
+          return true
         const before = previous.sources.find((entry) => entry.id === patch.id)
         const after = patch.value as Library['sources'][number] | undefined
         return (
@@ -319,6 +324,7 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
           reason: options.reason ?? null,
           consumeCardDraft: options.consumeCardDraft ?? null,
           scanHash: options.scanHash ?? null,
+          assetObservations: options.assetObservations ?? [],
         },
       })
       if (result.revision !== expectedRevision + 1) throw changed()
@@ -335,6 +341,74 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
           : library,
       }
       return cached
+    },
+    async externalMedia(raw: string, path: string) {
+      const { localMediaReferences } = await import('../core/inline-media')
+      const parsed = readWorkspaceMarkdown(raw)
+      if (parsed.status !== 'managed') throw nativeError('invalid-data')
+      const doc = parsed.document
+      const refs =
+        doc.header.format === 'plain'
+          ? new Map<string, string>()
+          : localMediaReferences(
+              doc.content.kind === 'source'
+                ? doc.content.body
+                : doc.content.front + '\n\n' + doc.content.back,
+              path,
+            )
+      const paths = [...new Set(refs.values())]
+      const snapshots = paths.length
+        ? z
+            .array(
+              z.object({
+                path: z.string(),
+                hash: z.string().regex(/^[a-f0-9]{64}$/),
+                type: z.string(),
+                body: z.string(),
+              }),
+            )
+            .parse(await read({ type: 'asset-files', paths }))
+        : []
+      const before =
+        (doc.identity.kind === 'source' ? cached?.library.sources : cached?.library.notes)?.find(
+          (entry) => entry.id === doc.identity.id,
+        )?.inlineMedia ?? []
+      const assets: MediaUpload[] = [],
+        inlineMedia: InlineMedia = []
+      const ids = new Map<string, string>()
+      for (const [url, path] of refs) {
+        const snapshot = snapshots.find((snapshot) => snapshot.path === path)
+        if (!snapshot) throw nativeError('not-found')
+        const key = snapshot.hash + ':' + snapshot.type
+        let id =
+          ids.get(key) ??
+          before.find(
+            (ref) =>
+              ref.hash === snapshot.hash &&
+              cached!.library.media.some(
+                (meta) => meta.id === ref.mediaId && meta.type === snapshot.type,
+              ),
+          )?.mediaId
+        if (!id) {
+          id = crypto.randomUUID()
+          const blob = decodeBlob(snapshot)
+          const meta = mediaSchema.parse({
+            id,
+            name: path.split('/').at(-1),
+            type: snapshot.type,
+            size: blob.size,
+            createdAt: new Date().toISOString(),
+          })
+          assets.push({ meta, blob })
+        }
+        ids.set(key, id)
+        inlineMedia.push({ url, path, mediaId: id, hash: snapshot.hash })
+      }
+      return {
+        inlineMedia,
+        assets,
+        assetObservations: snapshots.map(({ path, hash }) => ({ path, hash })),
+      }
     },
     async retiredNote(id: string): Promise<RetiredNote> {
       const result = retiredNoteSchema.parse(await read({ type: 'retired-note', id }))

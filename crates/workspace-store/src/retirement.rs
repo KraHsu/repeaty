@@ -120,7 +120,7 @@ pub fn note(db: &Connection, id: &str) -> Result<Value> {
     }
     result["media"] = json!(records(
         db,
-        "SELECT m.data FROM retired_media m WHERE m.id IN (SELECT value FROM retired_notes n,json_each(json_extract(n.data,'$.frontMedia')) WHERE n.id=?1 UNION SELECT value FROM retired_notes n,json_each(json_extract(n.data,'$.backMedia')) WHERE n.id=?1)",
+        "SELECT m.data FROM retired_media m WHERE m.id IN (SELECT value FROM retired_notes n,json_each(json_extract(n.data,'$.frontMedia')) WHERE n.id=?1 UNION SELECT value FROM retired_notes n,json_each(json_extract(n.data,'$.backMedia')) WHERE n.id=?1 UNION SELECT json_extract(value,'$.mediaId') FROM retired_notes n,json_each(json_extract(n.data,'$.inlineMedia')) WHERE n.id=?1)",
         id
     )?);
     Ok(result)

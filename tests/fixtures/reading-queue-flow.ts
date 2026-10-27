@@ -1,3 +1,4 @@
+import { notesAfterSourceRekey } from './source-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import type { Library } from '../../src/core/model'
@@ -226,7 +227,9 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
   const after = await read()
   expect(after.sources.find((source) => source.id === first.id)!.queue).toEqual(planned.queue)
   for (const store of ['notes', 'cards', 'reviews', 'practices', 'attempts'] as const)
-    expect(after[store]).toEqual(baseline[store])
+    expect(after[store]).toEqual(
+      store === 'notes' ? notesAfterSourceRekey(baseline, after) : baseline[store],
+    )
   await page.locator('.source-list-title').filter({ hasText: 'Queue A' }).click()
   await expect(page.locator('.source-text')).toHaveAttribute('aria-busy', 'false')
   expect(

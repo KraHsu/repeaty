@@ -1,6 +1,7 @@
 import type { Library } from './model'
 import {
   characterBoundary,
+  referencedSource,
   type Source,
   type SourceExcerpt,
   type SourceOrigin,
@@ -18,7 +19,11 @@ export function excerptsForSource(library: Library, sourceId: string): SavedExce
   if (!root) return []
   const entries = new Map<string, SavedExcerpt>()
   for (const source of library.sources)
-    if (source.kind === 'excerpt' && source.origin?.sourceId === sourceId)
+    if (
+      source.kind === 'excerpt' &&
+      source.origin?.sourceId === sourceId &&
+      referencedSource(root, source.origin)?.mediaId === root.mediaId
+    )
       entries.set(source.id, { source, origin: source.origin, cards: 0 })
   const noteSources = new Map<string, SavedExcerpt>()
   for (const note of library.notes) {

@@ -14,3 +14,5 @@ pub mod library;
 pub mod sessions;
 
 mod retirement;
+
+mod working_media;

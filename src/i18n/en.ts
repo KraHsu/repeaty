@@ -1,5 +1,23 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  '正文引用的附件已变化，接受后保存新的附件版本。':
+    'An attachment used in this document has changed. Accept it to save a new version.',
+  编辑材料: 'Edit source',
+  '正在查看摘录保存时的版本。': 'This is the version saved with the excerpt.',
+  '这篇摘录已经编辑，出处保留最初摘录的原文。':
+    'This excerpt has been edited. Its origin still points to the original quotation.',
+  '接受新版本后，已有摘录继续引用原版。阅读安排保持不变。':
+    'Existing excerpts will keep their original version. The reading schedule stays the same.',
+  接受材料修改: 'Accept source changes',
+  '来源链接（选填）': 'Source URL (optional)',
+  '正文或附件变更后，从新版开头阅读；只改标题或文件名会保留当前位置。阅读安排、摘录和卡片进度不变。':
+    'Changes to text or attachments start a new version at the beginning. Renaming the title or file keeps your location. Schedules, excerpts and card progress stay the same.',
+  历史版本: 'Previous versions',
+  '旧版正文和阅读位置保留。查看旧版不会改变当前阅读进度。':
+    'Previous text and reading locations are kept. Viewing a previous version leaves your current reading progress unchanged.',
+  '版本 {number} · {date}': 'Version {number} · {date}',
+  '阅读位置：{offset}': 'Reading location: {offset}',
+
   '请先创建卡组，再添加或恢复笔记。': 'Create a deck before adding or restoring a note.',
   查找: 'Find',
   '确定删除「{name}」吗？其中的 {count} 张卡片将退出学习队列，笔记与记录仍可在工作目录中恢复。':

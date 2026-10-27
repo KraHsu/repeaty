@@ -1,3 +1,4 @@
+import { notesAfterSourceRekey } from './source-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import type { Library } from '../../src/core/model'
@@ -185,7 +186,9 @@ export async function readingIntervalFlow(
   expect(after.sources.find((source) => source.id === root.id)!.readingIntervalDays).toBe(1)
   expect(after.sources.find((source) => source.id === child.id)!.readingIntervalDays).toBe(1)
   for (const store of ['notes', 'cards', 'reviews', 'practices', 'attempts'] as const)
-    expect(after[store]).toEqual(before[store])
+    expect(after[store]).toEqual(
+      store === 'notes' ? notesAfterSourceRekey(before, after) : before[store],
+    )
   dialog = await openReadSchedule(page, 3)
   await dialog.getByRole('button', { name: '取消', exact: true }).click()
 }

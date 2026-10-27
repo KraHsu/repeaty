@@ -65,11 +65,100 @@
         "required": ["intervalDays", "factor", "lastReadOn", "readCount", "feedback"],
         "additionalProperties": false
       },
+      "inlineMedia": {
+        "maxItems": 64,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "url": { "type": "string", "minLength": 1, "maxLength": 2048 },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024,
+              "pattern": "^assets\\/"
+            },
+            "mediaId": { "type": "string", "minLength": 1, "maxLength": 150 },
+            "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          },
+          "required": ["url", "path", "mediaId", "hash"],
+          "additionalProperties": false
+        }
+      },
+      "versions": {
+        "maxItems": 1000,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+            "url": {
+              "default": "",
+              "type": "string",
+              "maxLength": 2048,
+              "pattern": "^(?:https?:\\/\\/[^\\s]+)?$"
+            },
+            "mediaId": { "type": "string", "minLength": 1, "maxLength": 100 },
+            "format": { "type": "string", "enum": ["plain", "markdown"] },
+            "characters": { "type": "integer", "minimum": 1, "maximum": 250000 },
+            "acceptedAt": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            },
+            "inlineMedia": {
+              "maxItems": 64,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "url": { "type": "string", "minLength": 1, "maxLength": 2048 },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024,
+                    "pattern": "^assets\\/"
+                  },
+                  "mediaId": { "type": "string", "minLength": 1, "maxLength": 150 },
+                  "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+                },
+                "required": ["url", "path", "mediaId", "hash"],
+                "additionalProperties": false
+              }
+            },
+            "reading": {
+              "type": "object",
+              "properties": {
+                "offset": { "type": "integer", "minimum": 0, "maximum": 250000 },
+                "fraction": { "type": "number", "minimum": 0, "maximum": 1 },
+                "view": { "type": "string", "enum": ["source", "preview"] },
+                "updatedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                }
+              },
+              "required": ["offset", "fraction", "view", "updatedAt"],
+              "additionalProperties": false
+            },
+            "derived": { "type": "boolean", "const": true }
+          },
+          "required": ["title", "url", "mediaId", "format", "characters", "acceptedAt"],
+          "additionalProperties": false
+        }
+      },
+      "acceptedAt": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+      },
+      "derived": { "type": "boolean", "const": true },
       "kind": { "type": "string", "const": "excerpt" },
       "origin": {
         "type": "object",
         "properties": {
           "sourceId": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "mediaId": { "type": "string", "minLength": 1, "maxLength": 100 },
           "start": { "type": "integer", "minimum": 0, "maximum": 250000 },
           "end": { "type": "integer", "exclusiveMinimum": 0, "maximum": 250000 }
         },
@@ -138,12 +227,33 @@
         "type": "object",
         "properties": {
           "sourceId": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "mediaId": { "type": "string", "minLength": 1, "maxLength": 100 },
           "start": { "type": "integer", "minimum": 0, "maximum": 250000 },
           "end": { "type": "integer", "exclusiveMinimum": 0, "maximum": 250000 },
           "quote": { "type": "string", "minLength": 1, "maxLength": 10000 }
         },
         "required": ["sourceId", "start", "end", "quote"],
         "additionalProperties": false
+      },
+      "inlineMedia": {
+        "maxItems": 64,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "url": { "type": "string", "minLength": 1, "maxLength": 2048 },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024,
+              "pattern": "^assets\\/"
+            },
+            "mediaId": { "type": "string", "minLength": 1, "maxLength": 150 },
+            "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          },
+          "required": ["url", "path", "mediaId", "hash"],
+          "additionalProperties": false
+        }
       },
       "format": { "default": "plain", "type": "string", "enum": ["plain", "markdown"] },
       "front": { "type": "string", "minLength": 1, "maxLength": 10000 },

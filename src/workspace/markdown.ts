@@ -307,18 +307,37 @@ export function registerWorkspaceNote(
     format: 'plain' | 'markdown'
   },
 ): WorkspaceDocument {
+  return registerWorkspaceFile(raw, { kind: 'note', ...defaults })
+}
+export function registerWorkspaceSource(
+  raw: string,
+  defaults: { id: string; format: 'plain' | 'markdown' },
+): WorkspaceDocument {
+  return registerWorkspaceFile(raw, { kind: 'source', ...defaults })
+}
+function registerWorkspaceFile(
+  raw: string,
+  defaults: {
+    kind: 'note' | 'source'
+    id: string
+    format: 'plain' | 'markdown'
+    type?: string
+    deckId?: string
+  },
+): WorkspaceDocument {
   const existing = readWorkspaceMarkdown(raw)
   if (existing.status === 'pending') fail(existing.reason)
   if (
     existing.status === 'managed' &&
-    (existing.document.identity.kind !== 'note' || existing.document.identity.id !== defaults.id)
+    (existing.document.identity.kind !== defaults.kind ||
+      existing.document.identity.id !== defaults.id)
   )
     fail('not-a-note')
   const opening = /^(?:\uFEFF)?---(\r?\n)/.exec(raw)
   const eol = (opening?.[1] ?? (raw.includes('\r\n') ? '\r\n' : '\n')) as '\n' | '\r\n'
   let body = raw.replace(/^\uFEFF/, ''),
     header: string
-  const values = { version: 1, kind: 'note', ...defaults }
+  const values = { version: 1, ...defaults }
   if (opening) {
     const close = /^---(\r?\n|$)/gm
     close.lastIndex = opening[0].length

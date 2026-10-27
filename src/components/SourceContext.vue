@@ -11,7 +11,8 @@ const props = defineProps<{
   origin?: Source
   sources?: Source[]
   excerpt?: SourceExcerpt
-  read: (id: string, signal?: AbortSignal) => Promise<string>
+  getMedia?: (id: string) => Promise<Blob | undefined>
+  read: (id: string, signal?: AbortSignal, mediaId?: string) => Promise<string>
 }>()
 const emit = defineEmits<{ close: [] }>()
 const level = ref(0)
@@ -43,7 +44,7 @@ async function load() {
   error.value = ''
   text.value = ''
   try {
-    const body = await props.read(shown.value.id, current.signal)
+    const body = await props.read(shown.value.id, current.signal, shown.value.mediaId)
     if (!current.signal.aborted) text.value = body
   } catch (issue) {
     if (!current.signal.aborted) error.value = issue as Error
@@ -88,7 +89,20 @@ const matches = computed(
         </button>
       </div>
       <p class="form-note">
-        {{ t('保存于 {date}', { date: new Date(shown.createdAt).toLocaleString(locale) }) }}
+        {{
+          t('保存于 {date}', {
+            date: new Date(shown.acceptedAt ?? shown.createdAt).toLocaleString(locale),
+          })
+        }}
+      </p>
+      <p
+        v-if="sources?.some((source) => source.id === shown.id && source.mediaId !== shown.mediaId)"
+        class="form-note"
+      >
+        {{ t('正在查看摘录保存时的版本。') }}
+      </p>
+      <p v-if="shown.derived" class="form-note">
+        {{ t('这篇摘录已经编辑，出处保留最初摘录的原文。') }}
       </p>
       <a
         v-if="shown.url"
@@ -119,7 +133,13 @@ const matches = computed(
         >
           {{ t(preview ? '显示原文与摘录位置' : '阅读 Markdown 预览') }}
         </button>
-        <CardContent v-if="preview" :text="text" format="markdown" />
+        <CardContent
+          v-if="preview"
+          :text="text"
+          format="markdown"
+          :inline-media="shown.inlineMedia"
+          :get-media="getMedia"
+        />
         <div v-else class="source-original" tabindex="0" :aria-label="t('原文快照')">
           <template v-if="selected && matches"
             >{{ text.slice(0, selected.start)

@@ -418,8 +418,14 @@ impl Database {
     /// reading-position save happens every few hundred milliseconds while scrolling.
     fn validate_patch(tx: &Transaction<'_>, patch: &Patch, previous: Option<&Value>) -> Result<()> {
         match patch.store.as_str() {
-            "sources" => Self::validate_source(tx, patch, previous),
-            "notes" => Self::validate_note(tx, patch, previous),
+            "sources" => {
+                Self::validate_source(tx, patch, previous)?;
+                Self::validate_inline_media(tx, patch, previous)
+            }
+            "notes" => {
+                Self::validate_note(tx, patch, previous)?;
+                Self::validate_inline_media(tx, patch, previous)
+            }
             "media" => Self::validate_media(tx, patch),
             "reviews" | "practices" | "attempts" => Self::validate_history(tx, patch),
             _ => Ok(()),
@@ -428,11 +434,36 @@ impl Database {
     fn exists(tx: &Transaction<'_>, sql: &str, id: &str) -> Result<bool> {
         Ok(tx.query_row(sql, [id], |row| row.get(0))?)
     }
+    fn validate_inline_media(
+        tx: &Transaction<'_>,
+        patch: &Patch,
+        previous: Option<&Value>,
+    ) -> Result<()> {
+        let Some(value) = &patch.value else {
+            return Ok(());
+        };
+        if previous.is_some_and(|before| {
+            before["inlineMedia"] == value["inlineMedia"] && before["versions"] == value["versions"]
+        }) {
+            return Ok(());
+        }
+        for snapshot in
+            std::iter::once(value).chain(value["versions"].as_array().into_iter().flatten())
+        {
+            for reference in snapshot["inlineMedia"].as_array().into_iter().flatten() {
+                let valid: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM assets a JOIN media m ON m.id=a.id WHERE a.id=?1 AND substr(a.path,1,64)=?2 AND a.mime NOT LIKE 'text/%')", params![reference["mediaId"].as_str().unwrap_or(""), reference["hash"].as_str().unwrap_or("")], |row| row.get(0))?;
+                if !valid {
+                    return Err(Error::invalid());
+                }
+            }
+        }
+        Ok(())
+    }
     fn validate_media(tx: &Transaction<'_>, patch: &Patch) -> Result<()> {
         let Some(value) = patch.value.as_ref() else {
             // Deleting an asset that a note still attaches would leave a dangling reference.
             let referenced: bool = tx.query_row(
-                "SELECT EXISTS(SELECT 1 FROM notes n, json_each(json_extract(n.data,'$.frontMedia')) m WHERE m.value=?1) OR EXISTS(SELECT 1 FROM notes n, json_each(json_extract(n.data,'$.backMedia')) m WHERE m.value=?1)",
+                "SELECT EXISTS(SELECT 1 FROM notes n, json_each(json_extract(n.data,'$.frontMedia')) m WHERE m.value=?1) OR EXISTS(SELECT 1 FROM notes n, json_each(json_extract(n.data,'$.backMedia')) m WHERE m.value=?1) OR EXISTS(SELECT 1 FROM sources s, json_each(json_extract(s.data,'$.versions')) v WHERE json_extract(v.value,'$.mediaId')=?1) OR EXISTS(SELECT 1 FROM (SELECT data FROM notes UNION ALL SELECT data FROM sources) r,json_each(json_extract(r.data,'$.inlineMedia')) m WHERE json_extract(m.value,'$.mediaId')=?1) OR EXISTS(SELECT 1 FROM sources s,json_each(json_extract(s.data,'$.versions')) v,json_each(json_extract(v.value,'$.inlineMedia')) m WHERE json_extract(m.value,'$.mediaId')=?1)",
                 [&patch.id],
                 |row| row.get(0),
             )?;
@@ -529,18 +560,40 @@ impl Database {
             }
         }
     }
-    fn source_body(tx: &Transaction<'_>, id: &str) -> Result<Vec<u16>> {
+    fn source_snapshot(source: &Value, reference: &Value) -> Result<Value> {
+        let versions = source["versions"].as_array();
+        let id = reference["mediaId"]
+            .as_str()
+            .or_else(|| {
+                versions
+                    .and_then(|v| v.first())
+                    .and_then(|v| v["mediaId"].as_str())
+            })
+            .or_else(|| source["mediaId"].as_str());
+        if id == source["mediaId"].as_str() {
+            return Ok(source.clone());
+        }
+        versions
+            .and_then(|v| v.iter().find(|v| v["mediaId"].as_str() == id))
+            .cloned()
+            .ok_or_else(Error::invalid)
+    }
+    fn source_body(tx: &Transaction<'_>, source: &Value) -> Result<Vec<u16>> {
         let body: Vec<u8> = tx
             .query_row(
-                "SELECT asset_bytes(a.path) FROM sources s JOIN assets a ON a.id=s.media_id WHERE s.id=?1",
-                [id],
+                "SELECT asset_bytes(path) FROM assets WHERE id=?1",
+                [source["mediaId"].as_str().unwrap_or("")],
                 |row| row.get(0),
             )
             .map_err(|_| Error::invalid())?;
-        Ok(std::str::from_utf8(&body)
-            .map_err(|_| Error::invalid())?
-            .encode_utf16()
-            .collect())
+        let text = std::str::from_utf8(&body).map_err(|_| Error::invalid())?;
+        if text.trim().is_empty()
+            || text.contains('\r')
+            || text.encode_utf16().count() as u64 != source["characters"].as_u64().unwrap_or(0)
+        {
+            return Err(Error::invalid());
+        }
+        Ok(text.encode_utf16().collect())
     }
     fn validate_source(
         tx: &Transaction<'_>,
@@ -548,11 +601,9 @@ impl Database {
         previous: Option<&Value>,
     ) -> Result<()> {
         let Some(value) = patch.value.as_ref() else {
-            // A deleted snapshot must not leave excerpts or notes pointing at it.
             let referenced: bool = tx.query_row(
                 "SELECT EXISTS(SELECT 1 FROM sources WHERE json_extract(data,'$.origin.sourceId')=?1) OR EXISTS(SELECT 1 FROM notes WHERE json_extract(data,'$.excerpt.sourceId')=?1)",
-                [&patch.id],
-                |row| row.get(0),
+                [&patch.id], |row| row.get(0),
             )?;
             return if referenced {
                 Err(Error::invalid())
@@ -560,130 +611,162 @@ impl Database {
                 Ok(())
             };
         };
-        if let Some(reading) = value.get("reading").filter(|reading| !reading.is_null()) {
-            let preview = reading["view"].as_str() == Some("preview");
-            if reading["offset"].as_u64().unwrap_or(0) > value["characters"].as_u64().unwrap_or(0)
-                || (preview && value["format"].as_str() != Some("markdown"))
-                || (!preview && reading["fraction"].as_f64().unwrap_or(0.0) != 0.0)
-            {
+        let versions = value["versions"].as_array().cloned().unwrap_or_default();
+        let mut seen = HashSet::new();
+        for snapshot in std::iter::once(value).chain(versions.iter()) {
+            if !seen.insert(snapshot["mediaId"].as_str().unwrap_or("")) {
                 return Err(Error::invalid());
             }
+            if let Some(reading) = snapshot.get("reading").filter(|v| !v.is_null()) {
+                let preview = reading["view"].as_str() == Some("preview");
+                if reading["offset"].as_u64().unwrap_or(0)
+                    > snapshot["characters"].as_u64().unwrap_or(0)
+                    || (preview && snapshot["format"].as_str() != Some("markdown"))
+                    || (!preview && reading["fraction"].as_f64().unwrap_or(0.0) != 0.0)
+                {
+                    return Err(Error::invalid());
+                }
+            }
         }
-        let mime = if value["format"].as_str() == Some("markdown") {
-            "text/markdown"
-        } else {
-            "text/plain"
-        };
-        let media_ok: bool = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM media m WHERE m.id=?1 AND json_extract(m.data,'$.type')=?2 AND json_extract(m.data,'$.size')<=1048576)",
-            params![value["mediaId"].as_str().unwrap_or(""), mime],
-            |row| row.get(0),
-        )?;
-        if !media_ok {
-            return Err(Error::invalid());
-        }
-        // A position save only moves offsets. The snapshot body cannot have changed unless one
-        // of these fields did, so the body read (and excerpt re-validation) is skipped.
+        // Queue/position-only saves never read source bodies or scan the workspace.
         let content_changed = previous.is_none_or(|before| {
-            before["mediaId"] != value["mediaId"]
-                || before["characters"] != value["characters"]
-                || before["format"] != value["format"]
-                || before["kind"] != value["kind"]
-                || before["origin"] != value["origin"]
+            [
+                "mediaId",
+                "characters",
+                "format",
+                "kind",
+                "origin",
+                "versions",
+                "derived",
+                "inlineMedia",
+            ]
+            .iter()
+            .any(|key| before[key] != value[key])
         });
         if !content_changed {
             return Ok(());
         }
-        let body: Vec<u8> = tx
-            .query_row(
-                "SELECT asset_bytes(path) FROM assets WHERE id=?1",
-                [value["mediaId"].as_str().unwrap_or("")],
-                |row| row.get(0),
-            )
-            .map_err(|_| Error::invalid())?;
-        let text = std::str::from_utf8(&body).map_err(|_| Error::invalid())?;
-        if text.trim().is_empty()
-            || text.contains('\r')
-            || text.encode_utf16().count() as u64 != value["characters"].as_u64().unwrap_or(0)
-        {
-            return Err(Error::invalid());
+        if let Some(before) = previous {
+            // A snapshot identity includes its attachment bindings. Reusing the text
+            // media ID with different attachments would silently alter old quotations.
+            for snapshot in std::iter::once(value).chain(versions.iter()) {
+                if let Ok(old) =
+                    Self::source_snapshot(before, &json!({"mediaId":snapshot["mediaId"]}))
+                {
+                    for key in ["format", "characters", "inlineMedia", "derived"] {
+                        let same = if key == "inlineMedia" {
+                            old[key].as_array().cloned().unwrap_or_default()
+                                == snapshot[key].as_array().cloned().unwrap_or_default()
+                        } else {
+                            old[key] == snapshot[key]
+                        };
+                        if !same {
+                            return Err(Error::invalid());
+                        }
+                    }
+                }
+            }
         }
-        if let Some(origin) = value.get("origin").filter(|origin| !origin.is_null()) {
-            let parent_id = origin["sourceId"].as_str().unwrap_or("");
-            let start = origin["start"].as_u64().unwrap_or(0) as usize;
-            let end = origin["end"].as_u64().unwrap_or(0) as usize;
-            let row: Option<String> = tx
-                .query_row("SELECT data FROM sources WHERE id=?1", [parent_id], |row| {
-                    row.get(0)
-                })
-                .optional()?;
-            let Some(row) = row else {
-                return Err(Error::invalid());
-            };
-            let parent: Value = serde_json::from_str(&row)?;
-            if parent_id == patch.id
+        let parent = if let Some(origin) = value.get("origin").filter(|v| !v.is_null()) {
+            if origin["sourceId"].as_str() == Some(patch.id.as_str())
                 || value["kind"].as_str() != Some("excerpt")
-                || end <= start
-                || end - start != value["characters"].as_u64().unwrap_or(0) as usize
-                || end - start > 10_000
-                || end > parent["characters"].as_u64().unwrap_or(0) as usize
-                || parent["format"] != value["format"]
             {
                 return Err(Error::invalid());
             }
             let mut seen = HashSet::from([patch.id.clone()]);
-            let mut current = parent_id.to_owned();
+            let mut current = origin["sourceId"].as_str().unwrap_or("").to_owned();
             let mut depth = 0;
             loop {
                 depth += 1;
                 if depth > 32 || !seen.insert(current.clone()) {
                     return Err(Error::invalid());
                 }
-                let next: Option<String> = tx
+                let row: String = tx
                     .query_row("SELECT data FROM sources WHERE id=?1", [&current], |row| {
                         row.get(0)
                     })
-                    .optional()?;
-                let Some(next) = next else { break };
-                let next: Value = serde_json::from_str(&next)?;
+                    .map_err(|_| Error::invalid())?;
+                let next: Value = serde_json::from_str(&row)?;
                 match next["origin"]["sourceId"].as_str() {
                     Some(parent) => current = parent.to_owned(),
                     None => break,
                 }
             }
-            let original = Self::source_body(tx, parent_id)?;
-            let quote: Vec<u16> = text.encode_utf16().collect();
-            if original.get(start..end) != Some(quote.as_slice()) {
+            let row: String = tx
+                .query_row(
+                    "SELECT data FROM sources WHERE id=?1",
+                    [origin["sourceId"].as_str().unwrap_or("")],
+                    |row| row.get(0),
+                )
+                .map_err(|_| Error::invalid())?;
+            Some(Self::source_snapshot(&serde_json::from_str(&row)?, origin)?)
+        } else {
+            None
+        };
+        for snapshot in std::iter::once(value).chain(versions.iter()) {
+            let mime = if snapshot["format"].as_str() == Some("markdown") {
+                "text/markdown"
+            } else {
+                "text/plain"
+            };
+            let media_ok: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM media WHERE id=?1 AND json_extract(data,'$.type')=?2 AND json_extract(data,'$.size')<=1048576)", params![snapshot["mediaId"].as_str().unwrap_or(""), mime], |row| row.get(0))?;
+            if !media_ok {
                 return Err(Error::invalid());
             }
+            let body = Self::source_body(tx, snapshot)?;
+            if let Some(parent) = &parent {
+                let origin = &value["origin"];
+                let start = origin["start"].as_u64().unwrap_or(0) as usize;
+                let end = origin["end"].as_u64().unwrap_or(0) as usize;
+                let derived = snapshot["derived"].as_bool() == Some(true);
+                let original = Self::source_body(tx, parent)?;
+                if end <= start
+                    || end - start > 10_000
+                    || end > original.len()
+                    || (!derived
+                        && (snapshot["format"] != parent["format"]
+                            || original.get(start..end) != Some(body.as_slice())))
+                {
+                    return Err(Error::invalid());
+                }
+            }
         }
-        // Replacing a snapshot body can break excerpts recorded against the old text.
-        if previous.is_some_and(|before| before["mediaId"] != value["mediaId"]) {
-            let original: Vec<u16> = text.encode_utf16().collect();
-            let mut stmt = tx.prepare(
-                "SELECT data FROM sources WHERE json_extract(data,'$.origin.sourceId')=?1",
-            )?;
-            let children: Vec<String> = stmt
-                .query_map([&patch.id], |row| row.get(0))?
-                .collect::<rusqlite::Result<_>>()?;
-            drop(stmt);
-            for child in children {
-                let child: Value = serde_json::from_str(&child)?;
-                let start = child["origin"]["start"].as_u64().unwrap_or(0) as usize;
-                let end = child["origin"]["end"].as_u64().unwrap_or(0) as usize;
-                let child_body: Vec<u8> = tx
-                    .query_row(
-                        "SELECT asset_bytes(path) FROM assets WHERE id=?1",
-                        [child["mediaId"].as_str().unwrap_or("")],
-                        |row| row.get(0),
-                    )
-                    .map_err(|_| Error::invalid())?;
-                let child_text: Vec<u16> = std::str::from_utf8(&child_body)
-                    .map_err(|_| Error::invalid())?
+        // Every existing quote must still resolve, including a reference without an explicit version.
+        let mut statement = tx.prepare("SELECT data, 'source' FROM sources WHERE json_extract(data,'$.origin.sourceId')=?1 UNION ALL SELECT data, 'note' FROM notes WHERE json_extract(data,'$.excerpt.sourceId')=?1")?;
+        let references = statement
+            .query_map([&patch.id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        for (data, kind) in references {
+            let child: Value = serde_json::from_str(&data)?;
+            let reference = &child[if kind == "source" {
+                "origin"
+            } else {
+                "excerpt"
+            }];
+            let parent = Self::source_snapshot(value, reference)?;
+            let text = Self::source_body(tx, &parent)?;
+            let start = reference["start"].as_u64().unwrap_or(0) as usize;
+            let end = reference["end"].as_u64().unwrap_or(0) as usize;
+            if kind == "note" {
+                let quote: Vec<u16> = reference["quote"]
+                    .as_str()
+                    .unwrap_or("")
                     .encode_utf16()
                     .collect();
-                if original.get(start..end) != Some(child_text.as_slice()) {
+                if text.get(start..end) != Some(quote.as_slice()) {
                     return Err(Error::invalid());
+                }
+            } else {
+                for snapshot in std::iter::once(&child)
+                    .chain(child["versions"].as_array().into_iter().flatten())
+                {
+                    if snapshot["derived"].as_bool() != Some(true)
+                        && text.get(start..end) != Some(Self::source_body(tx, snapshot)?.as_slice())
+                    {
+                        return Err(Error::invalid());
+                    }
                 }
             }
         }
@@ -723,7 +806,7 @@ impl Database {
             let Some(row) = row else {
                 return Err(Error::invalid());
             };
-            let source: Value = serde_json::from_str(&row)?;
+            let source = Self::source_snapshot(&serde_json::from_str(&row)?, excerpt)?;
             let start = excerpt["start"].as_u64().unwrap_or(0) as usize;
             let end = excerpt["end"].as_u64().unwrap_or(0) as usize;
             let quote = excerpt["quote"].as_str().ok_or_else(Error::invalid)?;
@@ -734,7 +817,7 @@ impl Database {
             {
                 return Err(Error::invalid());
             }
-            let text = Self::source_body(tx, source_id)?;
+            let text = Self::source_body(tx, &source)?;
             if text.get(start..end) != Some(utf16.as_slice()) {
                 return Err(Error::invalid());
             }

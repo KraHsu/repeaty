@@ -147,8 +147,18 @@ export async function nestedDailyFlow(page: Page, read: () => Promise<Library>, 
   const root = tree.sources.find((source) => source.title === 'Original🙂')!
   const child = tree.sources.find((source) => source.title === 'Paragraph🙂')!
   const leaf = tree.sources.find((source) => source.title === 'Key idea🙂')!
-  expect(child.origin).toEqual({ sourceId: root.id, start, end: start + sentence.length })
-  expect(leaf.origin).toEqual({ sourceId: child.id, start: at, end: at + 4 })
+  expect(child.origin).toEqual({
+    sourceId: root.id,
+    mediaId: root.mediaId,
+    start,
+    end: start + sentence.length,
+  })
+  expect(leaf.origin).toEqual({
+    sourceId: child.id,
+    mediaId: child.mediaId,
+    start: at,
+    end: at + 4,
+  })
   await page.getByRole('button', { name: '用此摘录制卡', exact: true }).click()
   await page.getByLabel('正面 · 问题', { exact: true }).fill('What is the key idea?')
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()

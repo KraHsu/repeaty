@@ -105,12 +105,34 @@ export function rekeyBackup(data: BackupData): BackupData {
       sources: data.library.sources.map((source) => ({
         ...source,
         mediaId: ids.get(source.mediaId)!,
+        inlineMedia: source.inlineMedia?.map((ref) => ({ ...ref, mediaId: ids.get(ref.mediaId)! })),
+        versions: source.versions?.map((version) => ({
+          ...version,
+          mediaId: ids.get(version.mediaId)!,
+          inlineMedia: version.inlineMedia?.map((ref) => ({
+            ...ref,
+            mediaId: ids.get(ref.mediaId)!,
+          })),
+        })),
+        origin: source.origin
+          ? {
+              ...source.origin,
+              ...(source.origin.mediaId ? { mediaId: ids.get(source.origin.mediaId)! } : {}),
+            }
+          : undefined,
       })),
       media: data.library.media.map((meta) => ({ ...meta, id: ids.get(meta.id)! })),
       notes: data.library.notes.map((note) => ({
         ...note,
+        inlineMedia: note.inlineMedia?.map((ref) => ({ ...ref, mediaId: ids.get(ref.mediaId)! })),
         frontMedia: note.frontMedia.map((id) => ids.get(id)!),
         backMedia: note.backMedia.map((id) => ids.get(id)!),
+        excerpt: note.excerpt
+          ? {
+              ...note.excerpt,
+              ...(note.excerpt.mediaId ? { mediaId: ids.get(note.excerpt.mediaId)! } : {}),
+            }
+          : undefined,
       })),
     },
     assets: data.assets.map((entry) => ({

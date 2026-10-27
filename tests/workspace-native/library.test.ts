@@ -12,7 +12,17 @@ import { initializeWorkspace } from '../../src/core/onboarding'
 import { reviewCard, undoReview } from '../../src/core/scheduler'
 import { saveNote, removeNotes } from '../../src/core/model'
 import { noteLifecycle } from '../../src/desktop/retirement'
-import { prepareSource, addSource, saveReadingPosition } from '../../src/core/sources'
+import {
+  prepareSource,
+  prepareSourceExcerpt,
+  sourceExcerpt,
+  replaceSourceContent,
+  readSource,
+  addSource,
+  saveReadingPosition,
+} from '../../src/core/sources'
+import { sourceAtVersion } from '../../src/core/source-data'
+import { exportBackup, parseBackup, rekeyBackup } from '../../src/core/backups'
 import { readWorkspaceMarkdown, registerWorkspaceNote } from '../../src/workspace/markdown'
 import { sha256 } from '../../src/workspace/source-revisions'
 import type { CardDraft } from '../../src/core/card-draft-data'
@@ -119,6 +129,173 @@ async function docs(env: Awaited<ReturnType<typeof workspace>>) {
   })
 }
 describe('the desktop workspace is the learning store', () => {
+  it('accepts source versions with old excerpt anchors and locations intact across restart and complete backup', async () => {
+    const env = await workspace()
+    await env.repo.load()
+    const body = '开头🙂\n旧版摘录\n' + '长文本。'.repeat(20_000)
+    const root = prepareSource({ title: '材料', url: '', format: 'markdown', content: body }, now)
+    const quote = sourceExcerpt(root.source, body, body.indexOf('旧版'), body.indexOf('旧版') + 4)
+    const child = prepareSourceExcerpt(root.source, body, quote, '摘录', now)
+    let library = addSource(
+      addSource(fixture(), root.source, root.asset),
+      child.source,
+      child.asset,
+    )
+    library = saveNote(library, { ...input, excerpt: quote }, library.notes[0]!.id)
+    library = saveReadingPosition(
+      library,
+      root.source.id,
+      root.source.mediaId,
+      { offset: 60_000, fraction: 0, view: 'source' },
+      now,
+    )
+    let saved = await env.repo.save(reviewCard(library, library.cards[0]!.id, 3, now), 0, {
+      assets: [root.asset, child.asset],
+    })
+    const beforeEdit = saved.library
+    const doc = (await docs(env)).find((doc) => doc.id === root.source.id)!
+    const raw = doc.raw.replace(body, '更短的第二版🙂')
+    await writeFile(join(env.path, doc.path), raw)
+    const changed = replaceSourceContent(saved.library, root.source.id, {
+      title: '材料',
+      url: '',
+      format: 'markdown',
+      content: '更短的第二版🙂',
+    })
+    saved = await env.repo.save(changed.library, saved.revision, {
+      assets: [changed.asset],
+      externalDocuments: [
+        {
+          kind: doc.kind,
+          id: doc.id,
+          path: doc.path,
+          raw,
+          expectedHash: doc.hash,
+          workingHash: await sha256(new TextEncoder().encode(raw)),
+        },
+      ],
+    })
+    expect(saved.library.cards).toEqual(beforeEdit.cards)
+    expect(saved.library.reviews).toHaveLength(1)
+    expect(saved.library.sources[0]!.versions![0]!.reading!.offset).toBe(60_000)
+    await expect(
+      env.repo.save(
+        {
+          ...saved.library,
+          sources: saved.library.sources.map((source) =>
+            source.id === root.source.id ? { ...source, versions: [] } : source,
+          ),
+        },
+        saved.revision,
+      ),
+    ).rejects.toThrow()
+    await env.runtime.stop()
+    const runtime = host(env.device)
+    const status = statusSchema.parse(await runtime.api('workspace_status'))
+    const repo = createNativeRepository(status.active!, runtime.api)
+    const reopened = await repo.load()
+    expect(reopened).toEqual(saved)
+    expect(
+      await readSource(
+        sourceAtVersion(reopened.library.sources[0]!, root.source.mediaId)!,
+        reopened.library,
+        repo.getMedia,
+      ),
+    ).toBe(body)
+    expect(await readSource(reopened.library.sources[0]!, reopened.library, repo.getMedia)).toBe(
+      '更短的第二版🙂',
+    )
+    const backup = rekeyBackup(parseBackup(await exportBackup(reopened.library, repo.getMedia)))
+    expect(backup.library.notes[0]!.excerpt!.mediaId).toBe(
+      backup.library.sources[0]!.versions![0]!.mediaId,
+    )
+    expect(backup.library.cards).toEqual(saved.library.cards)
+  })
+
+  it('snapshots relative image/audio files, rejects races and unsafe paths, and retains older bytes after replacement', async () => {
+    const env = await workspace()
+    await env.repo.load()
+    let saved = await env.repo.save(fixture({ format: 'markdown' }), 0)
+    const doc = (await docs(env))[0]!
+    const picture = 'assets/图片.png',
+      sound = 'assets/sound.ogg'
+    const oldPicture = Uint8Array.from([137, 80, 78, 71, 1]),
+      oldSound = Uint8Array.from([79, 103, 103, 83, 1])
+    await writeFile(join(env.path, picture), oldPicture)
+    await writeFile(join(env.path, sound), oldSound)
+    const raw = doc.raw.replace(
+      'Question',
+      '![示例](../assets/%E5%9B%BE%E7%89%87.png)\n<audio src="../assets/sound.ogg" controls></audio>',
+    )
+    await writeFile(join(env.path, doc.path), raw)
+    const media = await env.repo.externalMedia(raw, doc.path)
+    expect(media.inlineMedia).toHaveLength(2)
+    const next = saveNote(
+      {
+        ...saved.library,
+        media: [...saved.library.media, ...media.assets.map((asset) => asset.meta)],
+      },
+      {
+        ...input,
+        format: 'markdown',
+        front:
+          '![示例](../assets/%E5%9B%BE%E7%89%87.png)\n<audio src="../assets/sound.ogg" controls></audio>\n',
+        inlineMedia: media.inlineMedia,
+      },
+      saved.library.notes[0]!.id,
+    )
+    const options = {
+      assets: media.assets,
+      assetObservations: media.assetObservations,
+      externalDocuments: [
+        {
+          kind: doc.kind,
+          id: doc.id,
+          path: doc.path,
+          raw,
+          expectedHash: doc.hash,
+          workingHash: await sha256(new TextEncoder().encode(raw)),
+        },
+      ],
+    }
+    await writeFile(join(env.path, picture), Uint8Array.from([137, 80, 78, 71, 2]))
+    await expect(env.repo.save(next, saved.revision, options)).rejects.toThrow(
+      'working-file-changed',
+    )
+    expect((await env.repo.load()).revision).toBe(saved.revision)
+    await writeFile(join(env.path, picture), oldPicture)
+    saved = await env.repo.save(next, saved.revision, options)
+    const firstId = saved.library.notes[0]!.inlineMedia![0]!.mediaId
+    await writeFile(join(env.path, picture), Uint8Array.from([137, 80, 78, 71, 3]))
+    expect(new Uint8Array(await (await env.repo.getMedia(firstId))!.arrayBuffer())).toEqual(
+      oldPicture,
+    )
+    expect(
+      await env.runtime.api('workspace_read', {
+        token: env.active.token,
+        request: { type: 'check-media', kind: 'note', id: saved.library.notes[0]!.id },
+      }),
+    ).toEqual({ changed: [picture] })
+    const replacement = await env.repo.externalMedia(raw, doc.path)
+    expect(replacement.inlineMedia[0]!.mediaId).not.toBe(firstId)
+    expect(replacement.inlineMedia[1]!.mediaId).toBe(media.inlineMedia[1]!.mediaId)
+    expect(replacement.assets).toHaveLength(1)
+    for (const path of [
+      '../../secret.png',
+      '../.repeaty/private.png',
+      '/etc/image.png',
+      '..%2f..%2fsecret.png',
+    ])
+      await expect(
+        env.repo.externalMedia(raw.replace('../assets/%E5%9B%BE%E7%89%87.png', path), doc.path),
+      ).rejects.toThrow()
+    await env.runtime.stop()
+    const runtime = host(env.device)
+    const status = statusSchema.parse(await runtime.api('workspace_status'))
+    const repo = createNativeRepository(status.active!, runtime.api)
+    await repo.load()
+    expect(new Uint8Array(await (await repo.getMedia(firstId))!.arrayBuffer())).toEqual(oldPicture)
+  })
   it('creates a real workspace, seeds once and keeps its complete data after closing and copying the folder', async () => {
     const env = await workspace()
     const saved = await initializeWorkspace(env.repo)

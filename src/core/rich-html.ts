@@ -3,6 +3,7 @@ import { generate, parse, walk, type CssNode, type List } from 'css-tree'
 
 let sequence = 0
 let activeScope = ''
+let activeResources: ReadonlyMap<string, string> = new Map()
 const resourceFunctions = new Set([
   'url',
   'src',
@@ -105,16 +106,33 @@ purify.addHook('uponSanitizeAttribute', (node, data) => {
     data.attrValue = inlineStyle(data.attrValue)
     data.keepAttr = Boolean(data.attrValue)
   }
-  if (name === 'src')
+  if (name === 'src') {
+    const local = activeResources.get(data.attrValue)
+    if (
+      local &&
+      /^blob:/.test(local) &&
+      ['img', 'audio', 'source'].includes(node.nodeName.toLowerCase())
+    ) {
+      node.setAttribute(name, local)
+      data.attrValue = local
+      data.keepAttr = true
+      data.forceKeepAttr = true
+      return
+    }
     data.keepAttr =
       node.nodeName.toLowerCase() === 'img' &&
       /^data:image\/(?:png|jpeg|gif|webp|avif);base64,[a-z0-9+/=\s]+$/i.test(data.attrValue)
+  }
   if (name === 'href')
     data.keepAttr =
       node.nodeName.toLowerCase() === 'a' && /^(?:https?:\/\/|mailto:)/i.test(data.attrValue)
   if (name === 'xlink:href') data.keepAttr = false
 })
 purify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.nodeName.toLowerCase() === 'audio') {
+    node.setAttribute('controls', '')
+    node.setAttribute('preload', 'metadata')
+  }
   if (node.nodeName.toLowerCase() === 'a') {
     node.setAttribute('target', '_blank')
     node.setAttribute('rel', 'noopener noreferrer')
@@ -124,8 +142,13 @@ purify.addHook('afterSanitizeAttributes', (node) => {
 export function contentScope() {
   return 'content-' + ++sequence
 }
-export function cleanHtml(html: string, scope: string) {
+export function cleanHtml(
+  html: string,
+  scope: string,
+  resources: ReadonlyMap<string, string> = new Map(),
+) {
   activeScope = scope
+  activeResources = resources
   try {
     return purify.sanitize(html, {
       ADD_TAGS: ['style'],
@@ -145,9 +168,8 @@ export function cleanHtml(html: string, scope: string) {
         'select',
         'option',
         'template',
-        'audio',
+        ...(resources.size ? [] : ['audio', 'source']),
         'video',
-        'source',
         'foreignobject',
         'animate',
         'set',
@@ -155,6 +177,7 @@ export function cleanHtml(html: string, scope: string) {
         'use',
       ],
       FORBID_ATTR: [
+        'autoplay',
         'id',
         'name',
         'srcset',
@@ -169,6 +192,7 @@ export function cleanHtml(html: string, scope: string) {
     })
   } finally {
     activeScope = ''
+    activeResources = new Map()
   }
 }
 export function wrapHtml(html: string, scope: string) {

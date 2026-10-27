@@ -5,7 +5,7 @@ use crate::{
     error::{Error, Result},
     files,
     records::{Commit, Database},
-    retirement,
+    retirement, working_media,
 };
 use cap_std::fs::Dir;
 use rusqlite::{OptionalExtension, params};
@@ -52,6 +52,8 @@ pub struct Save {
     pub consume_card_draft: Option<String>,
     #[serde(default)]
     pub scan_hash: Option<String>,
+    #[serde(default)]
+    pub asset_observations: Vec<working_media::Observation>,
 }
 struct Lock(File);
 impl Drop for Lock {
@@ -98,12 +100,12 @@ impl Library {
         for name in [".repeaty", "notes", "sources", "assets"] {
             files::create_private_dir(&root.join(name))?;
         }
-        for name in ["objects", "staging", "retained"] {
+        for name in ["objects", "staging", "retained", "media"] {
             files::create_private_dir(&root.join(".repeaty").join(name))?;
         }
         let marker = Marker {
             format: FORMAT.into(),
-            version: 2,
+            version: 3,
             id: Uuid::new_v4().to_string(),
         };
         // Publish the marker only after the database has been initialized.
@@ -111,7 +113,7 @@ impl Library {
         let anchor = Arc::new(Dir::open_ambient_dir(&root, cap_std::ambient_authority())?);
         let db = Database::open(
             &root.join(".repeaty/state.sqlite3"),
-            Arc::new(anchor.open_dir("assets")?),
+            Arc::new(anchor.open_dir(".repeaty/media")?),
         )?;
         Self::schema(&db, &marker.id)?;
         drop(db);
@@ -140,21 +142,22 @@ impl Library {
     pub fn open(root: &Path) -> Result<Self> {
         let root = fs::canonicalize(root).map_err(io_error)?;
         plain(&root, true)?;
+        let marker: Marker =
+            serde_json::from_slice(&files::read_stable(&root.join("workspace.json"))?)?;
+        if marker.format != FORMAT || marker.version != 3 || Uuid::parse_str(&marker.id).is_err() {
+            return Err(fail("workspace-incompatible"));
+        }
         for path in [
             ".repeaty",
             ".repeaty/objects",
             ".repeaty/staging",
             ".repeaty/retained",
+            ".repeaty/media",
             "notes",
             "sources",
             "assets",
         ] {
             plain(&root.join(path), true)?;
-        }
-        let marker: Marker =
-            serde_json::from_slice(&files::read_stable(&root.join("workspace.json"))?)?;
-        if marker.format != FORMAT || marker.version != 2 || Uuid::parse_str(&marker.id).is_err() {
-            return Err(fail("workspace-incompatible"));
         }
         let lock_path = root.join(".repeaty/workspace.lock");
         let mut options = OpenOptions::new();
@@ -189,7 +192,7 @@ impl Library {
         drop(check);
         let anchor = Arc::new(Dir::open_ambient_dir(&root, cap_std::ambient_authority())?);
         let identity = same_file::Handle::from_file(anchor.try_clone()?.into_std_file())?;
-        let db = Database::open(&db_path, Arc::new(anchor.open_dir("assets")?))?;
+        let db = Database::open(&db_path, Arc::new(anchor.open_dir(".repeaty/media")?))?;
         let members = [
             ".repeaty",
             ".repeaty/state.sqlite3",
@@ -197,6 +200,7 @@ impl Library {
             ".repeaty/objects",
             ".repeaty/staging",
             ".repeaty/retained",
+            ".repeaty/media",
             "notes",
             "sources",
             "assets",
@@ -242,6 +246,7 @@ impl Library {
             ".repeaty/objects",
             ".repeaty/staging",
             ".repeaty/retained",
+            ".repeaty/media",
             "notes",
             "sources",
             "assets",
@@ -439,6 +444,7 @@ impl Library {
         {
             return Err(fail("working-file-changed"));
         }
+        working_media::verify(&self.anchor, &request.asset_observations)?;
         let mut documents = Vec::new();
         for doc in &request.documents {
             if !["note", "source"].contains(&doc.kind.as_str())
@@ -502,12 +508,48 @@ impl Library {
         }
         // Every changed note must have its editable Markdown accepted in the same transaction.
         for patch in &request.patches {
-            if patch.store == "notes"
+            let source_content = if patch.store == "sources" && !patch.position_only {
+                let previous: Option<String> = self
+                    .db
+                    .connection
+                    .query_row("SELECT data FROM sources WHERE id=?1", [&patch.id], |row| {
+                        row.get(0)
+                    })
+                    .optional()?;
+                match (previous, &patch.value) {
+                    (Some(raw), Some(value)) => {
+                        let before: Value = serde_json::from_str(&raw)?;
+                        [
+                            "title",
+                            "url",
+                            "mediaId",
+                            "format",
+                            "characters",
+                            "origin",
+                            "kind",
+                            "derived",
+                            "versions",
+                            "inlineMedia",
+                        ]
+                        .iter()
+                        .any(|key| before[key] != value[key])
+                    }
+                    _ => true,
+                }
+            } else {
+                false
+            };
+            if (patch.store == "notes" || source_content)
                 && !patch.position_only
-                && !request
-                    .documents
-                    .iter()
-                    .any(|doc| doc.kind == "note" && doc.id == patch.id)
+                && !request.documents.iter().any(|doc| {
+                    doc.kind
+                        == if patch.store == "notes" {
+                            "note"
+                        } else {
+                            "source"
+                        }
+                        && doc.id == patch.id
+                })
             {
                 return Err(Error::invalid());
             }
@@ -526,8 +568,11 @@ impl Library {
             })
             .collect::<Vec<_>>();
         let capture = &metadata;
+        let anchor = &self.anchor;
+        let observations = &request.asset_observations;
         let reactivate = &metadata;
-        let revision=self.db.commit_callbacks(Commit {expected_revision:request.expected_revision,patches,reason:request.reason},|tx|retirement::capture(tx,capture),|tx| {
+        let revision=self.db.commit_callbacks(Commit {expected_revision:request.expected_revision,patches,reason:request.reason},|tx| { working_media::verify(anchor, observations)?; retirement::capture(tx,capture) },|tx| {
+            working_media::verify(anchor, observations)?;
             retirement::reactivate(tx,reactivate)?;
             if let Some(id)=consume && tx.execute("DELETE FROM card_drafts WHERE id=?1",[id])?!=1 { return Err(Error::conflict()); }
             for (doc,hash) in &documents {
@@ -729,6 +774,69 @@ impl Library {
                 }
                 Ok(Value::Object(values))
             }
+            "check-media" => {
+                let table = match request["kind"].as_str() {
+                    Some("note") => "notes",
+                    Some("source") => "sources",
+                    _ => return Err(Error::invalid()),
+                };
+                let raw: Option<String> = self
+                    .db
+                    .connection
+                    .query_row(
+                        &format!("SELECT data FROM {table} WHERE id=?1"),
+                        [request["id"].as_str().ok_or_else(Error::invalid)?],
+                        |row| row.get(0),
+                    )
+                    .optional()?;
+                let mut changed = Vec::new();
+                let mut total = 0;
+                if let Some(raw) = raw {
+                    let value: Value = serde_json::from_str(&raw)?;
+                    let mut seen = std::collections::HashSet::new();
+                    for reference in value["inlineMedia"].as_array().into_iter().flatten() {
+                        let path = reference["path"].as_str().ok_or_else(Error::invalid)?;
+                        if !seen.insert(path.to_owned()) {
+                            continue;
+                        }
+                        let hash = match working_media::read(&self.anchor, path) {
+                            Ok(Some(bytes)) => {
+                                total += bytes.len();
+                                if total > 50 * 1024 * 1024 {
+                                    return Err(Error("workspace-limit"));
+                                }
+                                Some(files::digest(&bytes))
+                            }
+                            _ => None,
+                        };
+                        if hash.as_deref() != reference["hash"].as_str() {
+                            changed.push(path.to_owned());
+                        }
+                    }
+                }
+                Ok(json!({"changed":changed}))
+            }
+            "asset-files" => {
+                use base64::Engine;
+                let paths = request["paths"].as_array().ok_or_else(Error::invalid)?;
+                if paths.len() > 64 {
+                    return Err(Error::invalid());
+                }
+                let mut result = Vec::new();
+                let mut total = 0;
+                for path in paths {
+                    let path = path.as_str().ok_or_else(Error::invalid)?;
+                    let mime = working_media::mime(path)?;
+                    let bytes =
+                        working_media::read(&self.anchor, path)?.ok_or_else(Error::missing)?;
+                    total += bytes.len();
+                    if bytes.is_empty() || total > 50 * 1024 * 1024 {
+                        return Err(Error("workspace-limit"));
+                    }
+                    result.push(json!({"path":path,"type":mime,"hash":files::digest(&bytes),"body":base64::engine::general_purpose::STANDARD.encode(bytes)}));
+                }
+                Ok(json!(result))
+            }
             "asset-paths" => {
                 let ids = request["ids"].as_array().ok_or_else(Error::invalid)?;
                 if ids.len() > 20000 || ids.iter().any(|id| !id.is_string()) {
@@ -819,6 +927,26 @@ impl Library {
                     request["mime"].as_str().ok_or_else(Error::invalid)?,
                     &bytes,
                 )?;
+                if !request["mime"].as_str().unwrap_or("").starts_with("text/") {
+                    let path: String = self.db.connection.query_row(
+                        "SELECT path FROM assets WHERE id=?1",
+                        [request["id"].as_str().unwrap_or("")],
+                        |row| row.get(0),
+                    )?;
+                    let path = format!("assets/{path}");
+                    if let Some(existing) = working_media::read(&self.anchor, &path)? {
+                        if existing != bytes {
+                            return Err(Error("working-file-changed"));
+                        }
+                    } else {
+                        let mut options = cap_std::fs::OpenOptions::new();
+                        options.write(true).create_new(true);
+                        let mut file = self.anchor.open_with(&path, &options)?;
+                        use std::io::Write;
+                        file.write_all(&bytes)?;
+                        file.sync_all()?;
+                    }
+                }
                 Ok(Value::Null)
             }
             "backup" => {

@@ -1,3 +1,4 @@
+import { notesAfterSourceRekey } from './source-flow'
 import { expect, type Page, type TestInfo, type Locator } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import type { Library, MediaUpload } from '../../src/core/model'
@@ -236,8 +237,11 @@ export async function navigationFlow(page: Page, read: () => Promise<Library>, i
   await expect(page.locator('.source-reader h2')).toHaveText('导航原文')
   expect(await round.textContent()).toBe(counter)
   await page.getByRole('button', { name: '结束本轮', exact: true }).click()
+  const recovered = await read()
   for (const store of ['notes', 'cards', 'reviews', 'practices', 'attempts'] as const)
-    expect((await read())[store]).toEqual(before[store])
+    expect(recovered[store]).toEqual(
+      store === 'notes' ? notesAfterSourceRekey(before, recovered) : before[store],
+    )
 
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
   const downloading = page.waitForEvent('download')
@@ -270,6 +274,9 @@ export async function navigationFlow(page: Page, read: () => Promise<Library>, i
   await page.locator('.source-list-title').filter({ hasText: '导航原文' }).click()
   await expect(list.getByRole('heading', { name: '本篇摘录（8）', exact: true })).toBeVisible()
   await expect(excerptRow(page, '开头摘录🙂')).toContainText('2 张关联卡片')
+  const restoredBackup = await read()
   for (const store of ['notes', 'cards', 'reviews', 'practices', 'attempts'] as const)
-    expect((await read())[store]).toEqual(before[store])
+    expect(restoredBackup[store]).toEqual(
+      store === 'notes' ? notesAfterSourceRekey(before, restoredBackup) : before[store],
+    )
 }

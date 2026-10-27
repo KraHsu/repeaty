@@ -42,7 +42,12 @@ it('saves an independent lazy snapshot without a deck, preserving exact Unicode 
   expect(library.cards).toEqual([])
   expect(child.source).toMatchObject({
     kind: 'excerpt',
-    origin: { sourceId: root.source.id, start: selection.start, end: selection.end },
+    origin: {
+      sourceId: root.source.id,
+      mediaId: root.source.mediaId,
+      start: selection.start,
+      end: selection.end,
+    },
     url: root.source.url,
     format: 'markdown',
   })
@@ -66,7 +71,12 @@ it('saves an independent lazy snapshot without a deck, preserving exact Unicode 
   )
   const nestedLibrary = addSource(library, nested.source, nested.asset)
   librarySchema.parse(nestedLibrary)
-  expect(nested.source.origin).toEqual({ sourceId: child.source.id, start: 1, end: 6 })
+  expect(nested.source.origin).toEqual({
+    sourceId: child.source.id,
+    mediaId: child.source.mediaId,
+    start: 1,
+    end: 6,
+  })
   expect(nested.source.mediaId).not.toBe(child.source.mediaId)
   expect(() =>
     prepareSourceExcerpt(root.source, text, { ...selection, quote: 'Fake🙂' }, 'Forged'),
@@ -135,7 +145,7 @@ it('rejects forged bodies atomically, while position updates do not reread snaps
     ...child.asset,
     blob: new Blob(['Fake🙂'], { type: 'text/markdown' }),
   }
-  await expect(repo.save(library, 0, { assets: [root.asset, forged] })).rejects.toThrow('原文快照')
+  await expect(repo.save(library, 0, { assets: [root.asset, forged] })).rejects.toThrow()
   expect(await repo.load()).toEqual({ library: emptyLibrary(), revision: 0 })
   expect(await repo.getMedia(root.asset.meta.id)).toBeUndefined()
   await repo.save(library, 0, { assets })
@@ -169,7 +179,7 @@ it('rejects forged bodies atomically, while position updates do not reread snaps
     sources: [{ ...saved.sources[0]!, mediaId: replacement.source.mediaId }, child.source],
     media: [...saved.media, replacement.asset.meta],
   }
-  await expect(repo.save(changed, 2, { assets: [replacement.asset] })).rejects.toThrow('原文快照')
+  await expect(repo.save(changed, 2, { assets: [replacement.asset] })).rejects.toThrow()
   expect((await repo.load()).library).toEqual(saved)
   expect(Blob.prototype.arrayBuffer).toBe(original)
   await repo.close()
@@ -218,7 +228,12 @@ it('round-trips provenance and independent bodies through both backups and media
   for (const backup of data) {
     const restored = rekeyBackup(backup)
     const excerpt = restored.library.sources.find((source) => source.id === child.source.id)!
-    expect(excerpt.origin).toEqual(child.source.origin)
+    expect(excerpt.origin).toEqual({
+      ...child.source.origin,
+      mediaId: restored.library.sources.find(
+        (source) => source.id === child.source.origin!.sourceId,
+      )!.mediaId,
+    })
     expect(excerpt.mediaId).not.toBe(child.source.mediaId)
     const repo = createRepository(`excerpt-restore-${crypto.randomUUID()}`)
     await repo.load()

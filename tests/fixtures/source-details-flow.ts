@@ -157,7 +157,19 @@ export async function sourceDetailsFlow(page: Page, read: () => Promise<Library>
   const restored = await read()
   for (const source of after.sources) {
     const saved = restored.sources.find((s) => s.id === source.id)!
-    expect(saved).toEqual({ ...source, mediaId: saved.mediaId })
+    expect(saved).toEqual({
+      ...source,
+      mediaId: saved.mediaId,
+      ...(source.origin
+        ? {
+            origin: {
+              ...source.origin,
+              mediaId: restored.sources.find((parent) => parent.id === source.origin!.sourceId)!
+                .mediaId,
+            },
+          }
+        : {}),
+    })
   }
   for (const name of ['cards', 'reviews', 'practices', 'attempts'] as const)
     expect(restored[name]).toEqual(before[name])

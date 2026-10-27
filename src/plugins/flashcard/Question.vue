@@ -15,7 +15,12 @@ onMounted(() => {
     role="heading"
     aria-level="1"
   >
-    <CardContent :text="card.front" :format="card.format" />
+    <CardContent
+      :text="card.front"
+      :format="card.format"
+      :inline-media="card.inlineMedia"
+      :get-media="getMedia"
+    />
   </div>
   <MediaList :ids="card.frontMedia" :media="media" :get-media="getMedia" />
 </template>

@@ -1029,6 +1029,7 @@ async function restoreBackup() {
         </template>
         <template #reading="{ item, done, activity }">
           <SourcePanel
+            :get-media="workspace.getMedia"
             :key="item.key"
             ref="mixedReader"
             v-bind="sourceBindings"
@@ -1357,6 +1358,7 @@ async function restoreBackup() {
       />
 
       <SourcePanel
+        :get-media="workspace.getMedia"
         v-else-if="tab === 'sources'"
         ref="activeSource"
         :key="workspace.scope.value"

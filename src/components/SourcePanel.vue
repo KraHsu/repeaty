@@ -21,6 +21,8 @@ import {
   type SourceBatchUpdate,
   type SourceBatchAction,
   type ReadingFeedback,
+  referencedSource,
+  sourceAtVersion,
 } from '../core/source-data'
 import { adaptiveReadingPlan } from '../core/adaptive-reading'
 import { sourceExcerpt, recentSource } from '../core/sources'
@@ -65,7 +67,8 @@ const props = defineProps<{
   arrangeBatch: (update: SourceBatchUpdate) => Promise<boolean>
   undoReading: () => Promise<boolean>
   actionError?: string
-  read: (id: string, signal?: AbortSignal) => Promise<string>
+  getMedia?: (id: string) => Promise<Blob | undefined>
+  read: (id: string, signal?: AbortSignal, mediaId?: string) => Promise<string>
   save: (input: SourceInput, scope: string) => Promise<boolean>
   updateDetails: (update: SourceDetailsUpdate) => Promise<boolean>
   saveExcerpt: (input: SaveSourceExcerptInput) => Promise<boolean>
@@ -170,9 +173,11 @@ const text = ref(''),
   error = ref<DisplayMessage>(''),
   loading = ref(false),
   excerpt = ref<SourceExcerpt>()
-const original = computed(() =>
-  props.library.sources.find((entry) => entry.id === source.value?.origin?.sourceId),
-)
+const original = computed(() => {
+  const entry = props.library.sources.find((entry) => entry.id === source.value?.origin?.sourceId)
+  return entry && source.value?.origin ? referencedSource(entry, source.value.origin) : undefined
+})
+const versionsOpen = ref(false)
 const savedExcerpts = computed(() => excerptsForSource(props.library, selectedId.value))
 const duplicates = computed(() => matchingExcerpts(savedExcerpts.value, excerpt.value))
 const excerptList = ref<InstanceType<typeof SourceExcerptList>>()
@@ -184,11 +189,17 @@ const ancestry = computed(() =>
   source.value ? sourceContextPath(props.library.sources, source.value).reverse() : [],
 )
 const ancestrySource = shallowRef<Source>()
+function openVersion(mediaId: string) {
+  if (source.value) ancestrySource.value = sourceAtVersion(source.value, mediaId)
+  versionsOpen.value = false
+}
 const viewedSelection = computed<SourceExcerpt | undefined>(() => {
   const child = viewedExcerpt.value
-  if (!child?.origin || loading.value || error.value || !text.value) return undefined
+  if (!child?.origin || child.derived || loading.value || error.value || !text.value)
+    return undefined
   return {
     sourceId: child.id,
+    mediaId: child.mediaId,
     start: 0,
     end: child.characters,
     quote: text.value.slice(child.origin.start, child.origin.end),
@@ -1239,6 +1250,14 @@ async function download() {
                 {{ t('编辑材料信息') }}
               </button>
               <button
+                v-if="source.versions?.length"
+                class="button secondary"
+                :disabled="busy || moving"
+                @click="versionsOpen = true"
+              >
+                {{ t('历史版本') }}
+              </button>
+              <button
                 class="button secondary"
                 :disabled="loading || !!error || exporting"
                 @click="download"
@@ -1387,6 +1406,7 @@ async function download() {
               </div>
             </div>
             <SourceReader
+              :get-media="getMedia"
               :key="source.id + ':' + source.mediaId"
               ref="reader"
               :source="source"
@@ -1517,6 +1537,7 @@ async function download() {
       @close="batchDraft = undefined"
     />
     <SourceContext
+      :get-media="getMedia"
       v-if="ancestrySource"
       :source="ancestrySource"
       :sources="library.sources"
@@ -1524,6 +1545,7 @@ async function download() {
       @close="ancestrySource = undefined"
     />
     <SourceContext
+      :get-media="getMedia"
       v-if="viewedExcerpt"
       :key="viewedExcerpt.id"
       :source="viewedExcerpt"
@@ -1534,13 +1556,31 @@ async function download() {
       @close="viewingExcerptId = ''"
     />
     <SourceContext
+      :get-media="getMedia"
       v-if="originOpen && original && source?.origin"
       :source="original"
-      :excerpt="{ ...source.origin, quote: text }"
+      :excerpt="source.derived ? undefined : { ...source.origin, quote: text }"
       :sources="library.sources"
       :read="read"
       @close="originOpen = false"
     />
+    <AppModal v-if="versionsOpen && source" :title="t('历史版本')" @close="versionsOpen = false">
+      <p>{{ t('旧版正文和阅读位置保留。查看旧版不会改变当前阅读进度。') }}</p>
+      <ul class="source-version-list">
+        <li v-for="(version, index) in source.versions" :key="version.mediaId">
+          <button class="button secondary" @click="openVersion(version.mediaId)">
+            {{
+              t('版本 {number} · {date}', {
+                number: index + 1,
+                date: new Date(version.acceptedAt).toLocaleString(locale),
+              })
+            }}</button
+          ><span v-if="version.reading" class="form-note">{{
+            t('阅读位置：{offset}', { offset: version.reading.offset })
+          }}</span>
+        </li>
+      </ul>
+    </AppModal>
     <AppModal
       v-if="detailsDraft"
       :title="t('编辑材料信息')"

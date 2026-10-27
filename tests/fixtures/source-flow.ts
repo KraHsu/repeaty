@@ -1,4 +1,22 @@
 import { expect, type Page } from '@playwright/test'
+import type { Library } from '../../src/core/model'
+/** Backups replace media identities while preserving the referenced version and all study data. */
+export function notesAfterSourceRekey(before: Library, after: Library) {
+  return before.notes.map((note) => {
+    if (!note.excerpt?.mediaId) return note
+    const source = before.sources.find((source) => source.id === note.excerpt!.sourceId)!
+    const restored = after.sources.find((entry) => entry.id === source.id)!
+    const index =
+      source.versions?.findIndex((version) => version.mediaId === note.excerpt!.mediaId) ?? -1
+    return {
+      ...note,
+      excerpt: {
+        ...note.excerpt,
+        mediaId: index < 0 ? restored.mediaId : restored.versions![index]!.mediaId,
+      },
+    }
+  })
+}
 export const sourceQuote = '间隔复习会根据记忆状态安排下一次学习。🙂'
 export const sourceText =
   `# 学习笔记\n\n${sourceQuote}\n\n` +

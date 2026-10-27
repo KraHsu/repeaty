@@ -75,6 +75,7 @@ export async function sourceExcerptFlow(page: Page, read: () => Promise<Library>
   expect(first.cards).toEqual([])
   expect(child.origin).toEqual({
     sourceId: root.id,
+    mediaId: root.mediaId,
     start: sourceText.lastIndexOf(sourceQuote),
     end: sourceText.lastIndexOf(sourceQuote) + sourceQuote.length,
   })
@@ -193,7 +194,10 @@ export async function sourceExcerptFlow(page: Page, read: () => Promise<Library>
   await page.getByRole('button', { name: '替换并恢复', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   const restored = await read()
-  expect(restored.sources.find((source) => source.id === child.id)!.origin).toEqual(child.origin)
+  expect(restored.sources.find((source) => source.id === child.id)!.origin).toEqual({
+    ...child.origin,
+    mediaId: restored.sources.find((source) => source.id === root.id)!.mediaId,
+  })
   expect(restored.sources.find((source) => source.id === child.id)!.mediaId).not.toBe(child.mediaId)
   expect(restored.cards).toEqual(cards.cards)
   expect(restored.reviews).toEqual(cards.reviews)

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { t, type DisplayMessage } from '../i18n'
 import { remoteWorkspace } from '../edition'
-import type { SourceExcerpt } from '../core/source-data'
+import { referencedSource, type SourceExcerpt } from '../core/source-data'
 import type { MediaUpload, NoteInput } from '../core/model'
 import type { CardDraft } from '../core/draft-proposals'
 import {
@@ -28,9 +28,10 @@ const queueOpen = ref(false),
   error = ref<DisplayMessage>(''),
   shareError = ref<DisplayMessage>('')
 const library = computed(() => props.workspace.library.value)
-const source = computed(() =>
-  library.value.sources.find((source) => source.id === props.selection?.sourceId),
-)
+const source = computed(() => {
+  const entry = library.value.sources.find((source) => source.id === props.selection?.sourceId)
+  return entry && props.selection ? referencedSource(entry, props.selection) : undefined
+})
 const count = computed(() => draftSession.drafts.length)
 const context = () => ({ library: library.value, scope: props.workspace.scope.value, revision: 0 })
 const typeLabel = (type: string) =>
@@ -84,7 +85,7 @@ async function share() {
   sharing.value = true
   shareError.value = ''
   try {
-    const text = await props.workspace.getSource(selected.sourceId)
+    const text = await props.workspace.getSource(selected.sourceId, undefined, mediaId)
     draftSession.share(
       props.workspace.localLearningSnapshot(scope),
       selected,

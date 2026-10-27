@@ -156,7 +156,10 @@ it('saves metadata without rereading IndexedDB bodies and retains old details in
         url: '',
         readingIntervalDays: 7,
       })
-      expect(restored.library.sources[1]!.origin).toEqual(next.sources[1]!.origin)
+      expect(restored.library.sources[1]!.origin).toEqual({
+        ...next.sources[1]!.origin,
+        mediaId: restored.library.sources[0]!.mediaId,
+      })
     }
     const snapshot = (await repo.listBackups()).find((b) => b.reason === '编辑材料信息前')!
     const previous = await repo.getBackup(snapshot.id)

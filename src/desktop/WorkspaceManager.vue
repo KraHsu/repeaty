@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, reactive } from 'vue'
 import { FolderOpen, FolderPlus, RefreshCw, X, Check } from '@lucide/vue'
-import { t, type DisplayMessage } from '../i18n'
+import { t, validationMessage, type DisplayMessage } from '../i18n'
 import type { useLibrary } from '../composables/useLibrary'
 import type { ChangeStatus, FileChange } from '../workspace/changes'
 import { previewScanSchema } from '../workspace/preview'
@@ -12,10 +12,14 @@ import { noteLifecycle, retiredSummarySchema, type RetiredNote } from './retirem
 import {
   readWorkspaceMarkdown,
   registerWorkspaceNote,
+  registerWorkspaceSource,
+  rewriteWorkspaceDocument,
   WorkspaceFormatError,
 } from '../workspace/markdown'
 import { workspacePathKey } from '../workspace/changes'
 import type { NoteInput } from '../core/model'
+import { prepareSource } from '../core/sources'
+import type { SourceInput } from '../core/source-data'
 import type { DocumentWrite } from './repository'
 import {
   workspaceStatus as status,
@@ -113,9 +117,32 @@ const labels: Record<ChangeStatus, string> = {
   conflict: '存在冲突',
   missing: '文件缺失',
 }
+let mediaCheck = 0
+async function checkMedia(path: string) {
+  const sequence = ++mediaCheck,
+    active = status.value?.active
+  const file = files.value.find((file) => file.path === path)
+  if (!active || !file?.identity || file.status !== 'unchanged') return
+  try {
+    const result = z.object({ changed: z.array(z.string()) }).parse(
+      await workspaceApi('workspace_read', {
+        token: active.token,
+        request: { type: 'check-media', kind: file.identity.kind, id: file.identity.id },
+      }),
+    )
+    if (!alive || sequence !== mediaCheck || selected.value !== path) return
+    if (result.changed.length)
+      files.value = files.value.map((entry) =>
+        entry === file ? { ...entry, status: 'modified', reason: 'media-changed' } : entry,
+      )
+  } catch (issue) {
+    if (alive && sequence === mediaCheck) error.value = issue as Error
+  }
+}
 function selectFile(path: string) {
   selected.value = path
   showAccepted.value = false
+  void checkMedia(path)
 }
 function reasonText(reason: string) {
   const labels: Record<string, string> = {
@@ -124,11 +151,12 @@ function reasonText(reason: string) {
     'duplicate-id': '多个文件使用了同一个身份，请保留一份后重新扫描。',
     'duplicate-path': '文件路径重复，请改名后重新扫描。',
     'confirm-stable-deletion': '磁盘上缺少文件，已接受的内容和学习记录仍保留。',
+    'media-changed': '正文引用的附件已变化，接受后保存新的附件版本。',
   }
   return t(labels[reason] ?? '文件格式或引用无效，请检查后重新扫描。')
 }
 let alive = true
-async function run(action: () => Promise<unknown>) {
+async function run(action: () => unknown | Promise<unknown>) {
   if (locked.value) return
   busy.value = true
   error.value = ''
@@ -175,6 +203,7 @@ async function refresh() {
   workspaceAttention.value = value.attention
   if (!changes.some((file) => file.path === selected.value)) selected.value = changes[0]?.path ?? ''
   page.value = 1
+  await checkMedia(selected.value)
 }
 type Action = {
   mode: 'accept' | 'remove' | 'restore'
@@ -197,10 +226,95 @@ const canAccept = computed(
   () =>
     !!current.value &&
     ((['new', 'modified', 'renamed', 'renamed-modified'].includes(current.value.status) &&
-      current.value.identity?.kind === 'note') ||
+      ['note', 'source'].includes(current.value.identity?.kind ?? '')) ||
       ['unmanaged', 'unregistered'].includes(current.value.status)) &&
-    current.value.path.startsWith('notes/'),
+    (current.value.path.startsWith('notes/') || current.value.path.startsWith('sources/')),
 )
+const sourceAction = ref<{
+  id: string
+  path: string
+  raw: string
+  workingHash: string
+  expectedHash: string | null
+  scanHash: string
+}>()
+const sourceForm = reactive({ title: '', url: '', format: 'markdown' as 'plain' | 'markdown' })
+function prepareSourceFile() {
+  if (!observed.value || !scan.value) return
+  const parsed = readWorkspaceMarkdown(observed.value.raw)
+  const doc = parsed.status === 'managed' ? parsed.document : undefined
+  if (
+    (doc?.properties.title !== undefined && typeof doc.properties.title !== 'string') ||
+    (doc?.properties.url !== undefined && typeof doc.properties.url !== 'string')
+  )
+    throw nativeError('invalid-data')
+  const id = doc?.identity.id ?? crypto.randomUUID()
+  const source = props.workspace.library.value.sources.find((source) => source.id === id)
+  sourceForm.title = String(
+    doc?.properties.title ??
+      source?.title ??
+      selected.value.split('/').at(-1)!.replace(/\.md$/, ''),
+  )
+  sourceForm.url = String(doc?.properties.url ?? source?.url ?? '')
+  sourceForm.format = doc?.header.format ?? source?.format ?? 'markdown'
+  sourceAction.value = {
+    id,
+    path: selected.value,
+    raw: observed.value.raw,
+    expectedHash: accepted.value?.hash ?? null,
+    workingHash: observed.value.hash,
+    scanHash: scan.value.scanHash,
+  }
+}
+const sourceProposal = computed(() => {
+  if (!sourceAction.value) return undefined
+  try {
+    let doc = registerWorkspaceSource(sourceAction.value.raw, {
+      id: sourceAction.value.id,
+      format: sourceForm.format,
+    })
+    if (doc.content.kind !== 'source') throw nativeError('invalid-data')
+    const input: SourceInput = { ...sourceForm, content: doc.content.body }
+    prepareSource(input)
+    if (
+      doc.properties.title !== sourceForm.title ||
+      (doc.properties.url ?? '') !== sourceForm.url
+    ) {
+      const rewritten = rewriteWorkspaceDocument(
+        doc,
+        { title: sourceForm.title, url: sourceForm.url },
+        doc.content,
+      )
+      const parsed = readWorkspaceMarkdown(rewritten)
+      if (parsed.status !== 'managed') throw nativeError('invalid-data')
+      doc = parsed.document
+    }
+    return { input, doc }
+  } catch (issue) {
+    return { error: actionError(issue) }
+  }
+})
+async function confirmSource() {
+  const value = sourceAction.value,
+    prepared = sourceProposal.value
+  if (!value || !prepared || 'error' in prepared) return
+  await props.workspace.acceptExternalSource(
+    value.id,
+    prepared.input!,
+    {
+      kind: 'source',
+      id: value.id,
+      path: value.path,
+      raw: prepared.doc!.raw,
+      expectedHash: value.expectedHash,
+      workingHash: value.workingHash,
+    },
+    value.scanHash,
+  )
+  sourceAction.value = undefined
+  emit('changed')
+  await refresh()
+}
 const answerHint = computed(() => t('题面和答案之间请单独放一行 <!-- repeaty:answer -->。'))
 const canRemove = computed(
   () =>
@@ -209,6 +323,7 @@ const canRemove = computed(
     props.workspace.library.value.notes.some((note) => note.id === current.value?.identity?.id),
 )
 function actionError(issue: unknown): DisplayMessage {
+  if (issue instanceof z.ZodError) return validationMessage(issue)
   if (issue instanceof WorkspaceFormatError) {
     if (issue.message === 'missing-answer-boundary')
       return '题面和答案之间请单独放一行 <!-- repeaty:answer -->。'
@@ -287,6 +402,7 @@ const proposal = computed(() => {
       frontMedia: doc.header.frontMedia?.map((media) => media.id) ?? previous?.frontMedia ?? [],
       backMedia: doc.header.backMedia?.map((media) => media.id) ?? previous?.backMedia ?? [],
       excerpt: previous?.excerpt,
+      inlineMedia: previous?.inlineMedia,
     }
     const plan = noteLifecycle(props.workspace.library.value, input, value.id, value.retired, true)
     return { input, doc, plan }
@@ -448,7 +564,11 @@ onUnmounted(() => {
             v-if="canAccept"
             class="button primary"
             :disabled="locked"
-            @click="run(() => prepare('accept'))"
+            @click="
+              run(() =>
+                current?.path.startsWith('sources/') ? prepareSourceFile() : prepare('accept'),
+              )
+            "
           >
             <Check :size="18" />{{ t('接受修改') }}
           </button>
@@ -462,7 +582,11 @@ onUnmounted(() => {
           </button>
         </div>
         <p
-          v-if="canAccept && ['unmanaged', 'unregistered'].includes(current!.status)"
+          v-if="
+            canAccept &&
+            current?.path.startsWith('notes/') &&
+            ['unmanaged', 'unregistered'].includes(current!.status)
+          "
           class="form-note"
         >
           {{ answerHint }}
@@ -472,7 +596,7 @@ onUnmounted(() => {
           v-if="current?.identity?.kind === 'source' && current.status !== 'unchanged'"
           class="form-note"
         >
-          {{ t('材料快照的外部修改暂不自动接受，原有摘录与出处保持不变。') }}
+          {{ t('接受新版本后，已有摘录继续引用原版。阅读安排保持不变。') }}
         </p>
         <pre class="workspace-raw">{{ raw }}</pre>
       </div>
@@ -519,6 +643,49 @@ onUnmounted(() => {
         </button>
       </div>
     </section>
+    <AppModal
+      v-if="sourceAction"
+      :title="t('接受材料修改')"
+      :busy="locked"
+      :error="error ? t(error) : undefined"
+      @close="sourceAction = undefined"
+    >
+      <label class="workspace-field"
+        >{{ t('材料标题') }}<input v-model="sourceForm.title" :disabled="locked" maxlength="160"
+      /></label>
+      <label class="workspace-field"
+        >{{ t('来源链接（选填）')
+        }}<input v-model="sourceForm.url" :disabled="locked" maxlength="2048"
+      /></label>
+      <label class="workspace-field"
+        >{{ t('内容格式')
+        }}<select v-model="sourceForm.format" :disabled="locked">
+          <option value="markdown">{{ t('Markdown / 数学公式') }}</option>
+          <option value="plain">{{ t('纯文本') }}</option>
+        </select></label
+      >
+      <p v-if="sourceProposal && 'error' in sourceProposal" role="alert" class="import-warning">
+        {{ t(sourceProposal.error!) }}
+      </p>
+      <p>
+        {{
+          t(
+            '正文或附件变更后，从新版开头阅读；只改标题或文件名会保留当前位置。阅读安排、摘录和卡片进度不变。',
+          )
+        }}
+      </p>
+      <div class="workspace-actions workspace-confirm">
+        <button class="button" :disabled="locked" @click="sourceAction = undefined">
+          {{ t('取消') }}</button
+        ><button
+          class="button primary"
+          :disabled="locked || !sourceProposal || 'error' in sourceProposal"
+          @click="run(confirmSource)"
+        >
+          {{ t('确认接受') }}
+        </button>
+      </div>
+    </AppModal>
     <AppModal
       v-if="action"
       :title="

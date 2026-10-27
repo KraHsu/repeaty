@@ -12,6 +12,7 @@ import {
   type ReadingPosition,
   type SourceOrigin,
   type SourceDetails,
+  referencedSource,
 } from './source-data'
 
 const invalid = () => new LocalizedError(msg('原文快照缺失或损坏，请从备份恢复。'))
@@ -65,10 +66,15 @@ export function prepareSourceExcerpt(
   now = new Date(),
 ) {
   const selection = sourceExcerpt(parent, text, excerpt.start, excerpt.end)
-  if (excerpt.sourceId !== parent.id || selection.quote !== excerpt.quote)
+  if (
+    excerpt.sourceId !== parent.id ||
+    (excerpt.mediaId && excerpt.mediaId !== parent.mediaId) ||
+    selection.quote !== excerpt.quote
+  )
     throw new LocalizedError(msg('摘录与原文不一致，请重新选取。'))
   return prepareSnapshot({ title, url: parent.url, format: parent.format }, selection.quote, now, {
     sourceId: parent.id,
+    mediaId: parent.mediaId,
     start: selection.start,
     end: selection.end,
   })
@@ -112,6 +118,7 @@ export function sourceExcerpt(
   if (text.length !== source.characters) throw invalid()
   const excerpt = excerptSchema.safeParse({
     sourceId: source.id,
+    mediaId: source.mediaId,
     start,
     end,
     quote: text.slice(start, end),
@@ -134,6 +141,56 @@ export function addSource(library: Library, source: Source, asset: MediaUpload):
     ...library,
     sources: [...library.sources, source],
     media: [...library.media, asset.meta],
+  }
+}
+/** The document keeps its queue; locations and existing quotations stay on their snapshot. */
+export function replaceSourceContent(
+  library: Library,
+  id: string,
+  input: SourceInput,
+  now = new Date(),
+) {
+  const previous = library.sources.find((source) => source.id === id)
+  if (!previous) throw invalid()
+  const prepared = prepareSource(input, now)
+  const version = {
+    title: previous.title,
+    url: previous.url,
+    mediaId: previous.mediaId,
+    format: previous.format,
+    characters: previous.characters,
+    acceptedAt: previous.acceptedAt ?? previous.createdAt,
+    ...(previous.reading ? { reading: previous.reading } : {}),
+    ...(previous.derived ? { derived: previous.derived } : {}),
+    ...(previous.inlineMedia ? { inlineMedia: previous.inlineMedia } : {}),
+  }
+  const source = sourceSchema.parse({
+    ...previous,
+    ...prepared.source,
+    id: previous.id,
+    createdAt: previous.createdAt,
+    kind: previous.kind,
+    origin: previous.origin,
+    derived: previous.origin ? true : undefined,
+    versions: [...(previous.versions ?? []), version],
+    acceptedAt: now.toISOString(),
+    reading: undefined,
+  })
+  // Scheduling belongs to the source identity, never to a body version.
+  Object.assign(source, {
+    queue: previous.queue,
+    priority: previous.priority,
+    readingIntervalDays: previous.readingIntervalDays,
+    adaptiveReading: previous.adaptiveReading,
+  })
+  return {
+    library: {
+      ...library,
+      sources: library.sources.map((entry) => (entry.id === id ? source : entry)),
+      media: [...library.media, prepared.asset.meta],
+    },
+    asset: prepared.asset,
+    source,
   }
 }
 /** Metadata edits keep the immutable body and references; stale forms cannot overwrite them. */
@@ -195,11 +252,16 @@ export async function validateSourceOrigins(
   for (const [id, children] of groups) {
     const parent = sources.get(id)
     if (!parent) throw invalid()
-    const original = await readSource(parent, library, getMedia)
     for (const child of children) {
       const origin = child.origin!
-      const text = await readSource(child, library, getMedia)
-      if (text !== sourceExcerpt(parent, original, origin.start, origin.end).quote) throw invalid()
+      const snapshot = referencedSource(parent, origin)
+      if (!snapshot) throw invalid()
+      const original = await readSource(snapshot, library, getMedia)
+      if (!child.derived) {
+        const text = await readSource(child, library, getMedia)
+        if (text !== sourceExcerpt(snapshot, original, origin.start, origin.end).quote)
+          throw invalid()
+      }
     }
   }
 }

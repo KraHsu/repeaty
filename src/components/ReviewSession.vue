@@ -56,7 +56,7 @@ const props = defineProps<{
   undo: () => Promise<boolean>
   change: (ids: string[], action: 'suspend' | 'bury') => Promise<boolean>
   getMedia: (id: string) => Promise<Blob | undefined>
-  getSource: (id: string, signal?: AbortSignal) => Promise<string>
+  getSource: (id: string, signal?: AbortSignal, mediaId?: string) => Promise<string>
   getAttempt: (id: string, signal?: AbortSignal) => Promise<Attempt>
 }>()
 const emit = defineEmits<{
@@ -539,6 +539,7 @@ onUnmounted(() => {
             :sources="library.sources"
             :excerpt="current.excerpt"
             :read="getSource"
+            :get-media="getMedia"
             @close="sourceOpen = false"
           />
         </div>

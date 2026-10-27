@@ -81,7 +81,7 @@ it('does not combine children from other snapshots or detached excerpts after de
   const child = prepareSourceExcerpt(
     other.source,
     text,
-    { ...first, sourceId: other.source.id },
+    { ...first, sourceId: other.source.id, mediaId: other.source.mediaId },
     'Other child',
     now,
   )

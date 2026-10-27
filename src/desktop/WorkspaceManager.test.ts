@@ -58,34 +58,36 @@ async function mount(changed: string, withArchive = false) {
   invoke.mockImplementation(async (command, args) =>
     command === 'workspace_status'
       ? { epoch: crypto.randomUUID(), active, recent: [], error: null }
-      : args.request.type === 'settings'
-        ? {}
-        : {
-            accepted: [
-              { kind: 'note', id: note.id, path: 'notes/card.md', hash: 'a'.repeat(64), raw },
-            ],
-            working: [
-              {
-                path: 'notes/card.md',
-                hash: 'b'.repeat(64),
-                raw: changed === 'managed' ? raw.replace('Question', '外部编辑') : changed,
-              },
-            ],
-            attention: [],
-            scanHash: 'c'.repeat(64),
-            retired: withArchive
-              ? [
-                  {
-                    id: archivedNote.id,
-                    title: archivedNote.front,
-                    path: 'notes/archived.md',
-                    retiredAt: note.createdAt,
-                    cards: 1,
-                  },
-                ]
-              : [],
-            retiredCount: withArchive ? 1 : 0,
-          },
+      : args.request.type === 'check-media'
+        ? { changed: [] }
+        : args.request.type === 'settings'
+          ? {}
+          : {
+              accepted: [
+                { kind: 'note', id: note.id, path: 'notes/card.md', hash: 'a'.repeat(64), raw },
+              ],
+              working: [
+                {
+                  path: 'notes/card.md',
+                  hash: 'b'.repeat(64),
+                  raw: changed === 'managed' ? raw.replace('Question', '外部编辑') : changed,
+                },
+              ],
+              attention: [],
+              scanHash: 'c'.repeat(64),
+              retired: withArchive
+                ? [
+                    {
+                      id: archivedNote.id,
+                      title: archivedNote.front,
+                      path: 'notes/archived.md',
+                      retiredAt: note.createdAt,
+                      cards: 1,
+                    },
+                  ]
+                : [],
+              retiredCount: withArchive ? 1 : 0,
+            },
   )
   const accepted = vi.fn().mockResolvedValue(undefined)
   const workspace = {

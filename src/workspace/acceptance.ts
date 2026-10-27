@@ -1,6 +1,6 @@
-import MarkdownIt from 'markdown-it'
-import { parseFragment, type DefaultTreeAdapterMap } from 'parse5'
 import { z } from 'zod'
+import { mediaPath, inlineReferences as inlineMedia } from '../core/inline-media'
+export { mediaPath } from '../core/inline-media'
 import { cardDraftSchema, type CardDraft } from '../core/card-draft-data'
 import { MAX_MEDIA_BYTES, mediaSchema, newCard } from '../core/model'
 import { planVariants, type VariantRecord } from './changes'
@@ -102,49 +102,6 @@ const extensions: Record<string, string> = {
   'audio/flac': 'flac',
   'audio/aac': 'aac',
 }
-const markdown = new MarkdownIt({ html: true })
-
-/** No IO or URL fetching. Resolves a local media URL without allowing .. to escape the root. */
-export function mediaPath(url: string, notePath: string): string | undefined {
-  if (/^https?:\/\//i.test(url) || /^data:(image|audio)\//i.test(url) || url.startsWith('#'))
-    return undefined
-  const path = decodeURIComponent(url.split(/[?#]/, 1)[0]!)
-  if (!path || /[\\:\u0000-\u001f]/.test(path) || path.startsWith('/'))
-    throw new Error('unsafe-media-path')
-  const parts = notePath.split('/').slice(0, -1)
-  for (const part of path.split('/')) {
-    if (part === '..') {
-      if (!parts.length) throw new Error('unsafe-media-path')
-      parts.pop()
-    } else if (part && part !== '.') parts.push(part)
-  }
-  return parts.join('/')
-}
-
-function inlineMedia(text: string): { url: string; media: boolean }[] {
-  const references: { url: string; media: boolean }[] = []
-  function html(node: DefaultTreeAdapterMap['node']) {
-    if ('tagName' in node && ['img', 'audio', 'source'].includes(node.tagName)) {
-      const src = node.attrs.find((attr) => attr.name === 'src')?.value
-      if (src) references.push({ url: src, media: true })
-    }
-    if ('childNodes' in node) node.childNodes.forEach(html)
-  }
-  function tokens(items: ReturnType<MarkdownIt['parse']>) {
-    for (const token of items) {
-      if (token.type === 'image' && token.attrGet('src'))
-        references.push({ url: token.attrGet('src')!, media: true })
-      if (token.type === 'link_open' && token.attrGet('href'))
-        references.push({ url: token.attrGet('href')!, media: false })
-      if (token.type === 'html_inline' || token.type === 'html_block')
-        html(parseFragment(token.content))
-      if (token.children) tokens(token.children)
-    }
-  }
-  tokens(markdown.parse(text, {}))
-  return references
-}
-
 export async function snapshotAsset(
   meta: z.infer<typeof mediaSchema>,
   blob: Blob,

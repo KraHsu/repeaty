@@ -911,6 +911,7 @@ name = "repeaty-workspace"
 version = "0.27.0"
 dependencies = [
  "base64",
+ "cap-primitives",
  "cap-std",
  "chrono",
  "jsonschema",
