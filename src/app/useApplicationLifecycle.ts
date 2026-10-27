@@ -1,4 +1,5 @@
 import { onMounted, onUnmounted } from 'vue'
+import { useEventListener, useIntervalFn } from '@vueuse/core'
 import { connectLearningReader, connectWorkspaceMonitor } from '@repeaty-platform'
 import { listenPluginPreferences } from '../plugins'
 import { listenPreferences } from '../preferences'
@@ -24,30 +25,32 @@ export function useApplicationLifecycle(
 ) {
   let alive = true
   const stops: (() => void)[] = []
-  let clockTimer: ReturnType<typeof setInterval> | undefined
-  let backupTimer: ReturnType<typeof setInterval> | undefined
+  const clockTimer = useIntervalFn(tick, 10_000, { immediate: false })
+  const backupTimer = useIntervalFn(
+    () => {
+      void workspace.backupNow()
+    },
+    60_000,
+    { immediate: false },
+  )
   function own(stop: () => void) {
     if (alive) stops.push(stop)
     else stop()
   }
   onMounted(() => {
-    window.addEventListener('keydown', globalKeydown)
+    // Attach after child review/editor shortcuts, preserving defaultPrevented ordering.
+    own(useEventListener(window, 'keydown', globalKeydown))
     own(bindings.listenPluginPreferences())
     own(bindings.listenPreferences())
     void bindings.connectLearningReader(workspace).then(own)
     void bindings.connectWorkspaceMonitor(workspace).then(own)
     void workspace.init()
-    backupTimer = setInterval(() => {
-      void workspace.backupNow()
-    }, 60_000)
-    clockTimer = setInterval(tick, 10_000)
+    backupTimer.resume()
+    clockTimer.resume()
   })
   onUnmounted(() => {
     alive = false
-    window.removeEventListener('keydown', globalKeydown)
     for (const stop of stops.splice(0)) stop()
-    clearInterval(backupTimer)
-    clearInterval(clockTimer)
     void workspace.close()
   })
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { useEventListener } from '@vueuse/core'
 import { FolderOpen } from '@lucide/vue'
 import { t } from '../i18n'
 import { storeToRefs } from 'pinia'
@@ -15,8 +15,7 @@ function beforeUnload(event: BeforeUnloadEvent) {
     event.returnValue = ''
   }
 }
-onMounted(() => window.addEventListener('beforeunload', beforeUnload))
-onUnmounted(() => window.removeEventListener('beforeunload', beforeUnload))
+useEventListener(window, 'beforeunload', beforeUnload)
 </script>
 
 <template>
