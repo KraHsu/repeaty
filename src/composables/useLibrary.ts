@@ -558,11 +558,16 @@ export function useLibrary() {
     },
     async backupNow(force = false) {
       if (!ready.value || busy.value) return
+      const target = repository,
+        expectedScope = scope.value
+      const ownsScope = () => target === repository && expectedScope === scope.value
       try {
-        await repository.backupNow(force)
+        await target.backupNow(force)
+        if (!ownsScope()) return
         await refreshBackups()
-        backupError.value = ''
+        if (ownsScope()) backupError.value = ''
       } catch (error) {
+        if (!ownsScope()) return
         backupError.value = '自动备份未能完成，请导出备份并检查存储空间。'
         if (force) throw error
       }

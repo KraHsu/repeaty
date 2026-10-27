@@ -379,13 +379,16 @@ function openImport() {
   modal.value = 'bulkImport'
 }
 async function run(action: () => Promise<void>, message?: DisplayMessage) {
+  const expectedScope = workspace.scope.value
   dismissInfoNotifications()
   try {
     await action()
+    if (!appAlive || expectedScope !== workspace.scope.value) return false
     refreshClock()
     notice.value = message ? { text: message, error: false } : null
     return true
   } catch (error) {
+    if (!appAlive || expectedScope !== workspace.scope.value) return false
     notice.value = {
       text: error instanceof Error ? error : '操作失败，请重试。',
       error: true,

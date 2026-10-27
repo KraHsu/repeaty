@@ -107,6 +107,25 @@ it('rejects a source read from the previous library after a successful switch', 
   expect(workspace.library.value.sources).toHaveLength(0)
 })
 
+it('ignores a late backup failure from a library that has already been replaced', async () => {
+  const { workspace, repository } = await setup()
+  let reject!: (error: Error) => void
+  vi.spyOn(repository, 'backupNow').mockImplementation(
+    () =>
+      new Promise((_resolve, fail) => {
+        reject = fail
+      }),
+  )
+  const pending = workspace.backupNow(true)
+  const candidate = createRepository('replacement-backup-' + crypto.randomUUID())
+  await workspace.replaceRepository(candidate)
+  reject(new Error('Old backup failed after close'))
+  await expect(pending).resolves.toBeUndefined()
+  expect(workspace.backupError.value).toBe('')
+  expect(workspace.scope.value).toBe(candidate.scope())
+  expect(workspace.backups.value).toHaveLength(0)
+})
+
 it('keeps failed writes out of history and retains a failed undo for one safe retry', async () => {
   const { workspace, repository } = await setup()
   const original = workspace.library.value
