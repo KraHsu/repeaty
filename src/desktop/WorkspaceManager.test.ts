@@ -19,7 +19,7 @@ afterEach(() => {
   document.body.innerHTML = ''
   vi.clearAllMocks()
 })
-async function mount(changed: string) {
+async function mount(changed: string, withArchive = false) {
   setLocale('zh-CN')
   const library = fixture({ format: 'markdown' }),
     note = library.notes[0]!
@@ -35,6 +35,25 @@ async function mount(changed: string) {
       },
     },
     { kind: 'note', front: note.front, back: note.back },
+  )
+  const archivedNote = {
+    ...note,
+    id: 'archived-note',
+    type: 'cloze' as const,
+    front: '{{c1::Archived answer}}',
+  }
+  const archivedRaw = createWorkspaceMarkdown(
+    {
+      repeaty: {
+        version: 1,
+        kind: 'note',
+        id: archivedNote.id,
+        type: archivedNote.type,
+        format: 'markdown',
+        deckId: 'deck',
+      },
+    },
+    { kind: 'note', front: archivedNote.front, back: archivedNote.back },
   )
   invoke.mockImplementation(async (command, args) =>
     command === 'workspace_status'
@@ -54,7 +73,18 @@ async function mount(changed: string) {
             ],
             attention: [],
             scanHash: 'c'.repeat(64),
-            retired: [],
+            retired: withArchive
+              ? [
+                  {
+                    id: archivedNote.id,
+                    title: archivedNote.front,
+                    path: 'notes/archived.md',
+                    retiredAt: note.createdAt,
+                    cards: 1,
+                  },
+                ]
+              : [],
+            retiredCount: withArchive ? 1 : 0,
           },
   )
   const accepted = vi.fn().mockResolvedValue(undefined)
@@ -62,11 +92,17 @@ async function mount(changed: string) {
     busy: ref(false),
     library: shallowRef(library),
     acceptExternalNote: accepted,
-    readRetiredNote: vi.fn(async () => ({
+    readRetiredNote: vi.fn(async (id: string) => ({
       revision: 0,
-      note: null,
-      document: null,
-      cards: [],
+      note: withArchive && id === archivedNote.id ? archivedNote : null,
+      document:
+        withArchive && id === archivedNote.id
+          ? { kind: 'note', id, path: 'notes/archived.md', hash: 'd'.repeat(64), raw: archivedRaw }
+          : null,
+      cards:
+        withArchive && id === archivedNote.id
+          ? [{ ...library.cards[0]!, id: 'archived-card', noteId: id, variant: 'cloze:1' }]
+          : [],
       reviews: [],
       practices: [],
       attempts: [],
@@ -148,4 +184,22 @@ it('disposes startup before a late status response can launch a scan', async () 
   release({ epoch: crypto.randomUUID(), active, recent: [], error: null })
   await new Promise((resolve) => setTimeout(resolve, 0))
   expect(read).not.toHaveBeenCalled()
+})
+
+it('restores the archived type while a different note is selected in the inspector', async () => {
+  const { host } = await mount('managed', true)
+  const restore = [...host.querySelectorAll('button')].find(
+    (button) => button.textContent?.trim() === '恢复笔记',
+  )!
+  expect(restore).toBeDefined()
+  restore.click()
+  await vi.waitFor(() => expect(host.querySelector('dialog')).not.toBeNull())
+  const type = host.querySelectorAll<HTMLSelectElement>('dialog select')[1]!
+  expect(type.value).toBe('cloze')
+  expect(host.querySelector('dialog')?.textContent).toContain('恢复 1 张')
+  expect(
+    [...host.querySelectorAll<HTMLButtonElement>('dialog button')].find(
+      (button) => button.textContent?.trim() === '确认恢复',
+    )?.disabled,
+  ).toBe(false)
 })

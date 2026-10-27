@@ -79,7 +79,7 @@ npm run desktop:dev
 npm run desktop:build
 ```
 
-客户端直接打开本地学习目录，保存 Markdown 正文、附件及 SQLite 学习状态，不配置上游 endpoint。复制或备份前关闭学习库，并复制整个目录。外部修改已有笔记后，可重新扫描并接受修改，保留原有进度。
+客户端直接打开本地学习目录，保存 Markdown 正文、附件及 SQLite 学习状态，不配置上游 endpoint。复制或备份前关闭学习库，并复制整个目录。可从外部新建、修改和改名笔记，经检查确认后进入学习库。移除的笔记与题目变体保留记录，恢复后沿用原有进度。
 
 [桌面使用与开发](docs/DESKTOP.md) · [目录格式与当前边界](docs/WORKSPACE_MODE.md) · [LeetCode 配置](docs/LEETCODE.md)
 
@@ -89,7 +89,7 @@ npm run desktop:build
 
 正在准备 v1.0.0。用户另行授权的 0.27.0 范围是内容渲染、内嵌 HTML、撤销与快捷键、弹窗和复习菜单；完成后继续冻结其他新功能，仅处理发布准备和修复。[发布清单](docs/RELEASE_1_0.md)
 
-本轮将桌面学习存储接入[工作目录](docs/WORKSPACE_MODE.md)，取消桌面本地 / 上游分支。项目暂无其他使用者，因此直接采用新格式，不开发旧库过渡或自动迁移，也不删除旧数据。自动同步、外部材料版本接受及更完整的文件操作仍未完成。
+本轮将桌面学习存储接入[工作目录](docs/WORKSPACE_MODE.md)，取消桌面本地 / 上游分支。项目暂无其他使用者，因此直接采用新格式，不开发旧库过渡或自动迁移，也不删除旧数据。已支持外部笔记新建、移除、恢复和变体退役；材料版本、外部附件编辑、自动监视与同步仍未完成。
 
 界面使用 Vue 3、TypeScript 和 Vite；原生存储使用 Rust 与 SQLite；调度使用 [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)。
 

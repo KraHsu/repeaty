@@ -75,6 +75,11 @@ async function loadArchive(page = 1) {
       }),
     )
   if (!alive) return
+  const last = Math.max(1, Math.ceil(value.total / 50))
+  if (page > last) {
+    await loadArchive(last)
+    return
+  }
   archived.value = value
   archivePage.value = page
 }
@@ -221,7 +226,8 @@ async function prepare(mode: Action['mode'], retiredId?: string) {
   const id = retiredId ?? file?.identity?.id ?? crypto.randomUUID()
   const retired = await props.workspace.readRetiredNote(id)
   const saved = props.workspace.library.value.notes.find((note) => note.id === id) ?? retired.note
-  const parsed = working ? readWorkspaceMarkdown(working.raw) : undefined
+  const parseRaw = mode === 'restore' ? retired.document?.raw : working?.raw
+  const parsed = parseRaw !== undefined ? readWorkspaceMarkdown(parseRaw) : undefined
   const header = parsed?.status === 'managed' ? parsed.document.header : undefined
   const path = mode === 'restore' ? retired.document?.path : file?.path
   if (
@@ -251,6 +257,8 @@ const proposal = computed(() => {
   const value = action.value
   if (!value || value.mode === 'remove') return undefined
   try {
+    if (!props.workspace.library.value.decks.length)
+      return { error: '请先创建卡组，再添加或恢复笔记。' as DisplayMessage }
     if (
       !form.path.startsWith('notes/') ||
       !form.path.endsWith('.md') ||

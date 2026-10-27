@@ -1,5 +1,6 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  '请先创建卡组，再添加或恢复笔记。': 'Create a deck before adding or restoring a note.',
   查找: 'Find',
   '确定删除「{name}」吗？其中的 {count} 张卡片将退出学习队列，笔记与记录仍可在工作目录中恢复。':
     'Delete “{name}”? Its {count} cards will leave study. Notes and history can still be restored from Workspace.',

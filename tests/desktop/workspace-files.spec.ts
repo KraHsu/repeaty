@@ -2,6 +2,9 @@ import { test, expect, storedLibrary } from './fixture'
 import { readFile, writeFile, rm, copyFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
+import { fixture } from '../../src/core/test-fixtures'
+import { createNativeRepository } from '../../src/desktop/repository'
+import { removeNotes } from '../../src/core/model'
 import type { Card, Review } from '../../src/core/model'
 async function root(page: Page) {
   return page.evaluate(async () => {
@@ -184,4 +187,77 @@ test('duplicate identities cannot be accepted and changed files invalidate a del
   await remove.getByRole('button', { name: '取消', exact: true }).click()
   await page.getByRole('button', { name: '重新扫描', exact: true }).click()
   await expect(page.locator('.workspace-file-status')).toHaveText('文件已改名')
+})
+
+test('removed-note search stays paginated when the last page is restored', async ({ page }) => {
+  await page.getByRole('button', { name: '新建卡组', exact: true }).last().click()
+  await page.getByLabel('卡组名称').fill('Paging')
+  await page.getByRole('button', { name: '保存卡组', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  const active = await page.evaluate(
+    async () =>
+      (
+        await (
+          window as unknown as {
+            __TAURI_INTERNALS__: {
+              invoke(
+                command: string,
+              ): Promise<{ active: { id: string; token: string; path: string } }>
+            }
+          }
+        ).__TAURI_INTERNALS__.invoke('workspace_status')
+      ).active,
+  )
+  const repo = createNativeRepository(active, (command, args) =>
+    page.evaluate(
+      ({ command, args }) =>
+        (
+          window as unknown as {
+            __TAURI_INTERNALS__: {
+              invoke(command: string, args?: Record<string, unknown>): Promise<never>
+            }
+          }
+        ).__TAURI_INTERNALS__.invoke(command, args),
+      { command, args },
+    ),
+  )
+  let saved = await repo.load()
+  const template = fixture(),
+    note = template.notes[0]!,
+    card = template.cards[0]!
+  const notes = Array.from({ length: 55 }, (_, index) => ({
+    ...note,
+    id: 'paging-' + index,
+    deckId: saved.library.decks[0]!.id,
+    front: 'Paging note ' + index,
+  }))
+  saved = await repo.save(
+    {
+      ...saved.library,
+      notes,
+      cards: notes.map((note, index) => ({ ...card, id: 'paging-card-' + index, noteId: note.id })),
+    },
+    saved.revision,
+  )
+  await repo.save(removeNotes(saved.library, new Set(notes.map((note) => note.id))), saved.revision)
+  await page.reload()
+  await files(page)
+  const archive = page.locator('.workspace-retired')
+  await archive.getByLabel('查找已移除的笔记').fill('Paging note ')
+  await archive.getByRole('button', { name: '查找', exact: true }).click()
+  await expect(archive).toContainText('共 55 条')
+  await expect(archive.locator('.workspace-retired-entry')).toHaveCount(50)
+  await archive.getByRole('button', { name: '下一页', exact: true }).click()
+  await expect(archive.locator('.workspace-retired-entry')).toHaveCount(5)
+  for (let remaining = 5; remaining > 0; remaining--) {
+    await archive.getByRole('button', { name: '恢复笔记', exact: true }).first().click()
+    const recover = page.getByRole('dialog', { name: '恢复笔记', exact: true })
+    await recover.getByRole('button', { name: '确认恢复', exact: true }).click()
+    await expect(recover).toHaveCount(0)
+    await expect(page.locator('.workspace-manager')).toHaveAttribute('aria-busy', 'false')
+  }
+  await expect(archive).toContainText('共 50 条')
+  await expect(archive.locator('.workspace-retired-entry')).toHaveCount(50)
+  await expect(archive.getByRole('button', { name: '下一页', exact: true })).toHaveCount(0)
+  expect((await storedLibrary(page)).notes).toHaveLength(5)
 })

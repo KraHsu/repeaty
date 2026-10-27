@@ -1,7 +1,7 @@
 // Real WebKit, Rust IPC, native folder picker, and actual application restart.
 import { spawn, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdtemp, mkdir, writeFile, readFile, rename, copyFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, readFile, rename, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import assert from 'node:assert/strict'
@@ -245,6 +245,7 @@ try {
     "[...document.querySelectorAll('.workspace-file')].find(b=>b.textContent.includes('改名并修改')).click()",
   )
   await click('接受修改')
+  await click('确认接受')
   await until(
     async () =>
       (await nativeLibrary()).library.notes.find((n) => n.id === note.id)?.front ===
@@ -269,7 +270,109 @@ try {
       ),
     'inspector ready',
   )
+  // Remove a graded note outside the app and restore it after another real restart.
+  const beforeRemoval = await nativeLibrary()
+  const gradedCard = beforeRemoval.library.cards.find(
+    (card) => card.id === beforeRemoval.library.reviews[0].cardId,
+  )
+  const removedCards = beforeRemoval.library.cards.filter(
+    (card) => card.noteId === gradedCard.noteId,
+  )
+  let active = (await invoke('workspace_status')).active
+  const [removedDoc] = await invoke('workspace_read', {
+    token: active.token,
+    request: { type: 'documents', ids: [gradedCard.noteId] },
+  })
+  await rm(join(selected, removedDoc.path))
+  await click('重新扫描')
+  await until(
+    () =>
+      execute(
+        "return [...document.querySelectorAll('.workspace-file')].some(b=>b.textContent.includes(arguments[0])&&b.textContent.includes('文件缺失'))",
+        removedDoc.path,
+      ),
+    'external deletion detected',
+  )
+  await execute(
+    "[...document.querySelectorAll('.workspace-file')].find(b=>b.textContent.includes(arguments[0])).click()",
+    removedDoc.path,
+  )
+  await click('移除这条笔记')
+  await until(
+    () => execute("return document.querySelector('dialog')?.textContent.includes('确认移除笔记')"),
+    'removal confirmation',
+  )
   await mkdir('test-results', { recursive: true })
+  await writeFile(
+    'test-results/workspace-file-removal.png',
+    Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
+  )
+  await click('确认移除')
+  await until(
+    async () =>
+      !(await nativeLibrary()).library.notes.some((note) => note.id === gradedCard.noteId),
+    'note retired',
+  )
+  const retired = await invoke('workspace_read', {
+    token: active.token,
+    request: { type: 'retired-note', id: gradedCard.noteId },
+  })
+  assert.deepEqual(
+    retired.cards.map((card) => card.id).sort(),
+    removedCards.map((card) => card.id).sort(),
+  )
+  assert.deepEqual(
+    retired.reviews,
+    beforeRemoval.library.reviews.filter((review) =>
+      removedCards.some((card) => card.id === review.cardId),
+    ),
+  )
+  await command(`/session/${session}`, undefined, 'DELETE')
+  session = undefined
+  await start()
+  await ready()
+  await enter()
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.workspace-manager')?.getAttribute('aria-busy')==='false'",
+      ),
+    'retirement restored after restart',
+  )
+  // Keep a different type selected to verify that restore uses the archived metadata.
+  const other = (await nativeLibrary()).library.notes.find(
+    (note) =>
+      note.type !== beforeRemoval.library.notes.find((note) => note.id === gradedCard.noteId).type,
+  )
+  if (other) {
+    active = (await invoke('workspace_status')).active
+    const [otherDoc] = await invoke('workspace_read', {
+      token: active.token,
+      request: { type: 'documents', ids: [other.id] },
+    })
+    await execute(
+      "[...document.querySelectorAll('.workspace-file')].find(b=>b.textContent.includes(arguments[0])).click()",
+      otherDoc.path,
+    )
+  }
+  await click('恢复笔记')
+  await click('确认恢复')
+  await until(
+    async () => (await nativeLibrary()).library.notes.some((note) => note.id === gradedCard.noteId),
+    'retired note restored',
+  )
+  saved = await nativeLibrary()
+  const byId = (cards) => [...cards].sort((a, b) => a.id.localeCompare(b.id))
+  assert.deepEqual(byId(saved.library.cards), byId(beforeRemoval.library.cards))
+  assert.deepEqual(saved.library.reviews, beforeRemoval.library.reviews)
+  assert.equal(await readFile(join(selected, removedDoc.path), 'utf8'), removedDoc.raw)
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.workspace-manager')?.getAttribute('aria-busy')==='false'",
+      ),
+    'file refresh completed',
+  )
   await writeFile(
     'test-results/workspace-active-wide.png',
     Buffer.from(await command(`/session/${session}/screenshot`), 'base64'),
@@ -299,7 +402,7 @@ try {
   assert.deepEqual(await nativeLibrary(), saved)
   assert.deepEqual(await execute('return indexedDB.databases().then(d=>d.map(x=>x.name))'), [])
   console.log(
-    'Native workspace: create/open/cancel, automatic starter, actual card edit and rating, external Markdown rename/acceptance, stable schedules, process restart, recent reopen, no account mode and no IndexedDB passed',
+    'Native workspace: create/open/cancel, automatic starter, actual card edit and rating, external Markdown rename/acceptance, stable schedules, graded note deletion and restoration across process restart, recent reopen, no account mode and no IndexedDB passed',
   )
 } catch (error) {
   await mkdir('test-results', { recursive: true })
