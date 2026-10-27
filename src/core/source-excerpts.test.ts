@@ -9,9 +9,9 @@ import {
   saveReadingPosition,
   sourceExcerpt,
 } from './sources'
-import { emptyLibrary, librarySchema, saveNote, type MediaUpload } from './model'
+import { emptyLibrary, librarySchema, localDay, saveNote, type MediaUpload } from './model'
 import { fixture, input, now } from './test-fixtures'
-import { arrangeSource, queuedSources } from './source-queue'
+import { arrangeSource, nextReadingDay, queuedSources } from './source-queue'
 import { startReadingRound, advanceReadingRound } from './reading-round'
 import { createRepository } from './storage'
 import { exportArchive, parseArchive } from './archive'
@@ -103,7 +103,8 @@ it('rejects invalid provenance, including self references, mismatched formats an
 
 it('arranges excerpts independently and adds them only to the next reading round', () => {
   const { library, root, child } = sample()
-  const oldRound = startReadingRound([root.source], '2026-10-17')
+  const today = localDay(now)
+  const oldRound = startReadingRound([root.source], today)
   const next = arrangeSource(
     library,
     child.source.id,
@@ -112,20 +113,20 @@ it('arranges excerpts independently and adds them only to the next reading round
     now,
   )
   expect(next.sources[0]).toBe(root.source)
-  expect(queuedSources(next.sources, 'ready', '2026-10-17').map((source) => source.id)).toEqual([
+  expect(queuedSources(next.sources, 'ready', today).map((source) => source.id)).toEqual([
     child.source.id,
     root.source.id,
   ])
-  expect(advanceReadingRound(oldRound, next.sources, '2026-10-17').cursor).toBe(1)
+  expect(advanceReadingRound(oldRound, next.sources, today).cursor).toBe(1)
   expect(oldRound.entries).toHaveLength(1)
   const deferred = arrangeSource(
     next,
     child.source.id,
     child.source.mediaId,
-    { type: 'defer', date: '2026-10-18' },
+    { type: 'defer', date: nextReadingDay(now) },
     now,
   )
-  expect(queuedSources(deferred.sources, 'ready', '2026-10-17')).toEqual([root.source])
+  expect(queuedSources(deferred.sources, 'ready', today)).toEqual([root.source])
   const archived = arrangeSource(
     deferred,
     child.source.id,
@@ -133,7 +134,7 @@ it('arranges excerpts independently and adds them only to the next reading round
     { type: 'archive' },
     now,
   )
-  expect(queuedSources(archived.sources, 'archived', '2026-10-17')[0]!.priority).toBe('high')
+  expect(queuedSources(archived.sources, 'archived', today)[0]!.priority).toBe('high')
   expect(archived.cards).toBe(library.cards)
 })
 
