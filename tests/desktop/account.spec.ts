@@ -1,6 +1,7 @@
 import { test, expect, storedLibrary } from './fixture'
 import type { Locator } from '@playwright/test'
 import { openPluginSettings, setInterfaceLanguage } from '../fixtures/settings-flow'
+import { setResponsiveViewport } from '../fixtures/viewport-flow'
 
 async function save(region: Locator) {
   await region.getByLabel('LEETCODE_SESSION', { exact: true }).fill('account-test-session')
@@ -66,7 +67,7 @@ test('verification distinguishes expired sessions, website checks, network failu
   mode = 'verification-required'
   await english.getByRole('button', { name: 'Refresh status' }).click()
   await expect(english.getByRole('status')).toContainText('Website verification required')
-  await page.setViewportSize({ width: 390, height: 844 })
+  await setResponsiveViewport(page, 390, 844)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: 'test-results/account-status-mobile-en.png', fullPage: true })
 })

@@ -52,6 +52,8 @@ main.ts → App.vue → app/createApplication.ts
 
 侧栏布局由每个根组件的 `useSidebarLayout` 管理，宽度通过现有偏好适配器以 `repeaty.sidebar.width.v1` 保存。拖动期间只更新本实例布局，结束后保存；学习库切换、手势取消和卸载会释放指针捕获。视口收窄只限制实际宽度，保留首选宽度供窗口放大后恢复。
 
+`src/components/ui/` 提供 `SettingGroup`、`SettingField`、`UiButton`，本体与公开插件 SDK 复用同一运行时组件；`src/styles/tokens.css` 和 `controls.css` 管理字体、间距、控件状态与滚动条。插件仅声明字段和业务保存逻辑，不复制宿主控件代码。详见[界面规范](DESIGN_SYSTEM.md)。
+
 组件外调用 `useLibrary()` 或其他 store 时显式传入所属 Pinia；测试也用 `createPinia()` 创建独立实例。应用卸载时调用 `disposePinia()`，释放该实例的服务。
 
 ## 异步操作与卸载

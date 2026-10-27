@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, useId, watch } from 'vue'
+import { SettingGroup, SettingField, UiButton } from '@repeaty/plugin-api'
 import { t, locale } from './i18n'
 import { bridgeRequest, BridgeError, configureCredentials, pluginRequest } from './bridge'
 import {
@@ -210,10 +211,19 @@ onUnmounted(() => {
 })
 </script>
 <template>
-  <section class="leetcode-connection" :aria-label="t(siteName)">
+  <SettingGroup
+    class="leetcode-connection"
+    :title="t(siteName)"
+    :level="3"
+    :aria-label="t(siteName)"
+  >
+    <template #actions>
+      <UiButton :disabled="loading || saving || checking" @click="refresh">
+        {{ t('刷新状态') }}
+      </UiButton>
+    </template>
     <div class="connection-header">
       <div>
-        <h3>{{ t(siteName) }}</h3>
         <p class="connection-status" role="status">
           {{ t('LeetCode 登录') }}
           <strong :class="{ configured: verified }">{{ t(statusLabel) }}</strong>
@@ -225,14 +235,6 @@ onUnmounted(() => {
           {{ t('验证时间：{time}', { time: checkedAt.toLocaleString(locale) }) }}
         </p>
       </div>
-      <button
-        type="button"
-        class="button secondary"
-        :disabled="loading || saving || checking"
-        @click="refresh"
-      >
-        {{ t('刷新状态') }}
-      </button>
     </div>
     <p v-if="error" class="import-warning" role="alert">{{ t(error) }}</p>
     <p v-else-if="issueMessage" class="import-warning" role="alert">{{ t(issueMessage) }}</p>
@@ -255,62 +257,56 @@ onUnmounted(() => {
         {{ t('填写 Cookie 的值。保存后立即生效；已保存的值不会回填。') }}
       </p>
       <div class="credential-fields" @keydown.enter="enterCredential($event)">
-        <label class="form-field" :for="`${fieldId}-session`"
-          >LEETCODE_SESSION
-          <input
-            :id="`${fieldId}-session`"
-            v-model="session"
-            type="password"
-            autocomplete="new-password"
-            :spellcheck="false"
-            autocapitalize="off"
-            :maxlength="8192"
-            :placeholder="t('粘贴 Cookie 值')"
-          />
-        </label>
-        <label class="form-field" :for="`${fieldId}-csrf`"
-          >csrftoken
-          <input
-            :id="`${fieldId}-csrf`"
-            v-model="csrf"
-            type="password"
-            autocomplete="new-password"
-            :spellcheck="false"
-            autocapitalize="off"
-            :maxlength="8192"
-            :placeholder="t('粘贴 Cookie 值')"
-          />
-        </label>
+        <SettingField
+          :id="`${fieldId}-session`"
+          label="LEETCODE_SESSION"
+          :model-value="session"
+          type="password"
+          layout="stack"
+          autocomplete="new-password"
+          :spellcheck="false"
+          autocapitalize="off"
+          :maxlength="8192"
+          :placeholder="t('粘贴 Cookie 值')"
+          @update:model-value="session = String($event)"
+        />
+        <SettingField
+          :id="`${fieldId}-csrf`"
+          label="csrftoken"
+          :model-value="csrf"
+          type="password"
+          layout="stack"
+          autocomplete="new-password"
+          :spellcheck="false"
+          autocapitalize="off"
+          :maxlength="8192"
+          :placeholder="t('粘贴 Cookie 值')"
+          @update:model-value="csrf = String($event)"
+        />
       </div>
       <p v-if="saveError" class="import-warning" role="alert">{{ t(saveError) }}</p>
       <p v-if="message" class="form-note" aria-live="polite">{{ t(message) }}</p>
       <div class="connection-actions">
-        <button
-          type="button"
-          class="button primary"
+        <UiButton
+          variant="primary"
           :disabled="saving || !session.trim() || !csrf.trim()"
           @click="configure('save')"
         >
           {{ t(saving ? '正在保存…' : '保存登录信息') }}
-        </button>
-        <button
-          v-if="hasCredentials && !confirmation"
-          type="button"
-          class="button secondary"
-          @click="confirmation = true"
-        >
+        </UiButton>
+        <UiButton v-if="hasCredentials && !confirmation" @click="confirmation = true">
           {{ t('清除登录信息') }}
-        </button>
+        </UiButton>
       </div>
       <div v-if="confirmation" class="credential-confirmation">
         <p>{{ t('清除后需重新填写登录信息才能提交判题。') }}</p>
         <div class="connection-actions">
-          <button type="button" class="button danger" @click="configure('clear')">
+          <UiButton variant="danger" @click="configure('clear')">
             {{ t('确认清除') }}
-          </button>
-          <button type="button" class="button secondary" @click="confirmation = false">
+          </UiButton>
+          <UiButton @click="confirmation = false">
             {{ t('取消') }}
-          </button>
+          </UiButton>
         </div>
       </div>
       <p class="form-note">
@@ -335,5 +331,5 @@ onUnmounted(() => {
         >{{ t('完整配置文档') }} ↗</a
       >
     </details>
-  </section>
+  </SettingGroup>
 </template>

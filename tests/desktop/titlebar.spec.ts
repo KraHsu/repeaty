@@ -2,6 +2,9 @@ import { test, expect, storedLibrary } from './fixture'
 import type { Page } from '@playwright/test'
 import { setInterfaceLanguage } from '../fixtures/settings-flow'
 
+// Include visible scrollbar gutters when checking the native window's full width.
+test.use({ launchOptions: { ignoreDefaultArgs: ['--hide-scrollbars'] } })
+
 interface WindowFixture {
   calls: string[]
   failNext: string
@@ -60,6 +63,12 @@ for (const [width, height] of [
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
       width,
     )
+    expect(
+      await page.evaluate(() => {
+        const page = document.documentElement
+        return page.scrollWidth <= page.clientWidth
+      }),
+    ).toBe(true)
     await page.getByRole('button', { name: '工作目录', exact: true }).click()
     await expect(page.locator('.workspace-manager')).toBeVisible()
     await page.screenshot({ path: info.outputPath(`titlebar-${width}.png`), fullPage: true })

@@ -204,9 +204,9 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
   min-width: 0;
   min-height: 28rem;
   resize: vertical;
-  line-height: 1.8;
+  line-height: var(--line-height-reading);
   font-family: inherit;
-  font-size: 1rem;
+  font-size: var(--font-size-reading);
   border: 1px solid #d4decd;
   border-radius: 8px;
   background: #fafbf8;
@@ -222,8 +222,8 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
 .source-markdown-preview {
   max-height: 36rem;
   overflow: auto;
-  font-size: 1rem;
-  line-height: 1.8;
+  font-size: var(--font-size-reading);
+  line-height: var(--line-height-reading);
   overflow-wrap: anywhere;
   scroll-behavior: auto;
 }

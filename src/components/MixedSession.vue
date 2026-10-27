@@ -271,7 +271,7 @@ defineExpose({ undoCard, undoReading, canUndoCard, locked, leave, reconcileUndo 
   border-bottom: 1px solid var(--line);
 }
 h1 {
-  font-size: 1.5rem;
+  font-size: var(--font-size-page);
   margin: 0 0 0.5rem;
 }
 p {

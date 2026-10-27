@@ -43,7 +43,7 @@ useEventListener(window, 'beforeunload', beforeUnload)
   border: 1px solid var(--line);
   border-radius: 12px;
   background: #f3f6ef;
-  font-size: 0.95rem;
+  font-size: var(--font-size-meta);
 }
 .workspace-trial-notice > svg {
   flex-shrink: 0;
@@ -51,7 +51,7 @@ useEventListener(window, 'beforeunload', beforeUnload)
 .workspace-trial-notice p {
   flex: 1;
   margin: 0;
-  line-height: 1.65;
+  line-height: var(--line-height-ui);
 }
 .workspace-trial-notice strong {
   display: block;

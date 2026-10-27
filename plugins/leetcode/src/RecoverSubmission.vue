@@ -60,10 +60,10 @@ const shown = ref(false)
 }
 h3 {
   margin: 0;
-  font-size: 1.125rem;
+  font-size: var(--font-size-section);
 }
 p {
-  line-height: 1.7;
+  line-height: var(--line-height-ui);
 }
 details {
   margin-bottom: 1rem;

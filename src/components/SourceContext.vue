@@ -182,7 +182,7 @@ const matches = computed(
   text-align: left;
 }
 .source-context-path [aria-current] {
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
   color: #35573c;
 }
 .source-context > * {
@@ -193,6 +193,8 @@ const matches = computed(
   overflow-wrap: anywhere;
 }
 .source-quote {
+  font-size: var(--font-size-reading);
+  line-height: var(--line-height-reading);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   padding: 1rem;
@@ -200,9 +202,10 @@ const matches = computed(
   background: #f4f7ef;
 }
 .source-original {
+  font-size: var(--font-size-reading);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  line-height: 1.8;
+  line-height: var(--line-height-reading);
 }
 .source-original mark {
   background: #f2df9b;
@@ -210,7 +213,7 @@ const matches = computed(
   border-radius: 2px;
 }
 .source-context :deep(.card-content) {
-  font-size: 1rem;
+  font-size: var(--font-size-reading);
 }
 @media (max-width: 720px) {
   .source-context {

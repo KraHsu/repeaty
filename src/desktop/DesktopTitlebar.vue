@@ -161,6 +161,8 @@ onUnmounted(() => {
 .desktop-titlebar {
   position: fixed;
   inset: 0 0 auto;
+  width: 100vw;
+  right: auto;
   z-index: 50;
   height: var(--desktop-titlebar-height, 36px);
   display: flex;
@@ -184,8 +186,8 @@ onUnmounted(() => {
   pointer-events: none;
 }
 .desktop-titlebar-name {
-  font-size: 0.8125rem;
-  font-weight: 500;
+  font-size: var(--font-size-meta);
+  font-weight: var(--font-weight-medium);
   letter-spacing: 0.1px;
 }
 .desktop-titlebar-error {
@@ -194,7 +196,7 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #a43d35;
-  font-size: 0.8125rem;
+  font-size: var(--font-size-meta);
 }
 .desktop-window-controls {
   display: flex;

@@ -267,8 +267,8 @@ function variant(key: string) {
   justify-content: space-between;
 }
 .anki-change-status {
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: var(--font-size-meta);
+  font-weight: var(--font-weight-semibold);
   color: var(--muted);
 }
 .anki-change-status.changed {
@@ -303,7 +303,7 @@ function variant(key: string) {
   margin: 0 0 0.8rem;
 }
 .anki-compare-side :deep(.card-content) {
-  font-size: 1rem;
+  font-size: var(--font-size-body);
 }
 .anki-compare-side :deep(audio) {
   max-width: 100%;
@@ -312,7 +312,7 @@ function variant(key: string) {
   margin-block: 1rem;
 }
 .anki-face-label {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   margin-top: 1rem !important;
 }
 .anki-change-pages {

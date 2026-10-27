@@ -53,7 +53,7 @@ defineProps<{ status: DeckStudyStatus; compact?: boolean }>()
   background: transparent;
 }
 .state-label {
-  font-size: 0.9rem;
+  font-size: var(--font-size-meta);
   color: #63735f;
   margin: 0 0 0.65rem;
 }
@@ -70,13 +70,13 @@ dl > div {
   gap: 0.2rem;
 }
 dt {
-  font-size: 0.9rem;
+  font-size: var(--font-size-meta);
 }
 dd {
   margin: 0;
-  font-size: 1.5rem;
-  font-weight: 650;
-  line-height: 1.3;
+  font-size: var(--font-size-display);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-heading);
 }
 .new {
   color: #466e9b;
@@ -88,9 +88,9 @@ dd {
   color: #416c50;
 }
 .state-detail {
-  font-size: 0.9rem;
+  font-size: var(--font-size-meta);
   color: #63735f;
-  line-height: 1.6;
+  line-height: var(--line-height-ui);
   margin: 0.75rem 0 0;
 }
 </style>

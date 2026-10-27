@@ -108,13 +108,13 @@ function submit() {
   margin: 0;
 }
 .source-batch-summary {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .source-batch-titles {
   margin: 0;
   padding-left: 1.25rem;
   overflow-wrap: anywhere;
-  line-height: 1.7;
+  line-height: var(--line-height-ui);
 }
 .source-batch-form select,
 .source-batch-form input {

@@ -276,18 +276,18 @@ onUnmounted(() => {
   background: var(--sage);
 }
 h1 {
-  font-size: clamp(1.4rem, 3vw, 1.85rem);
-  line-height: 1.35;
+  font-size: var(--font-size-page);
+  line-height: var(--line-height-heading);
   margin: 0 0 0.6rem;
 }
 h2 {
-  font-size: 1.2rem;
-  line-height: 1.5;
+  font-size: var(--font-size-section);
+  line-height: var(--line-height-heading);
   overflow-wrap: anywhere;
 }
 p {
-  font-size: 1rem;
-  line-height: 1.8;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-ui);
 }
 .browser-workspace-heading p,
 .workspace-folder-help,
@@ -333,7 +333,7 @@ p {
   align-items: center;
 }
 .workspace-preview-heading > span {
-  font-size: 0.95rem;
+  font-size: var(--font-size-meta);
   color: var(--muted);
 }
 .workspace-totals {
@@ -347,10 +347,10 @@ p {
   align-items: center;
   gap: 0.4rem;
   color: var(--muted);
-  line-height: 1.6;
+  line-height: var(--line-height-ui);
 }
 .workspace-totals dd {
-  font-size: 1.8rem;
+  font-size: var(--font-size-display);
   margin: 0.4rem 0 0;
   font-variant-numeric: tabular-nums;
 }

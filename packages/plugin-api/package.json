@@ -1,6 +1,6 @@
 {
   "name": "@repeaty/plugin-api",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "engines": {
     "node": ">=24.15.0"
   },
@@ -13,6 +13,7 @@
   "type": "module",
   "files": [
     "index.d.ts",
+    "build.d.mts",
     "build.mjs"
   ],
   "dependencies": {

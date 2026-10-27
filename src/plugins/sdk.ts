@@ -6,6 +6,7 @@ import { hasAttemptBody } from '../core/practice-data'
 import { callPluginHost, readPluginData, writePluginData } from '@repeaty-plugin-host'
 import type { PluginManifest } from './package'
 import type { PluginModule } from './runtime'
+import { SettingGroup, SettingField, UiButton } from '../components/ui'
 
 const MediaList = vue.defineAsyncComponent(() => import('../components/MediaList.vue'))
 const CardContent = vue.defineAsyncComponent(() => import('../components/CardContent.vue'))
@@ -59,6 +60,9 @@ export function createPluginApi(
     CardContent,
     PracticeHistory,
     AttemptBody,
+    SettingGroup,
+    SettingField,
+    UiButton,
     practiceContentRevision,
     hasAttemptBody,
     pluginData,

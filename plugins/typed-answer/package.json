@@ -1,6 +1,6 @@
 {
   "name": "@repeaty/plugin-typed-answer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "Type an answer before revealing it, with case-insensitive comparison.",

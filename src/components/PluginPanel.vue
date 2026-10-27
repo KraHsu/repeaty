@@ -6,6 +6,7 @@ import { workspaceAvailable } from '@repeaty-platform'
 import { usePlugins } from '../plugins'
 import { readPluginFile, pluginIssueMessage, type PluginManifest } from '../plugins/package'
 import { usePluginManager, officialPluginBundles } from '../plugins/manager'
+import { SettingGroup, SettingField, UiButton } from './ui'
 const { installedPlugins, pluginEnabled, pluginPreferenceError } = usePlugins()
 const {
   pluginPackages,
@@ -112,15 +113,15 @@ async function installOfficial() {
         hidden
         @change="choose"
       />
-      <button class="button secondary" :disabled="locked" @click="picker?.click()">
+      <UiButton :disabled="locked" @click="picker?.click()">
         {{ t('安装插件包') }}
-      </button>
-      <button class="button secondary" :disabled="locked" @click="installOfficial">
+      </UiButton>
+      <UiButton :disabled="locked" @click="installOfficial">
         {{ t('安装或更新官方插件') }}
-      </button>
-      <button class="button secondary" :disabled="locked" @click="run(reloadPlugins)">
+      </UiButton>
+      <UiButton :disabled="locked" @click="run(reloadPlugins)">
         {{ t('重新扫描插件') }}
-      </button>
+      </UiButton>
     </div>
     <p v-if="activePluginViews" class="form-note">
       {{ t('请先结束复习或关闭编辑器，再修改插件。') }}
@@ -132,47 +133,43 @@ async function installOfficial() {
     >
       {{ t(error || pluginManagerError || pluginPreferenceError) }}
     </p>
-    <article v-for="entry in entries" :key="entry.id" class="plugin-settings">
-      <div class="plugin-heading">
-        <h2>{{ t(entry.plugin?.label ?? entry.bundle?.manifest.name ?? entry.id) }}</h2>
+    <SettingGroup
+      v-for="entry in entries"
+      :key="entry.id"
+      class="plugin-settings"
+      :title="t(entry.plugin?.label ?? entry.bundle?.manifest.name ?? entry.id)"
+      :description="
+        entry.plugin?.description || entry.bundle?.manifest.description
+          ? t(entry.plugin?.description ?? entry.bundle!.manifest.description!)
+          : undefined
+      "
+    >
+      <template #actions>
         <span class="pill">{{ entry.bundle?.manifest.version }}</span>
-        <span class="pill">{{
-          t(entry.bundle?.manifest.kind === 'local' ? '本地插件 · 桌面版' : '纯前端插件')
-        }}</span>
-        <label class="plugin-toggle">
-          <input
-            type="checkbox"
-            role="switch"
-            :disabled="
-              locked || !entry.bundle || (entry.bundle.manifest.kind === 'local' && !desktopEdition)
-            "
-            :aria-label="
-              t('启用 {name}', {
-                name: t(entry.plugin?.label ?? entry.bundle?.manifest.name ?? entry.id),
-              })
-            "
-            :checked="pluginEnabled(entry.id)"
-            @change="
-              toggle(
-                entry.id,
-                ($event.target as HTMLInputElement).checked,
-                entry.trusted,
-                entry.bundle?.manifest.name ?? entry.id,
-              )
-            "
-          />
-          <span aria-hidden="true" class="toggle-track" /><span>{{
-            t(pluginEnabled(entry.id) ? '已开启' : '已关闭')
-          }}</span>
-        </label>
-        <button class="text-button" :disabled="locked" @click="uninstall(entry.id)">
+        <UiButton variant="ghost" :disabled="locked" @click="uninstall(entry.id)">
           {{ t('卸载插件') }}
-        </button>
-      </div>
-      <p v-if="entry.plugin?.description || entry.bundle?.manifest.description">
-        {{ t(entry.plugin?.description ?? entry.bundle!.manifest.description!) }}
+        </UiButton>
+      </template>
+      <p class="form-note">
+        {{ t(entry.bundle?.manifest.kind === 'local' ? '本地插件 · 桌面版' : '纯前端插件') }}
+        · {{ capabilities(entry.bundle?.manifest) }}
       </p>
-      <p class="form-note">{{ capabilities(entry.bundle?.manifest) }}</p>
+      <SettingField
+        type="switch"
+        :label="
+          t('启用 {name}', {
+            name: t(entry.plugin?.label ?? entry.bundle?.manifest.name ?? entry.id),
+          })
+        "
+        :description="t(pluginEnabled(entry.id) ? '已开启' : '已关闭')"
+        :disabled="
+          locked || !entry.bundle || (entry.bundle.manifest.kind === 'local' && !desktopEdition)
+        "
+        :model-value="pluginEnabled(entry.id)"
+        @update:model-value="
+          toggle(entry.id, $event === true, entry.trusted, entry.bundle?.manifest.name ?? entry.id)
+        "
+      />
       <p v-if="!entry.trusted" class="form-note">
         {{ t('此设备尚未信任此插件包。启用前请确认代码来源。') }}
       </p>
@@ -181,7 +178,7 @@ async function installOfficial() {
         v-if="pluginEnabled(entry.id) && entry.plugin?.settings"
         :is="entry.plugin.settings"
       />
-    </article>
+    </SettingGroup>
     <p v-if="!entries.length" class="form-note">
       {{ t('当前学习库尚未安装插件。普通卡片可正常使用。') }}
     </p>

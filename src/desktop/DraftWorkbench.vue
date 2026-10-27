@@ -317,8 +317,8 @@ async function discard(id: string) {
 .draft-share,
 .draft-queue {
   padding: 1.5rem 1.75rem;
-  font-size: 1rem;
-  line-height: 1.65;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-ui);
 }
 .draft-quote {
   margin: 1rem 0;
@@ -340,7 +340,7 @@ async function discard(id: string) {
 }
 .draft-meta span {
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--font-size-meta);
   overflow-wrap: anywhere;
 }
 .draft-list {

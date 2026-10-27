@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, nextTick, ref, type Component } from 'v
 import { t, locale, setLocale } from '../i18n'
 import { preferences, setPreference, preferenceError } from '../preferences'
 import PluginPanel from './PluginPanel.vue'
+import { SettingGroup, SettingField } from './ui'
 const props = defineProps<{ initialTab?: 'general' | 'plugins'; platformSettings?: Component }>()
 const selected = ref<'general' | 'plugins' | 'ai'>(props.initialTab ?? 'general')
 const AiCardSkill = defineAsyncComponent(() => import('./AiCardSkill.vue'))
@@ -72,38 +73,33 @@ const popupOptions = computed(() => [
       :aria-labelledby="`settings-tab-${selected}`"
     >
       <template v-if="selected === 'general'">
-        <section class="settings-section">
-          <h2>{{ t('界面') }}</h2>
-          <label class="language-picker" for="settings-language">
-            <span>{{ t('界面语言') }}</span>
-            <select
-              id="settings-language"
-              :value="locale"
-              @change="
-                setLocale(($event.target as HTMLSelectElement).value === 'en' ? 'en' : 'zh-CN')
-              "
-            >
-              <option value="en">English</option>
-              <option value="zh-CN">中文（简体）</option>
-            </select>
-          </label>
-        </section>
-        <section class="settings-section">
-          <h2>{{ t('弹出通知') }}</h2>
-          <p class="form-note">
-            {{ t('关闭弹出后，通知改为在页面内显示。警告和错误仍需手动关闭。') }}
-          </p>
-          <div v-for="item in popupOptions" :key="item.key" class="notification-setting">
-            <label class="check-line"
-              ><input
-                type="checkbox"
-                :checked="preferences[item.key]"
-                @change="setPreference(item.key, ($event.target as HTMLInputElement).checked)"
-              />{{ item.label }}</label
-            >
-            <p class="form-note">{{ item.description }}</p>
-          </div>
-        </section>
+        <SettingGroup :title="t('界面')">
+          <SettingField
+            id="settings-language"
+            type="select"
+            :label="t('界面语言')"
+            :model-value="locale"
+            :options="[
+              { value: 'en', label: 'English' },
+              { value: 'zh-CN', label: '中文（简体）' },
+            ]"
+            @update:model-value="setLocale($event === 'en' ? 'en' : 'zh-CN')"
+          />
+        </SettingGroup>
+        <SettingGroup
+          :title="t('弹出通知')"
+          :description="t('关闭弹出后，通知改为在页面内显示。警告和错误仍需手动关闭。')"
+        >
+          <SettingField
+            v-for="item in popupOptions"
+            :key="item.key"
+            type="switch"
+            :label="item.label"
+            :description="item.description"
+            :model-value="preferences[item.key]"
+            @update:model-value="setPreference(item.key, $event === true)"
+          />
+        </SettingGroup>
         <component v-if="platformSettings" :is="platformSettings" />
       </template>
       <PluginPanel v-else-if="selected === 'plugins'" embedded />
@@ -114,55 +110,33 @@ const popupOptions = computed(() => [
 </template>
 <style scoped>
 .settings-page {
-  max-width: 1100px;
+  max-width: 1040px;
+  container-type: inline-size;
 }
 .settings-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  padding-bottom: 1rem;
-  margin-bottom: 1.5rem;
+  gap: 1.5rem;
+  padding-bottom: 0;
+  margin-bottom: 2rem;
   border-bottom: 1px solid var(--line);
 }
 .settings-tabs button {
   font: inherit;
-  padding: 0.65rem 1.25rem;
+  padding: 0.75rem 0.1rem;
   min-height: 44px;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
   background: transparent;
-  color: var(--text);
+  color: var(--muted);
+  font-size: var(--font-size-control);
   cursor: pointer;
 }
 .settings-tabs button[aria-selected='true'] {
-  background: #e5ecdf;
-  border-color: #bacbb0;
+  background: transparent;
+  border-bottom-color: var(--green);
   color: #365b42;
-}
-.settings-section {
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-}
-.settings-section h2 {
-  font-size: 1.2rem;
-  margin: 0 0 1rem;
-}
-select {
-  font: inherit;
-  min-height: 44px;
-  padding: 0.5rem 1rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  margin-left: 1rem;
-}
-.notification-setting + .notification-setting {
-  margin-top: 1.25rem;
-}
-.check-line input {
-  width: 18px;
-  height: 18px;
+  font-weight: var(--font-weight-semibold);
 }
 </style>

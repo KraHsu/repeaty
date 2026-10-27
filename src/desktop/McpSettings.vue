@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { t } from '../i18n'
 import { remoteWorkspace } from '../edition'
+import { SettingGroup, SettingField, UiButton } from '../components/ui'
 import {
   mcpStatus,
   mcpBridgeError,
@@ -84,11 +85,10 @@ async function copy() {
 </script>
 
 <template>
-  <section class="mcp-settings" aria-labelledby="mcp-heading">
-    <div class="mcp-heading">
-      <h3 id="mcp-heading">{{ t('MCP 连接') }}</h3>
+  <SettingGroup class="mcp-settings" :title="t('MCP 连接')">
+    <template #actions>
       <span class="mcp-state" role="status">{{ t(mcpStatus.enabled ? '已开启' : '已关闭') }}</span>
-    </div>
+    </template>
     <p class="form-note">
       {{ t('可查询待复习题目、学习统计和练习摘要。在材料中分享摘录后，还可接收制卡草稿。') }}
     </p>
@@ -101,55 +101,56 @@ async function copy() {
     <p v-if="error || mcpBridgeError" class="import-warning" role="alert">
       {{ t(error || mcpBridgeError) }}
     </p>
-    <div class="mcp-client-field">
-      <label for="mcp-client">{{ t('MCP 客户端') }}</label>
-      <select
-        id="mcp-client"
-        v-model="client"
-        :disabled="working || configuring || remoteWorkspace"
-      >
-        <option value="codex">Codex</option>
-        <option value="claude-code">Claude Code</option>
-        <option value="claude-desktop">Claude Desktop</option>
-        <option value="http">{{ t('通用 HTTP 客户端') }}</option>
-      </select>
-    </div>
+    <SettingField
+      id="mcp-client"
+      type="select"
+      :label="t('MCP 客户端')"
+      :model-value="client"
+      :disabled="working || configuring || remoteWorkspace"
+      :options="[
+        { value: 'codex', label: 'Codex' },
+        { value: 'claude-code', label: 'Claude Code' },
+        { value: 'claude-desktop', label: 'Claude Desktop' },
+        { value: 'http', label: t('通用 HTTP 客户端') },
+      ]"
+      @update:model-value="client = $event as McpClient"
+    />
     <p v-if="client !== 'http'" class="form-note">
       {{ t('配置只需添加一次。关闭再开启 MCP 或重启 Repeaty 后，可沿用原配置。') }}
     </p>
     <div class="connection-actions">
-      <button
-        class="button secondary"
+      <UiButton
         type="button"
         :disabled="working || configuring || (!mcpStatus.enabled && !mcpStatus.available)"
         @click="toggle"
       >
         {{ t(mcpStatus.enabled ? '关闭 MCP' : '开启 MCP') }}
-      </button>
-      <button
+      </UiButton>
+      <UiButton
         v-if="!configuration && (client !== 'http' || mcpStatus.enabled)"
-        class="text-button"
+        variant="ghost"
         type="button"
         :disabled="working || configuring || remoteWorkspace"
         @click="showConfiguration"
       >
         {{ t('显示连接配置') }}
-      </button>
+      </UiButton>
     </div>
     <template v-if="configuration">
       <p v-if="target" class="form-note mcp-config-target">
         {{ t('将配置合并到 {file}，保留已有条目。', { file: target }) }}
       </p>
-      <label class="form-field" for="mcp-configuration">
-        {{ t('客户端连接配置') }}
-        <textarea
-          id="mcp-configuration"
-          :value="configuration"
-          rows="10"
-          readonly
-          spellcheck="false"
-        />
-      </label>
+      <SettingField
+        id="mcp-configuration"
+        type="textarea"
+        layout="stack"
+        :label="t('客户端连接配置')"
+        :model-value="configuration"
+        :rows="10"
+        readonly
+        monospace
+        :spellcheck="false"
+      />
       <p class="form-note">
         {{
           t(
@@ -160,67 +161,27 @@ async function copy() {
         }}
       </p>
       <div class="connection-actions">
-        <button class="button secondary" type="button" @click="copy">
+        <UiButton @click="copy">
           {{ t(copied ? '已复制' : '复制配置') }}
-        </button>
-        <button class="text-button" type="button" @click="configuration = ''">
+        </UiButton>
+        <UiButton variant="ghost" @click="configuration = ''">
           {{ t('隐藏连接配置') }}
-        </button>
+        </UiButton>
       </div>
     </template>
-  </section>
+  </SettingGroup>
 </template>
 
 <style scoped>
 .mcp-settings {
-  margin-top: 2rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--line);
-}
-.mcp-heading {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-h3 {
-  margin: 0;
-  font-size: 1.125rem;
+  margin-top: 1.5rem;
 }
 .mcp-state {
-  font-size: 0.875rem;
+  font-size: var(--font-size-meta);
   color: var(--muted);
-}
-textarea {
-  width: 100%;
-  min-width: 0;
-  margin-top: 0.5rem;
-  padding: 0.875rem;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f8f9f6;
-  color: inherit;
-  font:
-    1rem/1.6 ui-monospace,
-    monospace;
-  resize: vertical;
-}
-.mcp-client-field {
-  display: grid;
-  gap: 0.5rem;
-  margin: 1rem 0;
-}
-.mcp-client-field select {
-  width: 100%;
-  min-width: 0;
-  min-height: 44px;
-  padding: 0.65rem 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f8f9f6;
-  color: inherit;
-  font: inherit;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  background: var(--sage);
 }
 .mcp-config-target {
   overflow-wrap: anywhere;

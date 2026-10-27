@@ -5,6 +5,7 @@ import { practiceHistoryFixture } from '../fixtures/practice-history'
 import { importReading, readingText } from '../fixtures/reading-flow'
 import { startMixed } from '../fixtures/adaptive-mixed-flow'
 import { openPluginSettings, setInterfaceLanguage } from '../fixtures/settings-flow'
+import { setResponsiveViewport } from '../fixtures/viewport-flow'
 
 const question = {
   questionId: '1',
@@ -567,7 +568,7 @@ test('undoing a rating preserves submission history and reviewing old code revea
   await expect(page.getByText('评分已撤销', { exact: true })).toBeVisible()
   await page.locator('.attempt-history > summary').click()
   await expect(page.locator('.attempt-code code')).toHaveText('def solve(value): return value')
-  await page.setViewportSize({ width: 390, height: 844 })
+  await setResponsiveViewport(page, 390, 844)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: 'test-results/leetcode-history-mobile.png', fullPage: true })
   await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')

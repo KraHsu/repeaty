@@ -692,7 +692,7 @@ onUnmounted(() => {
 kbd {
   margin-left: auto;
   font: inherit;
-  font-size: 0.9rem;
+  font-size: var(--font-size-meta);
   color: #65785f;
   white-space: nowrap;
 }

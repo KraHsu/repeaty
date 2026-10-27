@@ -123,7 +123,7 @@ function timestamp(value: string) {
   padding: 1rem;
   border: 1px solid var(--line);
   border-radius: 12px;
-  font-size: 1rem;
+  font-size: var(--font-size-body);
 }
 .standalone {
   margin: 0;
@@ -133,7 +133,7 @@ function timestamp(value: string) {
 }
 summary {
   cursor: pointer;
-  line-height: 1.65;
+  line-height: var(--line-height-ui);
 }
 .practice-history {
   padding: 1rem 0;

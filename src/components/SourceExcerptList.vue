@@ -107,7 +107,7 @@ defineExpose({ showMatches })
 }
 .source-excerpts h3 {
   margin: 0 0 0.6rem;
-  font-size: 1.125rem;
+  font-size: var(--font-size-section);
 }
 .source-excerpt-list {
   display: grid;
@@ -128,14 +128,14 @@ defineExpose({ showMatches })
   background: #f4f7ef;
 }
 .source-excerpt-list h4 {
-  font-size: 1rem;
+  font-size: var(--font-size-body);
   margin: 0;
   overflow-wrap: anywhere;
 }
 .source-excerpt-preview {
   margin: 0;
-  font-size: 1rem;
-  line-height: 1.7;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-ui);
   overflow-wrap: anywhere;
 }
 .source-excerpt-meta {
@@ -144,11 +144,11 @@ defineExpose({ showMatches })
   align-items: center;
   gap: 0.5rem 1rem;
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--font-size-meta);
 }
 .source-excerpt-match {
   color: #3c624b;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .source-excerpt-buttons,
 .source-excerpt-pages {
@@ -159,7 +159,7 @@ defineExpose({ showMatches })
 }
 .source-excerpt-pages {
   justify-content: space-between;
-  font-size: 0.875rem;
+  font-size: var(--font-size-meta);
 }
 .source-excerpt-buttons button {
   min-height: 44px;

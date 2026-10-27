@@ -2,6 +2,8 @@
 
 [返回开发文档](DEVELOPMENT.md) · [LeetCode](LEETCODE.md)
 
+设置与表单使用 SDK 的 `SettingGroup`、`SettingField`、`UiButton`，与软件本体共享控件和状态样式。见[界面规范](DESIGN_SYSTEM.md)及[完整独立示例](examples/settings-plugin/README.md)。
+
 本页描述当前开发分支的外置插件机制，尚未随新安装包发布。发布页既有的 0.27.0 安装包不代表本分支的实现，也不能作为这套插件机制的安装或 GUI 验收产物。
 
 Repeaty 在运行时加载外置插件。官方答题历史、LeetCode 和第三方插件使用同一包格式与公开 SDK；安装、更新或移除插件不需要重新编译主程序。普通卡片渲染和缺失插件提示保留为核心能力。

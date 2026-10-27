@@ -1,4 +1,4 @@
-import type { Component, DeepReadonly, Ref } from 'vue'
+import type { Component, DeepReadonly, DefineComponent, Ref } from 'vue'
 
 export type Grade = 1 | 2 | 3 | 4
 export interface PluginData {
@@ -171,6 +171,65 @@ export declare const MediaList: Component
 export declare const CardContent: Component
 export declare const PracticeHistory: Component
 export declare const AttemptBody: Component
+/** Host-rendered controls. Their styling and accessible behavior follow the application. */
+export type SettingValue = string | number | boolean | string[]
+export type SettingFieldType =
+  | 'text'
+  | 'password'
+  | 'textarea'
+  | 'number'
+  | 'select'
+  | 'radio'
+  | 'multiselect'
+  | 'range'
+  | 'switch'
+  | 'checkbox'
+export interface SettingOption {
+  value: string
+  label: string
+  description?: string
+  disabled?: boolean
+}
+export interface SettingFieldProps {
+  id?: string
+  type?: SettingFieldType
+  label: string
+  description?: string
+  error?: string
+  modelValue: SettingValue
+  options?: readonly SettingOption[]
+  disabled?: boolean
+  readonly?: boolean
+  placeholder?: string
+  min?: number
+  max?: number
+  step?: number | 'any'
+  unit?: string
+  rows?: number
+  autocomplete?: string
+  autocapitalize?: string
+  inputmode?: 'none' | 'text' | 'decimal' | 'numeric' | 'tel' | 'search' | 'email' | 'url'
+  maxlength?: number
+  spellcheck?: boolean
+  monospace?: boolean
+  /** Change commits are useful when each update is persisted. Range defaults to change. */
+  commit?: 'input' | 'change'
+  layout?: 'row' | 'stack'
+}
+export declare const SettingField: DefineComponent<
+  SettingFieldProps & { 'onUpdate:modelValue'?: (value: SettingValue) => void }
+>
+export declare const SettingGroup: DefineComponent<{
+  title: string
+  description?: string
+  level?: 2 | 3
+}>
+export declare const UiButton: DefineComponent<{
+  type?: 'button' | 'submit' | 'reset'
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
+  disabled?: boolean
+  busy?: boolean
+}>
 export declare const pluginData: {
   get(id: string, scope: string): Promise<unknown>
   set(id: string, value: unknown | undefined, scope: string): Promise<void>

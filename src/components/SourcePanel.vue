@@ -1912,7 +1912,7 @@ async function download() {
   align-items: center;
   gap: 0.65rem;
   min-height: 32px;
-  font-size: 1rem;
+  font-size: var(--font-size-body);
 }
 .source-defer-form .reading-feedback input[type='radio'] {
   width: 18px;
@@ -1954,7 +1954,7 @@ async function download() {
   gap: 0.6rem;
   min-height: 44px;
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: var(--font-size-meta);
 }
 .source-selection input {
   width: 1.15rem;
@@ -1969,7 +1969,7 @@ async function download() {
   align-items: center;
   gap: 0.25rem 0.75rem;
   margin-bottom: 0.6rem;
-  font-size: 0.875rem;
+  font-size: var(--font-size-meta);
   overflow-wrap: anywhere;
 }
 .source-ancestry > * {
@@ -2002,7 +2002,7 @@ async function download() {
   border-radius: 5px;
   color: #526149;
   background: #edf0e7;
-  font-size: 0.875rem;
+  font-size: var(--font-size-meta);
 }
 .source-excerpt-tools {
   display: grid;
@@ -2020,7 +2020,7 @@ async function download() {
   min-height: 10rem;
   max-height: 35vh;
   white-space: pre-wrap;
-  line-height: 1.7;
+  line-height: var(--line-height-ui);
 }
 
 .reading-round {
@@ -2039,7 +2039,7 @@ async function download() {
   background: #eef4e9;
 }
 .reading-round strong {
-  font-size: 1rem;
+  font-size: var(--font-size-body);
 }
 .reading-round .form-note {
   margin: 0.4rem 0 0;
@@ -2068,7 +2068,7 @@ async function download() {
   gap: 0.5rem;
 }
 .source-filter-fields label {
-  font-size: 1rem;
+  font-size: var(--font-size-body);
 }
 .source-filter-fields input,
 .source-filter-fields select {
@@ -2108,7 +2108,7 @@ async function download() {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
-  font-size: 1rem;
+  font-size: var(--font-size-control);
 }
 .source-queue-filters button[aria-pressed='true'] {
   background: #e7eee3;
@@ -2116,7 +2116,7 @@ async function download() {
 }
 .source-queue-filters span {
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--font-size-meta);
 }
 .source-reading-actions {
   display: flex;
@@ -2130,7 +2130,7 @@ async function download() {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem;
-  font-size: 1rem;
+  font-size: var(--font-size-body);
 }
 .source-priority-control select {
   min-height: 44px;
@@ -2155,11 +2155,11 @@ async function download() {
   margin: 0;
 }
 .source-interval-summary {
-  font-size: 1.125rem;
-  font-weight: 600;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
 }
 .source-interval-date {
-  font-size: 1rem;
+  font-size: var(--font-size-meta);
 }
 .source-interval-steps {
   display: flex;
@@ -2173,7 +2173,7 @@ async function download() {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 0.45rem 0.6rem;
-  font-size: 0.875rem;
+  font-size: var(--font-size-meta);
 }
 .source-interval-steps li[aria-current='step'] {
   border-color: #67886d;
@@ -2205,11 +2205,11 @@ async function download() {
   display: grid;
   gap: 0.4rem;
   padding: 0.85rem 0.5rem;
-  font-size: 1rem;
+  font-size: var(--font-size-body);
 }
 .source-defer-option time {
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--font-size-meta);
 }
 .source-defer-option[aria-pressed='true'] {
   border-color: #67886d;
@@ -2295,7 +2295,7 @@ async function download() {
   border-bottom: 1px solid var(--line);
 }
 .source-list-item span {
-  font-size: 0.9rem;
+  font-size: var(--font-size-meta);
   color: var(--muted);
 }
 .source-list-item .source-priority-badge {
@@ -2372,7 +2372,7 @@ async function download() {
 }
 .source-delete {
   padding: 1.25rem 1.75rem;
-  line-height: 1.7;
+  line-height: var(--line-height-ui);
 }
 @media (max-width: 850px) {
   .sources-layout {

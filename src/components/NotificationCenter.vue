@@ -55,8 +55,8 @@ useEventListener(window, 'scroll', position, { passive: true, capture: true })
   color: #365b42;
   border-radius: 10px;
   box-shadow: 0 8px 28px #20351b1c;
-  font-size: 1rem;
-  line-height: 1.6;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-ui);
   pointer-events: auto;
 }
 .notification > svg {

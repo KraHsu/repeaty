@@ -5,6 +5,7 @@ import { installApplicationState } from './stores'
 import { initI18n } from './i18n'
 import 'katex/dist/katex.min.css'
 import './style.css'
+import './styles/controls.css'
 
 const initializing = initializePlatform()
 initI18n()

@@ -1,0 +1,19 @@
+# 共享设置控件示例
+
+这个独立插件只从 `@repeaty/plugin-api` 导入 `SettingGroup`、`SettingField` 和 `UiButton`。分组、控件、字体、焦点和窄屏布局均由宿主提供；插件只声明标签、选项、值与业务动作。
+
+在此目录运行：
+
+```bash
+npm install
+npm run typecheck
+npm run build
+```
+
+在 Repeaty「设置 → 插件」安装生成的 `dist/settings-design-example.repeaty-plugin`。开发时可使用 `npm run dev` 监视此插件项目，重新构建后重新安装插件包。无需编译 Repeaty。
+
+示例覆盖文本、密码、多行文本、数字、下拉选项、单选、多选、滑块、开关和勾选框，并展示说明、错误、只读、禁用和恢复默认。偏好通过 SDK 保存，使用插件自己的命名空间；滑块在拖动时预览，松手后保存。
+
+密码框只演示输入遮蔽，输入的演示文字不会保存。真实凭据应通过设备凭据 API 管理，不能写入普通偏好。示例不会修改卡片、评分或学习进度。
+
+[`src/Settings.vue`](src/Settings.vue) 是完整用例；共享组件的布局和类型约定见[设计规范](../../DESIGN_SYSTEM.md)。

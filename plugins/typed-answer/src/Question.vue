@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watchEffect } from 'vue'
-import type { QuestionProps } from '@repeaty/plugin-api'
+import { SettingField, type QuestionProps } from '@repeaty/plugin-api'
 import { dataSchema, matches } from './model'
 const props = defineProps<QuestionProps>()
 const answer = ref('')
@@ -13,9 +13,16 @@ watchEffect(() => {
 </script>
 <template>
   <p class="card-question">{{ card.front }}</p>
-  <div v-if="data.success" class="form-field">
-    <label for="typed-answer">Your answer</label>
-    <input id="typed-answer" v-model="answer" :disabled="revealed" autocomplete="off" />
-  </div>
+  <SettingField
+    v-if="data.success"
+    id="typed-answer"
+    type="text"
+    label="Your answer"
+    layout="stack"
+    :model-value="answer"
+    :disabled="revealed"
+    autocomplete="off"
+    @update:model-value="answer = String($event)"
+  />
   <p v-else role="alert">This card has invalid answer data. Edit it before reviewing.</p>
 </template>

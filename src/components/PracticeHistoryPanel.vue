@@ -184,7 +184,7 @@ watch(questions, (entries) => {
 }
 .history-empty {
   padding: 2rem 0;
-  line-height: 1.7;
+  line-height: var(--line-height-ui);
 }
 @media (max-width: 1000px) {
   .history-filters {

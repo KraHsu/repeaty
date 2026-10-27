@@ -42,4 +42,5 @@ test('a 500px desktop window clamps its vertical rail and restores the preferred
   await page.setViewportSize({ width: 1280, height: 800 })
   await expect(separator).toHaveAttribute('aria-valuenow', '360')
   await expect(page.locator('.app-layout')).not.toHaveClass(/sidebar-collapsed/)
+  await page.screenshot({ path: info.outputPath('settings-general-wide.png'), fullPage: true })
 })

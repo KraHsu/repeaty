@@ -838,7 +838,7 @@ onUnmounted(() => {
 }
 .workspace-card h2,
 .workspace-document h2 {
-  font-size: 1.1rem;
+  font-size: var(--font-size-section);
   margin: 0 0 0.6rem;
 }
 .workspace-active {
@@ -852,7 +852,7 @@ onUnmounted(() => {
   margin: 0.3rem 0;
 }
 .workspace-welcome p {
-  line-height: 1.8;
+  line-height: var(--line-height-ui);
 }
 .workspace-inspector {
   display: grid;
@@ -874,7 +874,7 @@ onUnmounted(() => {
   display: grid;
   gap: 0.6rem;
   margin: 1rem 0;
-  font-size: 1rem;
+  font-size: var(--font-size-body);
 }
 .workspace-field input,
 .workspace-field select {
@@ -883,7 +883,7 @@ onUnmounted(() => {
   min-height: 44px;
 }
 .workspace-plan {
-  line-height: 1.8;
+  line-height: var(--line-height-ui);
 }
 .workspace-confirm {
   justify-content: flex-end;
@@ -905,7 +905,7 @@ onUnmounted(() => {
   white-space: pre-wrap;
 }
 .workspace-retired-entry p {
-  font-size: 0.94rem;
+  font-size: var(--font-size-meta);
 }
 .workspace-files input {
   width: 100%;
@@ -930,11 +930,11 @@ onUnmounted(() => {
   border-color: #dfe5d8;
 }
 .workspace-file strong {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 .workspace-file-status,
 .form-note {
-  font-size: 0.94rem;
+  font-size: var(--font-size-meta);
   color: #67765e;
 }
 .workspace-versions {
@@ -945,7 +945,9 @@ onUnmounted(() => {
   border-color: #9aad8b;
 }
 .workspace-raw {
-  font: 1rem/1.75 monospace;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-reading);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   text-align: left;

@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import { t } from '../i18n'
 import { useNotifications } from '../notifications'
 import { createExportFile } from '@repeaty-platform'
+import { SettingGroup, SettingField, UiButton } from './ui'
 const { notify } = useNotifications()
 
 const url = `${import.meta.env.BASE_URL}skills/repeaty-cards/SKILL.md`
@@ -60,8 +61,7 @@ async function download() {
 }
 </script>
 <template>
-  <section class="ai-skill">
-    <h2>{{ t('不用 MCP，也可以让 AI 帮忙制卡') }}</h2>
+  <SettingGroup class="ai-skill" :title="t('不用 MCP，也可以让 AI 帮忙制卡')">
     <ol>
       <li>{{ t('复制制卡说明，连同学习材料发给 GPT 网页或其他 AI 聊天工具。') }}</li>
       <li>{{ t('将生成的 CSV 复制或保存为文件，在卡组中选择「批量导入」。') }}</li>
@@ -75,13 +75,21 @@ async function download() {
       {{ t('未能加载制卡说明，请重新打开此页面。') }}
     </p>
     <div class="skill-actions">
-      <button class="button primary" :disabled="!text" @click="copy">{{ t('复制制卡说明') }}</button
-      ><button class="button secondary" :disabled="!text" @click="download">
+      <UiButton variant="primary" :disabled="!text" @click="copy">{{ t('复制制卡说明') }}</UiButton
+      ><UiButton :disabled="!text" @click="download">
         {{ t('下载 SKILL.md') }}
-      </button>
+      </UiButton>
     </div>
-    <label for="ai-card-skill">{{ t('制卡说明（可直接粘贴到 AI 聊天中）') }}</label
-    ><textarea id="ai-card-skill" readonly :value="text" rows="16" />
+    <SettingField
+      id="ai-card-skill"
+      type="textarea"
+      layout="stack"
+      :label="t('制卡说明（可直接粘贴到 AI 聊天中）')"
+      :model-value="text"
+      :rows="16"
+      readonly
+      monospace
+    />
     <p class="form-note">
       {{
         t(
@@ -89,39 +97,17 @@ async function download() {
         )
       }}
     </p>
-  </section>
+  </SettingGroup>
 </template>
 <style scoped>
-.ai-skill {
-  padding: 1.5rem;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-}
-h2 {
-  margin-top: 0;
-  font-size: 1.2rem;
-}
 li {
   margin: 0.65rem 0;
-  line-height: 1.8;
+  line-height: var(--line-height-reading);
 }
 .skill-actions {
   display: flex;
   gap: 0.75rem;
   flex-wrap: wrap;
   margin: 1.5rem 0;
-}
-textarea {
-  width: 100%;
-  padding: 1rem;
-  margin-top: 0.75rem;
-  font:
-    1rem/1.65 ui-monospace,
-    monospace;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  resize: vertical;
-  min-height: 250px;
 }
 </style>

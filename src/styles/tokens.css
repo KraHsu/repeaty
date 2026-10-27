@@ -1,0 +1,33 @@
+/* Shared by application UI and independently loaded plugins. Values scale with
+   the user's default font size; content rendering keeps its own relative scale. */
+:root {
+  --font-ui:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+  --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', 'Noto Sans Mono', monospace;
+  --font-size-meta: 0.875rem;
+  --font-size-body: 1rem;
+  --font-size-control: 1rem;
+  --font-size-reading: 1.125rem;
+  --font-size-section: 1.25rem;
+  --font-size-page: 1.75rem;
+  --font-size-display: 2rem;
+  --font-size-brand: 1.875rem;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-brand: 700;
+  --line-height-ui: 1.5;
+  --line-height-heading: 1.35;
+  --line-height-reading: 1.75;
+  --line-height-code: 1.6;
+  /* Compatibility aliases for existing plugin styles. New UI uses role names. */
+  --text-xs: var(--font-size-meta);
+  --text-sm: var(--font-size-body);
+  --text-base: var(--font-size-body);
+  --scrollbar-size: 10px;
+  --scrollbar-track: #f0f3ed;
+  --scrollbar-thumb: #b8c4b1;
+  --scrollbar-thumb-hover: #8fa184;
+  --scrollbar-thumb-active: #6d8462;
+}
