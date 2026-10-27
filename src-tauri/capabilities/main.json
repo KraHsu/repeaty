@@ -25,6 +25,8 @@
     "allow-export-finish",
     "allow-export-cancel",
     "allow-workspace-read",
-    "allow-workspace-write"
+    "allow-workspace-write",
+    "allow-workspace-watch",
+    "allow-workspace-unwatch"
   ]
 }

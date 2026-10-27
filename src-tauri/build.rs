@@ -21,6 +21,8 @@ fn main() {
             "workspace_restore",
             "workspace_read",
             "workspace_write",
+            "workspace_watch",
+            "workspace_unwatch",
             "open_external",
         ]),
     ))

@@ -223,6 +223,9 @@ fn main() {
                 .on_page_load(|window, payload| {
                     if payload.event() == tauri::webview::PageLoadEvent::Started {
                         window.state::<Desktop>().mcp.detach();
+                        window
+                            .state::<workspaces::Workspaces>()
+                            .invalidate_watches();
                     }
                 })
                 .build()?;

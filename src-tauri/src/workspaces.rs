@@ -3,7 +3,10 @@ use repeaty_workspace::{error::Result as StoreResult, sessions::Sessions};
 use serde_json::Value;
 use std::{
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 use tauri::{Manager, State};
 use tauri_plugin_dialog::DialogExt;
@@ -12,14 +15,20 @@ struct Inner {
     sessions: Option<Sessions>,
     subscription: Option<String>,
 }
-pub struct Workspaces(Arc<Mutex<Inner>>);
+pub struct Workspaces(Arc<Mutex<Inner>>, Arc<AtomicU64>);
 impl Workspaces {
     pub fn new(directory: &Path) -> Self {
-        Self(Arc::new(Mutex::new(Inner {
-            directory: directory.into(),
-            sessions: None,
-            subscription: None,
-        })))
+        Self(
+            Arc::new(Mutex::new(Inner {
+                directory: directory.into(),
+                sessions: None,
+                subscription: None,
+            })),
+            Arc::new(AtomicU64::new(0)),
+        )
+    }
+    pub fn invalidate_watches(&self) {
+        self.1.fetch_add(1, Ordering::AcqRel);
     }
 }
 #[tauri::command]
@@ -30,16 +39,38 @@ pub async fn workspace_watch(
     on_change: tauri::ipc::Channel<repeaty_workspace::watch::Changes>,
 ) -> Result<String, String> {
     main_window(&window)?;
-    let expected = token.clone();
-    run(&state, move |sessions| sessions.watch_session(&expected)).await?;
     let manager = state.0.clone();
+    let epoch = state.1.clone();
+    let generation = epoch.load(Ordering::Acquire);
     let id = uuid::Uuid::new_v4().to_string();
-    manager.lock().map_err(|_| "storage-error")?.subscription = Some(id.clone());
+    let registering = manager.clone();
+    let expected = token.clone();
+    let subscription = id.clone();
+    let current = epoch.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut guard = registering.lock().map_err(|_| "storage-error".to_owned())?;
+        if current.load(Ordering::Acquire) != generation {
+            return Err("stale-workspace-session".to_owned());
+        }
+        guard
+            .sessions
+            .as_ref()
+            .ok_or("workspace-not-open")?
+            .watch_session(&expected)
+            .map_err(|e| e.0.to_owned())?;
+        guard.subscription = Some(subscription);
+        Ok(())
+    })
+    .await
+    .map_err(|_| "storage-error".to_owned())??;
     let subscription = id.clone();
     tauri::async_runtime::spawn(async move {
         let mut ticks = tokio::time::interval(std::time::Duration::from_millis(150));
         loop {
             ticks.tick().await;
+            if epoch.load(Ordering::Acquire) != generation {
+                break;
+            }
             let manager = manager.clone();
             let subscription = subscription.clone();
             let token = token.clone();
