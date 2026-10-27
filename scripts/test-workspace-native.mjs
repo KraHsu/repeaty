@@ -283,7 +283,6 @@ try {
     request: { type: 'documents', ids: [gradedCard.noteId] },
   })
   await rm(join(selected, removedDoc.path))
-  await click('重新扫描')
   await until(
     () =>
       execute(
@@ -559,9 +558,38 @@ try {
   await execute("document.querySelector('.workspace-recent-entry').click()")
   await ready()
   assert.deepEqual(await nativeLibrary(), saved)
+  await enter()
+  await until(
+    () =>
+      execute(
+        "return document.querySelector('.workspace-manager')?.getAttribute('aria-busy')==='false'",
+      ),
+    'recent workspace monitor ready',
+  )
+  const probe = 'notes/监听重开.md'
+  await writeFile(join(selected, probe), '外部临时笔记，等待用户确认。')
+  await until(
+    () =>
+      execute(
+        "return [...document.querySelectorAll('.workspace-file')].some(node=>node.textContent.includes(arguments[0]))",
+        probe,
+      ),
+    'watch resumes after close and reopen',
+  )
+  assert.deepEqual(await nativeLibrary(), saved)
+  await rm(join(selected, probe))
+  await until(
+    () =>
+      execute(
+        "return ![...document.querySelectorAll('.workspace-file')].some(node=>node.textContent.includes(arguments[0]))",
+        probe,
+      ),
+    'unaccepted file removal detected',
+  )
+  assert.deepEqual(await nativeLibrary(), saved)
   assert.deepEqual(await execute('return indexedDB.databases().then(d=>d.map(x=>x.name))'), [])
   console.log(
-    'Native workspace: create/open/cancel, automatic starter, actual card edit and rating, external Markdown acceptance, stable schedules, graded note restoration across restart, source versions with old image/audio snapshots, recent reopen and no IndexedDB passed',
+    'Native workspace: create/open/cancel, automatic starter, actual card edit and rating, automatic external rename/deletion detection, explicit Markdown acceptance, stable schedules, graded note restoration across restart, source versions with old image/audio snapshots, monitoring after recent reopen and no IndexedDB passed',
   )
 } catch (error) {
   try {
