@@ -248,6 +248,9 @@ small {
 .window-brand strong {
   font-weight: 600;
 }
+.window-logo {
+  stroke-width: 2;
+}
 .window-brand > span {
   color: var(--muted);
   border-left: 1px solid #cbd7c5;
@@ -283,8 +286,7 @@ small {
   gap: 18px;
   min-height: 0;
 }
-.rail-toggle,
-.rail-help {
+.rail-toggle {
   color: var(--muted);
   width: 48px;
   min-height: 44px;
@@ -328,8 +330,11 @@ small {
   border-radius: 0 3px 3px 0;
   background: var(--primary);
 }
-.rail-link.utility-start {
-  margin-top: 18px;
+.rail-divider {
+  width: calc(100% - 8px);
+  margin: 0 4px;
+  border: 0;
+  border-top: 1px solid var(--line);
 }
 .rail-link.bottom-start {
   margin-top: auto;

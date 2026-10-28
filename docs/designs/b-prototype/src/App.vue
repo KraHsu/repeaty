@@ -2,6 +2,7 @@
 import { computed, ref, watch, nextTick } from 'vue'
 import {
   Layers,
+  Repeat2,
   Files,
   BookOpen,
   FolderOpen,
@@ -104,7 +105,7 @@ watch(
   <div class="app-window">
     <header class="titlebar">
       <div class="window-brand">
-        <Layers :size="19" /><strong>Repeaty</strong><span>个人学习库</span>
+        <Repeat2 :size="16" class="window-logo" /><strong>Repeaty</strong><span>个人学习库</span>
       </div>
       <div class="window-chrome" aria-hidden="true">
         <span><Minus :size="16" /></span><span><Square :size="14" /></span
@@ -123,32 +124,34 @@ watch(
           ><PanelLeft :size="20"
         /></PButton>
         <nav class="rail-links">
-          <button
-            v-for="(item, i) in nav"
-            :key="item.id"
-            class="rail-link"
-            :class="{
-              active: demo.view === item.id || (item.id === 'home' && demo.view === 'review'),
-              'utility-start': i === 3,
-              'bottom-start': i === 5,
-            }"
-            :aria-label="item.label"
-            :aria-current="demo.view === item.id ? 'page' : undefined"
-            :title="item.label"
-            @click="navigate(item.id, item.id === 'cards' ? { cardsDeckFilter: 'all' } : {})"
-          >
-            <component :is="item.icon" :size="22" /><span class="nav-label">{{ item.label }}</span>
-          </button>
+          <template v-for="(item, i) in nav" :key="item.id">
+            <hr v-if="i === 3" class="rail-divider" aria-label="学习与管理" />
+            <button
+              class="rail-link"
+              :class="{
+                active: demo.view === item.id || (item.id === 'home' && demo.view === 'review'),
+                'bottom-start': i === 5,
+              }"
+              :aria-label="item.label"
+              :aria-current="demo.view === item.id ? 'page' : undefined"
+              :title="item.label"
+              @click="navigate(item.id, item.id === 'cards' ? { cardsDeckFilter: 'all' } : {})"
+            >
+              <component :is="item.icon" :size="22" /><span class="nav-label">{{
+                item.label
+              }}</span>
+            </button>
+          </template>
         </nav>
-        <PButton
-          class="rail-help"
-          text
-          severity="secondary"
+        <button
+          type="button"
+          class="rail-link rail-help"
           aria-label="帮助"
           title="帮助"
           @click="helpOpen = true"
-          ><CircleHelp :size="21"
-        /></PButton>
+        >
+          <CircleHelp :size="22" /><span class="nav-label">帮助</span>
+        </button>
       </aside>
       <main tabindex="-1">
         <div v-if="demo.view === 'home'" class="home-view">
