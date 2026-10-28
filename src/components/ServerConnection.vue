@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiControl, vUiButton } from './ui'
 import { onMounted, ref } from 'vue'
 import { t } from '../i18n'
 import { apiJson } from '../backend/client'
@@ -46,6 +47,7 @@ async function connect() {
     <label class="form-field" for="account-username"
       >{{ t('用户名') }}
       <input
+        v-ui-control
         id="account-username"
         v-model="username"
         required
@@ -59,6 +61,7 @@ async function connect() {
     <label class="form-field" for="account-password"
       >{{ t('密码') }}
       <input
+        v-ui-control
         id="account-password"
         v-model="password"
         type="password"
@@ -73,10 +76,11 @@ async function connect() {
     </p>
     <p v-if="error" role="alert" class="import-warning">{{ t(error) }}</p>
     <div class="connection-actions">
-      <button class="button primary" :disabled="busy || saving">
+      <button v-ui-button class="button primary" :disabled="busy || saving">
         {{ t(register ? '创建账户' : '登录') }}
       </button>
       <button
+        v-ui-button
         v-if="registration"
         type="button"
         class="text-button"

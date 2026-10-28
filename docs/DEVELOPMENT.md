@@ -53,7 +53,7 @@ VITE_BASE_PATH=/repeaty/ npx playwright test --config config/playwright.config.t
 
 ## 界面文案
 
-新增设置与插件表单使用[共用控件与排版规范](DESIGN_SYSTEM.md)，从本体组件或公开 SDK 引入同一组控件。字号按区域引用 `src/styles/tokens.css`；不要在页面内另建开关、控件边线或零散字号。
+设置、卡片编辑、复习、学习材料、弹窗及插件交互使用[共用控件与排版规范](DESIGN_SYSTEM.md)，从本体组件或公开 SDK 引入同一组控件。普通设置用 `SettingField`，保留原生选区与代码编辑行为的表单用 `vUiControl` / `vUiButton`；业务保存、评分和关闭规则继续由原组件管理。字号按区域引用 `src/styles/tokens.css`；不要在页面内另建开关、控件边线或零散字号。
 
 标题使用功能名或当前状态，按钮写明操作。提示说明操作结果、限制和下一步，不添加励志口号、装饰性英文或无关说明。中英文一起维护，修改时保留计数参数与用户内容；已存储的筛选状态和快照原因不能随文案改名。
 

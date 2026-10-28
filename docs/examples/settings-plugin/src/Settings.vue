@@ -4,6 +4,9 @@ import {
   SettingGroup,
   SettingField,
   UiButton,
+  UiIconButton,
+  vUiControl,
+  vUiButton,
   readSetting,
   writeSetting,
   type SettingValue,
@@ -36,6 +39,10 @@ const defaults = (): DemoState => ({
 const state = reactive(defaults())
 // Password fields demonstrate masking only. Real credentials belong in the device credential API.
 const secret = ref('')
+const nativeDefault = 'const result = 42\nreturn result'
+const nativeDraft = ref(nativeDefault)
+const nativeAdjustment = ref(4)
+const nativeInput = ref<HTMLTextAreaElement>()
 const saveIssue = ref('')
 const emailError = computed(() =>
   state.email.includes('@') ? '' : 'Enter an email address containing @.',
@@ -80,6 +87,14 @@ function reset() {
   Object.assign(state, defaults())
   secret.value = ''
   save()
+}
+function clearNativeDraft() {
+  nativeDraft.value = ''
+  nativeInput.value?.focus()
+}
+function restoreNativeDraft() {
+  nativeDraft.value = nativeDefault
+  nativeInput.value?.focus()
 }
 </script>
 
@@ -223,6 +238,49 @@ function reset() {
         :model-value="state.confirmation"
         @update:model-value="update('confirmation', $event)"
       />
+      <section class="settings-example__native" aria-labelledby="example-native-title">
+        <h4 id="example-native-title">Native editing surface</h4>
+        <p id="example-native-description">
+          Native refs, selection and keyboard events stay in the plugin. This draft is not saved.
+        </p>
+        <label for="example-native-draft">Native code draft</label>
+        <textarea
+          id="example-native-draft"
+          ref="nativeInput"
+          v-model="nativeDraft"
+          v-ui-control="{ monospace: true }"
+          rows="3"
+          spellcheck="false"
+          aria-describedby="example-native-description"
+        />
+        <label for="example-native-adjustment">Native adjustment</label>
+        <input
+          id="example-native-adjustment"
+          v-model.number="nativeAdjustment"
+          v-ui-control
+          type="range"
+          min="0"
+          max="10"
+          step="1"
+        />
+        <output for="example-native-adjustment">{{ nativeAdjustment }}</output>
+        <div class="settings-example__native-actions">
+          <UiIconButton label="Clear native draft" @click="clearNativeDraft">
+            <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+              <path
+                d="m5 5 8 8m0-8-8 8"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+              />
+            </svg>
+          </UiIconButton>
+          <button v-ui-button type="button" @click="restoreNativeDraft">
+            Restore native draft
+          </button>
+        </div>
+      </section>
     </SettingGroup>
   </div>
 </template>
@@ -241,5 +299,30 @@ function reset() {
   color: var(--muted);
   font-size: var(--font-size-meta);
   line-height: var(--line-height-ui);
+}
+.settings-example__native {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 1.25rem 0;
+}
+.settings-example__native h4,
+.settings-example__native p {
+  margin: 0;
+}
+.settings-example__native h4 {
+  font-size: var(--font-size-control);
+  font-weight: var(--font-weight-semibold);
+}
+.settings-example__native p,
+.settings-example__native output {
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+}
+.settings-example__native-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
 }
 </style>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiControl, vUiButton } from './ui'
 import { t, locale } from '../i18n'
 
 import { computed, ref, shallowRef, watch } from 'vue'
@@ -189,16 +190,17 @@ async function editSelected() {
   <div class="library-toolbar">
     <label class="search-field"
       ><Search :size="18" /><input
+        v-ui-control
         v-model="query"
         :aria-label="t('搜索卡片')"
         maxlength="1000"
         :placeholder="t('关键词、tag:英语、is:due、lapses:>=3…')"
     /></label>
-    <select v-model="deckId" :aria-label="t('筛选卡组')">
+    <select v-ui-control v-model="deckId" :aria-label="t('筛选卡组')">
       <option value="">{{ t('全部卡组') }}</option>
       <option v-for="deck in library.decks" :key="deck.id" :value="deck.id">{{ deck.name }}</option>
     </select>
-    <select v-model="state" :aria-label="t('筛选状态')">
+    <select v-ui-control v-model="state" :aria-label="t('筛选状态')">
       <option value="all">{{ t('全部状态') }}</option>
       <option
         v-for="label in filterStates.filter((entry) => entry !== 'all')"
@@ -208,13 +210,13 @@ async function editSelected() {
         {{ t(label) }}
       </option>
     </select>
-    <button class="button secondary" @click="emit('review')">
+    <button v-ui-button class="button secondary" @click="emit('review')">
       <Repeat2 :size="16" />{{ t('复习') }}
     </button>
   </div>
   <p v-if="result.error" class="import-warning" role="alert">{{ t(result.error) }}</p>
   <details class="search-options" @toggle="expanded = ($event.target as HTMLDetailsElement).open">
-    <summary>{{ t('高级搜索、常用筛选与专项练习') }}</summary>
+    <summary v-ui-button="'ghost'">{{ t('高级搜索、常用筛选与专项练习') }}</summary>
     <p class="form-note">
       {{ t('空格连接的条件需同时满足；双引号包围短语，减号排除条件。例如') }}
       <code>{{ t('tag:英语 -is:suspended lapses:>=3') }}</code>
@@ -229,7 +231,7 @@ async function editSelected() {
     <div class="batch-fields">
       <label
         >{{ t('常用筛选')
-        }}<select v-model="savedId" :aria-label="t('常用筛选')" @change="applySaved">
+        }}<select v-ui-control v-model="savedId" :aria-label="t('常用筛选')" @change="applySaved">
           <option value="">{{ t('选择已保存筛选') }}</option>
           <option v-for="saved in library.savedSearches" :key="saved.id" :value="saved.id">
             {{ saved.name }}
@@ -238,11 +240,16 @@ async function editSelected() {
       >
       <label
         >{{ t('筛选名称')
-        }}<input v-model="savedName" maxlength="80" :placeholder="t('例如：英语易忘卡')"
+        }}<input
+          v-ui-control
+          v-model="savedName"
+          maxlength="80"
+          :placeholder="t('例如：英语易忘卡')"
       /></label>
     </div>
     <div class="batch-actions">
       <button
+        v-ui-button
         class="button secondary"
         :disabled="busy || !!result.error || !savedName.trim()"
         @click="saveFilter()"
@@ -250,6 +257,7 @@ async function editSelected() {
         {{ t('另存筛选') }}
       </button>
       <button
+        v-ui-button
         v-if="savedId"
         class="button secondary"
         :disabled="busy || !!result.error || !savedName.trim()"
@@ -257,23 +265,37 @@ async function editSelected() {
       >
         {{ t('更新筛选') }}
       </button>
-      <button v-if="savedId" class="text-button danger-text" :disabled="busy" @click="removeFilter">
+      <button
+        v-ui-button
+        v-if="savedId"
+        class="text-button danger-text"
+        :disabled="busy"
+        @click="removeFilter"
+      >
         {{ t('删除筛选') }}
       </button>
     </div>
     <form class="study-form" @submit.prevent="startStudy">
       <label
         >{{ t('练习模式')
-        }}<select v-model="reschedule">
+        }}<select v-ui-control v-model="reschedule">
           <option :value="false">{{ t('只练习，不改进度') }}</option>
           <option :value="true">{{ t('评分并更新进度') }}</option>
         </select></label
       >
       <label
         >{{ t('卡片数量上限')
-        }}<input v-model.number="studyLimit" type="number" min="1" max="500" step="1" required
+        }}<input
+          v-ui-control
+          v-model.number="studyLimit"
+          type="number"
+          min="1"
+          max="500"
+          step="1"
+          required
       /></label>
       <button
+        v-ui-button
         class="button primary"
         :disabled="busy || loading || !!result.error || !result.eligible"
       >
@@ -300,6 +322,7 @@ async function editSelected() {
     }}</strong>
     <div class="batch-actions">
       <button
+        v-ui-button
         v-for="(label, action) in {
           suspend: '暂停所选',
           resume: '恢复所选',
@@ -313,19 +336,24 @@ async function editSelected() {
         @click="change(action)"
       >
         {{ t(label) }}</button
-      ><button class="button danger" :disabled="busy" @click="emit('delete', selectedNotes)">
+      ><button
+        v-ui-button
+        class="button danger"
+        :disabled="busy"
+        @click="emit('delete', selectedNotes)"
+      >
         {{ t('删除所选笔记') }}
       </button>
     </div>
     <details>
-      <summary>{{ t('批量修改笔记的卡组与标签') }}</summary>
+      <summary v-ui-button="'ghost'">{{ t('批量修改笔记的卡组与标签') }}</summary>
       <p class="form-note">
         {{ t('同一笔记的所有关联卡片都会更新，复习进度保留。暂停和暂缓仅影响勾选的卡片。') }}
       </p>
       <div class="batch-fields">
         <label
           >{{ t('移动到卡组')
-          }}<select v-model="targetDeck">
+          }}<select v-ui-control v-model="targetDeck">
             <option value="">{{ t('保持原卡组') }}</option>
             <option v-for="deck in library.decks" :key="deck.id" :value="deck.id">
               {{ deck.name }}
@@ -333,13 +361,18 @@ async function editSelected() {
           </select></label
         ><label
           >{{ t('添加标签')
-          }}<input v-model="addTags" maxlength="820" :placeholder="t('逗号分隔')" /></label
+          }}<input
+            v-ui-control
+            v-model="addTags"
+            maxlength="820"
+            :placeholder="t('逗号分隔')" /></label
         ><label
           >{{ t('移除标签')
-          }}<input v-model="removeTags" maxlength="820" :placeholder="t('逗号分隔')"
+          }}<input v-ui-control v-model="removeTags" maxlength="820" :placeholder="t('逗号分隔')"
         /></label>
       </div>
       <button
+        v-ui-button
         class="button primary"
         :disabled="busy || (!targetDeck && !addTags.trim() && !removeTags.trim())"
         @click="editSelected"
@@ -354,6 +387,7 @@ async function editSelected() {
         <tr>
           <th class="select-column">
             <input
+              v-ui-control
               type="checkbox"
               :checked="allSelected"
               :aria-label="t('选择本页卡片')"
@@ -370,6 +404,7 @@ async function editSelected() {
         <tr v-for="card in visible" :key="card.id">
           <td>
             <input
+              v-ui-control
               v-model="selected"
               type="checkbox"
               :value="card.id"
@@ -377,7 +412,9 @@ async function editSelected() {
             />
           </td>
           <td>
-            <button class="card-row-title" @click="emit('edit', card)">{{ card.front }}</button>
+            <button v-ui-button class="card-row-title" @click="emit('edit', card)">
+              {{ card.front }}
+            </button>
             <p>{{ card.back }}</p>
             <div class="tag-list">
               <span class="tag">
@@ -420,6 +457,7 @@ async function editSelected() {
           <td>
             <div class="row-actions">
               <button
+                v-ui-button="{ variant: 'ghost', icon: true }"
                 v-if="historyCardIds.has(card.id)"
                 class="icon-button"
                 :aria-label="t('查看 {title} 的练习历史', { title: card.front })"
@@ -428,12 +466,14 @@ async function editSelected() {
                 <History :size="16" />
               </button>
               <button
+                v-ui-button="{ variant: 'ghost', icon: true }"
                 class="icon-button"
                 :aria-label="t('编辑卡片 {p0}', { p0: card.front })"
                 @click="emit('edit', card)"
               >
                 <Pencil :size="16" /></button
               ><button
+                v-ui-button="{ variant: 'ghost', icon: true }"
                 class="icon-button danger-text"
                 :aria-label="t('删除卡片 {p0}', { p0: card.front })"
                 @click="emit('delete', [card.noteId])"
@@ -442,6 +482,7 @@ async function editSelected() {
               </button>
             </div>
             <button
+              v-ui-button
               class="text-button"
               :disabled="busy"
               @click="change(card.suspended ? 'resume' : 'suspend', [card.id])"
@@ -463,15 +504,20 @@ async function editSelected() {
           : t('点击「添加卡片」，或从 CSV / TSV 文件导入。')
       }}
     </p>
-    <button v-if="!query && state === 'all'" class="button primary" @click="emit('edit')">
+    <button
+      v-ui-button
+      v-if="!query && state === 'all'"
+      class="button primary"
+      @click="emit('edit')"
+    >
       <Plus :size="16" />{{ t('添加卡片') }}
     </button>
   </div>
   <div v-if="pages > 1" class="pagination">
-    <button class="button secondary" :disabled="page === 1" @click="page--">
+    <button v-ui-button class="button secondary" :disabled="page === 1" @click="page--">
       {{ t('上一页') }}</button
     ><span>{{ page }} / {{ pages }}</span
-    ><button class="button secondary" :disabled="page === pages" @click="page++">
+    ><button v-ui-button class="button secondary" :disabled="page === pages" @click="page++">
       {{ t('下一页') }}
     </button>
   </div>

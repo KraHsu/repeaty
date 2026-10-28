@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiControl, vUiButton } from '@repeaty/plugin-api'
 import { ref } from 'vue'
 import { t, locale } from './i18n'
 import type { Attempt, AttemptRecord } from '@repeaty/plugin-api'
@@ -28,12 +29,13 @@ const shown = ref(false)
         }
       "
     >
-      <summary>{{ t('核对本次提交的代码') }}</summary>
+      <summary v-ui-button="'ghost'">{{ t('核对本次提交的代码') }}</summary>
       <AttemptBody v-if="shown" :attempt="attempt" :get-attempt="getAttempt" code-only />
     </details>
     <label :for="`recover-${attempt.id}`">{{ t('提交编号或详情链接') }}</label>
     <div class="recovery-fields">
       <input
+        v-ui-control
         :id="`recover-${attempt.id}`"
         v-model="input"
         type="text"
@@ -45,7 +47,11 @@ const shown = ref(false)
         :placeholder="t('粘贴提交编号或链接')"
         required
       />
-      <button class="button secondary" :disabled="disabled || !input.trim()">
+      <button
+        v-ui-button="'secondary'"
+        class="button secondary"
+        :disabled="disabled || !input.trim()"
+      >
         {{ t('关联并查询') }}
       </button>
     </div>
@@ -79,15 +85,5 @@ summary {
 input {
   flex: 1 1 16rem;
   min-width: 0;
-}
-.recovery-code {
-  max-height: 20rem;
-  overflow: auto;
-  padding: 1rem;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font:
-    0.9375rem/1.6 ui-monospace,
-    monospace;
 }
 </style>

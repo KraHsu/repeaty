@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiButton } from './ui'
 import { computed, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { t } from '../i18n'
 import { type Library, localDay } from '../core/model'
@@ -225,13 +226,24 @@ defineExpose({ undoCard, undoReading, canUndoCard, locked, leave, reconcileUndo 
         </p>
       </div>
       <div class="mixed-actions">
-        <button class="text-button" :disabled="locked || !canUndoCard" @click="undoCard">
+        <button
+          v-ui-button="'ghost'"
+          class="text-button"
+          :disabled="locked || !canUndoCard"
+          @click="undoCard"
+        >
           {{ t('撤销上次评分') }}
         </button>
-        <button v-if="canUndoReading" class="text-button" :disabled="locked" @click="undoReading">
+        <button
+          v-ui-button="'ghost'"
+          v-if="canUndoReading"
+          class="text-button"
+          :disabled="locked"
+          @click="undoReading"
+        >
           {{ t('撤销阅读安排') }}
         </button>
-        <button class="button secondary" :disabled="locked" @click="close">
+        <button v-ui-button class="button secondary" :disabled="locked" @click="close">
           {{ t('结束混合学习') }}
         </button>
       </div>
@@ -253,7 +265,7 @@ defineExpose({ undoCard, undoReading, canUndoCard, locked, leave, reconcileUndo 
     <div v-else class="empty-state">
       <h2>{{ t('本轮混合学习结束') }}</h2>
       <p>{{ t('本轮材料已处理完，当前没有可复习卡片。') }}</p>
-      <button class="button primary" :disabled="locked" @click="close">
+      <button v-ui-button="'primary'" class="button primary" :disabled="locked" @click="close">
         {{ t('返回学习概览') }}
       </button>
     </div>

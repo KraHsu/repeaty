@@ -1,4 +1,4 @@
-import type { Component, DeepReadonly, DefineComponent, Ref } from 'vue'
+import type { Component, DeepReadonly, DefineComponent, Directive, Ref } from 'vue'
 
 export type Grade = 1 | 2 | 3 | 4
 export interface PluginData {
@@ -226,10 +226,36 @@ export declare const SettingGroup: DefineComponent<{
 }>
 export declare const UiButton: DefineComponent<{
   type?: 'button' | 'submit' | 'reset'
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
+  variant?: UiButtonVariant
+  tone?: UiButtonTone
+  icon?: boolean
   disabled?: boolean
   busy?: boolean
 }>
+export declare const UiIconButton: DefineComponent<{
+  label: string
+  title?: string
+  disabled?: boolean
+  busy?: boolean
+}>
+export interface UiControlOptions {
+  monospace?: boolean
+  reading?: boolean
+  swatch?: boolean
+}
+export type UiButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'rating'
+export type UiButtonTone = 'again' | 'hard' | 'good' | 'easy'
+export interface UiButtonOptions {
+  variant?: UiButtonVariant
+  tone?: UiButtonTone
+  icon?: boolean
+}
+/** Apply the shared GUI while retaining native v-model, refs and event behavior. */
+export declare const vUiControl: Directive<HTMLElement, UiControlOptions | undefined>
+export declare const vUiButton: Directive<
+  HTMLElement,
+  UiButtonVariant | UiButtonOptions | undefined
+>
 export declare const pluginData: {
   get(id: string, scope: string): Promise<unknown>
   set(id: string, value: unknown | undefined, scope: string): Promise<void>

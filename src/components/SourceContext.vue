@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiButton } from './ui'
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { t, locale, type DisplayMessage } from '../i18n'
 import type { Source, SourceExcerpt } from '../core/source-data'
@@ -70,6 +71,7 @@ const matches = computed(
     <div class="source-context">
       <nav v-if="path.length > 2" class="source-context-path" :aria-label="t('出处路径')">
         <button
+          v-ui-button="'ghost'"
           v-for="(entry, index) in [...path].reverse()"
           :key="entry.source.id"
           type="button"
@@ -81,10 +83,22 @@ const matches = computed(
         </button>
       </nav>
       <div v-if="path.length > 1" class="source-context-navigation">
-        <button v-if="level < path.length - 1" type="button" class="text-button" @click="level++">
+        <button
+          v-ui-button="'ghost'"
+          v-if="level < path.length - 1"
+          type="button"
+          class="text-button"
+          @click="level++"
+        >
           {{ t('查看出处') }}
         </button>
-        <button v-if="level > 0" type="button" class="text-button" @click="level = 0">
+        <button
+          v-ui-button="'ghost'"
+          v-if="level > 0"
+          type="button"
+          class="text-button"
+          @click="level = 0"
+        >
           {{ t('返回摘录') }}
         </button>
       </div>
@@ -115,7 +129,7 @@ const matches = computed(
       <p v-if="loading" role="status">{{ t('正在读取原文…') }}</p>
       <template v-else-if="error"
         ><p class="import-warning" role="alert">{{ t(error) }}</p>
-        <button type="button" class="button secondary" @click="load">
+        <button v-ui-button type="button" class="button secondary" @click="load">
           {{ t('重试') }}
         </button></template
       >
@@ -125,6 +139,7 @@ const matches = computed(
         </p>
         <blockquote v-if="selected" class="source-quote">{{ selected.quote }}</blockquote>
         <button
+          v-ui-button="'ghost'"
           v-if="shown.format === 'markdown'"
           type="button"
           class="text-button"
@@ -149,7 +164,7 @@ const matches = computed(
         </div>
       </template>
       <div class="form-actions">
-        <button type="button" class="button secondary" @click="emit('close')">
+        <button v-ui-button type="button" class="button secondary" @click="emit('close')">
           {{ t('关闭') }}
         </button>
       </div>

@@ -115,6 +115,48 @@ test('an independently built plugin uses shared accessible controls, saves prefe
   const adjusted = Number(await slider.inputValue())
   await page.mouse.up()
   await expect.poll(async () => (await savedPreferences(page)).scale).toBe(adjusted)
+  const nativeDraft = demo.getByRole('textbox', { name: 'Native code draft', exact: true })
+  const nativeSlider = demo.getByRole('slider', { name: 'Native adjustment', exact: true })
+  await expect(nativeDraft).toHaveClass(/ui-control--mono/)
+  await expect(nativeSlider).toHaveClass(/ui-control--range/)
+  // The raw slider intentionally does not set the optional track-progress custom property.
+  expect(
+    await nativeSlider.evaluate((element) => element.style.getPropertyValue('--ui-range-progress')),
+  ).toBe('')
+  await nativeDraft.fill('const selected = 42\nreturn selected')
+  await nativeDraft.evaluate((element: HTMLTextAreaElement) => {
+    element.setSelectionRange(6, 14, 'forward')
+  })
+  await nativeSlider.focus()
+  await nativeSlider.press('ArrowRight')
+  await expect(nativeSlider).toHaveValue('5')
+  expect(
+    await nativeDraft.evaluate((element: HTMLTextAreaElement) => ({
+      start: element.selectionStart,
+      end: element.selectionEnd,
+      direction: element.selectionDirection,
+    })),
+  ).toEqual({ start: 6, end: 14, direction: 'forward' })
+  await expect(nativeDraft).toHaveValue('const selected = 42\nreturn selected')
+  const clearDraft = demo.getByRole('button', { name: 'Clear native draft', exact: true })
+  await expect(clearDraft).toHaveAttribute('title', 'Clear native draft')
+  await expect(clearDraft).toHaveClass(/ui-button--icon/)
+  const iconBox = await clearDraft.boundingBox()
+  expect(iconBox).not.toBeNull()
+  expect(iconBox!.width).toBeCloseTo(44, 1)
+  expect(iconBox!.height).toBeCloseTo(44, 1)
+  await clearDraft.click()
+  await expect(nativeDraft).toHaveValue('')
+  await expect(nativeDraft).toBeFocused()
+  const restoreDraft = demo.getByRole('button', { name: 'Restore native draft', exact: true })
+  await expect(restoreDraft).toHaveClass(/ui-button/)
+  await restoreDraft.click()
+  await expect(nativeDraft).toHaveValue('const result = 42\nreturn result')
+  await expect(nativeDraft).toBeFocused()
+  expect(await storedLibrary(page)).toEqual(before)
+  await demo.locator('.settings-example__native').screenshot({
+    path: info.outputPath('settings-native-controls.png'),
+  })
   await page.setViewportSize({ width: 1280, height: 900 })
   await demo.screenshot({ path: info.outputPath('settings-controls-wide.png') })
 

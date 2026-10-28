@@ -1008,41 +1008,18 @@ button {
   align-items: center;
   flex: 1;
   min-width: 100px;
-  color: #99a28e;
-  background: #fff;
-  border: 1px solid #e0e5d9;
-  border-radius: 6px;
-  padding: 0 12px;
 }
-.search-field:focus-within {
-  outline: 2px solid #a8bca2;
-  outline-offset: 1px;
-}
+
 .search-field input {
-  border: 0;
-  background: none;
   width: 100%;
-  height: 40px;
-  outline: none;
-  font-size: var(--font-size-control);
-  color: #485741;
 }
-.search-field input:focus {
-  outline: none;
-}
+
 input::placeholder,
 textarea::placeholder {
   color: #a6ad9e;
 }
 select {
   max-width: 100%;
-  border: 1px solid #dfe4d8;
-  border-radius: 6px;
-  background: #fff;
-  color: #647159;
-  padding: 10px 30px 10px 12px;
-  font-size: var(--font-size-control);
-  height: 42px;
 }
 .library-count {
   font-size: var(--font-size-meta);
@@ -1303,8 +1280,6 @@ select {
   flex-direction: column;
 }
 :is(.editor-form, .editor-fields) > label {
-  font-size: var(--font-size-body);
-  color: #637358;
   margin-top: 18px;
   margin-bottom: 9px;
 }
@@ -1319,20 +1294,11 @@ select {
 :is(.editor-form, .editor-fields) > input,
 :is(.editor-form, .editor-fields) > textarea,
 :is(.editor-form, .editor-fields) > select {
-  border: 1px solid #dfe6d6;
-  border-radius: 6px;
-  background: #fafbf8;
-  color: #4d6142;
-  padding: 11px 12px;
   resize: vertical;
-  font-size: var(--font-size-control);
+
   width: 100%;
-  line-height: var(--line-height-ui);
 }
-:is(.editor-form, .editor-fields) > select {
-  height: 43px;
-  padding: 8px 12px;
-}
+
 .color-picker {
   border: 0;
   margin: 21px 0 0;
@@ -1516,17 +1482,11 @@ select {
 }
 .grade-button {
   text-align: left;
-  border: 1px solid #dfe6d6;
-  border-radius: 8px;
-  background: #fff;
-  padding: 15px 14px;
+
   display: flex;
   flex-direction: column;
 }
-.grade-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 3px 10px #40523112;
-}
+
 .grade-title {
   display: flex;
   align-items: center;
@@ -1552,26 +1512,7 @@ select {
   font-weight: var(--font-weight-regular);
   margin-top: 16px;
 }
-.grade-button.again {
-  background: #fcf3ef;
-  border-color: #eddcd2;
-  color: #90513a;
-}
-.grade-button.hard {
-  background: #fbf7eb;
-  border-color: #eae3c9;
-  color: #796126;
-}
-.grade-button.good {
-  background: #edf4e6;
-  border-color: #d7e4c9;
-  color: #4a6c31;
-}
-.grade-button.easy {
-  background: #edf3f7;
-  border-color: #d8e3ea;
-  color: #436b83;
-}
+
 .review-done {
   display: flex;
   align-items: center;
@@ -2082,9 +2023,7 @@ select {
   .grade-buttons {
     gap: 7px;
   }
-  .grade-button {
-    padding: 13px 9px;
-  }
+
   .grade-title {
     font-size: var(--font-size-control);
   }
@@ -2350,8 +2289,6 @@ select {
 
 /* Card authoring, rich content and targeted practice. */
 .editor-fields {
-  border: 0;
-  padding: 0;
   margin: 0;
   min-width: 0;
   display: flex;
@@ -2676,9 +2613,7 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
   }
-  .grade-button {
-    padding: 14px;
-  }
+
   .grade-title {
     font-size: var(--font-size-control);
   }
@@ -2781,14 +2716,7 @@ textarea::placeholder {
   display: block;
   resize: vertical;
   margin: 8px 0 16px;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #f8faf7;
-  color: var(--green);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-body);
-  line-height: var(--line-height-code);
+
   tab-size: 4;
   white-space: pre;
   overflow-x: auto;
@@ -2961,26 +2889,11 @@ textarea::placeholder {
 .note-side > textarea {
   width: 100%;
   min-width: 0;
-  padding: 10px 12px;
-  border: 1px solid #d4decd;
-  border-radius: 8px;
-  background: #fafbf8;
-  color: #293d33;
 }
 .form-field > select {
-  appearance: none;
-  padding-right: 34px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%2363715e' stroke-width='1.5'%3E%3Cpath d='m5 7 5 5 5-5'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  background-size: 18px;
   text-overflow: ellipsis;
 }
-.form-field > input:hover,
-.form-field > select:hover,
-.note-side > textarea:hover {
-  border-color: #a8bca2;
-}
+
 .editor-hints {
   display: flex;
   align-items: center;
@@ -3008,7 +2921,7 @@ textarea::placeholder {
   min-width: 0;
 }
 .note-side-heading {
-  min-height: 38px;
+  min-height: var(--ui-control-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3017,15 +2930,11 @@ textarea::placeholder {
 }
 .cloze-button {
   min-height: 36px;
-  padding: 4px 10px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
 }
 .note-side > textarea {
   display: block;
   min-height: 190px;
   resize: vertical;
-  line-height: var(--line-height-ui);
 }
 .media-attachments {
   margin-top: 10px;
@@ -3033,17 +2942,7 @@ textarea::placeholder {
 .media-attachments input[type='file'] {
   min-height: 0;
 }
-.attachment-button {
-  padding: 8px 12px;
-  border: 1px dashed #bccbb2;
-  border-radius: 8px;
-  background: #f7f9f4;
-  font-size: var(--font-size-control);
-}
-.attachment-button:hover {
-  background: var(--sage);
-  border-color: var(--green);
-}
+
 .media-attachments .media-list img {
   max-height: 180px;
 }
@@ -3051,12 +2950,9 @@ textarea::placeholder {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 6px 10px;
+
   min-height: 36px;
   text-align: left;
-  color: #914a38;
 }
 .attachment-hint {
   margin-top: 12px;

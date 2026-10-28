@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiButton, vUiControl } from './ui'
 import { computed, ref, watch } from 'vue'
 import { t, type MessageKey } from '../i18n'
 import type { AnkiImportPlan, AnkiChange, AnkiDifference } from '../core/anki/changes'
@@ -111,16 +112,28 @@ function variant(key: string) {
   <div class="anki-changes">
     <div class="anki-change-tools">
       <label for="anki-change-filter">{{ t('筛选笔记') }}</label>
-      <select id="anki-change-filter" v-model="filter" :disabled="disabled">
+      <select v-ui-control id="anki-change-filter" v-model="filter" :disabled="disabled">
         <option value="all">{{ t('所有笔记') }}</option>
         <option v-for="(label, status) in statusLabels" :key="status" :value="status">
           {{ t(label) }}
         </option>
       </select>
-      <button type="button" class="text-button" :disabled="disabled" @click="chooseChanged">
+      <button
+        v-ui-button="'ghost'"
+        type="button"
+        class="text-button"
+        :disabled="disabled"
+        @click="chooseChanged"
+      >
         {{ t('选择所有内容不同的笔记') }}
       </button>
-      <button type="button" class="text-button" :disabled="disabled" @click="keepExisting">
+      <button
+        v-ui-button="'ghost'"
+        type="button"
+        class="text-button"
+        :disabled="disabled"
+        @click="keepExisting"
+      >
         {{ t('保留所有已有笔记') }}
       </button>
     </div>
@@ -138,6 +151,7 @@ function variant(key: string) {
           }}</span>
           <label v-if="change.status === 'new' || change.status === 'changed'" class="check-line">
             <input
+              v-ui-control
               type="checkbox"
               :checked="selectedSet.has(change.incoming.id)"
               :disabled="disabled"
@@ -174,6 +188,7 @@ function variant(key: string) {
           {{ t('无法读取已有附件，此笔记不能更新。请检查附件后重新比较。') }}
         </p>
         <button
+          v-ui-button="'ghost'"
           type="button"
           class="text-button anki-detail-toggle"
           :aria-expanded="open === change.incoming.id"
@@ -214,11 +229,23 @@ function variant(key: string) {
       </li>
     </ol>
     <nav v-if="pages > 1" class="anki-change-pages" :aria-label="t('笔记比较分页')">
-      <button type="button" class="button secondary" :disabled="page === 0" @click="page--">
+      <button
+        v-ui-button="'secondary'"
+        type="button"
+        class="button secondary"
+        :disabled="page === 0"
+        @click="page--"
+      >
         {{ t('上一页') }}
       </button>
       <span>{{ t('第 {page} / {pages} 页', { page: page + 1, pages }) }}</span>
-      <button type="button" class="button secondary" :disabled="page + 1 >= pages" @click="page++">
+      <button
+        v-ui-button="'secondary'"
+        type="button"
+        class="button secondary"
+        :disabled="page + 1 >= pages"
+        @click="page++"
+      >
         {{ t('下一页') }}
       </button>
     </nav>

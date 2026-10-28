@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiButton } from './ui'
 import { t, msg } from '../i18n'
 import { useNotifications } from '../notifications'
 
@@ -391,6 +392,7 @@ onUnmounted(() => {
   <section class="review-space">
     <header v-if="!mixedCardId" class="review-header">
       <button
+        v-ui-button="'ghost'"
         class="text-button"
         :disabled="busy || questionState.busy || grading"
         @click="emit('close')"
@@ -420,9 +422,12 @@ onUnmounted(() => {
 
     <div class="review-tools">
       <details v-if="current" ref="menu" class="review-menu">
-        <summary :aria-label="t('更多操作')"><Ellipsis :size="22" /></summary>
+        <summary v-ui-button="{ variant: 'ghost', icon: true }" :aria-label="t('更多操作')">
+          <Ellipsis :size="22" />
+        </summary>
         <div>
           <button
+            v-ui-button="'ghost'"
             class="text-button"
             :disabled="busy || editing || questionState.busy || grading"
             @click="addCurrent"
@@ -430,6 +435,7 @@ onUnmounted(() => {
             <Plus :size="17" />{{ t('添加') }} <kbd>A</kbd>
           </button>
           <button
+            v-ui-button="'ghost'"
             class="text-button"
             :disabled="busy || editing || questionState.busy || grading"
             @click="editCurrent"
@@ -437,6 +443,7 @@ onUnmounted(() => {
             <Pencil :size="17" />{{ t('编辑') }} <kbd>E</kbd>
           </button>
           <button
+            v-ui-button="'danger'"
             class="text-button danger"
             :disabled="busy || editing || questionState.busy || grading"
             @click="deleteCurrent"
@@ -445,6 +452,7 @@ onUnmounted(() => {
           </button>
           <template v-if="!practice">
             <button
+              v-ui-button="'ghost'"
               class="text-button"
               :disabled="busy || editing || questionState.busy || grading"
               @click="changeCurrent('bury')"
@@ -452,6 +460,7 @@ onUnmounted(() => {
               {{ t('今天暂缓') }} <kbd>B</kbd>
             </button>
             <button
+              v-ui-button="'ghost'"
               class="text-button"
               :disabled="busy || editing || questionState.busy || grading"
               @click="changeCurrent('suspend')"
@@ -462,6 +471,7 @@ onUnmounted(() => {
         </div>
       </details>
       <button
+        v-ui-button="'ghost'"
         v-if="!mixedCardId"
         class="text-button"
         :disabled="busy || questionState.busy || grading || !canUndo"
@@ -471,12 +481,14 @@ onUnmounted(() => {
       </button>
       <template v-if="current && !practice"
         ><button
+          v-ui-button="'ghost'"
           class="text-button"
           :disabled="busy || questionState.busy || grading"
           @click="changeCurrent('bury')"
         >
           {{ t('今天暂缓') }}</button
         ><button
+          v-ui-button="'ghost'"
           class="text-button"
           :disabled="busy || questionState.busy || grading"
           @click="changeCurrent('suspend')"
@@ -536,7 +548,12 @@ onUnmounted(() => {
           />
         </div>
         <div v-if="revealed && currentSource" class="review-source">
-          <button type="button" class="text-button" @click="sourceOpen = true">
+          <button
+            v-ui-button="'ghost'"
+            type="button"
+            class="text-button"
+            @click="sourceOpen = true"
+          >
             {{ t('查看原文') }} · {{ currentSource.title }}</button
           ><SourceContext
             v-if="sourceOpen"
@@ -554,7 +571,12 @@ onUnmounted(() => {
         </div>
       </article>
       <div v-if="!revealed" class="reveal-action">
-        <button class="button primary" :disabled="questionState.busy" @click="revealed = true">
+        <button
+          v-ui-button="'primary'"
+          class="button primary"
+          :disabled="questionState.busy"
+          @click="revealed = true"
+        >
           {{ t(current.type === 'plugin' ? '结束作答并查看答案' : '显示答案')
           }}<CornerDownLeft :size="17" /></button
         ><span class="muted">{{ t('或按空格键') }}</span>
@@ -566,6 +588,7 @@ onUnmounted(() => {
             {{ t('尚无判题结果。可以继续作答，或将本次记为“重来”。') }}
           </p>
           <button
+            v-ui-button="'primary'"
             class="button primary"
             :disabled="
               busy ||
@@ -579,6 +602,7 @@ onUnmounted(() => {
         </template>
         <div v-else class="grade-buttons">
           <button
+            v-ui-button="{ variant: 'rating', tone: item.class }"
             v-for="item in grades"
             :key="item.value"
             :class="['grade-button', item.class]"
@@ -642,10 +666,10 @@ onUnmounted(() => {
           })
         }}
       </p>
-      <button class="button primary" @click="emit('close')">
+      <button v-ui-button="'primary'" class="button primary" @click="emit('close')">
         {{ t('返回') }}<ArrowLeft :size="16" />
       </button>
-      <button v-if="!study" class="text-button" @click="selectNext">
+      <button v-ui-button="'ghost'" v-if="!study" class="text-button" @click="selectNext">
         <RotateCcw :size="15" />{{ t('检查到期卡片') }}
       </button>
     </div>
@@ -658,14 +682,6 @@ onUnmounted(() => {
 }
 .review-menu summary {
   list-style: none;
-  min-width: 44px;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  border: 1px solid var(--line);
-  border-radius: 8px;
 }
 .review-menu summary::-webkit-details-marker {
   display: none;
@@ -678,16 +694,16 @@ onUnmounted(() => {
   min-width: 240px;
   max-width: calc(100vw - 3rem);
   padding: 0.5rem;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-control-border);
+  border-radius: var(--ui-control-radius);
   box-shadow: 0 8px 24px #20351b18;
 }
 .review-menu button {
   display: flex;
   gap: 0.7rem;
   width: 100%;
-  padding: 0.6rem;
+  justify-content: flex-start;
 }
 kbd {
   margin-left: auto;

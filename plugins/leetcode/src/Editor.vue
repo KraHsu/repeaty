@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiControl, vUiButton } from '@repeaty/plugin-api'
 import { computed, onUnmounted, ref } from 'vue'
 import { t } from './i18n'
 import type { NoteInput } from '@repeaty/plugin-api'
@@ -57,7 +58,13 @@ async function load() {
     <div class="leetcode-source">
       <div class="form-field">
         <label for="leetcode-site">{{ t('LeetCode 站点') }}</label>
-        <select id="leetcode-site" v-model="site" :disabled="loading" @change="rememberSite(site)">
+        <select
+          v-ui-control
+          id="leetcode-site"
+          v-model="site"
+          :disabled="loading"
+          @change="rememberSite(site)"
+        >
           <option value="leetcode.cn">{{ t('中国站 · leetcode.cn') }}</option>
           <option value="leetcode.com">{{ t('国际站 · leetcode.com') }}</option>
         </select>
@@ -65,6 +72,7 @@ async function load() {
       <div class="form-field">
         <label for="leetcode-link">{{ t('题目链接或英文标识') }}</label>
         <input
+          v-ui-control
           id="leetcode-link"
           v-model="input"
           :disabled="loading"
@@ -74,6 +82,7 @@ async function load() {
         />
       </div>
       <button
+        v-ui-button="'secondary'"
         class="button secondary"
         type="button"
         :disabled="loading || !input.trim()"
@@ -90,7 +99,7 @@ async function load() {
         {{ t(problem.difficulty) }} · {{ problem.site }}
       </p>
       <details>
-        <summary>{{ t('题目预览') }}</summary>
+        <summary v-ui-button="'ghost'">{{ t('题目预览') }}</summary>
         <Statement :content="problem.content" />
       </details>
     </template>

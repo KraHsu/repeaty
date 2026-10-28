@@ -52,7 +52,9 @@ main.ts → App.vue → app/createApplication.ts
 
 侧栏布局由每个根组件的 `useSidebarLayout` 管理，宽度通过现有偏好适配器以 `repeaty.sidebar.width.v1` 保存。拖动期间只更新本实例布局，结束后保存；学习库切换、手势取消和卸载会释放指针捕获。视口收窄只限制实际宽度，保留首选宽度供窗口放大后恢复。
 
-`src/components/ui/` 提供 `SettingGroup`、`SettingField`、`UiButton`，本体与公开插件 SDK 复用同一运行时组件；`src/styles/tokens.css` 和 `controls.css` 管理字体、间距、控件状态与滚动条。插件仅声明字段和业务保存逻辑，不复制宿主控件代码。详见[界面规范](DESIGN_SYSTEM.md)。
+`src/components/ui/` 提供 `SettingGroup`、`SettingField`、`UiButton`、`UiIconButton`，以及原生控件指令 `vUiControl` / `vUiButton`，本体与公开插件 SDK 复用同一运行时实现；`src/styles/tokens.css` 和 `controls.css` 管理字体、间距、控件状态与滚动条。共用层覆盖设置、编辑、复习、材料及弹窗，官方插件保持独立源码与预构建包边界。
+
+复杂编辑器通过指令保留原生DOM、`ref`、选区、IME、表单提交和事件。指令只增减自身的样式类，不接管草稿、阅读位置、评分、提交、关闭或资源生命周期；隐藏文件选择器不加可见控件样式。插件继续声明业务字段与保存逻辑，不复制宿主控件代码，也不改变应用、视图和插件作用域的所有者。详见[界面规范](DESIGN_SYSTEM.md)。
 
 组件外调用 `useLibrary()` 或其他 store 时显式传入所属 Pinia；测试也用 `createPinia()` 创建独立实例。应用卸载时调用 `disposePinia()`，释放该实例的服务。
 

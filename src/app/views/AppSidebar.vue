@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiButton } from '../../components/ui'
 import { version } from '../../../package.json'
 import { t } from '../../i18n'
 import {
@@ -137,6 +138,7 @@ const {
         <div class="sidebar-section-title">
           <span class="sidebar-section-label">{{ t('我的卡组') }}</span
           ><button
+            v-ui-button="{ variant: 'ghost', icon: true }"
             class="icon-button"
             :aria-label="t('新建卡组')"
             :title="t('新建卡组')"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiButton, vUiControl } from './ui'
 import { computed, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { t, type DisplayMessage, type MessageKey } from '../i18n'
 import type { Library } from '../core/model'
@@ -225,6 +226,7 @@ function downloadReport() {
       @change="fileChanged"
     />
     <button
+      v-ui-button="'secondary'"
       type="button"
       class="button attachment-button anki-file-button"
       :disabled="busy || reading"
@@ -241,15 +243,19 @@ function downloadReport() {
         }}
       </p>
       <progress
+        v-ui-control
         v-if="!comparing"
         :value="progress"
         max="100"
         :aria-label="t('正在读取 Anki 文件…')"
       />
-      <button type="button" class="text-button" @click="cancelRead">{{ t('取消') }}</button>
+      <button v-ui-button="'ghost'" type="button" class="text-button" @click="cancelRead">
+        {{ t('取消') }}
+      </button>
     </div>
     <p v-if="error" class="import-warning" role="alert">{{ t(error) }}</p>
     <button
+      v-ui-button="'ghost'"
       v-if="data && !reading"
       type="button"
       class="text-button anki-retry"
@@ -322,13 +328,13 @@ function downloadReport() {
         </p>
         <p class="form-note">{{ t('导入前会保存快照，可恢复原内容、进度和附件。') }}</p>
         <label class="check-line"
-          ><input v-model="confirmCardChanges" type="checkbox" :disabled="busy" />{{
+          ><input v-ui-control v-model="confirmCardChanges" type="checkbox" :disabled="busy" />{{
             t('我已确认以上卡片变化')
           }}</label
         >
       </div>
       <details v-if="data.issues.length" class="anki-report">
-        <summary>{{ t('导入报告') }} ({{ data.issues.length }})</summary>
+        <summary v-ui-button="'ghost'">{{ t('导入报告') }} ({{ data.issues.length }})</summary>
         <ul>
           <li v-for="(issue, index) in data.issues.slice(0, 20)" :key="index">
             <strong>{{ t(issue.skipped ? '已跳过' : '已调整') }}</strong> · {{ issue.model }} ·
@@ -340,14 +346,23 @@ function downloadReport() {
           {{ t('还有 {count} 项，完整列表见下载报告。', { count: data.issues.length - 20 }) }}
         </p>
       </details>
-      <button type="button" class="text-button" @click="downloadReport">{{ t('下载报告') }}</button>
+      <button v-ui-button="'ghost'" type="button" class="text-button" @click="downloadReport">
+        {{ t('下载报告') }}
+      </button>
       <p v-if="!selected.length" class="form-note">{{ t('未选择添加或更新任何笔记。') }}</p>
     </section>
     <div class="form-actions">
-      <button type="button" class="button secondary" :disabled="busy" @click="emit('close')">
+      <button
+        v-ui-button="'secondary'"
+        type="button"
+        class="button secondary"
+        :disabled="busy"
+        @click="emit('close')"
+      >
         {{ t('取消') }}
       </button>
       <button
+        v-ui-button="'primary'"
         type="button"
         class="button primary"
         :disabled="

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiControl, vUiButton } from '../components/ui'
 import { computed, onMounted, onUnmounted, ref, reactive, watch } from 'vue'
 import { FolderOpen, FolderPlus, RefreshCw, X, Check } from '@lucide/vue'
 import { t, validationMessage, type DisplayMessage } from '../i18n'
@@ -495,6 +496,7 @@ onUnmounted(() => {
       </div>
       <div class="workspace-actions">
         <button
+          v-ui-button
           class="button"
           :disabled="locked || !status"
           @click="run(() => chooseWorkspace('open'))"
@@ -502,6 +504,7 @@ onUnmounted(() => {
           <FolderOpen :size="18" />{{ t('打开目录') }}
         </button>
         <button
+          v-ui-button
           class="button primary"
           :disabled="locked || !status"
           @click="run(() => chooseWorkspace('create'))"
@@ -523,7 +526,7 @@ onUnmounted(() => {
     <p v-if="error" class="import-warning" role="alert">{{ t(error) }}</p>
     <div v-if="status?.error" class="workspace-card" role="alert">
       <p>{{ t(nativeError(status.error)) }}</p>
-      <button class="button" :disabled="locked" @click="run(restoreWorkspace)">
+      <button v-ui-button class="button" :disabled="locked" @click="run(restoreWorkspace)">
         {{ t('重试') }}
       </button>
     </div>
@@ -533,9 +536,9 @@ onUnmounted(() => {
         <p class="workspace-path">{{ status.active.path }}</p>
       </div>
       <div class="workspace-actions">
-        <button class="button" :disabled="locked" @click="run(refresh)">
+        <button v-ui-button class="button" :disabled="locked" @click="run(refresh)">
           <RefreshCw :size="18" />{{ t('重新扫描') }}</button
-        ><button class="button" :disabled="locked" @click="run(closeWorkspace)">
+        ><button v-ui-button class="button" :disabled="locked" @click="run(closeWorkspace)">
           <X :size="18" />{{ t('关闭目录') }}
         </button>
       </div>
@@ -552,6 +555,7 @@ onUnmounted(() => {
       <div class="workspace-files">
         <label for="workspace-file-search">{{ t('查找文件') }}</label
         ><input
+          v-ui-control
           id="workspace-file-search"
           v-model="query"
           :placeholder="t('文件路径')"
@@ -569,9 +573,10 @@ onUnmounted(() => {
           ><span class="workspace-file-status">{{ t(labels[file.status]) }}</span>
         </button>
         <div v-if="pages > 1" class="workspace-actions">
-          <button class="button" :disabled="page === 1" @click="page--">{{ t('上一页') }}</button
+          <button v-ui-button class="button" :disabled="page === 1" @click="page--">
+            {{ t('上一页') }}</button
           ><span>{{ page }} / {{ pages }}</span
-          ><button class="button" :disabled="page === pages" @click="page++">
+          ><button v-ui-button class="button" :disabled="page === pages" @click="page++">
             {{ t('下一页') }}
           </button>
         </div>
@@ -580,6 +585,7 @@ onUnmounted(() => {
         <h2>{{ current?.path ?? t('选择文件') }}</h2>
         <div v-if="current" class="workspace-actions workspace-versions">
           <button
+            v-ui-button
             class="button"
             :class="{ selected: !showAccepted }"
             :aria-pressed="!showAccepted"
@@ -587,6 +593,7 @@ onUnmounted(() => {
           >
             {{ t('工作文件') }}</button
           ><button
+            v-ui-button
             class="button"
             :class="{ selected: showAccepted }"
             :aria-pressed="showAccepted"
@@ -594,6 +601,7 @@ onUnmounted(() => {
           >
             {{ t('已接受版本') }}</button
           ><button
+            v-ui-button
             v-if="canAccept"
             class="button primary"
             :disabled="locked"
@@ -606,6 +614,7 @@ onUnmounted(() => {
             <Check :size="18" />{{ t('接受修改') }}
           </button>
           <button
+            v-ui-button
             v-if="canRemove"
             class="button danger"
             :disabled="locked"
@@ -642,7 +651,8 @@ onUnmounted(() => {
         @submit.prevent="run(() => loadArchive())"
       >
         <label for="archive-search">{{ t('查找已移除的笔记') }}</label
-        ><input id="archive-search" v-model="archiveQuery" :disabled="locked" /><button
+        ><input v-ui-control id="archive-search" v-model="archiveQuery" :disabled="locked" /><button
+          v-ui-button
           class="button"
           :disabled="locked"
         >
@@ -655,12 +665,18 @@ onUnmounted(() => {
           <strong>{{ entry.title }}</strong>
           <p>{{ t('{count} 张卡片', { count: entry.cards }) }} · {{ entry.path }}</p>
         </div>
-        <button class="button" :disabled="locked" @click="run(() => prepare('restore', entry.id))">
+        <button
+          v-ui-button
+          class="button"
+          :disabled="locked"
+          @click="run(() => prepare('restore', entry.id))"
+        >
           {{ t('恢复笔记') }}
         </button>
       </div>
       <div v-if="archived.total > 50" class="workspace-actions">
         <button
+          v-ui-button
           class="button"
           :disabled="locked || archivePage === 1"
           @click="run(() => loadArchive(archivePage - 1))"
@@ -668,6 +684,7 @@ onUnmounted(() => {
           {{ t('上一页') }}</button
         ><span>{{ archivePage }} / {{ Math.ceil(archived.total / 50) }}</span
         ><button
+          v-ui-button
           class="button"
           :disabled="locked || archivePage * 50 >= archived.total"
           @click="run(() => loadArchive(archivePage + 1))"
@@ -684,15 +701,16 @@ onUnmounted(() => {
       @close="sourceAction = undefined"
     >
       <label class="workspace-field"
-        >{{ t('材料标题') }}<input v-model="sourceForm.title" :disabled="locked" maxlength="160"
+        >{{ t('材料标题')
+        }}<input v-ui-control v-model="sourceForm.title" :disabled="locked" maxlength="160"
       /></label>
       <label class="workspace-field"
         >{{ t('来源链接（选填）')
-        }}<input v-model="sourceForm.url" :disabled="locked" maxlength="2048"
+        }}<input v-ui-control v-model="sourceForm.url" :disabled="locked" maxlength="2048"
       /></label>
       <label class="workspace-field"
         >{{ t('内容格式')
-        }}<select v-model="sourceForm.format" :disabled="locked">
+        }}<select v-ui-control v-model="sourceForm.format" :disabled="locked">
           <option value="markdown">{{ t('Markdown / 数学公式') }}</option>
           <option value="plain">{{ t('纯文本') }}</option>
         </select></label
@@ -708,9 +726,10 @@ onUnmounted(() => {
         }}
       </p>
       <div class="workspace-actions workspace-confirm">
-        <button class="button" :disabled="locked" @click="sourceAction = undefined">
+        <button v-ui-button class="button" :disabled="locked" @click="sourceAction = undefined">
           {{ t('取消') }}</button
         ><button
+          v-ui-button
           class="button primary"
           :disabled="locked || !sourceProposal || 'error' in sourceProposal"
           @click="run(confirmSource)"
@@ -744,7 +763,7 @@ onUnmounted(() => {
       <template v-else>
         <label class="workspace-field"
           >{{ t('所属卡组')
-          }}<select v-model="form.deckId" :disabled="locked">
+          }}<select v-ui-control v-model="form.deckId" :disabled="locked">
             <option v-for="deck in workspace.library.value.decks" :key="deck.id" :value="deck.id">
               {{ deck.name }}
             </option>
@@ -752,7 +771,7 @@ onUnmounted(() => {
         >
         <label class="workspace-field"
           >{{ t('笔记类型')
-          }}<select v-model="form.type" :disabled="locked">
+          }}<select v-ui-control v-model="form.type" :disabled="locked">
             <option value="basic">{{ t('正反面') }}</option>
             <option value="reversed">{{ t('双向卡') }}</option>
             <option value="cloze">{{ t('挖空卡') }}</option>
@@ -761,13 +780,13 @@ onUnmounted(() => {
         >
         <label class="workspace-field"
           >{{ t('内容格式')
-          }}<select v-model="form.format" :disabled="locked">
+          }}<select v-ui-control v-model="form.format" :disabled="locked">
             <option value="markdown">{{ t('Markdown / 数学公式') }}</option>
             <option value="plain">{{ t('纯文本') }}</option>
           </select></label
         >
         <label v-if="action.mode === 'restore'" class="workspace-field"
-          >{{ t('文件路径') }}<input v-model="form.path" :disabled="locked"
+          >{{ t('文件路径') }}<input v-ui-control v-model="form.path" :disabled="locked"
         /></label>
         <p v-if="proposal && 'error' in proposal" class="import-warning" role="alert">
           {{ t(proposal.error!) }}
@@ -785,9 +804,10 @@ onUnmounted(() => {
         <p>{{ t('退役卡片不再进入复习，历史记录保留；重新添加相同方向或挖空编号时恢复。') }}</p>
       </template>
       <div class="workspace-actions workspace-confirm">
-        <button class="button" :disabled="locked" @click="action = undefined">
+        <button v-ui-button class="button" :disabled="locked" @click="action = undefined">
           {{ t('取消') }}</button
         ><button
+          v-ui-button
           class="button primary"
           :disabled="locked || (action.mode !== 'remove' && (!proposal || 'error' in proposal))"
           @click="run(confirmAction)"
@@ -807,6 +827,7 @@ onUnmounted(() => {
     <section v-if="status?.recent.length" class="workspace-card">
       <h2>{{ t('最近打开') }}</h2>
       <button
+        v-ui-button
         v-for="entry in status.recent"
         :key="entry.path"
         class="workspace-recent-entry"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiButton } from './ui'
 import { computed, ref, watch } from 'vue'
 import { t, locale } from '../i18n'
 import type { AttemptRecord } from '../core/practice-data'
@@ -59,7 +60,7 @@ function timestamp(value: string) {
       }
     "
   >
-    <summary v-if="!standalone">
+    <summary v-if="!standalone" v-ui-button="'ghost'">
       {{ t('提交历史') }} <span class="muted">{{ practices.length }}</span>
     </summary>
     <p v-if="!standalone" class="form-note">
@@ -92,7 +93,7 @@ function timestamp(value: string) {
           }
         "
       >
-        <summary>
+        <summary v-ui-button="'ghost'">
           <strong>{{ t('第 {count} 次提交', { count: index + 1 }) }}</strong>
           <span>{{ t(attempt.result?.status ?? statusNames[attempt.status]) }}</span>
           <span class="muted">{{ attempt.language }}</span>
@@ -107,11 +108,23 @@ function timestamp(value: string) {
       </details>
     </section>
     <nav v-if="!standalone && pages > 1" class="pagination" :aria-label="t('练习历史分页')">
-      <button type="button" class="button secondary" :disabled="page === 1" @click="page--">
+      <button
+        v-ui-button="'secondary'"
+        type="button"
+        class="button secondary"
+        :disabled="page === 1"
+        @click="page--"
+      >
         {{ t('上一页') }}
       </button>
       <span>{{ t('第 {page} / {pages} 页', { page, pages }) }}</span>
-      <button type="button" class="button secondary" :disabled="page === pages" @click="page++">
+      <button
+        v-ui-button="'secondary'"
+        type="button"
+        class="button secondary"
+        :disabled="page === pages"
+        @click="page++"
+      >
         {{ t('下一页') }}
       </button>
     </nav>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiButton } from './ui'
 import { computed, nextTick, ref, watch } from 'vue'
 import { t } from '../i18n'
 import { excerptPreview, matchingExcerpts, type SavedExcerpt } from '../core/source-navigation'
@@ -62,6 +63,7 @@ defineExpose({ showMatches })
         </div>
         <div class="source-excerpt-buttons">
           <button
+            v-ui-button
             type="button"
             class="button secondary"
             :disabled="busy || !canLocate"
@@ -71,6 +73,7 @@ defineExpose({ showMatches })
             {{ t('定位原文') }}
           </button>
           <button
+            v-ui-button="'ghost'"
             type="button"
             class="text-button"
             :disabled="busy"
@@ -83,11 +86,18 @@ defineExpose({ showMatches })
       </li>
     </ol>
     <nav v-if="pages > 1" class="source-excerpt-pages" :aria-label="t('本篇摘录分页')">
-      <button type="button" class="text-button" :disabled="busy || page === 0" @click="page--">
+      <button
+        v-ui-button="'ghost'"
+        type="button"
+        class="text-button"
+        :disabled="busy || page === 0"
+        @click="page--"
+      >
         {{ t('上一页') }}
       </button>
       <span>{{ t('第 {page} 页，共 {pages} 页', { page: page + 1, pages }) }}</span>
       <button
+        v-ui-button="'ghost'"
         type="button"
         class="text-button"
         :disabled="busy || page + 1 >= pages"
@@ -160,8 +170,5 @@ defineExpose({ showMatches })
 .source-excerpt-pages {
   justify-content: space-between;
   font-size: var(--font-size-meta);
-}
-.source-excerpt-buttons button {
-  min-height: 44px;
 }
 </style>

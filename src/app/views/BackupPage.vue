@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiControl, vUiButton } from '../../components/ui'
 import { version } from '../../../package.json'
 import { t, locale } from '../../i18n'
 import { ArrowDownToLine, ArrowUpFromLine, BookOpen, Repeat2, ShieldCheck } from '@lucide/vue'
@@ -69,8 +70,10 @@ function bindUpload(instance: unknown) {
     </section>
     <div v-if="transfer" class="transfer-status" role="status">
       <span>{{ t(transfer.label) }} {{ Math.floor(transfer.percent) }}%</span>
-      <progress :value="transfer.percent" max="100" :aria-label="t(transfer.label)" />
-      <button class="button secondary" @click="cancelTransfer">{{ t('取消传输') }}</button>
+      <progress v-ui-control :value="transfer.percent" max="100" :aria-label="t(transfer.label)" />
+      <button v-ui-button class="button secondary" @click="cancelTransfer">
+        {{ t('取消传输') }}
+      </button>
     </div>
     <div class="backup-grid">
       <section class="backup-card">
@@ -90,10 +93,16 @@ function bindUpload(instance: unknown) {
           }}
         </div>
         <div class="backup-actions">
-          <button class="button primary" :disabled="busy || !!transfer" @click="exportData()">
+          <button
+            v-ui-button
+            class="button primary"
+            :disabled="busy || !!transfer"
+            @click="exportData()"
+          >
             <ArrowDownToLine :size="16" />{{ t('导出 .repeaty') }}
           </button>
           <button
+            v-ui-button
             v-if="filePicker"
             class="button secondary"
             :disabled="busy || !!transfer"
@@ -101,7 +110,12 @@ function bindUpload(instance: unknown) {
           >
             {{ t('直接保存到文件') }}
           </button>
-          <button class="text-button" :disabled="busy || !!transfer" @click="exportData('json')">
+          <button
+            v-ui-button
+            class="text-button"
+            :disabled="busy || !!transfer"
+            @click="exportData('json')"
+          >
             {{ t('导出旧版 JSON') }}
           </button>
         </div>
@@ -115,13 +129,19 @@ function bindUpload(instance: unknown) {
         <p>{{ t('支持 .repeaty 备份包和旧版 JSON。检查完成并确认后才会替换当前数据。') }}</p>
         <div class="backup-meta">{{ t('.repeaty 最大 2 GB · 旧版 JSON 最大 100 MB') }}</div>
         <input
+          v-ui-control
           :ref="bindUpload"
           class="sr-only"
           type="file"
           accept=".repeaty,.zip,.json,application/zip,application/json"
           :aria-label="t('导入备份文件')"
           @change="importData"
-        /><button class="button secondary" :disabled="busy || !!transfer" @click="upload?.click()">
+        /><button
+          v-ui-button
+          class="button secondary"
+          :disabled="busy || !!transfer"
+          @click="upload?.click()"
+        >
           <ArrowUpFromLine :size="16" />{{ t('选择备份文件') }}
         </button>
       </section>
@@ -136,6 +156,7 @@ function bindUpload(instance: unknown) {
           }}
         </p>
         <button
+          v-ui-button
           class="button secondary"
           :disabled="busy || !!transfer"
           @click="run(workspace.addSample, '入门卡组已添加')"
@@ -148,6 +169,7 @@ function bindUpload(instance: unknown) {
       <div class="section-heading">
         <h2>{{ t('自动快照') }}</h2>
         <button
+          v-ui-button
           class="button secondary"
           :disabled="busy || !library.notes.length"
           @click="run(() => workspace.backupNow(true), '快照已保存；未变化的数据不会重复备份')"
@@ -177,7 +199,12 @@ function bindUpload(instance: unknown) {
               })
             }}</span>
           </div>
-          <button class="button secondary" :disabled="busy" @click="openSnapshot(backup.id)">
+          <button
+            v-ui-button
+            class="button secondary"
+            :disabled="busy"
+            @click="openSnapshot(backup.id)"
+          >
             {{ t('恢复此快照') }}
           </button>
         </li>
@@ -200,6 +227,7 @@ function bindUpload(instance: unknown) {
           }}
         </p>
         <button
+          v-ui-button
           v-if="offline.updateReady.value"
           class="button secondary"
           :disabled="busy"

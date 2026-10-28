@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, useId, watch } from 'vue'
 import type { SettingFieldProps, SettingValue } from './types'
+import { vUiControl } from './directives'
 
 const props = withDefaults(defineProps<SettingFieldProps>(), {
   type: 'text',
@@ -184,6 +185,7 @@ function resetNumber(event: FocusEvent) {
           <span v-if="type === 'switch'" class="ui-setting-toggle__track" aria-hidden="true" />
         </label>
         <select
+          v-ui-control
           v-else-if="type === 'select'"
           :id="controlId"
           class="ui-control ui-control--select"
@@ -203,6 +205,7 @@ function resetNumber(event: FocusEvent) {
           </option>
         </select>
         <textarea
+          v-ui-control="{ monospace }"
           v-else-if="type === 'textarea'"
           :id="controlId"
           class="ui-control ui-control--textarea"
@@ -225,6 +228,7 @@ function resetNumber(event: FocusEvent) {
         <template v-else-if="type === 'range'">
           <div class="ui-setting-range">
             <input
+              v-ui-control
               :id="controlId"
               type="range"
               class="ui-control ui-control--range"
@@ -247,6 +251,7 @@ function resetNumber(event: FocusEvent) {
         </template>
         <div v-else class="ui-setting-input" :class="{ 'ui-setting-input--unit': unit }">
           <input
+            v-ui-control="{ monospace }"
             :id="controlId"
             :type="type"
             class="ui-control"

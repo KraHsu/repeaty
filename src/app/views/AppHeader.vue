@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiButton } from '../../components/ui'
 import { t, locale } from '../../i18n'
 import { ChevronRight, CircleHelp, Undo2 } from '@lucide/vue'
 import { remoteWorkspace, desktopEdition } from '../../edition'
@@ -27,6 +28,7 @@ const {
     </div>
     <div class="topbar-tools">
       <button
+        v-ui-button
         class="text-button"
         :disabled="shortcutLocked || !canUndoAction"
         :title="undoTitle"
@@ -36,6 +38,7 @@ const {
         <Undo2 :size="18" />{{ t('撤销') }}
       </button>
       <button
+        v-ui-button="{ variant: 'ghost', icon: true }"
         class="icon-button"
         :aria-label="t('快捷键')"
         :title="t('快捷键') + ' · ?'"

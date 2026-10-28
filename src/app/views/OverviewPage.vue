@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiButton } from '../../components/ui'
 import { t } from '../../i18n'
 import {
   ArrowRight,
@@ -45,7 +46,7 @@ const {
       <div>
         <h1>{{ t('学习概览') }}</h1>
       </div>
-      <button class="button secondary" :disabled="busy" @click="editCard()">
+      <button v-ui-button class="button secondary" :disabled="busy" @click="editCard()">
         <Plus :size="17" />{{ t('添加卡片') }}
       </button>
     </header>
@@ -84,6 +85,7 @@ const {
             {{ t('添加卡片后即可开始学习。') }}
           </p>
           <button
+            v-ui-button
             class="button dark"
             :disabled="busy"
             @click="library.cards.length ? startReview() : editCard()"
@@ -154,6 +156,7 @@ const {
       </div>
       <div class="daily-reading-actions">
         <button
+          v-ui-button
           class="button secondary"
           :disabled="busy || (!due.length && !readyReading.length)"
           @click="modal = 'mixed'"
@@ -161,6 +164,7 @@ const {
           {{ t('开始混合学习') }}
         </button>
         <button
+          v-ui-button
           v-if="readyReading.length"
           class="button primary"
           :disabled="busy"
@@ -168,7 +172,7 @@ const {
         >
           {{ t('开始今日阅读') }}<ArrowRight :size="17" />
         </button>
-        <button class="button secondary" :disabled="busy" @click="navigate('sources')">
+        <button v-ui-button class="button secondary" :disabled="busy" @click="navigate('sources')">
           {{ t('管理学习材料') }}
         </button>
       </div>
@@ -209,7 +213,7 @@ const {
         <h2>
           {{ t('我的卡组') }}<span>{{ library.decks.length }}</span>
         </h2>
-        <button class="text-button" :disabled="busy" @click="editDeck()">
+        <button v-ui-button class="text-button" :disabled="busy" @click="editDeck()">
           <Plus :size="17" />{{ t('创建卡组') }}
         </button>
       </div>
@@ -217,12 +221,14 @@ const {
         <article v-for="deck in library.decks" :key="deck.id" class="deck-card">
           <div class="deck-card-top">
             <button
+              v-ui-button="{ variant: 'ghost', icon: true }"
               :class="['deck-icon', deck.color]"
               :aria-label="t('打开卡组 {p0}', { p0: deck.name })"
               @click="openDeck(deck)"
             >
               <Layers :size="22" /></button
             ><button
+              v-ui-button="{ variant: 'ghost', icon: true }"
               class="icon-button"
               :aria-label="t('编辑卡组 {p0}', { p0: deck.name })"
               @click="editDeck(deck)"
@@ -240,6 +246,7 @@ const {
                 t('{p0} 张待学', { p0: deckDue(deck.id) })
               }}</span></span
             ><button
+              v-ui-button="{ variant: 'ghost', icon: true }"
               class="icon-button deck-review"
               :aria-label="t('复习卡组 {p0}', { p0: deck.name })"
               @click="startReview(deck.id)"
@@ -248,7 +255,7 @@ const {
             </button>
           </div>
         </article>
-        <button class="add-deck-tile" @click="editDeck()">
+        <button v-ui-button class="add-deck-tile" @click="editDeck()">
           <Plus :size="24" /><span>{{ t('新建卡组') }}</span>
         </button>
       </div>
@@ -260,12 +267,13 @@ const {
         </div>
         <div class="welcome-actions">
           <button
+            v-ui-button
             class="button secondary"
             :disabled="busy"
             @click="run(workspace.addSample, '入门卡组已添加')"
           >
             {{ t('添加入门卡组') }}</button
-          ><button class="button primary" @click="editDeck()">
+          ><button v-ui-button class="button primary" @click="editDeck()">
             <Plus :size="16" />{{ t('创建卡组') }}
           </button>
         </div>

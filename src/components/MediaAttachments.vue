@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiButton } from './ui'
 import { ref } from 'vue'
 import { Paperclip, X } from '@lucide/vue'
 import { t } from '../i18n'
@@ -32,12 +33,19 @@ function attach(event: Event) {
       accept="image/png,image/jpeg,image/webp,image/gif,audio/*"
       @change="attach"
     />
-    <button type="button" class="button attachment-button" :title="label" @click="input?.click()">
+    <button
+      v-ui-button="'secondary'"
+      type="button"
+      class="button attachment-button"
+      :title="label"
+      @click="input?.click()"
+    >
       <Paperclip :size="17" aria-hidden="true" />{{ t('添加图片 / 音频') }}
     </button>
     <MediaList :ids="ids" :media="media" :get-media="getMedia" />
     <div v-if="ids.length" class="attachment-actions">
       <button
+        v-ui-button="'danger'"
         v-for="id in ids"
         :key="id"
         type="button"

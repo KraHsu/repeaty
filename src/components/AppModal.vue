@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiButton } from './ui'
 import { t } from '../i18n'
 
 import { onMounted, ref, useId } from 'vue'
@@ -75,6 +76,7 @@ onMounted(() => dialog.value?.showModal())
       <header class="modal-header">
         <h2 :id="titleId">{{ title }}</h2>
         <button
+          v-ui-button="{ variant: 'ghost', icon: true }"
           class="icon-button"
           :aria-label="t('关闭弹窗')"
           :disabled="busy"

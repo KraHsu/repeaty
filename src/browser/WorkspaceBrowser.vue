@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiControl, vUiButton } from '../components/ui'
 import { computed, onUnmounted, ref, shallowRef } from 'vue'
 import { FolderOpen, BookOpen, FileText, Layers, ShieldCheck, X } from '@lucide/vue'
 import { t, type DisplayMessage } from '../i18n'
@@ -162,13 +163,20 @@ onUnmounted(() => {
       {{ t('先在桌面版中关闭学习库，再选择包含 workspace.json 的整个文件夹。') }}
     </p>
     <div class="workspace-actions">
-      <button class="button primary" :disabled="locked" @click="choose">
+      <button v-ui-button class="button primary" :disabled="locked" @click="choose">
         <FolderOpen :size="19" />{{ t('打开本地工作目录') }}
       </button>
-      <button v-if="picker" class="button" :disabled="locked" @click="folderInput?.click()">
+      <button
+        v-ui-button
+        v-if="picker"
+        class="button"
+        :disabled="locked"
+        @click="folderInput?.click()"
+      >
         {{ t('使用文件夹选择') }}
       </button>
       <input
+        v-ui-control
         ref="folderInput"
         class="sr-only"
         type="file"
@@ -185,8 +193,8 @@ onUnmounted(() => {
         <span>{{ t('正在读取工作目录…') }}</span
         ><span>{{ progress }}%</span>
       </div>
-      <progress :value="progress" max="100" :aria-label="t('正在读取工作目录…')" />
-      <button class="button" @click="cancel"><X :size="17" />{{ t('取消') }}</button>
+      <progress v-ui-control :value="progress" max="100" :aria-label="t('正在读取工作目录…')" />
+      <button v-ui-button class="button" @click="cancel"><X :size="17" />{{ t('取消') }}</button>
     </div>
     <section v-if="candidate" class="workspace-preview" :aria-label="t('工作目录预览')">
       <div class="workspace-preview-heading">
@@ -213,10 +221,12 @@ onUnmounted(() => {
       </dl>
       <p>{{ t('使用桌面已接受的内容；尚未接受的外部编辑不会用于本次试用。') }}</p>
       <div class="workspace-actions">
-        <button class="button primary" :disabled="locked" @click="activate()">
+        <button v-ui-button class="button primary" :disabled="locked" @click="activate()">
           {{ t('开始试用') }}
         </button>
-        <button class="button" :disabled="locked" @click="cancel">{{ t('取消') }}</button>
+        <button v-ui-button class="button" :disabled="locked" @click="cancel">
+          {{ t('取消') }}
+        </button>
       </div>
     </section>
     <section v-if="active" class="workspace-preview" :aria-label="t('当前试用副本')">
@@ -224,7 +234,7 @@ onUnmounted(() => {
       <p>{{ t('可以从侧栏进入卡片和材料。离开前，可在「数据与备份」中导出试用副本。') }}</p>
       <p>{{ t('文件更新、接受外部修改和自动检测请使用桌面版。') }}</p>
       <div class="workspace-actions">
-        <button class="button" :disabled="locked" @click="finish()">
+        <button v-ui-button class="button" :disabled="locked" @click="finish()">
           {{ t('返回浏览器学习库') }}
         </button>
       </div>
@@ -237,10 +247,11 @@ onUnmounted(() => {
         }}
       </p>
       <div class="workspace-actions">
-        <button class="button" :disabled="locked" @click="confirm = undefined">
+        <button v-ui-button class="button" :disabled="locked" @click="confirm = undefined">
           {{ t('继续试用') }}
         </button>
         <button
+          v-ui-button
           class="button primary"
           :disabled="locked"
           @click="confirm === 'replace' ? activate(true) : finish(true)"

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { t } from './i18n'
-import { PracticeHistory } from '@repeaty/plugin-api'
+import { PracticeHistory, vUiButton } from '@repeaty/plugin-api'
 import type { PracticeHistoryProps } from '@repeaty/plugin-api'
 import { problemSchema } from './model'
 import Statement from './Statement.vue'
@@ -30,7 +30,7 @@ function statement(practice: Practice) {
           }
         "
       >
-        <summary>{{ t('当时的题目') }}</summary>
+        <summary v-ui-button="'ghost'">{{ t('当时的题目') }}</summary>
         <Statement v-if="shown.has(practice.id)" :content="statement(practice)!" />
       </details>
     </template>

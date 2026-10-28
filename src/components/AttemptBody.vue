@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiButton } from './ui'
 import { onUnmounted, shallowRef, ref, watch } from 'vue'
 import { t } from '../i18n'
 import { hasAttemptBody, type Attempt, type AttemptRecord } from '../core/practice-data'
@@ -57,7 +58,9 @@ onUnmounted(() => {
     </template>
     <div v-else-if="failed" role="alert">
       <p>{{ t('无法读取这次提交，请重试。') }}</p>
-      <button type="button" class="button secondary" @click="load">{{ t('重试') }}</button>
+      <button v-ui-button="'secondary'" type="button" class="button secondary" @click="load">
+        {{ t('重试') }}
+      </button>
     </div>
     <p v-else class="form-note" role="status">{{ t('正在读取提交…') }}</p>
   </div>
@@ -73,8 +76,8 @@ onUnmounted(() => {
   background: var(--paper, #f7f8f4);
   border: 1px solid var(--line);
   border-radius: 8px;
-  font:
-    0.9375rem/1.6 ui-monospace,
-    monospace;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-code);
 }
 </style>

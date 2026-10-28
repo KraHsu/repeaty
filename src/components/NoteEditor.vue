@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiButton, vUiControl } from './ui'
 import { desktopEdition } from '../edition'
 import { t, msg, LocalizedError, type DisplayMessage } from '../i18n'
 
@@ -233,7 +234,7 @@ async function keepDraft() {
         <p v-if="error" class="import-warning" role="alert">{{ t(error) }}</p>
         <p v-if="saveDraft" class="form-note">{{ t('尚未完成时可先保存草稿，下次继续编辑。') }}</p>
         <details v-if="form.excerpt" class="source-note-excerpt">
-          <summary>
+          <summary v-ui-button="'ghost'">
             {{ t('原文摘录') }} ·
             {{ library.sources.find((source) => source.id === form.excerpt?.sourceId)?.title }}
           </summary>
@@ -242,7 +243,7 @@ async function keepDraft() {
         <div class="note-metadata">
           <div class="form-field">
             <label for="note-type">{{ t('笔记类型') }}</label>
-            <select id="note-type" v-model="form.type">
+            <select v-ui-control id="note-type" v-model="form.type">
               <option
                 v-for="(label, key) in noteTypes"
                 :key="key"
@@ -255,7 +256,7 @@ async function keepDraft() {
           </div>
           <div class="form-field">
             <label for="card-deck">{{ t('所属卡组') }}</label>
-            <select id="card-deck" v-model="form.deckId" required>
+            <select v-ui-control id="card-deck" v-model="form.deckId" required>
               <option v-for="deck in library.decks" :key="deck.id" :value="deck.id">
                 {{ deck.name }}
               </option>
@@ -263,7 +264,7 @@ async function keepDraft() {
           </div>
           <div v-if="form.type !== 'plugin'" class="form-field">
             <label for="note-format">{{ t('内容格式') }}</label>
-            <select id="note-format" v-model="form.format">
+            <select v-ui-control id="note-format" v-model="form.format">
               <option value="markdown">{{ t('Markdown / 数学公式') }}</option>
               <option value="plain">{{ t('纯文本') }}</option>
             </select>
@@ -271,6 +272,7 @@ async function keepDraft() {
           <div v-else class="form-field">
             <label for="question-plugin">{{ t('题目插件') }}</label>
             <select
+              v-ui-control
               id="question-plugin"
               v-model="selectedPluginId"
               @change="form.plugin = undefined"
@@ -293,6 +295,7 @@ async function keepDraft() {
             }}
           </p>
           <button
+            v-ui-button="'ghost'"
             v-for="plugin in !draft ? pluginChoices.filter((entry) => entry.createLabel) : []"
             :key="plugin.id"
             type="button"
@@ -317,6 +320,7 @@ async function keepDraft() {
             <div class="note-side-heading">
               <label for="card-front">{{ t('正面 · 问题') }}</label>
               <button
+                v-ui-button="'ghost'"
                 type="button"
                 class="text-button cloze-button"
                 :aria-label="t('选中文字挖空 · Ctrl / ⌘ + Shift + C')"
@@ -328,6 +332,7 @@ async function keepDraft() {
               </button>
             </div>
             <textarea
+              v-ui-control
               id="card-front"
               ref="frontInput"
               v-model="form.front"
@@ -375,6 +380,7 @@ async function keepDraft() {
               >
             </div>
             <textarea
+              v-ui-control
               id="card-back"
               v-model="form.back"
               @paste="paste($event, 'backMedia')"
@@ -405,6 +411,7 @@ async function keepDraft() {
             >{{ t('标签') }}<span class="optional">{{ t('可选，用逗号分隔') }}</span></label
           >
           <input
+            v-ui-control
             id="card-tags"
             v-model="tagsText"
             maxlength="820"
@@ -412,7 +419,9 @@ async function keepDraft() {
           />
         </div>
         <details v-if="form.type !== 'plugin'" class="note-preview">
-          <summary>{{ t('将生成 {p0} 张卡片 · 预览', { p0: generated.length }) }}</summary>
+          <summary v-ui-button="'ghost'">
+            {{ t('将生成 {p0} 张卡片 · 预览', { p0: generated.length }) }}
+          </summary>
           <article v-for="card in previews" :key="card.variant">
             <CardContent :text="card.front" :format="card.format" />
             <MediaList :ids="card.frontMedia" :media="media" :get-media="getMedia" />
@@ -422,7 +431,7 @@ async function keepDraft() {
           </article>
         </details>
         <label v-if="removed.length" class="check-line import-warning">
-          <input v-model="allowRemove" type="checkbox" required />{{
+          <input v-ui-control v-model="allowRemove" type="checkbox" required />{{
             t(
               desktopEdition
                 ? '确认让不再生成的 {p0} 张卡片暂不复习，记录保留，重新添加后恢复。'
@@ -436,6 +445,7 @@ async function keepDraft() {
       </div>
       <div class="form-actions editor-actions">
         <button
+          v-ui-button="'secondary'"
           v-if="saveDraft"
           type="button"
           class="button secondary"
@@ -445,6 +455,7 @@ async function keepDraft() {
           {{ t('保存草稿') }}
         </button>
         <button
+          v-ui-button="'secondary'"
           v-if="!note && !initial?.excerpt"
           type="button"
           class="button secondary save-continue"
@@ -453,10 +464,16 @@ async function keepDraft() {
         >
           {{ t('保存并继续') }}
         </button>
-        <button type="button" class="button secondary" :disabled="busy" @click="emit('close')">
+        <button
+          v-ui-button="'secondary'"
+          type="button"
+          class="button secondary"
+          :disabled="busy"
+          @click="emit('close')"
+        >
           {{ t('取消') }}
         </button>
-        <button class="button primary" :disabled="busy">
+        <button v-ui-button="'primary'" type="submit" class="button primary" :disabled="busy">
           {{ busy ? t('保存中…') : t(draft ? '确认并保存卡片' : '保存卡片') }}
         </button>
       </div>

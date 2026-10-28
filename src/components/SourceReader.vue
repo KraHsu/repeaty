@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiControl, vUiButton } from './ui'
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { t } from '../i18n'
 import { useInlineMedia } from '../composables/useInlineMedia'
@@ -154,6 +155,7 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
       }}
     </p>
     <button
+      v-ui-button="'ghost'"
       v-if="source.format === 'markdown'"
       class="text-button"
       :aria-pressed="preview"
@@ -173,6 +175,7 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
     v-html="html"
   />
   <textarea
+    v-ui-control="{ reading: true }"
     v-else
     ref="reader"
     class="source-text"
@@ -200,24 +203,13 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
   align-items: center;
 }
 .source-text {
+  --ui-textarea-min-height: 28rem;
   width: 100%;
   min-width: 0;
-  min-height: 28rem;
   resize: vertical;
-  line-height: var(--line-height-reading);
-  font-family: inherit;
-  font-size: var(--font-size-reading);
-  border: 1px solid #d4decd;
-  border-radius: 8px;
-  background: #fafbf8;
-  color: #293d33;
-  padding: 11px 13px;
 }
 .source-text.short-excerpt {
-  min-height: 10rem;
-}
-.source-text:hover {
-  border-color: #a8bca2;
+  --ui-textarea-min-height: 10rem;
 }
 .source-markdown-preview {
   max-height: 36rem;

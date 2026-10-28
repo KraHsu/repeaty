@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiControl, vUiButton } from '@repeaty/plugin-api'
 import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { z } from 'zod'
 import { t } from './i18n'
@@ -559,9 +560,13 @@ onUnmounted(() => {
       <h1 class="card-question long-content">{{ card.front }}</h1>
       <div class="leetcode-meta">
         <span class="pill">{{ t(problem.difficulty) }}</span
-        ><a :href="problemUrl(problem)" target="_blank" rel="noopener noreferrer">{{
-          t('在 LeetCode 打开')
-        }}</a>
+        ><a
+          v-ui-button="'ghost'"
+          :href="problemUrl(problem)"
+          target="_blank"
+          rel="noopener noreferrer"
+          >{{ t('在 LeetCode 打开') }}</a
+        >
       </div>
       <Statement :content="problem.content" />
       <History
@@ -580,6 +585,7 @@ onUnmounted(() => {
           <label for="code-language"
             >{{ t('编程语言')
             }}<select
+              v-ui-control
               id="code-language"
               v-model="draft.lang"
               :disabled="
@@ -599,6 +605,7 @@ onUnmounted(() => {
             t('尝试 {count} 次 · 用时 {time}', { count: draft.attempts, time: elapsed })
           }}</span>
           <button
+            v-ui-button="'ghost'"
             v-if="!accepted && !revealed"
             type="button"
             class="text-button"
@@ -612,6 +619,7 @@ onUnmounted(() => {
         </p>
         <label for="leetcode-code">{{ t('代码') }}</label>
         <textarea
+          v-ui-control="{ monospace: true }"
           id="leetcode-code"
           ref="codeInput"
           v-model="code"
@@ -633,6 +641,7 @@ onUnmounted(() => {
         />
         <div class="leetcode-toolbar">
           <button
+            v-ui-button="'primary'"
             class="button primary"
             :disabled="
               working ||
@@ -648,6 +657,7 @@ onUnmounted(() => {
             {{ working ? t('判题中…') : t('提交到 LeetCode') }}
           </button>
           <button
+            v-ui-button="'secondary'"
             v-if="draft.pending"
             class="button secondary"
             :disabled="working"
@@ -665,7 +675,12 @@ onUnmounted(() => {
           class="leetcode-toolbar"
         >
           <span>{{ t('提交编号：{id}', { id: attempt.submissionId }) }}</span>
-          <button class="button secondary" :disabled="working" @click="check(attempt)">
+          <button
+            v-ui-button="'secondary'"
+            class="button secondary"
+            :disabled="working"
+            @click="check(attempt)"
+          >
             {{ t('继续查询结果') }}
           </button>
         </div>
@@ -687,6 +702,7 @@ onUnmounted(() => {
           }}</span>
           <pre v-if="draft.result.detail">{{ draft.result.detail }}</pre>
           <a
+            v-ui-button="'ghost'"
             v-if="draft.submissionId"
             :href="`https://${problem.site}/submissions/detail/${draft.submissionId}/`"
             target="_blank"
@@ -695,7 +711,7 @@ onUnmounted(() => {
           >
         </div>
         <label for="leetcode-rating">{{ t('复习评分') }}</label>
-        <select id="leetcode-rating" v-model="draft.mode">
+        <select v-ui-control id="leetcode-rating" v-model="draft.mode">
           <option value="manual">{{ t('手动评分') }}</option>
           <option value="automatic" :disabled="draft.uncertain">{{ t('自动评分') }}</option>
         </select>
@@ -706,7 +722,7 @@ onUnmounted(() => {
           {{ t('有一次提交未取得编号，自动评分暂不可用。请先核对并关联 LeetCode 提交记录。') }}
         </p>
         <details class="form-note">
-          <summary>{{ t('评分规则') }}</summary>
+          <summary v-ui-button="'ghost'">{{ t('评分规则') }}</summary>
           <p>
             {{
               t(

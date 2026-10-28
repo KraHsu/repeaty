@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiButton, vUiControl } from '../../components/ui'
 import { t } from '../../i18n'
 import { Check } from '@lucide/vue'
 import AppModal from '../../components/AppModal.vue'
@@ -36,6 +37,7 @@ const {
     ><form class="editor-form" @submit.prevent="saveDeck">
       <label for="deck-name">{{ t('卡组名称') }}</label
       ><input
+        v-ui-control
         id="deck-name"
         v-model.trim="deckForm.name"
         autofocus
@@ -45,6 +47,7 @@ const {
       /><label for="deck-description"
         >{{ t('描述') }}<span class="optional">{{ t('可选') }}</span></label
       ><textarea
+        v-ui-control
         id="deck-description"
         v-model.trim="deckForm.description"
         maxlength="300"
@@ -55,6 +58,7 @@ const {
         <label for="new-limit"
           >{{ t('每日新卡上限')
           }}<input
+            v-ui-control
             id="new-limit"
             v-model.number="deckForm.newLimit"
             type="number"
@@ -64,6 +68,7 @@ const {
         ><label for="review-limit"
           >{{ t('每日复习上限')
           }}<input
+            v-ui-control
             id="review-limit"
             v-model.number="deckForm.reviewLimit"
             type="number"
@@ -76,7 +81,7 @@ const {
         {{ t('每日上限按本机日期重置。设为 0 则不安排该类卡片；学习和重学步骤不受此限制。') }}
       </p>
       <label class="check-line"
-        ><input v-model="deckForm.burySiblings" type="checkbox" />{{
+        ><input v-ui-control v-model="deckForm.burySiblings" type="checkbox" />{{
           t('评分后自动暂缓同笔记的其他卡片至明天')
         }}</label
       >
@@ -84,6 +89,7 @@ const {
         <label for="leech-threshold"
           >{{ t('顽固卡遗忘阈值')
           }}<input
+            v-ui-control
             id="leech-threshold"
             v-model.number="deckForm.leechThreshold"
             type="number"
@@ -94,6 +100,7 @@ const {
         <label for="retention"
           >{{ t('目标记忆保留率（%）')
           }}<input
+            v-ui-control
             id="retention"
             v-model.number="retentionPercent"
             type="number"
@@ -117,6 +124,7 @@ const {
           :key="color"
           :class="['color-option', color, { chosen: deckForm.color === color }]"
           ><input
+            v-ui-control="{ swatch: true }"
             v-model="deckForm.color"
             type="radio"
             name="color"
@@ -133,9 +141,15 @@ const {
         /></label>
       </fieldset>
       <div class="form-actions">
-        <button type="button" class="button secondary" :disabled="busy" @click="modal = null">
+        <button
+          v-ui-button="'secondary'"
+          type="button"
+          class="button secondary"
+          :disabled="busy"
+          @click="modal = null"
+        >
           {{ t('取消') }}</button
-        ><button class="button primary" :disabled="busy">
+        ><button v-ui-button="'primary'" type="submit" class="button primary" :disabled="busy">
           {{ busy ? t('保存中…') : t('保存卡组') }}
         </button>
       </div>
@@ -185,9 +199,14 @@ const {
     @close="modal = null"
     ><p class="confirmation-text">{{ t(confirmation.message) }}</p>
     <div class="form-actions">
-      <button class="button secondary" :disabled="busy" @click="modal = null">
+      <button
+        v-ui-button="'secondary'"
+        class="button secondary"
+        :disabled="busy"
+        @click="modal = null"
+      >
         {{ t('取消') }}</button
-      ><button class="button danger" :disabled="busy" @click="confirmAction">
+      ><button v-ui-button="'danger'" class="button danger" :disabled="busy" @click="confirmAction">
         {{ t('确认删除') }}
       </button>
     </div></AppModal

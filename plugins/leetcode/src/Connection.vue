@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, useId, watch } from 'vue'
-import { SettingGroup, SettingField, UiButton } from '@repeaty/plugin-api'
+import { SettingGroup, SettingField, UiButton, vUiButton } from '@repeaty/plugin-api'
 import { t, locale } from './i18n'
 import { bridgeRequest, BridgeError, configureCredentials, pluginRequest } from './bridge'
 import {
@@ -248,7 +248,12 @@ onUnmounted(() => {
       {{ t('正在向力扣验证登录。你可以继续编辑代码或更新登录信息。') }}
     </p>
     <p>{{ t('打开力扣网站并登录，不会自动连接 Repeaty。请将登录信息填入下方。') }}</p>
-    <a class="text-button" :href="`https://${site}/`" target="_blank" rel="noopener noreferrer"
+    <a
+      v-ui-button="'ghost'"
+      class="text-button"
+      :href="`https://${site}/`"
+      target="_blank"
+      rel="noopener noreferrer"
       >{{ t('打开力扣网站') }} ↗</a
     >
     <fieldset class="connection-credentials" :disabled="saving || loading">
@@ -316,7 +321,7 @@ onUnmounted(() => {
       </p>
     </fieldset>
     <details>
-      <summary>{{ t('在哪里找到这两个值？') }}</summary>
+      <summary v-ui-button="'ghost'">{{ t('在哪里找到这两个值？') }}</summary>
       <p>
         {{
           t(
@@ -325,6 +330,7 @@ onUnmounted(() => {
         }}
       </p>
       <a
+        v-ui-button="'ghost'"
         href="https://github.com/KraHsu/repeaty/blob/main/docs/LEETCODE.md#配置与启用"
         target="_blank"
         rel="noopener noreferrer"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiButton, vUiControl } from './ui'
 import { t, msg, LocalizedError, locale, type DisplayMessage } from '../i18n'
 
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
@@ -73,12 +74,12 @@ async function fileChanged(event: Event) {
 <template>
   <div class="editor-form import-notes">
     <label for="import-format">{{ t('导入格式') }}</label>
-    <select id="import-format" v-model="format" :disabled="busy">
+    <select v-ui-control id="import-format" v-model="format" :disabled="busy">
       <option value="table">CSV / TSV</option>
       <option value="anki">{{ t('Anki .apkg') }}</option>
     </select>
     <label for="import-deck">{{ t('导入到卡组') }}</label>
-    <select id="import-deck" v-model="selectedDeck" required :disabled="busy">
+    <select v-ui-control id="import-deck" v-model="selectedDeck" required :disabled="busy">
       <option v-for="deck in library.decks" :key="deck.id" :value="deck.id">{{ deck.name }}</option>
     </select>
     <ImportAnki
@@ -99,21 +100,25 @@ async function fileChanged(event: Event) {
           )
         }}
       </p>
-      <a class="text-button" :href="exampleUrl" download>{{ t('下载 CSV 示例') }}</a>
+      <a v-ui-button="'ghost'" class="text-button" :href="exampleUrl" download>{{
+        t('下载 CSV 示例')
+      }}</a>
       <label for="import-file">{{ t('选择 CSV / TSV 文件') }}</label
       ><input
+        v-ui-control
         id="import-file"
         type="file"
         accept=".csv,.tsv,text/csv,text/tab-separated-values"
         @change="fileChanged"
       />
       <label for="import-delimiter">{{ t('分隔符') }}</label
-      ><select id="import-delimiter" v-model="delimiter">
+      ><select v-ui-control id="import-delimiter" v-model="delimiter">
         <option value=",">{{ t('逗号 CSV') }}</option>
         <option :value="'\t'">{{ t('制表符 TSV') }}</option>
       </select>
       <label for="import-text">{{ t('或粘贴表格文本') }}</label
       ><textarea
+        v-ui-control="{ monospace: true }"
         id="import-text"
         v-model="text"
         required
@@ -135,17 +140,30 @@ async function fileChanged(event: Event) {
           <li v-for="(note, i) in preview.slice(0, 5)" :key="i">{{ note.front }}</li>
         </ol>
         <label class="check-line"
-          ><input v-model="skip" type="checkbox" />{{
+          ><input v-ui-control v-model="skip" type="checkbox" />{{
             t('跳过同卡组中类型、格式、正面和背面均相同的笔记')
           }}</label
         >
       </div>
       <div class="form-actions">
-        <button type="button" class="button secondary" :disabled="busy" @click="emit('close')">
+        <button
+          v-ui-button="'secondary'"
+          type="button"
+          class="button secondary"
+          :disabled="busy"
+          @click="emit('close')"
+        >
           {{ t('取消') }}</button
-        ><button v-if="!preview.length" class="button primary" :disabled="busy">
+        ><button
+          v-ui-button="'primary'"
+          v-if="!preview.length"
+          type="submit"
+          class="button primary"
+          :disabled="busy"
+        >
           {{ t('检查并预览') }}</button
         ><button
+          v-ui-button="'primary'"
           v-else
           type="button"
           class="button primary"

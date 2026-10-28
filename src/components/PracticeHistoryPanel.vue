@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiControl, vUiButton } from './ui'
 import { computed, ref, watch } from 'vue'
 import { Search } from '@lucide/vue'
 import { t } from '../i18n'
@@ -92,6 +93,7 @@ watch(questions, (entries) => {
     <div class="history-filters">
       <label class="search-field"
         ><Search :size="18" /><input
+          v-ui-control
           v-model="query"
           :aria-label="t('搜索练习历史')"
           :placeholder="t('搜索题目')"
@@ -99,14 +101,14 @@ watch(questions, (entries) => {
       /></label>
       <label
         >{{ t('题目')
-        }}<select v-model="cardId" :aria-label="t('筛选题目')">
+        }}<select v-ui-control v-model="cardId" :aria-label="t('筛选题目')">
           <option value="">{{ t('全部题目') }}</option>
           <option v-for="[id, title] in questions" :key="id" :value="id">{{ title }}</option>
         </select></label
       >
       <label
         >{{ t('卡组')
-        }}<select v-model="deckId" :aria-label="t('筛选卡组')">
+        }}<select v-ui-control v-model="deckId" :aria-label="t('筛选卡组')">
           <option value="">{{ t('全部卡组') }}</option>
           <option v-for="deck in library.decks" :key="deck.id" :value="deck.id">
             {{ deck.name }}
@@ -115,7 +117,7 @@ watch(questions, (entries) => {
       >
       <label
         >{{ t('判题结果')
-        }}<select v-model="outcome" :aria-label="t('判题结果')">
+        }}<select v-ui-control v-model="outcome" :aria-label="t('判题结果')">
           <option value="all">{{ t('全部结果') }}</option>
           <option value="accepted">{{ t('通过') }}</option>
           <option value="rejected">{{ t('未通过') }}</option>
@@ -151,11 +153,21 @@ watch(questions, (entries) => {
       />
     </div>
     <nav v-if="pages > 1" class="pagination" :aria-label="t('练习历史分页')">
-      <button class="button secondary" :disabled="page <= 1" @click="page--">
+      <button
+        v-ui-button="'secondary'"
+        class="button secondary"
+        :disabled="page <= 1"
+        @click="page--"
+      >
         {{ t('上一页') }}
       </button>
       <span>{{ t('第 {page} / {pages} 页', { page, pages }) }}</span>
-      <button class="button secondary" :disabled="page >= pages" @click="page++">
+      <button
+        v-ui-button="'secondary'"
+        class="button secondary"
+        :disabled="page >= pages"
+        @click="page++"
+      >
         {{ t('下一页') }}
       </button>
     </nav>
@@ -173,7 +185,7 @@ watch(questions, (entries) => {
 }
 .search-field {
   margin: 0;
-  height: 46px;
+  min-height: var(--ui-control-height);
 }
 .history-filters select {
   width: 100%;

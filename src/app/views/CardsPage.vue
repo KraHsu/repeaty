@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiButton } from '../../components/ui'
 import { t } from '../../i18n'
 import { ArrowUpFromLine, Pencil, Plus, Trash2 } from '@lucide/vue'
 import CollectionPanel from '../../components/CollectionPanel.vue'
@@ -37,6 +38,7 @@ const {
       </div>
       <div class="heading-actions">
         <button
+          v-ui-button="{ variant: 'ghost', icon: true }"
           v-if="currentDeck"
           class="icon-button"
           :aria-label="t('编辑当前卡组')"
@@ -44,6 +46,7 @@ const {
         >
           <Pencil :size="18" /></button
         ><button
+          v-ui-button="{ variant: 'ghost', icon: true }"
           v-if="currentDeck"
           class="icon-button danger-text"
           :aria-label="t('删除当前卡组')"
@@ -51,10 +54,10 @@ const {
         >
           <Trash2 :size="18" />
         </button>
-        <button class="button secondary" @click="openImport">
+        <button v-ui-button class="button secondary" @click="openImport">
           <ArrowUpFromLine :size="16" />{{ t('批量导入') }}
         </button>
-        <button class="button primary" @click="editCard()">
+        <button v-ui-button class="button primary" @click="editCard()">
           <Plus :size="17" />{{ t('添加卡片') }}
         </button>
       </div>

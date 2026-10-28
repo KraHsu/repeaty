@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vUiButton } from './ui'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { X, Info, TriangleAlert, CircleAlert } from '@lucide/vue'
 import { t } from '../i18n'
@@ -58,7 +59,12 @@ onUnmounted(pause)
   >
     <component :is="icon" :size="20" aria-hidden="true" />
     <span>{{ t(entry.text) }}</span>
-    <button class="icon-button" :aria-label="t('关闭提示')" @click="dismissNotification(entry.id)">
+    <button
+      v-ui-button="{ variant: 'ghost', icon: true }"
+      class="icon-button"
+      :aria-label="t('关闭提示')"
+      @click="dismissNotification(entry.id)"
+    >
       <X :size="18" />
     </button>
   </div>
