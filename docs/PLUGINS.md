@@ -2,7 +2,7 @@
 
 [返回开发文档](DEVELOPMENT.md) · [LeetCode](LEETCODE.md)
 
-设置与表单使用 SDK 的 `SettingGroup`、`SettingSection`、`SettingField`，状态和提示分别使用 `UiStatus`、`UiNotice`，操作使用 `UiButton`、`UiIconButton`；需要原生选区、代码缩进或现有表单结构时使用 `vUiControl` / `vUiButton`，与软件本体共享控件和状态样式。官方插件的编辑、答题、提交恢复及历史交互也使用这套接口。见[界面规范](DESIGN_SYSTEM.md)及[控件独立示例](examples/settings-plugin/README.md)。
+设置与表单使用 SDK 的 `SettingGroup`、`SettingSection`、`SettingField`，状态和提示分别使用 `UiStatus`、`UiNotice`，操作使用 `UiButton`、`UiIconButton`。这些接口由宿主中的 Nuxt UI 绘制；官方插件的编辑、答题、提交恢复及历史交互使用同一实现。复杂编辑器使用 `UiInput`、`UiTextarea` 等公开控件，不导入 Nuxt UI 或软件内部模块。见[界面规范](DESIGN_SYSTEM.md)及[控件独立示例](examples/settings-plugin/README.md)。
 
 本页描述当前开发分支的外置插件机制，尚未随新安装包发布。发布页既有的 0.27.0 安装包不代表本分支的实现，也不能作为这套插件机制的安装或 GUI 验收产物。
 
@@ -15,7 +15,7 @@ Repeaty 在运行时加载外置插件。官方答题历史、LeetCode 和第三
 ## 安装与管理
 
 1. 获取可信来源的 `.repeaty-plugin` 文件。
-2. 在「设置 → 插件」页面选择插件包，核对标识、版本及所需能力后安装。同一标识的新包用于更新已有插件。
+2. 在侧栏「插件」页面选择插件包，核对标识、版本及所需能力后安装。同一标识的新包用于更新已有插件。
 3. 可以关闭、重新启用、移除或重新加载插件。正在复习或编辑时，先结束当前操作，避免替换仍在使用的组件。
 
 关闭题目插件后，相应题目暂停参与复习；关闭显示插件后隐藏其界面。移除插件代码保留卡片、调度、评分、练习、完整提交、草稿与插件数据；重新安装兼容的数据版本后可继续使用。通过安装包更新失败时显示具体错误，并保留此前的有效版本。手工替换目录文件后重新扫描，如新文件损坏或未获信任，则须修复、重新安装或确认启用，不能假定旧磁盘文件仍可恢复。
@@ -86,7 +86,7 @@ README用于功能简介、使用步骤、配置教程和数据说明，具体�
 
 ## 独立开发与构建
 
-公开 SDK 位于 [packages/plugin-api](../packages/plugin-api)。它提供类型和独立构建命令 `repeaty-plugin`，运行时实现由 Repeaty 提供。插件作者只需要 SDK、Vue 和自己使用的依赖，不需要复制或导入主程序源码。当前 SDK 与官方预构建包为1.5.0；这是 API v1的加法更新，官方插件的 `apiVersion` / `dataVersion` 仍为1。已有学习库需在「设置 → 插件」主动更新官方插件代码。
+公开 SDK 位于 [packages/plugin-api](../packages/plugin-api)。它提供类型和独立构建命令 `repeaty-plugin`，运行时实现由 Repeaty 提供。插件作者只需要 SDK、Vue 和自己使用的依赖，不需要复制或导入主程序源码。当前 SDK 与官方预构建包为1.6.0；这是 API v1的加法更新，官方插件的 `apiVersion` / `dataVersion` 仍为1。已有学习库需在侧栏「插件」主动更新官方插件代码。
 
 SDK 当前是本地 workspace 包，尚未发布到 npm。可以在 Repeaty 仓库根目录将它打包，然后在另一个独立插件仓库中安装生成的 tarball：
 
@@ -96,7 +96,7 @@ npm pack --workspace @repeaty/plugin-api
 
 # 独立插件仓库；将路径替换为实际生成的 SDK 包
 npm install vue
-npm install --save-dev /path/to/repeaty-plugin-api-1.5.0.tgz typescript vue-tsc
+npm install --save-dev /path/to/repeaty-plugin-api-1.6.0.tgz typescript vue-tsc
 ```
 
 类型从已安装的 SDK 包解析，不设置指向 Repeaty 仓库的 TypeScript `paths`，也不导入应用源码。插件的 package.json 可配置：
@@ -181,7 +181,7 @@ const count = computed(
 
 ## 设置、存储与清理
 
-「设置 → 插件」只管理安装、更新、启用、卸载、权限、包信息和使用说明。已启用插件的配置与软件配置一起进入左侧分类树：答题历史位于「学习 → 复习」，LeetCode 位于「连接 → LeetCode」。插件详情中的「配置插件」可直接定位相应分类和分组；配置分组的「插件说明」可返回详情。
+侧栏「插件」只管理安装、更新、启用、卸载、权限、包信息和使用说明。已启用插件的配置与软件配置一起进入左侧分类树：答题历史位于「学习 → 复习」，LeetCode 位于「连接 → LeetCode」。插件详情中的「配置插件」可直接定位相应分类和分组；配置分组的「插件说明」可返回详情。
 
 在插件入口求值或激活工厂中调用 `registerSettings(contribution)`，返回函数可主动注销。每项贡献包含插件内唯一的 `id`、`title`、可选 `description` / `error`，以及二选一的 `fields` 或 `component`；`fields` 至少包含一项，每个字段的 `key` 唯一。
 
@@ -225,7 +225,29 @@ registerSettings(configuration)
 
 `UiStatus`提供中性、成功、警告、危险和忙碌外观，不自带实况播报；`UiNotice`支持信息、成功、警告和错误，可设置标题及操作插槽，默认语义分别为 `note`、`status`、`note` 和 `alert`，也可覆盖 `role`。字体和布局约定见[插件设置的信息结构](DESIGN_SYSTEM.md#插件设置的信息结构)。
 
-复杂编辑器可在原生 `textarea`上使用 `v-ui-control="{ monospace: true }"`，保留原生 `ref`、选区、IME和事件；动作使用 `UiButton`或 `vUiButton`，评分使用 `rating`变体及四档 `tone`。共享控件只负责界面，插件继续负责草稿、校验、提交与资源回收。SDK1.5.0中的接口由配套宿主提供，使用新接口的插件需更新宿主；已有插件不会被自动更新。
+SDK1.6.0提供 `UiInput`、`UiTextarea`、`UiSelect`、`UiCheckbox`、`UiProgress` 和 `UiCollapsible`。前两者是保留组字提交和 DOM 引用的薄适配；其余控件同样复用宿主 Nuxt UI。`UiSelect`通过 `items`声明选项，选择器是具有 `combobox`语义的按钮；`UiCheckbox`使用复选框语义控件，`UiProgress`使用 `modelValue` / `max`，`UiCollapsible`通过 `#content`提供折叠内容。动作使用 `UiButton`，评分使用 `rating`变体及四档 `tone`。
+
+复杂编辑器的组件引用通过 `inputRef` / `textareaRef`访问原生元素：
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue'
+import { UiButton, UiTextarea, type UiTextareaInstance } from '@repeaty/plugin-api'
+const code = ref('')
+const editor = ref<UiTextareaInstance>()
+function focusCode() {
+  editor.value?.textareaRef?.focus()
+}
+</script>
+<template>
+  <UiTextarea ref="editor" v-model="code" :ui="{ base: 'font-mono' }" aria-label="Code" />
+  <UiButton @click="focusCode">Focus code</UiButton>
+</template>
+```
+
+`SettingField type="range"`使用 Nuxt UI 滑块，拖动中预览、松手或键盘调整完成后按 `commit`提交；数值步进按 `step`处理。兼容的 `step="any"`在滑块界面中使用百万分之一的步进；需要更精确的数值时使用 `type="number" step="any"`。
+
+Nuxt UI、Reka UI、图标和 Vue 运行时由宿主提供，插件包不重复打入这些库；运行插件也不需要 Node.js。插件仍负责草稿、校验、提交与资源回收，新接口需要配套宿主。`vUiControl` / `vUiButton`保留为 deprecated 兼容导出，不再用于新插件或官方插件。
 
 - `readSetting()` / `writeSetting()` 管理当前插件的设置，宿主自动增加插件命名空间。可通过写入失败回调显示未保存状态。
 - `pluginData.get()` / `set()` 按插件和工作目录作用域存储草稿等 JSON 数据；不会混用其他学习库的数据。
@@ -244,6 +266,14 @@ LeetCode 的请求、解析、账号状态、提交恢复和建议评分逻辑�
 插件管理和本地开发不等同于跨平台 GUI、安装包或发布验收；具体已完成的检查按实际运行记录。
 
 ## 本分支验证记录
+
+2026-10-28，SDK 与官方包 1.6.0 在 Windows 本地完成：
+
+- 三个官方插件独立构建与类型检查通过，40 项插件测试和4项 SDK 构建测试通过。
+- 打包后的 SDK 解包到独立测试项目，六个公开控件、`inputRef` / `textareaRef` 在 `strictTemplates` 和 `skipLibCheck: false` 下编译通过；该项目也通过 SDK 构建命令生成插件包。
+- 三个官方包和独立测试包均引用宿主 Vue 与控件，未重复打入 Nuxt UI、Reka UI 或 Vue 运行时。共享控件11项单元测试通过，覆盖组字、数值回滚、选择控件、滑块键盘提交、动态清错与辅助语义。
+- 宿主的 CSS 与图标扫描不读取插件项目。插件自己的布局样式由插件包分发，不依赖宿主扫描源码生成新的 Tailwind 工具类。独立样式探针和宿主模块隔离检查通过。
+- 桌面插件相关28个唯一用例均通过，包含真实安装确认、README、凭据、历史、共享分类、200% 字号与严格独立 SDK 示例；最终构建相关4项再次通过。完整软件回归与原生验证边界见[界面规范](DESIGN_SYSTEM.md#nuxt-ui-迁移验证2026-10-28)。
 
 2026-10-27，在 Windows 本地完成：
 

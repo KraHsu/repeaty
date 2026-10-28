@@ -49,11 +49,11 @@ VITE_BASE_PATH=/repeaty/ npm run build
 VITE_BASE_PATH=/repeaty/ npx playwright test --config config/playwright.config.ts tests/browser-workspace.spec.ts --workers=2
 ```
 
-并行运行静态与桌面浏览器套件时，应分别传入 `--output=/tmp/repeaty-web-tests` 和 `--output=/tmp/repeaty-desktop-tests`，避免两个进程清理同一个 trace 目录。千张卡的浏览器回归会在该测试输出目录保存 `rating-responsiveness.json`，记录操作耗时和帧间隔，测量口径见[性能记录](PERFORMANCE.md#浏览器工作目录试用)。
+Playwright 的静态、桌面与服务器套件默认分别输出到 `test-results/web/`、`test-results/desktop/` 和 `test-results/server/`。每次运行会清理所属输出目录；同一套件并行或分批保留结果时，使用不同的 `--output=test-results/<本次运行名称>`。本地日志和独立截图放在 `test-results/local-logs/`、`test-results/qa/` 等套件目录之外。千张卡的浏览器回归会在该测试输出目录保存 `rating-responsiveness.json`，记录操作耗时和帧间隔，测量口径见[性能记录](PERFORMANCE.md#浏览器工作目录试用)。
 
 ## 界面文案
 
-设置、卡片编辑、复习、学习材料、弹窗及插件交互使用[共用控件与排版规范](DESIGN_SYSTEM.md)，从本体组件或公开 SDK 引入同一组控件。普通设置用 `SettingField`，保留原生选区与代码编辑行为的表单用 `vUiControl` / `vUiButton`；业务保存、评分和关闭规则继续由原组件管理。字号按区域引用 `src/styles/tokens.css`；不要在页面内另建开关、控件边线或零散字号。
+设置、卡片编辑、复习、学习材料、弹窗及插件交互使用[共用控件与排版规范](DESIGN_SYSTEM.md)，从本体组件或公开 SDK 引入同一组 Nuxt UI 控件。普通设置用 `SettingField`；复杂表单用 `UiInput`、`UiTextarea`、`UiSelect` 等公开组件，通过 `inputRef` / `textareaRef` 保留原生选区与代码编辑行为。旧样式指令仅保留 SDK 导出兼容，不用于新界面。业务保存、评分和关闭规则继续由原组件管理。组件配置位于 `config/ui.ts`，主题和字号映射位于 `src/styles/nuxt-ui.css`，应用排版变量位于 `tokens.css`；不要在页面内另建开关、控件边线或零散字号。新增 UI 依赖的版本与许可见[第三方归属](third-party/nuxt-ui.md)。
 
 标题使用功能名或当前状态，按钮写明操作。提示说明操作结果、限制和下一步，不添加励志口号、装饰性英文或无关说明。中英文一起维护，修改时保留计数参数与用户内容；已存储的筛选状态和快照原因不能随文案改名。
 

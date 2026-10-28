@@ -135,6 +135,16 @@ it('settles stale confirmations false across workspace changes and ignores a lat
   expect(boundary.manager.installPlugin).not.toHaveBeenCalled()
 })
 
+it('does not install after its accepted confirmation owner is disposed before continuation', async () => {
+  await mount()
+  await choose()
+  accept().click()
+  app!.unmount()
+  app = undefined
+  await settle()
+  expect(boundary.manager.installPlugin).not.toHaveBeenCalled()
+})
+
 it('ties enable and uninstall confirmation to the exact package entry and request', async () => {
   await mount()
   host.querySelector<HTMLButtonElement>('[role=switch]')!.click()

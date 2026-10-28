@@ -2,7 +2,7 @@
 
 [开发文档](DEVELOPMENT.md) · [工作目录](WORKSPACE_MODE.md)
 
-桌面与在线版共用 Vue 界面和应用服务，构建入口选择不同的存储与平台适配器。这次整理不改变界面、快捷键、目录格式或保存协议；产品版本仍为 0.27.0。
+桌面与在线版共用 Vue 界面和应用服务，构建入口选择不同的存储与平台适配器。统一界面组件保留快捷键、目录格式、学习行为和保存协议；产品版本仍为 0.27.0。
 
 插件另有独立构建边界：宿主只包含通用包管理、运行时、SDK 桥和基础卡片渲染；答题历史、LeetCode 与示例插件位于 `plugins/` 的独立项目。主程序构建从 `plugins/packages/` 复制固定的预构建包，不导入或编译这些项目的源码。[插件格式与开发流程](PLUGINS.md)。
 
@@ -20,11 +20,11 @@ main.ts → App.vue → app/createApplication.ts
                                           └─ 平台仓库 → Rust / IndexedDB / 浏览器试用副本
 ```
 
-`App.vue` 从 1,896 行缩至 94 行；原来的 `useLibrary.ts` 从 1,059 行缩至 29 行。代码按已有责任移动，没有新增路由、持久化框架或第二份学习库。
+根组件组合页面、应用服务和 Nuxt UI 的应用级提供者；`useLibrary()` 保留共享学习库的视图接口，不创建第二份学习库或持久化镜像。
 
 | 位置                                 | 责任                                                 |
 | ------------------------------------ | ---------------------------------------------------- |
-| `src/app/views/`                     | 保持现有 DOM、样式和事件绑定；组合原有业务组件       |
+| `src/app/views/`                     | 组合业务组件和动作，管理页面布局与事件绑定           |
 | `src/app/useLibraryQueries.ts`       | 卡片读取缓存、到期数量、额度、卡组状态与学习统计     |
 | `src/app/use*Actions.ts`             | 连接用户操作、组件方法、应用服务与通知               |
 | `src/app/useApplicationLifecycle.ts` | 启动与关闭学习库，拥有全局快捷键、定时器和平台订阅   |
@@ -52,13 +52,13 @@ main.ts → App.vue → app/createApplication.ts
 
 侧栏布局由每个根组件的 `useSidebarLayout` 管理，宽度通过现有偏好适配器以 `repeaty.sidebar.width.v1` 保存。拖动期间只更新本实例布局，结束后保存；学习库切换、手势取消和卸载会释放指针捕获。视口收窄只限制实际宽度，保留首选宽度供窗口放大后恢复。
 
-`src/components/ui/` 提供 `SettingGroup`、`SettingField`、`UiButton`、`UiIconButton`，以及原生控件指令 `vUiControl` / `vUiButton`，本体与公开插件 SDK 复用同一运行时实现；`src/styles/tokens.css` 和 `controls.css` 管理字体、间距、控件状态与滚动条。共用层覆盖设置、编辑、复习、材料及弹窗，官方插件保持独立源码与预构建包边界。
+`src/components/ui/` 基于 Nuxt UI 提供 `SettingGroup`、`SettingSection`、`SettingField`、`UiButton`、`UiIconButton` 和文本、选择、复选框、进度及折叠组件，本体与公开插件 SDK 复用同一宿主运行时。`config/ui.ts` 配置组件，`src/styles/nuxt-ui.css` 映射 Tailwind 主题与字号，`tokens.css` 提供应用排版变量；`style.css` / `controls.css` 在 base / components 层只管理业务布局、排版和滚动条，控件状态与外观由 Nuxt UI 管理。Vite 插件不引入 Nuxt 服务端，图标从本地 Lucide 集合打包。共用层覆盖设置、编辑、复习、材料及弹窗，官方插件保持独立源码与预构建包边界。
 
-`src/settings/` 定义软件与插件共用的 `SettingsContribution`、字段和分类模型。软件选项由应用设置提供者声明，插件通过 `registerSettings()` 提供相同贡献；`SettingsPage` 按路径合并左侧分类，父分类包含子类内容，`SettingsContent` 统一渲染字段或配置组件。插件管理只保留包详情、权限、README 和管理操作。未声明分类的旧包归入通用，兼容类型别名继续保留；模型不创建新的偏好存储。
+`src/settings/` 定义软件与插件共用的 `SettingsContribution`、字段和分类模型。软件选项由应用设置提供者声明，插件通过 `registerSettings()` 提供相同贡献；`SettingsPage` 按路径合并左侧分支分类，父分类包含子类内容，`SettingsContent` 统一渲染字段或配置组件。插件管理是主侧栏的独立页面，保留包详情、权限、README 和管理操作，不作为设置分类。两页通过配置与说明操作相互定位。未声明分类的旧包归入通用，兼容类型别名继续保留；模型不创建新的偏好存储。
 
 设置条目带有所有者、作用域和当前实例检查。字段 DOM 标识由宿主分配；异步保存的错误按注册身份隔离，切库、注销或重新注册后，旧响应不能进入新视图。配置组件随分类视图卸载，插件和应用的资源清理继续由原所有者负责。
 
-复杂编辑器通过指令保留原生DOM、`ref`、选区、IME、表单提交和事件。指令只增减自身的样式类，不接管草稿、阅读位置、评分、提交、关闭或资源生命周期；隐藏文件选择器不加可见控件样式。插件继续声明业务字段与保存逻辑，不复制宿主控件代码，也不改变应用、视图和插件作用域的所有者。详见[界面规范](DESIGN_SYSTEM.md)。
+复杂编辑器使用 `UiInput` / `UiTextarea` 的薄适配，分别通过 `inputRef` / `textareaRef` 访问原生输入元素，保留选区、IME、表单提交、代码缩进和阅读位置。适配不接管草稿、评分、提交、关闭或资源生命周期；隐藏文件选择器继续使用原生 input，由统一按钮触发。旧 `vUiControl` / `vUiButton` 仅保留 SDK 导出兼容，本体与官方插件不再依赖其样式类。插件继续声明业务字段与保存逻辑，不复制宿主控件代码，也不改变应用、视图和插件作用域的所有者。详见[界面规范](DESIGN_SYSTEM.md)及[UI 依赖归属](third-party/nuxt-ui.md)。
 
 组件外调用 `useLibrary()` 或其他 store 时显式传入所属 Pinia；测试也用 `createPinia()` 创建独立实例。应用卸载时调用 `disposePinia()`，释放该实例的服务。
 
@@ -107,4 +107,4 @@ npm run test:e2e
 npm run test:e2e:desktop
 ```
 
-同时运行两套浏览器测试时，分别给 Playwright 传入 `--output`，避免测试进程互相清理 trace。真实 Linux WebKit / Rust IPC 测试及前端资源打包步骤见[桌面本地验证](DESKTOP.md#本地验证)。浏览器测试和 Linux 结果不能代替 Windows / macOS GUI 验收。
+Playwright 默认分别输出到 `test-results/web/`、`test-results/desktop/` 和 `test-results/server/`，不同套件不会互相清理 trace。同一套件的并行或分批运行仍应传入不同的 `--output`；本地日志与独立截图保存在这些套件目录之外。真实 Linux WebKit / Rust IPC 测试及前端资源打包步骤见[桌面本地验证](DESKTOP.md#本地验证)。浏览器测试和 Linux 结果不能代替 Windows / macOS GUI 验收。
