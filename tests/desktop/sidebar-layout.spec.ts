@@ -48,6 +48,7 @@ test('a 500px desktop window clamps its vertical rail and restores the preferred
   await expect(separator).toHaveAttribute('aria-valuenow', '100')
   await expect(page.locator('.app-layout')).toHaveClass(/sidebar-collapsed/)
   await expect(page.locator('.sidebar-toggle')).toHaveCount(0)
+  await expect(page.locator('.sidebar')).toHaveCSS('width', '100px')
   const sidebar = (await page.locator('.sidebar').boundingBox())!
   expect(sidebar.y).toBeGreaterThanOrEqual(36)
   expect(sidebar.width).toBe(100)

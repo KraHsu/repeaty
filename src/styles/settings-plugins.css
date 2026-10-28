@@ -4,15 +4,25 @@
   display: none;
 }
 .settings-panel {
-  padding: 0.5rem 2.25rem;
+  padding: 1.875rem 2.25rem;
   background: var(--ui-bg);
   border: 1px solid var(--line);
-  border-radius: 1rem;
+  border-radius: 0.875rem;
+}
+.settings-panel-heading {
+  padding-bottom: 1.4375rem;
+  border-bottom: 1px solid var(--app-soft-line);
+}
+.settings-panel-heading h2 {
+  margin: 0;
+  font-size: 1.375rem;
+  line-height: 1.4;
+  font-weight: var(--font-weight-semibold);
 }
 .settings-panel .settings-configuration,
 .settings-panel .settings-view > .ui-setting-group {
   margin: 0;
-  padding: 1.5rem 0;
+  padding: 1.6875rem 0;
   border: 0;
   border-radius: 0;
   box-shadow: none;
@@ -22,19 +32,39 @@
 .settings-panel .settings-content > .settings-configuration + .settings-configuration,
 .settings-panel .settings-content > .settings-view + .settings-configuration,
 .settings-panel .settings-content > .settings-configuration + .settings-view {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--app-soft-line);
 }
 .settings-panel .settings-configuration > [data-slot='header'],
 .settings-panel .settings-view > .ui-setting-group > [data-slot='header'] {
-  padding: 0 0 1.5rem;
+  padding: 0 0 0.5rem;
   border: 0;
+}
+.settings-panel .ui-setting-group__title {
+  font-size: 1.125rem;
+  line-height: 1.5;
 }
 .settings-panel .settings-configuration > [data-slot='body'],
 .settings-panel .settings-view > .ui-setting-group > [data-slot='body'] {
   padding: 0;
 }
 .settings-panel .ui-setting-field {
-  padding-block: 0.75rem;
+  min-height: 5.375rem;
+  margin-block: 0;
+  padding-block: 1.5rem;
+  column-gap: 1.5rem;
+  border-bottom: 1px solid var(--app-soft-line);
+}
+.settings-panel .ui-setting-field:last-child {
+  border-bottom: 0;
+}
+.settings-panel
+  .ui-setting-field:not(.ui-setting-field--binary)[data-orientation='horizontal']
+  > :last-child {
+  max-width: 15rem;
+}
+.settings-panel .ui-setting-field[data-orientation='vertical'] {
+  min-height: 0;
+  border-bottom: 0;
 }
 .settings-panel .ui-setting-group__description {
   max-width: 44rem;
@@ -58,7 +88,10 @@
 .plugin-manager {
   display: grid;
   gap: 1rem;
-  margin-bottom: 2rem;
+  margin-block: 1.5rem 2rem;
+}
+.plugin-workbench + .plugin-manager {
+  margin-left: 20rem;
 }
 .plugin-manager .plugin-actions {
   align-items: start;
@@ -82,7 +115,7 @@
 }
 .plugin-directory {
   position: sticky;
-  top: calc(var(--desktop-titlebar-height, 0px) + 1rem);
+  top: 1rem;
   min-width: 0;
   max-width: 100%;
 }
@@ -122,6 +155,9 @@
 .plugin-directory-item.selected {
   background: #e5eddf;
   border-color: #c5d4bc;
+}
+.plugin-directory-item:not(.selected):hover {
+  background: var(--app-rail);
 }
 .plugin-directory-mark {
   display: grid;
@@ -169,14 +205,62 @@
 }
 .plugin-detail-pane .plugin-settings {
   margin-bottom: 0;
-  border-radius: 1rem;
+  border-radius: 0.875rem;
   scroll-margin-top: 4rem;
 }
 .plugin-detail-pane .plugin-settings > [data-slot='header'] {
-  padding: 2rem 2rem 1.5rem;
+  padding: 1.875rem 2.125rem 0;
+  border: 0;
 }
 .plugin-detail-pane .plugin-settings > [data-slot='body'] {
-  padding: 1.5rem 2rem 2rem;
+  padding: 0 2.125rem 1.875rem;
+}
+.plugin-detail-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.plugin-detail-mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 3.5rem;
+  width: 3.5rem;
+  height: 3.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.8125rem;
+  color: var(--green);
+  background: #edf2e9;
+}
+.plugin-detail-copy {
+  min-width: 0;
+}
+.plugin-detail-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+.plugin-detail-title h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  line-height: 1.45;
+  font-weight: var(--font-weight-semibold);
+}
+.plugin-detail-version {
+  font-size: var(--font-size-meta);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.plugin-detail-copy p {
+  margin: 0.4375rem 0 0;
+  font-size: var(--font-size-meta);
+  color: var(--muted);
+  line-height: 1.7;
+}
+.plugin-enabled-field {
+  margin-block: 1.5rem;
+  padding-block: 1.125rem;
+  border-block: 1px solid var(--app-soft-line);
 }
 .plugin-configure-row,
 .plugin-detail-actions {
@@ -185,8 +269,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding-block: 1.25rem;
-  border-block: 1px solid var(--line);
+  padding-block: 0 1.75rem;
 }
 .plugin-configure-row > span {
   color: var(--muted);
@@ -194,11 +277,17 @@
 }
 .plugin-detail-actions {
   justify-content: end;
-  padding-bottom: 0;
-  border-bottom: 0;
+  padding-block: 1.5rem 0;
+  border-top: 1px solid var(--app-soft-line);
+}
+.plugin-readme {
+  padding-block: 1.5625rem 1.25rem;
+  border-top: 1px solid var(--line);
 }
 .plugin-readme-trigger {
   font-weight: var(--font-weight-semibold);
+  font-size: 1.125rem;
+  padding-inline: 0;
 }
 .plugin-readme .card-content {
   font-size: var(--font-size-body);
@@ -230,6 +319,9 @@
   margin-top: 1.5rem;
 }
 @container (max-width: 50rem) {
+  .plugin-workbench + .plugin-manager {
+    margin-left: 0;
+  }
   .plugin-workbench {
     grid-template-columns: minmax(0, 1fr);
     gap: 1.5rem;
@@ -248,12 +340,30 @@
 }
 @container (max-width: 40rem) {
   .settings-panel {
-    padding: 0.25rem 1.25rem;
+    padding: 1.375rem 1.25rem;
+  }
+  .settings-panel-heading h2 {
+    font-size: 1.25rem;
   }
   .plugin-detail-pane .plugin-settings > [data-slot='header'] {
-    padding: 1.5rem 1.25rem 1rem;
+    padding: 1.5rem 1.25rem 0;
   }
   .plugin-detail-pane .plugin-settings > [data-slot='body'] {
-    padding: 1rem 1.25rem 1.5rem;
+    padding: 0 1.25rem 1.5rem;
+  }
+  .plugin-detail-title h2 {
+    font-size: 1.375rem;
+  }
+  .plugin-detail-mark {
+    flex-basis: 3rem;
+    width: 3rem;
+    height: 3rem;
+  }
+}
+@container (max-width: 36rem) {
+  .settings-panel
+    .ui-setting-field:not(.ui-setting-field--binary)[data-orientation='horizontal']
+    > :last-child {
+    max-width: none;
   }
 }

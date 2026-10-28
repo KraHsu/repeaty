@@ -31,6 +31,13 @@
   html {
     scrollbar-gutter: stable;
   }
+  /* The native window frame is outside the document's scrolling surface. */
+  html:has(.app-layout.desktop-window),
+  html:has(.app-layout.desktop-window) body {
+    height: 100%;
+    overflow: hidden;
+    scrollbar-gutter: auto;
+  }
   code,
   kbd,
   samp,
@@ -101,7 +108,24 @@
   }
   .app-layout.desktop-window {
     --desktop-titlebar-height: 36px;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
     padding-top: var(--desktop-titlebar-height);
+  }
+  .desktop-window > .main-content {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: auto;
+    scrollbar-gutter: stable;
+  }
+  .desktop-window > .main-content > * {
+    flex-shrink: 0;
+  }
+  .desktop-window > .main-content > .page {
+    width: 100%;
   }
   .desktop-window > .sidebar {
     top: var(--desktop-titlebar-height);

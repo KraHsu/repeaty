@@ -114,7 +114,7 @@ watch(workspace.scope, () => {
         @keydown="resizeWithKeyboard"
         @dblclick="resetWidth"
       />
-      <main class="main-content">
+      <main class="main-content" tabindex="-1">
         <AppHeader /><NotificationCenter />
         <component
           :is="WorkspaceNotice"

@@ -87,7 +87,7 @@ for (const language of ['zh-CN', 'en'] as const) {
       await selectPlugin(page, id)
       await expect(details.locator(':scope > [data-slot="header"] h2')).toHaveCSS(
         'font-size',
-        '20px',
+        '24px',
       )
       await expect(details.locator('dl')).toBeVisible()
       await expect(details.getByRole('spinbutton')).toHaveCount(0)
@@ -150,7 +150,7 @@ for (const language of ['zh-CN', 'en'] as const) {
     })
     await expect(china.getByRole('heading', { level: 3 })).toHaveText(labels.china)
     await expect(international.getByRole('heading', { level: 3 })).toHaveText(labels.international)
-    await expect(leetcode.getByRole('heading', { level: 2 })).toHaveCSS('font-size', '20px')
+    await expect(leetcode.getByRole('heading', { level: 2 })).toHaveCSS('font-size', '18px')
     await expect(leetcode.locator('.ui-setting-group__description')).toHaveCSS('font-size', '14px')
     for (const site of [china, international]) {
       await expect(site.getByRole('heading', { level: 3 })).toHaveCSS('font-size', '16px')

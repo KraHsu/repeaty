@@ -8,25 +8,39 @@ const { notifications } = useNotifications()
 
 const floating = computed(() => notifications.value.filter((entry) => popupEnabled(entry.level)))
 const inline = computed(() => notifications.value.filter((entry) => !popupEnabled(entry.level)))
-const top = ref(90)
+const top = ref(16)
 const header = shallowRef<HTMLElement | null>(null)
+function dismissing(element: Element) {
+  // A fading toast has already been dismissed; it must not remain an interactive
+  // or announced duplicate while the visual exit finishes.
+  element.setAttribute('inert', '')
+  element.setAttribute('aria-hidden', 'true')
+}
 function position() {
   if (!notifications.value.length) return
-  const bottom = document.querySelector('.topbar')?.getBoundingClientRect().bottom ?? 78
-  top.value = Math.min(Math.max(16, bottom + 12), innerHeight * 0.35)
+  const frame = document.querySelector('.desktop-titlebar')?.getBoundingClientRect().bottom ?? 0
+  const tools = header.value?.getBoundingClientRect().bottom ?? frame
+  top.value = Math.max(frame + 16, tools + 12)
 }
 watch(notifications, position, { flush: 'post' })
 onMounted(() => {
   header.value = document.querySelector<HTMLElement>('.topbar')
+  position()
 })
 useResizeObserver(header, position)
 useEventListener(window, 'resize', position)
 useEventListener(window, 'scroll', position, { passive: true, capture: true })
 </script>
 <template>
-  <div v-if="floating.length" class="notification-center" :style="{ top: `${top}px` }">
+  <TransitionGroup
+    tag="div"
+    name="notification-toast"
+    class="notification-center"
+    :style="{ top: `${top}px` }"
+    @before-leave="dismissing"
+  >
     <NotificationToast v-for="entry in floating" :key="entry.id" :entry="entry" />
-  </div>
+  </TransitionGroup>
   <div v-if="inline.length" class="inline-notifications">
     <NotificationToast v-for="entry in inline" :key="entry.id" :entry="entry" inline />
   </div>
@@ -34,11 +48,12 @@ useEventListener(window, 'scroll', position, { passive: true, capture: true })
 <style>
 .notification-center {
   position: fixed;
-  z-index: 1100;
-  top: 90px;
-  left: calc(50% + 115px);
-  transform: translateX(-50%);
-  width: min(620px, calc(100vw - 36px));
+  /* Application dialogs own their surface; background toasts must not cover
+     modal headings or remain visually actionable above an inert background. */
+  z-index: 900;
+  top: 16px;
+  right: 24px;
+  width: min(440px, calc(100vw - 48px));
   max-height: 50dvh;
   overflow: auto;
   display: grid;
@@ -47,6 +62,33 @@ useEventListener(window, 'scroll', position, { passive: true, capture: true })
 }
 .notification {
   pointer-events: auto;
+}
+.notification.info {
+  --notification-tone: var(--ui-info);
+}
+.notification.warning {
+  --notification-tone: var(--ui-warning);
+}
+.notification.error {
+  --notification-tone: var(--ui-error);
+}
+.notification-center > .notification {
+  /* A floating message needs an opaque surface so underlying page text cannot
+     show through the semantic tint provided by UAlert's soft variant. */
+  background: color-mix(in srgb, var(--notification-tone) 8%, var(--ui-bg));
+  border: 1px solid color-mix(in srgb, var(--notification-tone) 25%, var(--ui-bg));
+  box-shadow: 0 8px 30px #243c3118;
+}
+.notification-toast-enter-active,
+.notification-toast-leave-active {
+  transition:
+    opacity 180ms,
+    transform 180ms;
+}
+.notification-toast-enter-from,
+.notification-toast-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 .notification > svg {
   flex-shrink: 0;
@@ -65,20 +107,10 @@ useEventListener(window, 'scroll', position, { passive: true, capture: true })
 .inline-notification {
   box-shadow: none;
 }
-@media (max-width: 1200px) {
-  .notification-center {
-    left: calc(50% + 102px);
-  }
-}
-@media (max-width: 980px) {
-  .notification-center {
-    left: calc(50% + 92px);
-  }
-}
 @media (max-width: 720px) {
   .notification-center {
-    left: 50%;
-    top: 82px;
+    right: 16px;
+    width: calc(100vw - 32px);
   }
   .inline-notifications {
     margin: 1rem;

@@ -67,10 +67,12 @@ function active(page: string) {
           v-for="item in learning"
           :key="item.page"
           variant="ghost"
-          class="nav-link"
+          class="nav-link text-(--muted) hover:bg-(--app-nav-hover)"
           :class="{
             active: active(item.page),
-            'bg-primary/10 text-primary hover:bg-primary/15': active(item.page),
+            'bg-(--app-nav-active) text-(--app-nav-ink) hover:bg-(--app-nav-active)': active(
+              item.page,
+            ),
           }"
           :aria-current="active(item.page) ? 'page' : undefined"
           :aria-label="t(item.label)"
@@ -83,10 +85,11 @@ function active(page: string) {
         <UiButton
           v-if="desktopEdition || library.practices.length"
           variant="ghost"
-          class="nav-link"
+          class="nav-link text-(--muted) hover:bg-(--app-nav-hover)"
           :class="{
             active: active('history'),
-            'bg-primary/10 text-primary hover:bg-primary/15': active('history'),
+            'bg-(--app-nav-active) text-(--app-nav-ink) hover:bg-(--app-nav-active)':
+              active('history'),
           }"
           :aria-current="active('history') ? 'page' : undefined"
           :aria-label="t('练习历史')"
@@ -98,10 +101,11 @@ function active(page: string) {
         <UiButton
           v-if="WorkspaceBrowser"
           variant="ghost"
-          class="nav-link workspace-nav"
+          class="nav-link workspace-nav text-(--muted) hover:bg-(--app-nav-hover)"
           :class="{
             active: active('workspace'),
-            'bg-primary/10 text-primary hover:bg-primary/15': active('workspace'),
+            'bg-(--app-nav-active) text-(--app-nav-ink) hover:bg-(--app-nav-active)':
+              active('workspace'),
           }"
           :aria-current="active('workspace') ? 'page' : undefined"
           :aria-label="t('工作目录')"
@@ -130,10 +134,11 @@ function active(page: string) {
         >
         <UiButton
           variant="ghost"
-          class="nav-link"
+          class="nav-link text-(--muted) hover:bg-(--app-nav-hover)"
           :class="{
             active: active('data'),
-            'bg-primary/10 text-primary hover:bg-primary/15': active('data'),
+            'bg-(--app-nav-active) text-(--app-nav-ink) hover:bg-(--app-nav-active)':
+              active('data'),
           }"
           :aria-current="active('data') ? 'page' : undefined"
           :aria-label="t('数据与备份')"
@@ -145,11 +150,13 @@ function active(page: string) {
           v-for="(item, index) in utilities"
           :key="item.page"
           variant="ghost"
-          class="nav-link"
+          class="nav-link text-(--muted) hover:bg-(--app-nav-hover)"
           :class="{
             active: active(item.page),
             'nav-utility-start': index === 0,
-            'bg-primary/10 text-primary hover:bg-primary/15': active(item.page),
+            'bg-(--app-nav-active) text-(--app-nav-ink) hover:bg-(--app-nav-active)': active(
+              item.page,
+            ),
           }"
           :aria-current="active(item.page) ? 'page' : undefined"
           :aria-label="t(item.label)"
@@ -161,7 +168,7 @@ function active(page: string) {
         >
         <UiButton
           variant="ghost"
-          class="nav-link sidebar-help"
+          class="nav-link sidebar-help text-(--muted) hover:bg-(--app-nav-hover)"
           :aria-label="t('帮助')"
           :title="t('快捷键') + ' · ?'"
           @click="modal = 'shortcuts'"

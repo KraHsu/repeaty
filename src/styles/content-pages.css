@@ -10,12 +10,12 @@
     color: var(--muted);
   }
   .cards-page .card-table-wrap {
-    border-radius: 0.875rem;
+    border-radius: 0.75rem;
     background: var(--paper);
   }
   .cards-page .card-table th {
-    background: var(--ui-bg-muted);
-    padding: 1rem 1.5rem;
+    background: #edf1e9;
+    padding: 0.8125rem 1.5rem;
     font-size: var(--font-size-meta);
   }
   .cards-page .card-table td {
@@ -36,6 +36,11 @@
     color: var(--ui-text);
     font-weight: var(--font-weight-semibold);
     line-height: 1.6;
+    min-height: 0;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
   }
   .cards-page .card-row-answer {
     max-width: 42em;
@@ -95,6 +100,40 @@
     line-height: 1.7;
     color: var(--muted);
   }
+  .data-page .data-overview {
+    align-items: center;
+  }
+  .data-page .data-overview > div {
+    min-width: 0;
+  }
+  .data-page .data-overview > svg {
+    width: 3.75rem;
+    height: 3.75rem;
+    padding: 0.9375rem;
+  }
+  .data-overview-counts {
+    display: flex;
+    flex-shrink: 0;
+    gap: 2.125rem;
+    margin: 0 0 0 auto;
+    padding-left: 1.5rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .data-overview-counts > div {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 0.3125rem;
+  }
+  .data-overview-counts dt {
+    font-size: var(--font-size-meta);
+    color: var(--muted);
+  }
+  .data-overview-counts dd {
+    margin: 0;
+    font-size: 1.75rem;
+    letter-spacing: -0.04em;
+    font-weight: var(--font-weight-semibold);
+  }
   .data-page .backup-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1.5rem;
@@ -114,6 +153,10 @@
     border-radius: 0.75rem;
     background: var(--sage);
     color: var(--green);
+  }
+  .data-page .backup-card .stat-icon.lavender {
+    background: #edf0e9;
+    color: var(--muted);
   }
   .data-page .backup-card h2 {
     margin: 1.5rem 0 0.625rem;
@@ -162,6 +205,18 @@
     .data-page .backup-grid {
       grid-template-columns: minmax(0, 1fr);
     }
+    .data-page .data-overview {
+      flex-wrap: wrap;
+    }
+    .data-page .data-overview > div {
+      flex: 1;
+      min-width: min(100%, 11.25rem);
+    }
+    .data-overview-counts {
+      flex-basis: calc(100% - 5rem);
+      padding-left: 0;
+      margin: 0.5rem 0 0 5rem;
+    }
   }
   @media (max-width: 720px) {
     .cards-page .card-table td,
@@ -180,6 +235,10 @@
       width: 2.75rem;
       height: 2.75rem;
       padding: 0.625rem;
+    }
+    .data-overview-counts {
+      flex-basis: calc(100% - 3.75rem);
+      margin-left: 3.75rem;
     }
   }
 }

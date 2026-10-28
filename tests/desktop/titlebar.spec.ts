@@ -75,6 +75,76 @@ for (const [width, height] of [
   })
 }
 
+for (const [width, height] of [
+  [1280, 720],
+  [500, 400],
+] as const) {
+  test(`desktop scrolling stays below the window frame at ${width}x${height}`, async ({
+    page,
+  }, info) => {
+    await page.setViewportSize({ width, height })
+    await page.getByRole('button', { name: '数据与备份', exact: true }).click()
+    const main = page.locator('.main-content')
+    const bar = page.locator('.desktop-titlebar')
+    const bounds = (await main.boundingBox())!
+    expect(bounds.y).toBe(36)
+    expect(bounds.y + bounds.height).toBe(height)
+    expect(await main.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+    await main.focus()
+    await main.press('Control+Home')
+    await page.mouse.move(bounds.x + bounds.width / 2, height - 40)
+    await page.mouse.wheel(0, 500)
+    await expect.poll(() => main.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+    await main.press('Control+End')
+    await expect
+      .poll(() =>
+        main.evaluate((element) =>
+          Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop),
+        ),
+      )
+      .toBeLessThanOrEqual(1)
+    expect(
+      await page.evaluate(() => ({
+        top: document.scrollingElement!.scrollTop,
+        height: document.documentElement.scrollHeight,
+        gutter: innerWidth - document.documentElement.clientWidth,
+      })),
+    ).toEqual({ top: 0, height, gutter: 0 })
+    expect((await bar.boundingBox())!.y).toBe(0)
+    expect(
+      await page.evaluate(
+        () => document.elementFromPoint(innerWidth - 2, 18)?.closest('.desktop-titlebar') !== null,
+      ),
+    ).toBe(true)
+    await page.screenshot({ path: info.outputPath('content-scroll-below-titlebar.png') })
+
+    const before = await main.evaluate((element) => element.scrollTop)
+    await page.locator('.sidebar-help').click()
+    const modal = page.locator('[data-app-modal-content]')
+    await expect(modal.locator('.desktop-titlebar')).toBeVisible()
+    expect((await modal.boundingBox())!.y).toBe(36)
+    const heading = modal.locator('.modal-header h2')
+    expect(
+      await heading.evaluate((element) => {
+        const box = element.getBoundingClientRect()
+        return element.contains(
+          document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2),
+        )
+      }),
+    ).toBe(true)
+    const body = modal.locator('.app-modal-body')
+    await body.evaluate((element) => element.scrollTo(0, element.scrollHeight))
+    if (height === 400)
+      expect(await body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+    expect(await main.evaluate((element) => element.scrollTop)).toBe(before)
+    expect((await bar.boundingBox())!.y).toBe(0)
+    await page.screenshot({ path: info.outputPath('modal-scroll-below-titlebar.png') })
+    await modal.getByRole('button', { name: '关闭弹窗', exact: true }).click()
+    await expect(modal).toHaveCount(0)
+    expect(await main.evaluate((element) => element.scrollTop)).toBe(before)
+  })
+}
+
 test('window controls follow native state events, support keyboard input and keep the learning library intact', async ({
   page,
 }) => {

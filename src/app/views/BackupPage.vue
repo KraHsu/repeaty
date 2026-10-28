@@ -42,7 +42,7 @@ function bindUpload(instance: unknown) {
         </p>
       </div>
     </header>
-    <section class="storage-banner">
+    <section class="storage-banner data-overview">
       <ShieldCheck :size="29" />
       <div>
         <h2>
@@ -68,6 +68,16 @@ function bindUpload(instance: unknown) {
           }}
         </p>
       </div>
+      <dl class="data-overview-counts">
+        <div>
+          <dt>{{ t('卡组') }}</dt>
+          <dd>{{ library.decks.length }}</dd>
+        </div>
+        <div>
+          <dt>{{ t('卡片') }}</dt>
+          <dd>{{ library.cards.length }}</dd>
+        </div>
+      </dl>
     </section>
     <div v-if="transfer" class="transfer-status" role="status">
       <span>{{ t(transfer.label) }} {{ Math.floor(transfer.percent) }}%</span>

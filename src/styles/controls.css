@@ -9,6 +9,20 @@
   }
 }
 
+/* Match the approved prototype's tactile controls without moving native Snap targets. */
+@media (prefers-reduced-motion: no-preference) {
+  .ui-button:not(.desktop-window-button) {
+    transition:
+      background-color 160ms,
+      border-color 160ms,
+      box-shadow 160ms,
+      transform 80ms;
+  }
+  .ui-button:not(.desktop-window-button):active:not(:disabled):not([aria-disabled='true']) {
+    transform: scale(0.98);
+  }
+}
+
 @layer components {
   .ui-setting-group {
     min-width: 0;

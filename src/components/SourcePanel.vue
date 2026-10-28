@@ -2295,6 +2295,13 @@ async function download() {
   border: 1px solid var(--line);
   border-radius: 12px;
   overflow-wrap: anywhere;
+  transition:
+    border-color 160ms,
+    background-color 160ms;
+}
+.source-list-item:hover {
+  border-color: #97b29c;
+  background: #fcfdfb;
 }
 .source-list-item.selected {
   border-color: var(--green);
@@ -2341,7 +2348,7 @@ async function download() {
   padding: 2rem;
   background: var(--paper);
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 12px;
   display: grid;
   gap: 1.5rem;
 }
@@ -2358,7 +2365,7 @@ async function download() {
 }
 .source-reader h2 {
   margin: 0 0 0.5rem;
-  font-size: var(--font-size-section);
+  font-size: 1.5rem;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }

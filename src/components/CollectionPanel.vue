@@ -501,19 +501,19 @@ async function editSelected() {
                 <Pencil :size="16" />
               </UiIconButton>
               <UiIconButton
-                class="danger-text"
-                :label="t('删除卡片 {p0}', { p0: card.front })"
-                @click="emit('delete', [card.noteId])"
-              >
-                <Trash2 :size="16" />
-              </UiIconButton>
-              <UiIconButton
                 :label="card.suspended ? t('恢复') : t('暂停')"
                 :disabled="busy"
                 @click="change(card.suspended ? 'resume' : 'suspend', [card.id])"
               >
                 <Play v-if="card.suspended" :size="16" />
                 <Pause v-else :size="16" />
+              </UiIconButton>
+              <UiIconButton
+                class="danger-text"
+                :label="t('删除卡片 {p0}', { p0: card.front })"
+                @click="emit('delete', [card.noteId])"
+              >
+                <Trash2 :size="16" />
               </UiIconButton>
             </div>
           </td>

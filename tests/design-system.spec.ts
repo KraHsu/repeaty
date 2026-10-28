@@ -27,7 +27,7 @@ async function typography(page: Page) {
   )
   await expect(page.getByRole('heading', { name: '界面', exact: true })).toHaveCSS(
     'font-size',
-    '20px',
+    '18px',
   )
   await expect(page.getByText('界面语言', { exact: true })).toHaveCSS('font-size', '16px')
   await expect(page.getByRole('combobox', { name: '界面语言', exact: true })).toHaveCSS(

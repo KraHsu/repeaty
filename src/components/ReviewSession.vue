@@ -460,7 +460,12 @@ onUnmounted(() => {
     </p>
     <UProgress
       v-if="!mixedCardId"
-      class="mt-3"
+      class="b-review-progress"
+      :ui="{
+        base: 'h-[3px] rounded-sm bg-[#e1e8dc]',
+        indicator:
+          'bg-[var(--green)] transition-transform duration-160 ease-out motion-reduce:transition-none',
+      }"
       :model-value="
         Math.min(100, (completed / Math.max(startedWith, completed + queue.length, 1)) * 100)
       "
@@ -550,6 +555,9 @@ onUnmounted(() => {
           :get-attempt="getAttempt"
           :save-attempt="saveAttempt"
         />
+        <div v-if="current.tags.length" class="tag-list">
+          <span v-for="tag in current.tags" :key="tag" class="tag">{{ tag }}</span>
+        </div>
         <div
           v-if="revealed"
           class="card-answer"
@@ -578,9 +586,6 @@ onUnmounted(() => {
             :get-media="getMedia"
             @close="sourceOpen = false"
           />
-        </div>
-        <div v-if="current.tags.length" class="tag-list">
-          <span v-for="tag in current.tags" :key="tag" class="tag">{{ tag }}</span>
         </div>
       </article>
       <div v-if="!revealed" class="reveal-action">

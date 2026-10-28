@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, useId, watch } from 'vue'
+import UCard from '@nuxt/ui/components/Card.vue'
 import { t } from '../i18n'
 import { desktopEdition } from '../edition'
 import { workspaceAvailable } from '@repeaty-platform'
 import { usePlugins } from '../plugins'
 import { readPluginFile, pluginIssueMessage, type PluginManifest } from '../plugins/package'
 import { usePluginManager, officialPluginBundles, type PackageEntry } from '../plugins/manager'
-import { SettingGroup, SettingField, UiButton, UiCollapsible, UiNotice, UiStatus } from './ui'
+import { SettingField, UiButton, UiCollapsible, UiNotice } from './ui'
 import CardContent from './CardContent.vue'
 import AppModal from './AppModal.vue'
 import { Puzzle, Download, RefreshCw } from '@lucide/vue'
@@ -27,6 +28,7 @@ const props = defineProps<{ embedded?: boolean; focusPlugin?: string }>()
 const emit = defineEmits<{ configure: [id: string] }>()
 const picker = ref<HTMLInputElement>()
 const panel = ref<HTMLElement>()
+const panelId = `plugin-detail-${useId()}`
 const openReadmes = ref(new Set<string>())
 const selectedPlugin = ref<string>()
 const error = ref('')
@@ -238,51 +240,16 @@ async function installOfficial() {
   <div ref="panel" :class="embedded ? 'settings-plugins' : 'page plugins-page'">
     <header v-if="!embedded" class="page-heading">
       <h1>{{ t('插件') }}</h1>
-      <UiButton variant="primary" :disabled="locked" @click="picker?.click()">
+      <UiButton variant="secondary" :disabled="locked" @click="picker?.click()">
         <Download :size="18" />{{ t('安装插件包') }}
       </UiButton>
     </header>
-    <section class="plugin-manager" :aria-label="t('插件管理')">
-      <div class="plugin-actions ui-setting-actions">
-        <input
-          ref="picker"
-          type="file"
-          accept=".repeaty-plugin,application/json"
-          hidden
-          @change="choose"
-        />
-        <UiButton v-if="embedded" variant="primary" :disabled="locked" @click="picker?.click()">{{
-          t('安装插件包')
-        }}</UiButton>
-        <UiButton :disabled="locked" @click="installOfficial">{{
-          t('安装或更新官方插件')
-        }}</UiButton>
-        <UiButton variant="ghost" :disabled="locked" @click="run(reloadPlugins)"
-          ><RefreshCw :size="17" />{{ t('重新扫描插件') }}</UiButton
-        >
-        <UiCollapsible class="plugin-storage-help">
-          <UiButton variant="ghost">{{ t('插件安装与存储') }}</UiButton>
-          <template #content>
-            <p>
-              {{
-                t(
-                  desktopEdition
-                    ? '插件代码保存在当前学习目录中，随目录移动。新设备首次启用时需确认，登录凭据留在设备上。'
-                    : '前端插件保存在此浏览器的独立副本中，不写入只读打开的原目录。',
-                )
-              }}
-            </p>
-            <p>{{ t('插件独立安装和更新，无需重新编译 Repeaty。') }}</p>
-          </template>
-        </UiCollapsible>
-      </div>
-      <UiNotice v-if="activePluginViews" tone="warning">{{
-        t('请先结束复习或关闭编辑器，再修改插件。')
-      }}</UiNotice>
-      <UiNotice v-if="error || pluginManagerError || pluginPreferenceError" tone="error">{{
-        t(error || pluginManagerError || pluginPreferenceError)
-      }}</UiNotice>
-    </section>
+    <UiNotice v-if="activePluginViews" tone="warning">{{
+      t('请先结束复习或关闭编辑器，再修改插件。')
+    }}</UiNotice>
+    <UiNotice v-if="error || pluginManagerError || pluginPreferenceError" tone="error">{{
+      t(error || pluginManagerError || pluginPreferenceError)
+    }}</UiNotice>
     <div v-if="entries.length" class="plugin-workbench">
       <aside class="plugin-directory">
         <div class="plugin-directory-heading">
@@ -318,23 +285,35 @@ async function installOfficial() {
         </nav>
       </aside>
       <div class="plugin-detail-pane">
-        <SettingGroup
+        <UCard
           v-for="entry in selectedEntries"
           :key="entry.id"
+          as="article"
           class="plugin-settings"
           :data-plugin-id="entry.id"
           tabindex="-1"
-          :title="t(entry.plugin?.label ?? entry.bundle?.manifest.name ?? entry.id)"
-          :description="
-            entry.plugin?.description || entry.bundle?.manifest.description
-              ? t(entry.plugin?.description ?? entry.bundle!.manifest.description!)
-              : undefined
-          "
+          :aria-labelledby="`${panelId}-${entry.id}`"
         >
-          <template #actions
-            ><UiStatus v-if="entry.bundle">v{{ entry.bundle.manifest.version }}</UiStatus></template
-          >
+          <template #header>
+            <div class="plugin-detail-heading">
+              <span class="plugin-detail-mark" aria-hidden="true"><Puzzle :size="28" /></span>
+              <div class="plugin-detail-copy">
+                <div class="plugin-detail-title">
+                  <h2 :id="`${panelId}-${entry.id}`">
+                    {{ t(entry.plugin?.label ?? entry.bundle?.manifest.name ?? entry.id) }}
+                  </h2>
+                  <span v-if="entry.bundle" class="plugin-detail-version"
+                    >v{{ entry.bundle.manifest.version }}</span
+                  >
+                </div>
+                <p v-if="entry.plugin?.description || entry.bundle?.manifest.description">
+                  {{ t(entry.plugin?.description ?? entry.bundle!.manifest.description!) }}
+                </p>
+              </div>
+            </div>
+          </template>
           <SettingField
+            class="plugin-enabled-field"
             type="switch"
             :label="
               t('启用 {name}', {
@@ -414,10 +393,45 @@ async function installOfficial() {
               t('卸载插件')
             }}</UiButton>
           </div>
-        </SettingGroup>
+        </UCard>
       </div>
     </div>
     <UiNotice v-else>{{ t('当前学习库尚未安装插件。普通卡片可正常使用。') }}</UiNotice>
+    <section class="plugin-manager" :aria-label="t('插件管理')">
+      <div class="plugin-actions ui-setting-actions">
+        <input
+          ref="picker"
+          type="file"
+          accept=".repeaty-plugin,application/json"
+          hidden
+          @change="choose"
+        />
+        <UiButton v-if="embedded" variant="primary" :disabled="locked" @click="picker?.click()">{{
+          t('安装插件包')
+        }}</UiButton>
+        <UiButton :disabled="locked" @click="installOfficial">{{
+          t('安装或更新官方插件')
+        }}</UiButton>
+        <UiButton variant="ghost" :disabled="locked" @click="run(reloadPlugins)"
+          ><RefreshCw :size="17" />{{ t('重新扫描插件') }}</UiButton
+        >
+        <UiCollapsible class="plugin-storage-help">
+          <UiButton variant="ghost">{{ t('插件安装与存储') }}</UiButton>
+          <template #content>
+            <p>
+              {{
+                t(
+                  desktopEdition
+                    ? '插件代码保存在当前学习目录中，随目录移动。新设备首次启用时需确认，登录凭据留在设备上。'
+                    : '前端插件保存在此浏览器的独立副本中，不写入只读打开的原目录。',
+                )
+              }}
+            </p>
+            <p>{{ t('插件独立安装和更新，无需重新编译 Repeaty。') }}</p>
+          </template>
+        </UiCollapsible>
+      </div>
+    </section>
     <AppModal
       v-for="request in confirmation ? [confirmation] : []"
       :key="request.id"

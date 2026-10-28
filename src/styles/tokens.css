@@ -33,6 +33,9 @@
   --app-canvas: #f3f5f0;
   --app-rail: #edf1e8;
   --app-selected: #e5eddf;
+  --app-nav-hover: #e4ebde;
+  --app-nav-active: #dce8d3;
+  --app-nav-ink: #2e5b42;
   --app-soft-line: #e7ece3;
   --app-radius: 0.75rem;
 }

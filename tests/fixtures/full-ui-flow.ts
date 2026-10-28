@@ -175,7 +175,11 @@ export async function fullUiFlow(page: Page, info: TestInfo) {
     page.getByRole('heading', { name: 'Unified reading source', exact: true }),
   ).toBeVisible()
   await dismissNotices(page)
-  await page.evaluate(() => window.scrollTo(0, 0))
+  await page.evaluate(() => {
+    const main = document.querySelector('.desktop-window > .main-content')
+    if (main) main.scrollTo(0, 0)
+    else window.scrollTo(0, 0)
+  })
   await page.screenshot({ path: info.outputPath('unified-sources-wide.png') })
   await setResponsiveViewport(page, 390, 844)
   await expect(reader).toHaveAttribute('aria-busy', 'false')

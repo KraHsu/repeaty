@@ -224,12 +224,12 @@ test('an independently built plugin uses shared accessible controls, saves prefe
   expect(await demo.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
   await page.screenshot({ path: info.outputPath('settings-controls-500.png') })
   const scrollbars = await page.evaluate(() => {
-    const root = document.documentElement
+    const root = document.querySelector<HTMLElement>('.main-content')!
     const before = root.scrollTop
     const thumb = getComputedStyle(root, '::-webkit-scrollbar-thumb')
     const radius = thumb.borderRadius
     const color = thumb.backgroundColor
-    window.scrollTo(0, root.scrollHeight)
+    root.scrollTo(0, root.scrollHeight)
     return {
       radius,
       color,

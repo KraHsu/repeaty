@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { UiButton, UiCollapsible } from '../../components/ui'
 import { t } from '../../i18n'
 import { ArrowRight, BookOpen, Check, ChevronDown, Ellipsis, Layers, Plus } from '@lucide/vue'
@@ -37,6 +37,9 @@ const focusedDeck = computed(
     library.value.decks.find((deck) => deck.id === selectedDeck.value) ?? library.value.decks[0],
 )
 const focusedState = computed(() => focusedDeck.value && deckStates.value.get(focusedDeck.value.id))
+const focusStage = ref<HTMLElement>()
+let selectionAnimation: Animation | undefined
+onBeforeUnmount(() => selectionAnimation?.cancel())
 watch(
   focusedDeck,
   (deck) => {
@@ -46,6 +49,16 @@ watch(
 )
 function focusDeck(id: string) {
   selectedDeck.value = id
+  selectionAnimation?.cancel()
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    selectionAnimation = focusStage.value?.animate(
+      [
+        { opacity: 0.65, transform: 'translateY(6px)' },
+        { opacity: 1, transform: 'translateY(0)' },
+      ],
+      { duration: 220, easing: 'cubic-bezier(.16,1,.3,1)' },
+    )
+  }
 }
 function reviewFocused() {
   if (!focusedDeck.value) return
@@ -82,7 +95,12 @@ function addToFocused() {
       </div>
     </header>
 
-    <section v-if="focusedDeck && focusedState" class="b-focus-stage" :aria-label="t('当前卡组')">
+    <section
+      v-if="focusedDeck && focusedState"
+      ref="focusStage"
+      class="b-focus-stage"
+      :aria-label="t('当前卡组')"
+    >
       <div class="b-stack-layer b-stack-far" aria-hidden="true" />
       <div class="b-stack-layer b-stack-near" aria-hidden="true" />
       <article class="b-focus-card">
@@ -167,7 +185,7 @@ function addToFocused() {
           v-for="deck in library.decks"
           :key="deck.id"
           variant="ghost"
-          class="b-deck-tile items-stretch gap-0 rounded-xl p-5 whitespace-normal"
+          class="b-deck-tile items-stretch gap-0 rounded-[0.75rem] p-5 whitespace-normal"
           :class="{ selected: focusedDeck?.id === deck.id }"
           :aria-pressed="focusedDeck?.id === deck.id"
           :aria-label="t('选择卡组 {p0}', { p0: deck.name })"

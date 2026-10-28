@@ -182,7 +182,8 @@ dialog:modal {
   z-index: 1000;
 }
 .app-modal-layer:has(> .desktop-titlebar) {
-  padding-top: calc(var(--desktop-titlebar-height, 36px) + 1rem);
+  top: var(--desktop-titlebar-height, 36px);
+  height: calc(100dvh - var(--desktop-titlebar-height, 36px));
 }
 .app-modal-panel {
   width: min(640px, 100%);

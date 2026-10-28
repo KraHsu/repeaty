@@ -175,8 +175,11 @@ watch(
         :id="`${domId}-content`"
         class="settings-panel"
         role="group"
-        :aria-labelledby="`${domId}-category-${selected}`"
+        :aria-labelledby="`${domId}-panel-title`"
       >
+        <header class="settings-panel-heading">
+          <h2 :id="`${domId}-panel-title`">{{ active?.title }}</h2>
+        </header>
         <SettingsContent
           :key="selected"
           :entries="visible"
@@ -200,7 +203,7 @@ watch(
 }
 .settings-categories {
   position: sticky;
-  top: calc(var(--desktop-titlebar-height, 0px) + 1rem);
+  top: 1rem;
   max-height: calc(100dvh - var(--desktop-titlebar-height, 0px) - 2rem);
   overflow: auto;
   min-width: 0;
