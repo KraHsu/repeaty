@@ -1,7 +1,6 @@
 import { defineAsyncComponent, defineComponent, h, markRaw, type Component } from 'vue'
 import { t, locale, setLocale } from '../i18n'
 import { preferences, setPreference, preferenceError } from '../preferences'
-import PluginPanel from '../components/PluginPanel.vue'
 import type { SettingsCategory, SettingsContribution, SettingsEntry, SettingsField } from './types'
 
 const AiCardSkill = defineAsyncComponent(() => import('../components/AiCardSkill.vue'))
@@ -9,8 +8,6 @@ const AiCardSkill = defineAsyncComponent(() => import('../components/AiCardSkill
 export interface ApplicationSettingsOptions {
   scope: () => string
   platformSettings?: Component
-  onConfigurePlugin: (id: string) => void
-  detailsPlugin?: () => string | undefined
 }
 
 function category(id: string, title: string): SettingsCategory {
@@ -138,29 +135,6 @@ export function createApplicationSettings(options: ApplicationSettingsOptions): 
         },
         category: [category('tools', '工具'), category('ai', 'AI 制卡')],
         component: markRaw(AiCardSkill),
-      },
-      true,
-    ),
-    entry(
-      {
-        id: 'plugins',
-        get title() {
-          return t('插件')
-        },
-        category: [category('plugins', '插件')],
-        component: markRaw(
-          defineComponent({
-            name: 'PluginManagementSettingsEntry',
-            setup: () => () =>
-              h(PluginPanel, {
-                embedded: true,
-                onConfigure: (id: string) => {
-                  if (isCurrent()) options.onConfigurePlugin(id)
-                },
-                focusPlugin: options.detailsPlugin?.(),
-              }),
-          }),
-        ),
       },
       true,
     ),

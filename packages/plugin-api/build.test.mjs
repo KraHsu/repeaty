@@ -78,3 +78,40 @@ test('non-UTF-8 README files are rejected instead of silently replacing bytes', 
   await writeFile(join(directory, 'README.md'), Buffer.from([0xc3, 0x28]))
   await assert.rejects(buildPlugin(directory), /encoded data was not valid/)
 })
+
+test('public controls compile as host references without bundling a UI or Vue runtime', async () => {
+  const directory = await project()
+  const controls = [
+    'UiInput',
+    'UiTextarea',
+    'UiSelect',
+    'UiCheckbox',
+    'UiProgress',
+    'UiCollapsible',
+  ]
+  await writeFile(
+    join(directory, 'src/index.ts'),
+    `import { h } from 'vue'\n` +
+      `import { ${controls.join(', ')} } from '@repeaty/plugin-api'\n` +
+      `export default { controls: [${controls.join(', ')}], render: () => h(UiInput) }\n`,
+  )
+  const { main } = await buildPlugin(directory)
+  assert.match(main, /__REPEATY_PLUGIN_HOST__\.vue/)
+  assert.doesNotMatch(main, /@nuxt\/ui|reka-ui|__VUE_OPTIONS_API__|nuxt-ui\.form-options/)
+  const current = Object.fromEntries(controls.map((name) => [name, { name }]))
+  const previous = globalThis.__REPEATY_PLUGIN_HOST__
+  globalThis.__REPEATY_PLUGIN_HOST__ = { current, vue: { h: (component) => component } }
+  try {
+    const { default: plugin } = await import(
+      'data:text/javascript;base64,' + Buffer.from(main).toString('base64')
+    )
+    assert.deepEqual(
+      plugin.controls,
+      controls.map((name) => current[name]),
+    )
+    assert.equal(plugin.render(), current.UiInput)
+  } finally {
+    if (previous === undefined) delete globalThis.__REPEATY_PLUGIN_HOST__
+    else globalThis.__REPEATY_PLUGIN_HOST__ = previous
+  }
+})

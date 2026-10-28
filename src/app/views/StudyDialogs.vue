@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { vUiButton, vUiControl } from '../../components/ui'
+import { UiInput, UiButton } from '../../components/ui'
 import { t } from '../../i18n'
 import AppModal from '../../components/AppModal.vue'
 import { useApplication } from '../context'
@@ -10,8 +10,7 @@ const { busy, modal, mixedRatio, startMixed, shortcuts } = useApplication()
     <form class="editor-form" @submit.prevent="startMixed">
       <p>{{ t('按现有复习额度安排卡片，在其中穿插今天待阅读的材料。') }}</p>
       <label for="mixed-ratio">{{ t('每篇材料之间复习几张卡片？') }}</label>
-      <input
-        v-ui-control
+      <UiInput
         id="mixed-ratio"
         v-model.number="mixedRatio"
         type="number"
@@ -24,16 +23,10 @@ const { busy, modal, mixedRatio, startMixed, shortcuts } = useApplication()
         {{ t('其中一类处理完后继续另一类。结束或刷新页面后，下次重新开始一轮。') }}
       </p>
       <div class="form-actions">
-        <button
-          v-ui-button="'secondary'"
-          type="button"
-          class="button secondary"
-          @click="modal = null"
-        >
-          {{ t('取消') }}</button
-        ><button v-ui-button="'primary'" type="submit" class="button primary" :disabled="busy">
+        <UiButton variant="secondary" type="button" @click="modal = null"> {{ t('取消') }}</UiButton
+        ><UiButton variant="primary" type="submit" :disabled="busy">
           {{ t('开始学习') }}
-        </button>
+        </UiButton>
       </div>
     </form>
   </AppModal>

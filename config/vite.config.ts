@@ -1,5 +1,7 @@
 import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
+import nuxtUI from '@nuxt/ui/vite'
+import { ui } from './ui.ts'
 import { offlinePlugin } from '../build/offline.ts'
 import { externalPlugins } from '../build/external-plugins.ts'
 import { fileURLToPath } from 'node:url'
@@ -29,11 +31,23 @@ export default defineConfig(({ mode }) => {
       manifest: true,
     },
     worker: { format: 'es' },
-    plugins: [vue(), externalPlugins(desktop), ...(server || desktop ? [] : [offlinePlugin()])],
+    plugins: [
+      vue(),
+      nuxtUI({
+        ui,
+        router: false,
+        colorMode: false,
+        autoImport: false,
+        components: false,
+        icon: { clientBundle: { scan: true } },
+      }),
+      externalPlugins(desktop),
+      ...(server || desktop ? [] : [offlinePlugin()]),
+    ],
     test: {
       include: ['src/**/*.test.ts'],
       environment: 'node',
-      setupFiles: ['tests/setup-external-plugins.ts'],
+      setupFiles: ['tests/setup-ui.ts', 'tests/setup-external-plugins.ts'],
     },
   }
 })

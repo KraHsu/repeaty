@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { vUiButton } from '../../components/ui'
+import { UiButton } from '../../components/ui'
 import { t, locale } from '../../i18n'
 import { ChevronRight, CircleHelp, Undo2 } from '@lucide/vue'
 import { remoteWorkspace, desktopEdition } from '../../edition'
@@ -27,25 +27,25 @@ const {
       }}</strong>
     </div>
     <div class="topbar-tools">
-      <button
-        v-ui-button
-        class="text-button"
+      <UiButton
+        variant="ghost"
+        type="submit"
         :disabled="shortcutLocked || !canUndoAction"
         :title="undoTitle"
         aria-keyshortcuts="Control+Z Meta+Z"
         @click="undoLastAction"
       >
         <Undo2 :size="18" />{{ t('撤销') }}
-      </button>
-      <button
-        v-ui-button="{ variant: 'ghost', icon: true }"
-        class="icon-button"
+      </UiButton>
+      <UiButton
+        v-bind="{ variant: 'ghost', icon: true }"
+        type="submit"
         :aria-label="t('快捷键')"
         :title="t('快捷键') + ' · ?'"
         @click="modal = 'shortcuts'"
       >
         <CircleHelp :size="18" />
-      </button>
+      </UiButton>
       <component
         v-if="DraftWorkbench"
         :is="DraftWorkbench"

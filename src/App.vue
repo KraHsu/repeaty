@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { defineAsyncComponent, ref, watch } from 'vue'
+import UApp from '@nuxt/ui/components/App.vue'
+import { en, zh_cn as zhCN } from '@nuxt/ui/locale'
 import AppSidebar from './app/views/AppSidebar.vue'
 import AppHeader from './app/views/AppHeader.vue'
 import OverviewPage from './app/views/OverviewPage.vue'
@@ -9,7 +12,7 @@ import SourceView from './app/views/SourceView.vue'
 import EditorDialogs from './app/views/EditorDialogs.vue'
 import BackupDialogs from './app/views/BackupDialogs.vue'
 import StudyDialogs from './app/views/StudyDialogs.vue'
-import { t } from './i18n'
+import { t, locale } from './i18n'
 import { Database, Repeat2 } from '@lucide/vue'
 import NotificationCenter from './components/NotificationCenter.vue'
 import { remoteWorkspace } from './edition'
@@ -25,6 +28,7 @@ import { createApplication } from './app/createApplication'
 import { provideApplication } from './app/context'
 import { PracticeHistoryPanel, SettingsPage } from './app/view-components'
 import { SIDEBAR_MIN_WIDTH, useSidebarLayout } from './app/useSidebarLayout'
+const PluginPanel = defineAsyncComponent(() => import('./components/PluginPanel.vue'))
 const application = createApplication()
 provideApplication(application)
 const {
@@ -54,83 +58,111 @@ const {
   resizeWithKeyboard,
   resetWidth,
 } = useSidebarLayout({ desktop: !!DesktopTitlebar, scope: workspace.scope, ready })
+const settingsTarget = ref<string>()
+const detailsTarget = ref<string>()
+function configurePlugin(id: string) {
+  settingsTarget.value = id
+  navigate('settings')
+}
+function showPluginDetails(id: string) {
+  detailsTarget.value = id
+  navigate('plugins')
+}
+watch(tab, (page) => {
+  if (page !== 'settings') settingsTarget.value = undefined
+  if (page !== 'plugins') detailsTarget.value = undefined
+})
+watch(workspace.scope, () => {
+  settingsTarget.value = undefined
+  detailsTarget.value = undefined
+})
 </script>
 <template>
-  <div
-    class="app-layout"
-    :class="{
-      'desktop-window': DesktopTitlebar,
-      'sidebar-collapsed': sidebarCollapsed,
-      'sidebar-resizing': sidebarResizing,
-    }"
-    :style="{ '--sidebar-width': `${sidebarWidth}px` }"
-  >
-    <component v-if="DesktopTitlebar" :is="DesktopTitlebar" />
-    <AppSidebar />
+  <UApp :locale="locale === 'en' ? en : zhCN" :toaster="null">
     <div
-      v-if="verticalSidebar"
-      class="sidebar-resizer"
-      role="separator"
-      tabindex="0"
-      aria-orientation="vertical"
-      :aria-label="t('调整侧栏宽度')"
-      :aria-valuemin="SIDEBAR_MIN_WIDTH"
-      :aria-valuemax="sidebarMaxWidth"
-      :aria-valuenow="sidebarWidth"
-      @pointerdown="startResize"
-      @pointermove="moveResize"
-      @pointerup="endResize"
-      @pointercancel="cancelResize"
-      @lostpointercapture="cancelResize"
-      @keydown="resizeWithKeyboard"
-      @dblclick="resetWidth"
-    />
-    <main class="main-content">
-      <AppHeader /><NotificationCenter />
-      <component
-        :is="WorkspaceNotice"
-        v-if="WorkspaceNotice"
-        :scope="workspace.scope.value"
-        @open="navigate('workspace')"
+      class="app-layout"
+      :class="{
+        'desktop-window': DesktopTitlebar,
+        'sidebar-collapsed': sidebarCollapsed,
+        'sidebar-resizing': sidebarResizing,
+      }"
+      :style="{ '--sidebar-width': `${sidebarWidth}px` }"
+    >
+      <component v-if="DesktopTitlebar" :is="DesktopTitlebar" />
+      <AppSidebar />
+      <div
+        v-if="verticalSidebar"
+        class="sidebar-resizer"
+        role="separator"
+        tabindex="0"
+        aria-orientation="vertical"
+        :aria-label="t('调整侧栏宽度')"
+        :aria-valuemin="SIDEBAR_MIN_WIDTH"
+        :aria-valuemax="sidebarMaxWidth"
+        :aria-valuenow="sidebarWidth"
+        @pointerdown="startResize"
+        @pointermove="moveResize"
+        @pointerup="endResize"
+        @pointercancel="cancelResize"
+        @lostpointercapture="cancelResize"
+        @keydown="resizeWithKeyboard"
+        @dblclick="resetWidth"
       />
-      <WorkspaceBrowser
-        v-if="
-          WorkspaceBrowser &&
-          (tab === 'workspace' || (!workspaceAvailable && tab !== 'settings' && tab !== 'plugins'))
-        "
-        :workspace="workspace"
-        @changed="refreshClock"
-      />
-      <SettingsPage
-        v-else-if="tab === 'plugins' || tab === 'settings'"
-        :key="tab"
-        :initial-tab="tab === 'plugins' ? 'plugins' : 'general'"
-        :platform-settings="PlatformSettings"
-      />
-      <section v-else-if="loadError" class="empty-state">
-        <Database :size="36" />
-        <h1>{{ t(remoteWorkspace ? '无法连接服务' : '本地存储暂不可用') }}</h1>
-        <p role="alert">{{ t(loadError) }}</p>
-        <ServerConnection v-if="remoteWorkspace" :busy="busy" @connect="workspace.init()" />
-      </section>
-      <section v-else-if="!ready" class="empty-state" role="status">
-        <Repeat2 :size="32" />
-        <p>{{ t('正在加载…') }}</p>
-      </section>
-      <StudyView v-else-if="mixed || review" />
-      <OverviewPage v-else-if="tab === 'overview'" />
-      <CardsPage v-else-if="tab === 'cards'" />
-      <PracticeHistoryPanel
-        v-else-if="tab === 'history'"
-        :key="workspace.scope.value"
-        v-model:card-id="historyCardId"
-        :library="library"
-        :get-attempt="workspace.getAttempt"
-        @reveal="(id) => run(() => workspace.revealPracticeHistory(id, workspace.scope.value))"
-      />
-      <SourceView v-else-if="tab === 'sources'" />
-      <BackupPage v-else />
-    </main>
-    <EditorDialogs /><BackupDialogs /><StudyDialogs />
-  </div>
+      <main class="main-content">
+        <AppHeader /><NotificationCenter />
+        <component
+          :is="WorkspaceNotice"
+          v-if="WorkspaceNotice"
+          :scope="workspace.scope.value"
+          @open="navigate('workspace')"
+        />
+        <WorkspaceBrowser
+          v-if="
+            WorkspaceBrowser &&
+            (tab === 'workspace' ||
+              (!workspaceAvailable && tab !== 'settings' && tab !== 'plugins'))
+          "
+          :workspace="workspace"
+          @changed="refreshClock"
+        />
+        <SettingsPage
+          v-else-if="tab === 'settings'"
+          :key="workspace.scope.value"
+          :platform-settings="PlatformSettings"
+          :focus-plugin="settingsTarget"
+          @plugin-details="showPluginDetails"
+        />
+        <PluginPanel
+          v-else-if="tab === 'plugins'"
+          :key="workspace.scope.value"
+          :focus-plugin="detailsTarget"
+          @configure="configurePlugin"
+        />
+        <section v-else-if="loadError" class="empty-state">
+          <Database :size="36" />
+          <h1>{{ t(remoteWorkspace ? '无法连接服务' : '本地存储暂不可用') }}</h1>
+          <p role="alert">{{ t(loadError) }}</p>
+          <ServerConnection v-if="remoteWorkspace" :busy="busy" @connect="workspace.init()" />
+        </section>
+        <section v-else-if="!ready" class="empty-state" role="status">
+          <Repeat2 :size="32" />
+          <p>{{ t('正在加载…') }}</p>
+        </section>
+        <StudyView v-else-if="mixed || review" />
+        <OverviewPage v-else-if="tab === 'overview'" />
+        <CardsPage v-else-if="tab === 'cards'" />
+        <PracticeHistoryPanel
+          v-else-if="tab === 'history'"
+          :key="workspace.scope.value"
+          v-model:card-id="historyCardId"
+          :library="library"
+          :get-attempt="workspace.getAttempt"
+          @reveal="(id) => run(() => workspace.revealPracticeHistory(id, workspace.scope.value))"
+        />
+        <SourceView v-else-if="tab === 'sources'" />
+        <BackupPage v-else />
+      </main>
+      <EditorDialogs /><BackupDialogs /><StudyDialogs />
+    </div>
+  </UApp>
 </template>

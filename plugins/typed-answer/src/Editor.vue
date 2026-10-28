@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { vUiControl } from '@repeaty/plugin-api'
+import { UiTextarea, UiInput } from '@repeaty/plugin-api'
+
 import { computed } from 'vue'
 import type { NoteInput } from '@repeaty/plugin-api'
 const props = defineProps<{ modelValue: NoteInput }>()
@@ -20,17 +21,10 @@ const answer = computed({
 <template>
   <div class="form-field">
     <label for="typed-question">Question</label>
-    <textarea v-ui-control id="typed-question" v-model="question" required maxlength="10000" />
+    <UiTextarea id="typed-question" v-model="question" required maxlength="10000" />
   </div>
   <div class="form-field">
     <label for="typed-expected">Expected answer</label>
-    <input
-      v-ui-control
-      id="typed-expected"
-      v-model="answer"
-      required
-      pattern=".*\S.*"
-      maxlength="1000"
-    />
+    <UiInput id="typed-expected" v-model="answer" required pattern=".*\S.*" maxlength="1000" />
   </div>
 </template>

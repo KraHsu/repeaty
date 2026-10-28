@@ -5,8 +5,8 @@ import {
   SettingField,
   UiButton,
   UiIconButton,
-  vUiControl,
-  vUiButton,
+  UiTextarea,
+  type UiTextareaInstance,
   readSetting,
   writeSetting,
   type SettingValue,
@@ -42,7 +42,7 @@ const secret = ref('')
 const nativeDefault = 'const result = 42\nreturn result'
 const nativeDraft = ref(nativeDefault)
 const nativeAdjustment = ref(4)
-const nativeInput = ref<HTMLTextAreaElement>()
+const nativeInput = ref<UiTextareaInstance>()
 const saveIssue = ref('')
 const emailError = computed(() =>
   state.email.includes('@') ? '' : 'Enter an email address containing @.',
@@ -90,11 +90,11 @@ function reset() {
 }
 function clearNativeDraft() {
   nativeDraft.value = ''
-  nativeInput.value?.focus()
+  nativeInput.value?.textareaRef?.focus()
 }
 function restoreNativeDraft() {
   nativeDraft.value = nativeDefault
-  nativeInput.value?.focus()
+  nativeInput.value?.textareaRef?.focus()
 }
 </script>
 
@@ -244,24 +244,25 @@ function restoreNativeDraft() {
           Native refs, selection and keyboard events stay in the plugin. This draft is not saved.
         </p>
         <label for="example-native-draft">Native code draft</label>
-        <textarea
+        <UiTextarea
           id="example-native-draft"
           ref="nativeInput"
           v-model="nativeDraft"
-          v-ui-control="{ monospace: true }"
-          rows="3"
+          :ui="{ base: 'font-mono' }"
+          :rows="3"
           spellcheck="false"
           aria-describedby="example-native-description"
         />
-        <label for="example-native-adjustment">Native adjustment</label>
-        <input
+        <SettingField
           id="example-native-adjustment"
-          v-model.number="nativeAdjustment"
-          v-ui-control
+          label="Native adjustment"
+          :model-value="nativeAdjustment"
           type="range"
-          min="0"
-          max="10"
-          step="1"
+          :min="0"
+          :max="10"
+          :step="1"
+          commit="input"
+          @update:model-value="nativeAdjustment = Number($event)"
         />
         <output for="example-native-adjustment">{{ nativeAdjustment }}</output>
         <div class="settings-example__native-actions">
@@ -276,9 +277,7 @@ function restoreNativeDraft() {
               />
             </svg>
           </UiIconButton>
-          <button v-ui-button type="button" @click="restoreNativeDraft">
-            Restore native draft
-          </button>
+          <UiButton type="button" @click="restoreNativeDraft"> Restore native draft </UiButton>
         </div>
       </section>
     </SettingGroup>

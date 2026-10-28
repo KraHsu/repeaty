@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { vUiControl, vUiButton } from '@repeaty/plugin-api'
+import { UiInput, UiButton, UiCollapsible } from '@repeaty/plugin-api'
+
 import { ref } from 'vue'
 import { t, locale } from './i18n'
 import type { Attempt, AttemptRecord } from '@repeaty/plugin-api'
@@ -22,20 +23,16 @@ const shown = ref(false)
     <p>
       {{ t('在 LeetCode 找到这次提交，粘贴编号或详情链接。恢复只查询结果，不会重新提交代码。') }}
     </p>
-    <details
-      @toggle="
-        (event) => {
-          shown = (event.target as HTMLDetailsElement).open
-        }
-      "
-    >
-      <summary v-ui-button="'ghost'">{{ t('核对本次提交的代码') }}</summary>
-      <AttemptBody v-if="shown" :attempt="attempt" :get-attempt="getAttempt" code-only />
-    </details>
+    <UiCollapsible @update:open="shown = $event">
+      <UiButton variant="ghost">{{ t('核对本次提交的代码') }}</UiButton>
+      <template #content
+        ><AttemptBody v-if="shown" :attempt="attempt" :get-attempt="getAttempt" code-only
+      /></template>
+    </UiCollapsible>
     <label :for="`recover-${attempt.id}`">{{ t('提交编号或详情链接') }}</label>
     <div class="recovery-fields">
-      <input
-        v-ui-control
+      <UiInput
+        class="min-w-0 flex-1"
         :id="`recover-${attempt.id}`"
         v-model="input"
         type="text"
@@ -47,13 +44,9 @@ const shown = ref(false)
         :placeholder="t('粘贴提交编号或链接')"
         required
       />
-      <button
-        v-ui-button="'secondary'"
-        class="button secondary"
-        :disabled="disabled || !input.trim()"
-      >
+      <UiButton type="submit" variant="secondary" :disabled="disabled || !input.trim()">
         {{ t('关联并查询') }}
-      </button>
+      </UiButton>
     </div>
   </form>
 </template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { vUiButton } from '../../components/ui'
+import { UiButton } from '../../components/ui'
 import { t } from '../../i18n'
 import { ArrowUpFromLine, Pencil, Plus, Trash2 } from '@lucide/vue'
 import CollectionPanel from '../../components/CollectionPanel.vue'
@@ -37,29 +37,30 @@ const {
         <p>{{ currentDeck?.description || t('搜索、编辑卡片，或批量调整卡组和标签。') }}</p>
       </div>
       <div class="heading-actions">
-        <button
-          v-ui-button="{ variant: 'ghost', icon: true }"
+        <UiButton
+          v-bind="{ variant: 'ghost', icon: true }"
+          type="submit"
           v-if="currentDeck"
-          class="icon-button"
           :aria-label="t('编辑当前卡组')"
           @click="editDeck(currentDeck)"
         >
-          <Pencil :size="18" /></button
-        ><button
-          v-ui-button="{ variant: 'ghost', icon: true }"
+          <Pencil :size="18" /></UiButton
+        ><UiButton
+          v-bind="{ variant: 'ghost', icon: true }"
+          type="submit"
           v-if="currentDeck"
-          class="icon-button danger-text"
+          class="danger-text"
           :aria-label="t('删除当前卡组')"
           @click="confirmDeleteDeck(currentDeck)"
         >
           <Trash2 :size="18" />
-        </button>
-        <button v-ui-button class="button secondary" @click="openImport">
+        </UiButton>
+        <UiButton variant="secondary" type="submit" @click="openImport">
           <ArrowUpFromLine :size="16" />{{ t('批量导入') }}
-        </button>
-        <button v-ui-button class="button primary" @click="editCard()">
+        </UiButton>
+        <UiButton variant="primary" type="submit" @click="editCard()">
           <Plus :size="17" />{{ t('添加卡片') }}
-        </button>
+        </UiButton>
       </div>
     </header>
     <DeckStatus v-if="currentDeck" :status="deckStates.get(currentDeck.id)!" />

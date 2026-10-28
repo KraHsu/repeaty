@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { vUiControl, vUiButton } from './ui'
+import { UiButton, UiInput } from './ui'
 import AppModal from './AppModal.vue'
 import { onMounted, ref } from 'vue'
 import { t } from '../i18n'
@@ -46,17 +46,16 @@ async function change() {
 <template>
   <div v-if="account" class="account-controls">
     <span :title="account.username">{{ account.username }}</span>
-    <button v-ui-button class="text-button" @click="editing = true">{{ t('修改密码') }}</button>
-    <button v-ui-button class="text-button" :disabled="busy" @click="logout">
+    <UiButton variant="ghost" type="submit" @click="editing = true">{{ t('修改密码') }}</UiButton>
+    <UiButton variant="ghost" type="submit" :disabled="busy" @click="logout">
       {{ t('退出登录') }}
-    </button>
+    </UiButton>
     <p v-if="error && !editing" role="alert">{{ t(error) }}</p>
     <AppModal v-if="editing" :title="t('修改密码')" :busy="busy" :error="t(error)" @close="close">
       <form @submit.prevent="change">
         <label class="form-field"
           >{{ t('当前密码')
-          }}<input
-            v-ui-control
+          }}<UiInput
             v-model="currentPassword"
             type="password"
             required
@@ -64,8 +63,7 @@ async function change() {
         /></label>
         <label class="form-field"
           >{{ t('新密码')
-          }}<input
-            v-ui-control
+          }}<UiInput
             v-model="password"
             type="password"
             required
@@ -76,16 +74,10 @@ async function change() {
         <p class="form-note">{{ t('修改后需在所有设备重新登录。') }}</p>
         <p v-if="error" role="alert">{{ t(error) }}</p>
         <div class="connection-actions">
-          <button v-ui-button class="button primary" :disabled="busy">{{ t('保存') }}</button>
-          <button
-            v-ui-button
-            class="button secondary"
-            type="button"
-            :disabled="busy"
-            @click="close"
-          >
+          <UiButton variant="primary" type="submit" :disabled="busy">{{ t('保存') }}</UiButton>
+          <UiButton variant="secondary" type="button" :disabled="busy" @click="close">
             {{ t('取消') }}
-          </button>
+          </UiButton>
         </div>
       </form>
     </AppModal>

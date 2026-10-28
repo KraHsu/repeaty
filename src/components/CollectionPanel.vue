@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { vUiControl, vUiButton } from './ui'
+import { UiInput, UiSelect, UiButton, UiCheckbox, UiCollapsible } from './ui'
 import { t, locale } from '../i18n'
 
 import { computed, ref, shallowRef, watch } from 'vue'
@@ -189,130 +189,134 @@ async function editSelected() {
 <template>
   <div class="library-toolbar">
     <label class="search-field"
-      ><Search :size="18" /><input
-        v-ui-control
+      ><Search :size="18" /><UiInput
         v-model="query"
         :aria-label="t('搜索卡片')"
         maxlength="1000"
         :placeholder="t('关键词、tag:英语、is:due、lapses:>=3…')"
     /></label>
-    <select v-ui-control v-model="deckId" :aria-label="t('筛选卡组')">
-      <option value="">{{ t('全部卡组') }}</option>
-      <option v-for="deck in library.decks" :key="deck.id" :value="deck.id">{{ deck.name }}</option>
-    </select>
-    <select v-ui-control v-model="state" :aria-label="t('筛选状态')">
-      <option value="all">{{ t('全部状态') }}</option>
-      <option
-        v-for="label in filterStates.filter((entry) => entry !== 'all')"
-        :key="label"
-        :value="label"
-      >
-        {{ t(label) }}
-      </option>
-    </select>
-    <button v-ui-button class="button secondary" @click="emit('review')">
+    <UiSelect
+      :items="[
+        { label: t('全部卡组'), value: '' },
+        ...library.decks.map((deck) => ({ label: deck.name, value: deck.id })),
+      ]"
+      v-model="deckId"
+      :aria-label="t('筛选卡组')"
+    ></UiSelect>
+    <UiSelect
+      :items="[
+        { label: t('全部状态'), value: 'all' },
+        ...filterStates
+          .filter((entry) => entry !== 'all')
+          .map((label) => ({ label: t(label), value: label })),
+      ]"
+      v-model="state"
+      :aria-label="t('筛选状态')"
+    ></UiSelect>
+    <UiButton variant="secondary" type="submit" @click="emit('review')">
       <Repeat2 :size="16" />{{ t('复习') }}
-    </button>
+    </UiButton>
   </div>
   <p v-if="result.error" class="import-warning" role="alert">{{ t(result.error) }}</p>
-  <details class="search-options" @toggle="expanded = ($event.target as HTMLDetailsElement).open">
-    <summary v-ui-button="'ghost'">{{ t('高级搜索、常用筛选与专项练习') }}</summary>
-    <p class="form-note">
-      {{ t('空格连接的条件需同时满足；双引号包围短语，减号排除条件。例如') }}
-      <code>{{ t('tag:英语 -is:suspended lapses:>=3') }}</code>
-    </p>
-    <p class="form-note">
-      {{
-        t(
-          '还支持 deck:"卡组名称"、type:cloze、is:leech、due:<=7（距今天的日历天数，负数表示逾期）。is:due 包含所有已到期卡片，不考虑额度。',
-        )
-      }}
-    </p>
-    <div class="batch-fields">
-      <label
-        >{{ t('常用筛选')
-        }}<select v-ui-control v-model="savedId" :aria-label="t('常用筛选')" @change="applySaved">
-          <option value="">{{ t('选择已保存筛选') }}</option>
-          <option v-for="saved in library.savedSearches" :key="saved.id" :value="saved.id">
-            {{ saved.name }}
-          </option>
-        </select></label
-      >
-      <label
-        >{{ t('筛选名称')
-        }}<input
-          v-ui-control
-          v-model="savedName"
-          maxlength="80"
-          :placeholder="t('例如：英语易忘卡')"
-      /></label>
-    </div>
-    <div class="batch-actions">
-      <button
-        v-ui-button
-        class="button secondary"
-        :disabled="busy || !!result.error || !savedName.trim()"
-        @click="saveFilter()"
-      >
-        {{ t('另存筛选') }}
-      </button>
-      <button
-        v-ui-button
-        v-if="savedId"
-        class="button secondary"
-        :disabled="busy || !!result.error || !savedName.trim()"
-        @click="saveFilter(true)"
-      >
-        {{ t('更新筛选') }}
-      </button>
-      <button
-        v-ui-button
-        v-if="savedId"
-        class="text-button danger-text"
-        :disabled="busy"
-        @click="removeFilter"
-      >
-        {{ t('删除筛选') }}
-      </button>
-    </div>
-    <form class="study-form" @submit.prevent="startStudy">
-      <label
-        >{{ t('练习模式')
-        }}<select v-ui-control v-model="reschedule">
-          <option :value="false">{{ t('只练习，不改进度') }}</option>
-          <option :value="true">{{ t('评分并更新进度') }}</option>
-        </select></label
-      >
-      <label
-        >{{ t('卡片数量上限')
-        }}<input
-          v-ui-control
-          v-model.number="studyLimit"
-          type="number"
-          min="1"
-          max="500"
-          step="1"
-          required
-      /></label>
-      <button
-        v-ui-button
-        class="button primary"
-        :disabled="busy || loading || !!result.error || !result.eligible"
-      >
-        {{ t('开始专项练习') }}
-      </button>
-    </form>
-    <p class="form-note">
-      {{
-        t('可练习 {p0} 张，已排除暂停和今日暂缓的卡片。每张卡片练习一次。{p1}', {
-          p0: result.eligible,
-          p1: reschedule
-            ? t('包含未到期卡片，不受每日上限限制。评分会更新下次复习时间，并计入今日学习。')
-            : t('评分仅用于本轮练习，不改变到期时间、每日用量或统计。'),
-        })
-      }}
-    </p>
-  </details>
+  <UiCollapsible v-model:open="expanded" :unmount-on-hide="false" class="search-options">
+    <template #default="{ open }"
+      ><UiButton type="button" variant="ghost" :aria-expanded="open">{{
+        t('高级搜索、常用筛选与专项练习')
+      }}</UiButton></template
+    ><template #content>
+      <p class="form-note">
+        {{ t('空格连接的条件需同时满足；双引号包围短语，减号排除条件。例如') }}
+        <code>{{ t('tag:英语 -is:suspended lapses:>=3') }}</code>
+      </p>
+      <p class="form-note">
+        {{
+          t(
+            '还支持 deck:"卡组名称"、type:cloze、is:leech、due:<=7（距今天的日历天数，负数表示逾期）。is:due 包含所有已到期卡片，不考虑额度。',
+          )
+        }}
+      </p>
+      <div class="batch-fields">
+        <label
+          >{{ t('常用筛选')
+          }}<UiSelect
+            :items="[
+              { label: t('选择已保存筛选'), value: '' },
+              ...library.savedSearches.map((saved) => ({ label: saved.name, value: saved.id })),
+            ]"
+            v-model="savedId"
+            :aria-label="t('常用筛选')"
+            @change="applySaved"
+          ></UiSelect
+        ></label>
+        <label
+          >{{ t('筛选名称')
+          }}<UiInput v-model="savedName" maxlength="80" :placeholder="t('例如：英语易忘卡')"
+        /></label>
+      </div>
+      <div class="batch-actions">
+        <UiButton
+          variant="secondary"
+          type="submit"
+          :disabled="busy || !!result.error || !savedName.trim()"
+          @click="saveFilter()"
+        >
+          {{ t('另存筛选') }}
+        </UiButton>
+        <UiButton
+          variant="secondary"
+          type="submit"
+          v-if="savedId"
+          :disabled="busy || !!result.error || !savedName.trim()"
+          @click="saveFilter(true)"
+        >
+          {{ t('更新筛选') }}
+        </UiButton>
+        <UiButton
+          variant="danger"
+          type="submit"
+          v-if="savedId"
+          class="danger-text"
+          :disabled="busy"
+          @click="removeFilter"
+        >
+          {{ t('删除筛选') }}
+        </UiButton>
+      </div>
+      <form class="study-form" @submit.prevent="startStudy">
+        <label
+          >{{ t('练习模式')
+          }}<UiSelect
+            :items="[
+              { label: t('只练习，不改进度'), value: false },
+              { label: t('评分并更新进度'), value: true },
+            ]"
+            v-model="reschedule"
+          ></UiSelect
+        ></label>
+        <label
+          >{{ t('卡片数量上限')
+          }}<UiInput v-model.number="studyLimit" type="number" min="1" max="500" step="1" required
+        /></label>
+        <UiButton
+          variant="primary"
+          type="submit"
+          :disabled="busy || loading || !!result.error || !result.eligible"
+        >
+          {{ t('开始专项练习') }}
+        </UiButton>
+      </form>
+      <p class="form-note">
+        {{
+          t('可练习 {p0} 张，已排除暂停和今日暂缓的卡片。每张卡片练习一次。{p1}', {
+            p0: result.eligible,
+            p1: reschedule
+              ? t('包含未到期卡片，不受每日上限限制。评分会更新下次复习时间，并计入今日学习。')
+              : t('评分仅用于本轮练习，不改变到期时间、每日用量或统计。'),
+          })
+        }}
+      </p>
+    </template></UiCollapsible
+  >
   <div class="library-count" :aria-busy="loading">
     {{ t('{p0} 张卡片 · {p1} 条笔记', { p0: result.total, p1: library.notes.length }) }}
   </div>
@@ -321,8 +325,9 @@ async function editSelected() {
       t('已选 {p0} 张卡片（{p1} 条笔记）', { p0: selected.length, p1: selectedNotes.length })
     }}</strong>
     <div class="batch-actions">
-      <button
-        v-ui-button
+      <UiButton
+        variant="secondary"
+        type="submit"
         v-for="(label, action) in {
           suspend: '暂停所选',
           resume: '恢复所选',
@@ -331,67 +336,66 @@ async function editSelected() {
           clearLeech: '清除顽固标记',
         }"
         :key="action"
-        class="button secondary"
         :disabled="busy"
         @click="change(action)"
       >
-        {{ t(label) }}</button
-      ><button
-        v-ui-button
-        class="button danger"
+        {{ t(label) }}</UiButton
+      ><UiButton
+        variant="danger"
+        type="submit"
         :disabled="busy"
         @click="emit('delete', selectedNotes)"
       >
         {{ t('删除所选笔记') }}
-      </button>
+      </UiButton>
     </div>
-    <details>
-      <summary v-ui-button="'ghost'">{{ t('批量修改笔记的卡组与标签') }}</summary>
-      <p class="form-note">
-        {{ t('同一笔记的所有关联卡片都会更新，复习进度保留。暂停和暂缓仅影响勾选的卡片。') }}
-      </p>
-      <div class="batch-fields">
-        <label
-          >{{ t('移动到卡组')
-          }}<select v-ui-control v-model="targetDeck">
-            <option value="">{{ t('保持原卡组') }}</option>
-            <option v-for="deck in library.decks" :key="deck.id" :value="deck.id">
-              {{ deck.name }}
-            </option>
-          </select></label
-        ><label
-          >{{ t('添加标签')
-          }}<input
-            v-ui-control
-            v-model="addTags"
-            maxlength="820"
-            :placeholder="t('逗号分隔')" /></label
-        ><label
-          >{{ t('移除标签')
-          }}<input v-ui-control v-model="removeTags" maxlength="820" :placeholder="t('逗号分隔')"
-        /></label>
-      </div>
-      <button
-        v-ui-button
-        class="button primary"
-        :disabled="busy || (!targetDeck && !addTags.trim() && !removeTags.trim())"
-        @click="editSelected"
-      >
-        {{ t('应用笔记修改') }}
-      </button>
-    </details>
+    <UiCollapsible :unmount-on-hide="false">
+      <template #default="{ open }"
+        ><UiButton type="button" variant="ghost" :aria-expanded="open">{{
+          t('批量修改笔记的卡组与标签')
+        }}</UiButton></template
+      ><template #content>
+        <p class="form-note">
+          {{ t('同一笔记的所有关联卡片都会更新，复习进度保留。暂停和暂缓仅影响勾选的卡片。') }}
+        </p>
+        <div class="batch-fields">
+          <label
+            >{{ t('移动到卡组')
+            }}<UiSelect
+              :items="[
+                { label: t('保持原卡组'), value: '' },
+                ...library.decks.map((deck) => ({ label: deck.name, value: deck.id })),
+              ]"
+              v-model="targetDeck"
+            ></UiSelect></label
+          ><label
+            >{{ t('添加标签')
+            }}<UiInput v-model="addTags" maxlength="820" :placeholder="t('逗号分隔')" /></label
+          ><label
+            >{{ t('移除标签')
+            }}<UiInput v-model="removeTags" maxlength="820" :placeholder="t('逗号分隔')"
+          /></label>
+        </div>
+        <UiButton
+          variant="primary"
+          type="submit"
+          :disabled="busy || (!targetDeck && !addTags.trim() && !removeTags.trim())"
+          @click="editSelected"
+        >
+          {{ t('应用笔记修改') }}
+        </UiButton>
+      </template></UiCollapsible
+    >
   </section>
   <div v-if="result.total" class="card-table-wrap">
     <table class="card-table expanded-table">
       <thead>
         <tr>
           <th class="select-column">
-            <input
-              v-ui-control
-              type="checkbox"
-              :checked="allSelected"
+            <UiCheckbox
+              :model-value="allSelected"
               :aria-label="t('选择本页卡片')"
-              @change="selectPage"
+              @update:model-value="selectPage"
             />
           </th>
           <th>{{ t('问题 / 答案') }}</th>
@@ -403,18 +407,29 @@ async function editSelected() {
       <tbody>
         <tr v-for="card in visible" :key="card.id">
           <td>
-            <input
-              v-ui-control
-              v-model="selected"
-              type="checkbox"
+            <UiCheckbox
+              :model-value="selected.includes(card.id)"
+              @update:model-value="
+                (checked) => {
+                  selected =
+                    checked === true
+                      ? [...selected, card.id]
+                      : selected.filter((value) => value !== card.id)
+                }
+              "
               :value="card.id"
               :aria-label="t('选择卡片 {p0}', { p0: card.front })"
             />
           </td>
           <td>
-            <button v-ui-button class="card-row-title" @click="emit('edit', card)">
+            <UiButton
+              variant="secondary"
+              type="submit"
+              class="card-row-title"
+              @click="emit('edit', card)"
+            >
               {{ card.front }}
-            </button>
+            </UiButton>
             <p>{{ card.back }}</p>
             <div class="tag-list">
               <span class="tag">
@@ -456,39 +471,40 @@ async function editSelected() {
           </td>
           <td>
             <div class="row-actions">
-              <button
-                v-ui-button="{ variant: 'ghost', icon: true }"
+              <UiButton
+                v-bind="{ variant: 'ghost', icon: true }"
+                type="submit"
                 v-if="historyCardIds.has(card.id)"
-                class="icon-button"
                 :aria-label="t('查看 {title} 的练习历史', { title: card.front })"
                 @click="emit('history', card)"
               >
                 <History :size="16" />
-              </button>
-              <button
-                v-ui-button="{ variant: 'ghost', icon: true }"
-                class="icon-button"
+              </UiButton>
+              <UiButton
+                v-bind="{ variant: 'ghost', icon: true }"
+                type="submit"
                 :aria-label="t('编辑卡片 {p0}', { p0: card.front })"
                 @click="emit('edit', card)"
               >
-                <Pencil :size="16" /></button
-              ><button
-                v-ui-button="{ variant: 'ghost', icon: true }"
-                class="icon-button danger-text"
+                <Pencil :size="16" /></UiButton
+              ><UiButton
+                v-bind="{ variant: 'ghost', icon: true }"
+                type="submit"
+                class="danger-text"
                 :aria-label="t('删除卡片 {p0}', { p0: card.front })"
                 @click="emit('delete', [card.noteId])"
               >
                 <Trash2 :size="16" />
-              </button>
+              </UiButton>
             </div>
-            <button
-              v-ui-button
-              class="text-button"
+            <UiButton
+              variant="ghost"
+              type="submit"
               :disabled="busy"
               @click="change(card.suspended ? 'resume' : 'suspend', [card.id])"
             >
               {{ card.suspended ? t('恢复') : t('暂停') }}
-            </button>
+            </UiButton>
           </td>
         </tr>
       </tbody>
@@ -504,21 +520,21 @@ async function editSelected() {
           : t('点击「添加卡片」，或从 CSV / TSV 文件导入。')
       }}
     </p>
-    <button
-      v-ui-button
+    <UiButton
+      variant="primary"
+      type="submit"
       v-if="!query && state === 'all'"
-      class="button primary"
       @click="emit('edit')"
     >
       <Plus :size="16" />{{ t('添加卡片') }}
-    </button>
+    </UiButton>
   </div>
   <div v-if="pages > 1" class="pagination">
-    <button v-ui-button class="button secondary" :disabled="page === 1" @click="page--">
-      {{ t('上一页') }}</button
+    <UiButton variant="secondary" type="submit" :disabled="page === 1" @click="page--">
+      {{ t('上一页') }}</UiButton
     ><span>{{ page }} / {{ pages }}</span
-    ><button v-ui-button class="button secondary" :disabled="page === pages" @click="page++">
+    ><UiButton variant="secondary" type="submit" :disabled="page === pages" @click="page++">
       {{ t('下一页') }}
-    </button>
+    </UiButton>
   </div>
 </template>

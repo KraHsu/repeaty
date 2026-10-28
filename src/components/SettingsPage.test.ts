@@ -77,18 +77,18 @@ function mount() {
 function category(key: string) {
   return host.querySelector<HTMLButtonElement>(`[data-category-key="${key}"]`)!
 }
-it('merges application and plugin fields in one category and keeps vertical keyboard navigation', async () => {
+it('merges application and plugin fields and keeps focus separate from tree selection', async () => {
   plugin(['general', 'appearance'])
   mount()
-  const navigation = host.querySelector('[role=tablist]')!
-  expect(navigation.getAttribute('aria-orientation')).toBe('vertical')
+  const navigation = host.querySelector('[role=tree]')!
+  expect(navigation.getAttribute('aria-label')).toBe('设置分类')
   expect(host.querySelectorAll('[data-category-key="general.appearance"]')).toHaveLength(1)
   expect(category('general.appearance').title).toBe(
     category('general.appearance').textContent?.trim(),
   )
   expect(host.querySelectorAll('.settings-panel .ui-setting-field')).toHaveLength(2)
   expect(
-    [...host.querySelectorAll('[role=tab]')].some(
+    [...host.querySelectorAll('[role=treeitem]')].some(
       (button) => button.textContent?.trim() === '插件设置',
     ),
   ).toBe(false)
@@ -98,8 +98,14 @@ it('merges application and plugin fields in one category and keeps vertical keyb
   )
   await nextTick()
   await nextTick()
-  expect(category('general.appearance').getAttribute('aria-selected')).toBe('true')
+  expect(category('general').getAttribute('aria-selected')).toBe('true')
   expect(document.activeElement).toBe(category('general.appearance'))
+  category('general.appearance').dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+  )
+  await nextTick()
+  await nextTick()
+  expect(category('general.appearance').getAttribute('aria-selected')).toBe('true')
   expect(host.querySelectorAll('.settings-panel input')).toHaveLength(2)
   category('general.appearance').dispatchEvent(
     new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }),

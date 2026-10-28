@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { vUiControl, vUiButton } from '@repeaty/plugin-api'
+import {
+  UiButton,
+  UiTextarea,
+  UiSelect,
+  UiCollapsible,
+  type UiTextareaInstance,
+} from '@repeaty/plugin-api'
+
 import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { z } from 'zod'
 import { t } from './i18n'
@@ -34,7 +41,7 @@ const storageError = ref(false)
 const working = ref(false)
 const ready = ref(false)
 const paused = ref(false)
-const codeInput = ref<HTMLTextAreaElement>()
+const codeInput = ref<UiTextareaInstance>()
 const abort = new AbortController()
 const scope = props.workspaceScope ?? 'local:repeaty'
 let revision = ''
@@ -439,7 +446,7 @@ async function submitCode() {
   if (draft.value.pending && !disposed) await check()
 }
 function indent(event: KeyboardEvent) {
-  const element = codeInput.value
+  const element = codeInput.value?.textareaRef
   if (event.key !== 'Tab' || !element) return
   event.preventDefault()
   const cursor = element.selectionStart
@@ -560,12 +567,12 @@ onUnmounted(() => {
       <h1 class="card-question long-content">{{ card.front }}</h1>
       <div class="leetcode-meta">
         <span class="pill">{{ t(problem.difficulty) }}</span
-        ><a
-          v-ui-button="'ghost'"
+        ><UiButton
+          variant="ghost"
           :href="problemUrl(problem)"
           target="_blank"
           rel="noopener noreferrer"
-          >{{ t('在 LeetCode 打开') }}</a
+          >{{ t('在 LeetCode 打开') }}</UiButton
         >
       </div>
       <Statement :content="problem.content" />
@@ -584,42 +591,37 @@ onUnmounted(() => {
         <div class="leetcode-toolbar">
           <label for="code-language"
             >{{ t('编程语言')
-            }}<select
-              v-ui-control
+            }}<UiSelect
               id="code-language"
               v-model="draft.lang"
               :disabled="
                 working || !ready || accepted || !!draft.pending || !!pendingAttempts.length
               "
-            >
-              <option
-                v-for="snippet in problem.snippets"
-                :key="snippet.langSlug"
-                :value="snippet.langSlug"
-              >
-                {{ snippet.lang }}
-              </option>
-            </select></label
-          >
+              :items="
+                problem.snippets.map((snippet) => ({
+                  value: snippet.langSlug,
+                  label: snippet.lang,
+                }))
+              "
+          /></label>
           <span>{{
             t('尝试 {count} 次 · 用时 {time}', { count: draft.attempts, time: elapsed })
           }}</span>
-          <button
-            v-ui-button="'ghost'"
+          <UiButton
+            variant="ghost"
             v-if="!accepted && !revealed"
             type="button"
-            class="text-button"
             @click="togglePause"
           >
             {{ paused ? t('继续计时') : t('暂停计时') }}
-          </button>
+          </UiButton>
         </div>
         <p v-if="!problem.snippets.length" class="import-warning">
           {{ t('该题没有可用的代码模板，请在 LeetCode 作答。') }}
         </p>
         <label for="leetcode-code">{{ t('代码') }}</label>
-        <textarea
-          v-ui-control="{ monospace: true }"
+        <UiTextarea
+          :ui="{ base: 'font-mono' }"
           id="leetcode-code"
           ref="codeInput"
           v-model="code"
@@ -627,7 +629,7 @@ onUnmounted(() => {
           spellcheck="false"
           autocapitalize="off"
           autocomplete="off"
-          rows="16"
+          :rows="16"
           maxlength="50000"
           :disabled="
             working ||
@@ -640,9 +642,8 @@ onUnmounted(() => {
           @keydown="indent"
         />
         <div class="leetcode-toolbar">
-          <button
-            v-ui-button="'primary'"
-            class="button primary"
+          <UiButton
+            variant="primary"
             :disabled="
               working ||
               !ready ||
@@ -655,16 +656,10 @@ onUnmounted(() => {
             @click="submitCode"
           >
             {{ working ? t('判题中…') : t('提交到 LeetCode') }}
-          </button>
-          <button
-            v-ui-button="'secondary'"
-            v-if="draft.pending"
-            class="button secondary"
-            :disabled="working"
-            @click="check()"
-          >
+          </UiButton>
+          <UiButton variant="secondary" v-if="draft.pending" :disabled="working" @click="check()">
             {{ t('继续查询结果') }}
-          </button>
+          </UiButton>
         </div>
         <p v-if="draft.pending" class="form-note">
           {{ t('提交编号：{id}', { id: draft.pending }) }}
@@ -675,14 +670,9 @@ onUnmounted(() => {
           class="leetcode-toolbar"
         >
           <span>{{ t('提交编号：{id}', { id: attempt.submissionId }) }}</span>
-          <button
-            v-ui-button="'secondary'"
-            class="button secondary"
-            :disabled="working"
-            @click="check(attempt)"
-          >
+          <UiButton variant="secondary" :disabled="working" @click="check(attempt)">
             {{ t('继续查询结果') }}
-          </button>
+          </UiButton>
         </div>
         <RecoverSubmission
           v-for="attempt in unknownAttempts"
@@ -701,42 +691,48 @@ onUnmounted(() => {
             t('内存：{value}', { value: draft.result.memory })
           }}</span>
           <pre v-if="draft.result.detail">{{ draft.result.detail }}</pre>
-          <a
-            v-ui-button="'ghost'"
+          <UiButton
+            variant="ghost"
             v-if="draft.submissionId"
             :href="`https://${problem.site}/submissions/detail/${draft.submissionId}/`"
             target="_blank"
             rel="noopener noreferrer"
-            >{{ t('查看提交记录') }}</a
+            >{{ t('查看提交记录') }}</UiButton
           >
         </div>
         <label for="leetcode-rating">{{ t('复习评分') }}</label>
-        <select v-ui-control id="leetcode-rating" v-model="draft.mode">
-          <option value="manual">{{ t('手动评分') }}</option>
-          <option value="automatic" :disabled="draft.uncertain">{{ t('自动评分') }}</option>
-        </select>
+        <UiSelect
+          id="leetcode-rating"
+          v-model="draft.mode"
+          :items="[
+            { value: 'manual', label: t('手动评分') },
+            { value: 'automatic', label: t('自动评分'), disabled: draft.uncertain },
+          ]"
+        />
         <p v-if="suggestion" class="form-note">
           {{ t('自动评分：{grade}', { grade: t(gradeNames[suggestion]) }) }}
         </p>
         <p v-if="draft.uncertain" class="import-warning">
           {{ t('有一次提交未取得编号，自动评分暂不可用。请先核对并关联 LeetCode 提交记录。') }}
         </p>
-        <details class="form-note">
-          <summary v-ui-button="'ghost'">{{ t('评分规则') }}</summary>
-          <p>
-            {{
-              t(
-                '通过且一次完成、用时不超过 {minutes} 分钟：简单；通过且不超过两次、用时不超过 {double} 分钟：良好；其余通过：困难。未通过或提前查看答案：重来。',
-                {
-                  minutes: targetMinutes[problem.difficulty],
-                  double: targetMinutes[problem.difficulty] * 2,
-                },
-              )
-            }}
-          </p>
-          <p>{{ t('只统计取得提交编号的正式提交。计时可暂停，切换到其他标签页时自动暂停。') }}</p>
-        </details>
-        <Connection :site="problem.site" />
+        <UiCollapsible class="form-note">
+          <UiButton variant="ghost">{{ t('评分规则') }}</UiButton>
+          <template #content>
+            <p v-if="problem">
+              {{
+                t(
+                  '通过且一次完成、用时不超过 {minutes} 分钟：简单；通过且不超过两次、用时不超过 {double} 分钟：良好；其余通过：困难。未通过或提前查看答案：重来。',
+                  {
+                    minutes: targetMinutes[problem.difficulty],
+                    double: targetMinutes[problem.difficulty] * 2,
+                  },
+                )
+              }}
+            </p>
+            <p>{{ t('只统计取得提交编号的正式提交。计时可暂停，切换到其他标签页时自动暂停。') }}</p>
+          </template>
+        </UiCollapsible>
+        <Connection v-if="problem" :site="problem.site" />
       </div>
     </template>
     <p v-if="error" class="import-warning" role="alert">{{ t(error) }}</p>

@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { vUiControl, vUiButton } from './ui'
+import UInput from '@nuxt/ui/components/Input.vue'
+import USelect from '@nuxt/ui/components/Select.vue'
+import UPagination from '@nuxt/ui/components/Pagination.vue'
+import UFormField from '@nuxt/ui/components/FormField.vue'
+import { UiButton } from './ui'
 import { computed, ref, watch } from 'vue'
-import { Search } from '@lucide/vue'
 import { t } from '../i18n'
 import type { Library } from '../core/model'
 import type { Attempt, AttemptRecord } from '../core/practice-data'
@@ -17,6 +20,18 @@ const emit = defineEmits<{ reveal: [practiceId: string] }>()
 const cardId = defineModel<string>('cardId', { default: '' })
 const query = ref('')
 const deckId = ref('')
+const cardFilter = computed<string | null>({
+  get: () => cardId.value || null,
+  set: (value) => {
+    cardId.value = value ?? ''
+  },
+})
+const deckFilter = computed<string | null>({
+  get: () => deckId.value || null,
+  set: (value) => {
+    deckId.value = value ?? ''
+  },
+})
 const outcome = ref('all')
 const page = ref(1)
 const pageSize = 20
@@ -91,39 +106,47 @@ watch(questions, (entries) => {
       </div>
     </header>
     <div class="history-filters">
-      <label class="search-field"
-        ><Search :size="18" /><input
-          v-ui-control
+      <UFormField class="history-search" :label="t('搜索练习历史')">
+        <UInput
           v-model="query"
+          icon="i-lucide-search"
           :aria-label="t('搜索练习历史')"
           :placeholder="t('搜索题目')"
           maxlength="1000"
-      /></label>
-      <label
-        >{{ t('题目')
-        }}<select v-ui-control v-model="cardId" :aria-label="t('筛选题目')">
-          <option value="">{{ t('全部题目') }}</option>
-          <option v-for="[id, title] in questions" :key="id" :value="id">{{ title }}</option>
-        </select></label
-      >
-      <label
-        >{{ t('卡组')
-        }}<select v-ui-control v-model="deckId" :aria-label="t('筛选卡组')">
-          <option value="">{{ t('全部卡组') }}</option>
-          <option v-for="deck in library.decks" :key="deck.id" :value="deck.id">
-            {{ deck.name }}
-          </option>
-        </select></label
-      >
-      <label
-        >{{ t('判题结果')
-        }}<select v-ui-control v-model="outcome" :aria-label="t('判题结果')">
-          <option value="all">{{ t('全部结果') }}</option>
-          <option value="accepted">{{ t('通过') }}</option>
-          <option value="rejected">{{ t('未通过') }}</option>
-          <option value="unconfirmed">{{ t('尚未确认') }}</option>
-        </select></label
-      >
+        />
+      </UFormField>
+      <UFormField :label="t('题目')">
+        <USelect
+          v-model="cardFilter"
+          :aria-label="t('筛选题目')"
+          :items="[
+            { value: null, label: t('全部题目') },
+            ...questions.map(([value, label]) => ({ value, label })),
+          ]"
+        />
+      </UFormField>
+      <UFormField :label="t('卡组')">
+        <USelect
+          v-model="deckFilter"
+          :aria-label="t('筛选卡组')"
+          :items="[
+            { value: null, label: t('全部卡组') },
+            ...library.decks.map((deck) => ({ value: deck.id, label: deck.name })),
+          ]"
+        />
+      </UFormField>
+      <UFormField :label="t('判题结果')">
+        <USelect
+          v-model="outcome"
+          :aria-label="t('判题结果')"
+          :items="[
+            { value: 'all', label: t('全部结果') },
+            { value: 'accepted', label: t('通过') },
+            { value: 'rejected', label: t('未通过') },
+            { value: 'unconfirmed', label: t('尚未确认') },
+          ]"
+        />
+      </UFormField>
     </div>
     <p class="form-note" role="status">{{ t('{count} 次练习', { count: filtered.length }) }}</p>
     <p v-if="library.practices.some((entry) => !entry.completedAt)" class="form-note">
@@ -153,23 +176,20 @@ watch(questions, (entries) => {
       />
     </div>
     <nav v-if="pages > 1" class="pagination" :aria-label="t('练习历史分页')">
-      <button
-        v-ui-button="'secondary'"
-        class="button secondary"
-        :disabled="page <= 1"
-        @click="page--"
+      <UPagination
+        v-model:page="page"
+        :total="filtered.length"
+        :items-per-page="pageSize"
+        :show-controls="false"
       >
-        {{ t('上一页') }}
-      </button>
-      <span>{{ t('第 {page} / {pages} 页', { page, pages }) }}</span>
-      <button
-        v-ui-button="'secondary'"
-        class="button secondary"
-        :disabled="page >= pages"
-        @click="page++"
-      >
-        {{ t('下一页') }}
-      </button>
+        <template #prev
+          ><UiButton :aria-label="t('上一页')">{{ t('上一页') }}</UiButton></template
+        >
+        <template #next
+          ><UiButton :aria-label="t('下一页')">{{ t('下一页') }}</UiButton></template
+        >
+      </UPagination>
+      <span role="status">{{ t('第 {page} / {pages} 页', { page, pages }) }}</span>
     </nav>
   </section>
 </template>
@@ -180,14 +200,10 @@ watch(questions, (entries) => {
   align-items: end;
   gap: 1rem;
 }
-.history-filters label {
+.history-filters > * {
   min-width: 0;
 }
-.search-field {
-  margin: 0;
-  min-height: var(--ui-control-height);
-}
-.history-filters select {
+.history-filters :deep([data-slot='root']) {
   width: 100%;
 }
 .history-records {

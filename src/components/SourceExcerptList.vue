@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { vUiButton } from './ui'
+import { UiButton } from './ui'
 import { computed, nextTick, ref, watch } from 'vue'
 import { t } from '../i18n'
 import { excerptPreview, matchingExcerpts, type SavedExcerpt } from '../core/source-navigation'
@@ -62,49 +62,35 @@ defineExpose({ showMatches })
           }}</span>
         </div>
         <div class="source-excerpt-buttons">
-          <button
-            v-ui-button
+          <UiButton
+            variant="secondary"
             type="button"
-            class="button secondary"
             :disabled="busy || !canLocate"
             :aria-label="t('定位「{title}」的原文', { title: entry.source.title })"
             @click="emit('locate', entry.source.id)"
           >
             {{ t('定位原文') }}
-          </button>
-          <button
-            v-ui-button="'ghost'"
+          </UiButton>
+          <UiButton
+            variant="ghost"
             type="button"
-            class="text-button"
             :disabled="busy"
             :aria-label="t('打开摘录「{title}」', { title: entry.source.title })"
             @click="emit('open', entry.source.id)"
           >
             {{ t('打开摘录') }}
-          </button>
+          </UiButton>
         </div>
       </li>
     </ol>
     <nav v-if="pages > 1" class="source-excerpt-pages" :aria-label="t('本篇摘录分页')">
-      <button
-        v-ui-button="'ghost'"
-        type="button"
-        class="text-button"
-        :disabled="busy || page === 0"
-        @click="page--"
-      >
+      <UiButton variant="ghost" type="button" :disabled="busy || page === 0" @click="page--">
         {{ t('上一页') }}
-      </button>
+      </UiButton>
       <span>{{ t('第 {page} 页，共 {pages} 页', { page: page + 1, pages }) }}</span>
-      <button
-        v-ui-button="'ghost'"
-        type="button"
-        class="text-button"
-        :disabled="busy || page + 1 >= pages"
-        @click="page++"
-      >
+      <UiButton variant="ghost" type="button" :disabled="busy || page + 1 >= pages" @click="page++">
         {{ t('下一页') }}
-      </button>
+      </UiButton>
     </nav>
   </section>
 </template>

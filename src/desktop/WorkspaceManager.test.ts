@@ -139,16 +139,16 @@ it('accepts a valid external edit against both the accepted and observed bytes',
   )!
   expect(button).toBeDefined()
   button.click()
-  await vi.waitFor(() => expect(host.querySelector('dialog')).not.toBeNull())
+  await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).not.toBeNull())
   expect(accepted).not.toHaveBeenCalled()
   await vi.waitFor(() =>
     expect(
-      [...host.querySelectorAll('button')].find(
+      [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(
         (button) => button.textContent?.trim() === '确认接受',
       )?.disabled,
     ).toBe(false),
   )
-  ;[...host.querySelectorAll('button')]
+  ;[...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
     .find((button) => button.textContent?.trim() === '确认接受')!
     .click()
   await vi.waitFor(() => expect(accepted).toHaveBeenCalledOnce())
@@ -195,12 +195,12 @@ it('restores the archived type while a different note is selected in the inspect
   )!
   expect(restore).toBeDefined()
   restore.click()
-  await vi.waitFor(() => expect(host.querySelector('dialog')).not.toBeNull())
-  const type = host.querySelectorAll<HTMLSelectElement>('dialog select')[1]!
-  expect(type.value).toBe('cloze')
-  expect(host.querySelector('dialog')?.textContent).toContain('恢复 1 张')
+  await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).not.toBeNull())
+  const type = document.querySelectorAll<HTMLElement>('[role="dialog"] [role="combobox"]')[1]!
+  expect(type.textContent).toContain('挖空卡')
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('恢复 1 张')
   expect(
-    [...host.querySelectorAll<HTMLButtonElement>('dialog button')].find(
+    [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(
       (button) => button.textContent?.trim() === '确认恢复',
     )?.disabled,
   ).toBe(false)

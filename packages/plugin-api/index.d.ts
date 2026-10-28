@@ -1,4 +1,13 @@
-import type { Component, DeepReadonly, DefineComponent, Directive, Ref } from 'vue'
+import type {
+  Component,
+  DeepReadonly,
+  DefineComponent,
+  Directive,
+  Ref,
+  InputHTMLAttributes,
+  TextareaHTMLAttributes,
+  HTMLAttributes,
+} from 'vue'
 
 export type Grade = 1 | 2 | 3 | 4
 export interface PluginData {
@@ -275,6 +284,69 @@ export declare const UiIconButton: DefineComponent<{
   disabled?: boolean
   busy?: boolean
 }>
+export interface UiInputInstance {
+  inputRef?: HTMLInputElement
+}
+export interface UiTextareaInstance {
+  textareaRef?: HTMLTextAreaElement
+}
+export interface UiTextControlOptions {
+  modelValue?: string | number | null
+  'onUpdate:modelValue'?: (value: any) => void
+  ui?: { root?: string; base?: string; trailing?: string }
+}
+export declare const UiInput: DefineComponent<
+  InputHTMLAttributes & UiTextControlOptions,
+  UiInputInstance
+>
+export declare const UiTextarea: DefineComponent<
+  TextareaHTMLAttributes & UiTextControlOptions,
+  UiTextareaInstance
+>
+export declare const UiSelect: DefineComponent<
+  HTMLAttributes & {
+    modelValue?: string | number
+    items?: readonly {
+      value: string | number | null
+      label: string
+      description?: string
+      disabled?: boolean
+    }[]
+    disabled?: boolean
+    name?: string
+    required?: boolean
+    placeholder?: string
+    'onUpdate:modelValue'?: (value: any) => void
+    onChange?: (event: Event) => void
+  }
+>
+export declare const UiCheckbox: DefineComponent<
+  HTMLAttributes & {
+    modelValue?: boolean | 'indeterminate'
+    label?: string
+    description?: string
+    disabled?: boolean
+    required?: boolean
+    name?: string
+    'onUpdate:modelValue'?: (value: boolean | 'indeterminate') => void
+  }
+>
+export declare const UiProgress: DefineComponent<
+  HTMLAttributes & {
+    modelValue?: number | null
+    max?: number
+    status?: boolean
+  }
+>
+export declare const UiCollapsible: DefineComponent<
+  HTMLAttributes & {
+    open?: boolean
+    defaultOpen?: boolean
+    disabled?: boolean
+    unmountOnHide?: boolean
+    'onUpdate:open'?: (value: boolean) => void
+  }
+>
 export interface UiControlOptions {
   monospace?: boolean
   reading?: boolean
@@ -287,8 +359,9 @@ export interface UiButtonOptions {
   tone?: UiButtonTone
   icon?: boolean
 }
-/** Apply the shared GUI while retaining native v-model, refs and event behavior. */
+/** @deprecated Use host-rendered UiInput, UiTextarea, UiSelect or SettingField. */
 export declare const vUiControl: Directive<HTMLElement, UiControlOptions | undefined>
+/** @deprecated Use host-rendered UiButton or UiCollapsible. */
 export declare const vUiButton: Directive<
   HTMLElement,
   UiButtonVariant | UiButtonOptions | undefined

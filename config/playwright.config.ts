@@ -4,7 +4,7 @@ const baseURL = `http://127.0.0.1:4175${process.env.VITE_BASE_PATH || '/'}`
 
 export default defineConfig({
   testDir: '../tests',
-  outputDir: '../test-results',
+  outputDir: '../test-results/web',
   testIgnore: ['**/server/**', '**/desktop/**', '**/workspace-native/**'],
   forbidOnly: Boolean(process.env.CI),
   workers: process.env.CI ? 2 : undefined,

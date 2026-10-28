@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { vUiButton } from './ui'
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { UiButton } from './ui'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { X, Info, TriangleAlert, CircleAlert } from '@lucide/vue'
 import { t } from '../i18n'
@@ -49,23 +50,28 @@ onMounted(resume)
 onUnmounted(pause)
 </script>
 <template>
-  <div
+  <UAlert
     :class="['notification', entry.level, { 'inline-notification': inline }]"
     :role="entry.level === 'info' ? 'status' : 'alert'"
+    :color="entry.level === 'info' ? 'info' : entry.level === 'warning' ? 'warning' : 'error'"
+    variant="soft"
+    orientation="horizontal"
+    :description="t(entry.text)"
     @mouseenter="pointerIn"
     @mouseleave="pointerOut"
     @focusin="focusIn"
     @focusout="focusOut"
   >
-    <component :is="icon" :size="20" aria-hidden="true" />
-    <span>{{ t(entry.text) }}</span>
-    <button
-      v-ui-button="{ variant: 'ghost', icon: true }"
-      class="icon-button"
-      :aria-label="t('关闭提示')"
-      @click="dismissNotification(entry.id)"
-    >
-      <X :size="18" />
-    </button>
-  </div>
+    <template #leading><component :is="icon" :size="20" aria-hidden="true" /></template>
+    <template #actions>
+      <UiButton
+        variant="ghost"
+        icon
+        :aria-label="t('关闭提示')"
+        @click="dismissNotification(entry.id)"
+      >
+        <X :size="18" />
+      </UiButton>
+    </template>
+  </UAlert>
 </template>

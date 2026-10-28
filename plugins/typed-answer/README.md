@@ -14,7 +14,7 @@
 
 ## 开发
 
-本插件也是公开 SDK 的独立项目示例，运行预构建包不需要 Node.js。修改源码时需要 Node.js 24.15+，插件通过 `@repeaty/plugin-api` 使用宿主接口，不导入主程序源码。
+本插件 1.6.0 也是公开 SDK 1.6.0 的独立项目示例，运行预构建包不需要 Node.js。修改源码时需要 Node.js 24.15+，插件通过 `@repeaty/plugin-api` 使用宿主接口，不导入主程序源码。Nuxt UI 控件与 Vue 运行时由宿主提供，插件包不重复打入这些库。
 
 在仓库根目录安装依赖后，进入此插件目录运行：
 
@@ -25,4 +25,4 @@ npm run build
 npm run dev
 ```
 
-安装 `dist/typed-answer.repeaty-plugin` 即可更新，无需重编译 Repeaty。独立开发方式见 [插件开发文档](https://github.com/KraHsu/repeaty/blob/main/docs/PLUGINS.md#独立开发与构建)。
+在主侧栏「插件」中安装 `dist/typed-answer.repeaty-plugin` 即可更新，无需重编译 Repeaty。独立开发方式见 [插件开发文档](https://github.com/KraHsu/repeaty/blob/main/docs/PLUGINS.md#独立开发与构建)。

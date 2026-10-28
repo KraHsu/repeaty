@@ -96,6 +96,7 @@ it('renders plugin-owned reactive values through native fields with collision-fr
   })
   install('a', { id: 'b-c', title: 'Other', fields: [{ ...field, onChange() {} }] })
   mount()
+  await nextTick()
   const inputs = host.querySelectorAll('input')
   expect(inputs[0]!.id).not.toBe(inputs[1]!.id)
   expect(inputs[0]!.labels?.[0]?.textContent).toBe('Count')
@@ -166,7 +167,7 @@ it('does not reuse an already displayed error in a new workspace with the same p
   install('history', { id: 'display', title: 'Display', fields: fields() })
   await nextTick()
   expect(host.querySelector('[role=alert]')).toBeNull()
-  expect(host.querySelector('input')?.getAttribute('aria-invalid')).toBeNull()
+  expect(host.querySelector('input')?.getAttribute('aria-invalid')).not.toBe('true')
 })
 
 it('remounts a same-source registration and ignores its previous pending save', async () => {

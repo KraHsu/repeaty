@@ -11,11 +11,28 @@ import { initI18n, LOCALE_STORAGE_KEY, setLocale, t } from '.'
 let app: VueApp | undefined
 let host: HTMLDivElement
 function languageInput() {
-  return [...host.querySelectorAll<HTMLSelectElement>('select')].find((element) =>
-    [...(element.labels ?? [])].some((label) =>
-      /^(界面语言|Interface language)$/.test(label.textContent?.trim() ?? ''),
+  const field = [...host.querySelectorAll<HTMLElement>('.ui-setting-field')].find((element) =>
+    /^(界面语言|Interface language)$/.test(
+      element.querySelector('label')?.textContent?.trim() ?? '',
     ),
   )
+  return field?.querySelector<HTMLButtonElement>('[role="combobox"]')
+}
+async function chooseOption(control: HTMLElement, label: string) {
+  control.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+  )
+  await nextTick()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
+    (element) => element.textContent?.trim() === label,
+  )!
+  expect(option).toBeDefined()
+  option.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+  )
+  await nextTick()
+  await new Promise((resolve) => setTimeout(resolve, 0))
 }
 function button(text: string, scope: ParentNode = host): HTMLButtonElement {
   const result = [...scope.querySelectorAll('button')].find(
@@ -25,7 +42,7 @@ function button(text: string, scope: ParentNode = host): HTMLButtonElement {
   return result
 }
 async function input(selector: string, value: string) {
-  const element = host.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector)!
+  const element = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector)!
   element.value = value
   element.dispatchEvent(new Event('input', { bubbles: true }))
   await nextTick()
@@ -47,10 +64,10 @@ async function start() {
   await vi.waitFor(() => expect(button(t('创建卡组')).disabled).toBe(false), { timeout: 5000 })
 }
 async function submitForm() {
-  host
-    .querySelector('dialog form')!
+  document
+    .querySelector('[role="dialog"] form')!
     .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
-  await vi.waitFor(() => expect(host.querySelector('dialog')).toBeNull())
+  await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull())
 }
 beforeEach(async () => {
   if (!document.doctype)
@@ -96,9 +113,8 @@ it('switches the mounted app, document metadata, and persists the explicit choic
   await vi.dynamicImportSettled()
   await vi.waitFor(() => expect(languageInput()).toBeDefined())
   const languageSelect = languageInput()!
-  expect(languageSelect.labels?.[0]?.textContent).toContain('Interface language')
-  languageSelect.value = 'zh-CN'
-  languageSelect.dispatchEvent(new Event('change', { bubbles: true }))
+  expect(languageSelect.textContent).toContain('English')
+  await chooseOption(languageSelect, '中文（简体）')
   await nextTick()
   expect(host.querySelector('h1')!.textContent).toContain('设置')
   button('学习概览').click()
@@ -112,8 +128,25 @@ it('switches the mounted app, document metadata, and persists the explicit choic
   expect(host.querySelector('h1')!.textContent).toContain('学习概览')
   button('设置').click()
   await nextTick()
-  expect(languageInput()!.value).toBe('zh-CN')
+  expect(languageInput()!.textContent).toContain('中文（简体）')
 })
+
+it('opens plugin management separately from the shared settings categories', async () => {
+  await start()
+  button('Plugins').click()
+  await vi.dynamicImportSettled()
+  await vi.waitFor(() => expect(host.querySelector('h1')?.textContent).toBe('Plugins'), {
+    timeout: 5000,
+  })
+  expect(host.querySelector('.plugin-manager')).not.toBeNull()
+  expect(host.querySelector('.settings-categories')).toBeNull()
+  expect(host.querySelector('.settings-configuration')).toBeNull()
+  button('Settings').click()
+  await vi.dynamicImportSettled()
+  await vi.waitFor(() => expect(languageInput()).toBeDefined(), { timeout: 5000 })
+  expect(host.querySelector('.settings-categories [data-category-key="plugins"]')).toBeNull()
+  expect(host.querySelector('.plugin-manager')).toBeNull()
+}, 10_000)
 
 it('keeps drafts and revealed answers while translating authoring, statuses, and review controls', async () => {
   await start()
@@ -127,8 +160,8 @@ it('keeps drafts and revealed answers while translating authoring, statuses, and
   await input('#card-back', '中文答案')
   setLocale('zh-CN')
   await nextTick()
-  expect(host.querySelector<HTMLInputElement>('#card-front')!.value).toBe('学习空间')
-  expect(host.querySelector('dialog')!.textContent).toContain('保存卡片')
+  expect(document.querySelector<HTMLInputElement>('#card-front')!.value).toBe('学习空间')
+  expect(document.querySelector('[role="dialog"]')!.textContent).toContain('保存卡片')
   setLocale('en')
   await submitForm()
   // Saving opens the lazy card table; wait for its import before checking the translated row.
@@ -201,14 +234,12 @@ it('keeps persisted filter values and typed search terms unchanged across UI lan
   )!
   cardsNav.click()
   await nextTick()
-  const state = host.querySelector<HTMLSelectElement>('select[aria-label="Filter by status"]')!
-  state.value = '新卡片'
-  state.dispatchEvent(new Event('change', { bubbles: true }))
+  const state = host.querySelector<HTMLElement>('[role="combobox"][aria-label="Filter by status"]')!
+  await chooseOption(state, 'New')
   await input('.search-field input', 'type:basic')
-  expect(state.selectedOptions[0]!.textContent!.trim()).toBe('New')
+  expect(state.textContent!.trim()).toBe('New')
   await language('zh-CN')
-  expect(state.value).toBe('新卡片')
-  expect(state.selectedOptions[0]!.textContent!.trim()).toBe('新卡片')
+  expect(state.textContent!.trim()).toBe('新卡片')
   expect(host.querySelector<HTMLInputElement>('.search-field input')!.value).toBe('type:basic')
   await vi.waitFor(() => expect(host.querySelectorAll('tbody tr')).toHaveLength(20))
 })

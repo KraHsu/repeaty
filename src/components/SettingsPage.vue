@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, shallowRef, useId, watch, type Component } from 'vue'
+import { computed, ref, shallowRef, useId, watch, type Component } from 'vue'
 import { t } from '../i18n'
 import { usePlugins } from '../plugins'
 import { usePluginManager } from '../plugins/manager'
@@ -7,14 +7,14 @@ import { createApplicationSettings } from '../settings/application'
 import { buildSettingsCategories, collectSettingsCategoryEntries } from '../settings/categories'
 import type { SettingsCategoryNode, SettingsContribution, SettingsEntry } from '../settings/types'
 import SettingsContent from './SettingsContent.vue'
+import BranchedMenu from './ui/BranchedMenu.vue'
 
-const props = defineProps<{ initialTab?: 'general' | 'plugins'; platformSettings?: Component }>()
+const props = defineProps<{ focusPlugin?: string; platformSettings?: Component }>()
+const emit = defineEmits<{ pluginDetails: [id: string] }>()
 const { installedPlugins, pluginEnabled } = usePlugins()
 const { pluginScope } = usePluginManager()
-const selected = ref(props.initialTab === 'plugins' ? 'plugins' : 'general')
+const selected = ref('general')
 const focusOwner = ref<string>()
-const detailsPlugin = ref<string>()
-const categoryNav = ref<HTMLElement>()
 const domId = `settings-${useId()}`
 const cached = new WeakMap<SettingsContribution, SettingsEntry>()
 function configurePlugin(id: string) {
@@ -26,16 +26,12 @@ function configurePlugin(id: string) {
   focusOwner.value = id
 }
 function showPluginDetails(id: string) {
-  detailsPlugin.value = id
-  focusOwner.value = undefined
-  selected.value = 'plugins'
+  emit('pluginDetails', id)
 }
 function applicationEntries() {
   return createApplicationSettings({
     scope: () => pluginScope.value,
     platformSettings: props.platformSettings,
-    onConfigurePlugin: configurePlugin,
-    detailsPlugin: () => detailsPlugin.value,
   })
 }
 const builtins = shallowRef(applicationEntries())
@@ -82,7 +78,6 @@ const categories = computed(() => {
     workspace: t('工作目录'),
     tools: t('工具'),
     'tools.ai': t('AI 制卡'),
-    plugins: t('插件'),
   })
   const order: Record<string, number> = {
     general: 0,
@@ -90,7 +85,6 @@ const categories = computed(() => {
     connections: 20,
     workspace: 30,
     tools: 40,
-    plugins: 1000,
   }
   const rank = (key: string) => (Object.hasOwn(order, key) ? order[key]! : 50)
   return roots.sort((first, second) => rank(first.key) - rank(second.key))
@@ -115,34 +109,22 @@ watch(navigation, (items) => {
 function selectCategory(key: string) {
   selected.value = key
   focusOwner.value = undefined
-  detailsPlugin.value = undefined
 }
-async function moveCategory(event: KeyboardEvent) {
-  const items = navigation.value
-  if (
-    !items.length ||
-    !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)
-  )
-    return
-  event.preventDefault()
-  const index = items.findIndex(({ node }) => node.key === selected.value)
-  const current = items[index]
-  let next = index
-  if (event.key === 'Home') next = 0
-  else if (event.key === 'End') next = items.length - 1
-  else if (event.key === 'ArrowUp') next = (index + items.length - 1) % items.length
-  else if (event.key === 'ArrowDown') next = (index + 1) % items.length
-  else if (event.key === 'ArrowRight' && current?.node.children.length) next = index + 1
-  else if (event.key === 'ArrowLeft' && current?.depth) {
-    const parent = current.node.key.split('.').slice(0, -1).join('.')
-    next = items.findIndex(({ node }) => node.key === parent)
-  }
-  selectCategory(items[next]?.node.key ?? items[0]!.node.key)
-  await nextTick()
-  categoryNav.value
-    ?.querySelector<HTMLButtonElement>(`[data-category-key="${selected.value}"]`)
-    ?.focus()
-}
+let handledTarget: string | undefined
+watch(
+  [() => props.focusPlugin, entries],
+  ([id]) => {
+    if (!id) {
+      handledTarget = undefined
+      return
+    }
+    if (id !== handledTarget && entries.value.some((entry) => entry.pluginId === id)) {
+      configurePlugin(id)
+      handledTarget = id
+    }
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -154,37 +136,19 @@ async function moveCategory(event: KeyboardEvent) {
       </div>
     </header>
     <div class="settings-layout">
-      <nav
-        ref="categoryNav"
+      <BranchedMenu
         class="settings-categories"
-        role="tablist"
-        aria-orientation="vertical"
-        :aria-label="t('设置分类')"
-        @keydown="moveCategory"
-      >
-        <button
-          v-for="{ node, depth } in navigation"
-          :id="`${domId}-category-${node.key}`"
-          :key="node.key"
-          type="button"
-          role="tab"
-          :data-category-key="node.key"
-          :title="node.title"
-          :aria-selected="selected === node.key"
-          :tabindex="selected === node.key ? 0 : -1"
-          :aria-controls="selected === node.key ? `${domId}-content` : undefined"
-          :style="{ '--category-depth': depth }"
-          @click="selectCategory(node.key)"
-        >
-          <span v-if="node.children.length" class="settings-category-branch" aria-hidden="true"
-            >⌄</span
-          ><span>{{ node.title }}</span>
-        </button>
-      </nav>
+        :items="categories"
+        :model-value="selected"
+        :label="t('设置分类')"
+        :id-prefix="domId"
+        :controls="`${domId}-content`"
+        @update:model-value="selectCategory"
+      />
       <section
         :id="`${domId}-content`"
         class="settings-panel"
-        role="tabpanel"
+        role="group"
         :aria-labelledby="`${domId}-category-${selected}`"
       >
         <SettingsContent
@@ -220,48 +184,6 @@ async function moveCategory(event: KeyboardEvent) {
   padding: 0.125rem;
   min-width: 0;
 }
-.settings-categories button {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  width: 100%;
-  min-height: 2.75rem;
-  padding: 0.625rem 0.625rem 0.625rem calc(0.625rem + var(--category-depth) * 0.875rem);
-  border: 1px solid transparent;
-  border-radius: var(--ui-control-radius);
-  background: transparent;
-  color: var(--muted);
-  font-family: var(--font-ui);
-  font-size: var(--font-size-control);
-  line-height: var(--line-height-ui);
-  text-align: left;
-  overflow-wrap: anywhere;
-  cursor: pointer;
-}
-.settings-categories button:hover {
-  background: var(--ui-surface-subtle);
-  color: var(--text);
-}
-.settings-categories button[aria-selected='true'] {
-  background: var(--sage);
-  border-color: #bdcbb6;
-  color: var(--green);
-  font-weight: var(--font-weight-semibold);
-}
-.settings-categories button:focus-visible {
-  outline: 2px solid var(--ui-control-focus);
-  outline-offset: -2px;
-}
-.settings-category-branch {
-  flex: 0 0 auto;
-  font-size: var(--font-size-meta);
-}
-.settings-categories button > span:last-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .settings-panel {
   min-width: 0;
 }
@@ -275,10 +197,6 @@ async function moveCategory(event: KeyboardEvent) {
   .settings-layout {
     grid-template-columns: 6rem minmax(0, 1fr);
     gap: 0.75rem;
-  }
-  .settings-categories button {
-    padding-right: 0.375rem;
-    padding-left: calc(0.375rem + var(--category-depth) * 0.5rem);
   }
 }
 </style>

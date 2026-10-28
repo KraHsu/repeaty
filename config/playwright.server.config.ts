@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 export default defineConfig({
   testDir: '../tests/server',
-  outputDir: '../test-results',
+  outputDir: '../test-results/server',
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
   reporter: process.env.CI

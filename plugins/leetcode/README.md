@@ -9,7 +9,7 @@
 3. 复习时选择编程语言，编写代码并提交。判题结果会保存在当前学习库中。
 4. 选择手动评分或按判题结果自动评分。未确认的提交可以关联原始提交编号后继续查询，不会因此重复提交。
 
-读取公开题目不需要配置账号。提交判题需要先在「设置 → 连接 → LeetCode」保存对应站点的登录信息。也可在插件管理页点击「配置插件」直接进入。
+读取公开题目不需要配置账号。提交判题需要先在「设置 → 连接 → LeetCode」保存对应站点的登录信息。也可在主侧栏「插件」中点击「配置插件」直接进入。
 
 ## 配置登录信息
 
@@ -35,7 +35,7 @@
 
 ## 开发
 
-本插件是独立项目。运行预构建包不需要 Node.js；修改源码时需要 Node.js 24.15+ 和公开的 `@repeaty/plugin-api` SDK。
+本插件 1.6.0 是独立项目，使用公开的 `@repeaty/plugin-api` SDK 1.6.0。Nuxt UI 控件与 Vue 运行时由宿主提供，插件包不重复打入这些库。运行预构建包不需要 Node.js；修改源码时需要 Node.js 24.15+。
 
 在仓库根目录安装依赖后，进入此插件目录运行：
 
@@ -46,6 +46,6 @@ npm run build
 npm run dev
 ```
 
-安装 `dist/leetcode.repeaty-plugin` 即可更新插件，无需重编译 Repeaty。也可通过 `npm run dev -- --outdir /path/to/test-library/.repeaty/plugins/leetcode` 输出到专用测试学习库，再在插件管理页重新扫描并确认启用。
+在主侧栏「插件」中安装 `dist/leetcode.repeaty-plugin` 即可更新插件，无需重编译 Repeaty。也可通过 `npm run dev -- --outdir /path/to/test-library/.repeaty/plugins/leetcode` 输出到专用测试学习库，再在该页面重新扫描并确认启用。
 
 独立 SDK 的安装方式见 [插件开发文档](https://github.com/KraHsu/repeaty/blob/main/docs/PLUGINS.md#独立开发与构建)。

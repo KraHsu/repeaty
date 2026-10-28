@@ -46,38 +46,16 @@ useEventListener(window, 'scroll', position, { passive: true, capture: true })
   pointer-events: none;
 }
 .notification {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  border: 1px solid #cedac7;
-  padding: 0.8rem 1rem;
-  background: #f4f8ef;
-  color: #365b42;
-  border-radius: 10px;
-  box-shadow: 0 8px 28px #20351b1c;
-  font-size: var(--font-size-body);
-  line-height: var(--line-height-ui);
   pointer-events: auto;
 }
 .notification > svg {
   flex-shrink: 0;
 }
-.notification > span {
-  flex: 1;
+.notification [data-slot='description'] {
   overflow-wrap: anywhere;
 }
 .notification .icon-button {
   flex-shrink: 0;
-}
-.notification.warning {
-  background: #fff8e8;
-  border-color: #e2c894;
-  color: #775612;
-}
-.notification.error {
-  background: #fff1ec;
-  border-color: #e8bba9;
-  color: #914c36;
 }
 .inline-notifications {
   display: grid;

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { vUiButton } from '../../components/ui'
+import { UiButton } from '../../components/ui'
 import { t } from '../../i18n'
 import AppModal from '../../components/AppModal.vue'
 import { useApplication } from '../context'
@@ -25,21 +25,11 @@ const { busy, modal, notice, pendingBackup, pendingSnapshot, restoreSnapshot, re
       {{ t('还包含 {count} 份学习材料及其原文快照。', { count: pendingSnapshot.sources.length }) }}
     </p>
     <div class="form-actions">
-      <button
-        v-ui-button="'secondary'"
-        class="button secondary"
-        :disabled="busy"
-        @click="modal = null"
-      >
-        {{ t('取消') }}</button
-      ><button
-        v-ui-button="'primary'"
-        class="button primary"
-        :disabled="busy"
-        @click="restoreSnapshot"
-      >
+      <UiButton variant="secondary" type="submit" :disabled="busy" @click="modal = null">
+        {{ t('取消') }}</UiButton
+      ><UiButton variant="primary" type="submit" :disabled="busy" @click="restoreSnapshot">
         {{ t('确认恢复快照') }}
-      </button>
+      </UiButton>
     </div></AppModal
   >
   <AppModal
@@ -68,21 +58,11 @@ const { busy, modal, notice, pendingBackup, pendingSnapshot, restoreSnapshot, re
       {{ t('恢复会替换当前所有卡组、卡片和复习进度。建议先导出当前数据作为备份。') }}
     </p>
     <div class="form-actions">
-      <button
-        v-ui-button="'secondary'"
-        class="button secondary"
-        :disabled="busy"
-        @click="modal = null"
-      >
-        {{ t('取消') }}</button
-      ><button
-        v-ui-button="'primary'"
-        class="button primary"
-        :disabled="busy"
-        @click="restoreBackup"
-      >
+      <UiButton variant="secondary" type="submit" :disabled="busy" @click="modal = null">
+        {{ t('取消') }}</UiButton
+      ><UiButton variant="primary" type="submit" :disabled="busy" @click="restoreBackup">
         {{ t('替换并恢复') }}
-      </button>
+      </UiButton>
     </div></AppModal
   >
 </template>

@@ -1,13 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, useId, watch } from 'vue'
-import {
-  SettingSection,
-  SettingField,
-  UiButton,
-  UiNotice,
-  UiStatus,
-  vUiButton,
-} from '@repeaty/plugin-api'
+import { SettingSection, SettingField, UiButton, UiNotice, UiStatus } from '@repeaty/plugin-api'
 import { t, locale } from './i18n'
 import { bridgeRequest, BridgeError, configureCredentials, pluginRequest } from './bridge'
 import {
@@ -232,8 +225,8 @@ onUnmounted(() => {
     :aria-label="t(siteName)"
   >
     <template #actions>
-      <a v-ui-button="'ghost'" :href="`https://${site}/`" target="_blank" rel="noopener noreferrer"
-        >{{ t('打开力扣网站') }} ↗</a
+      <UiButton variant="ghost" :href="`https://${site}/`" target="_blank" rel="noopener noreferrer"
+        >{{ t('打开力扣网站') }} ↗</UiButton
       >
       <UiButton :disabled="loading || saving || checking" @click="refresh">
         {{ t('刷新状态') }}

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick, ref, type Component } from 'vue'
+import ui from '@nuxt/ui/vue-plugin'
 import SettingField from './SettingField.vue'
 import SettingGroup from './SettingGroup.vue'
 import UiButton from './UiButton.vue'
@@ -16,6 +17,7 @@ function mount(component: Component, props: Record<string, unknown>, content?: (
   const app = createApp({
     render: () => h(component, props, content ? { default: content } : undefined),
   })
+  app.use(ui)
   app.mount(host)
   cleanup.add(() => {
     app.unmount()
@@ -55,7 +57,7 @@ afterEach(() => {
   cleanup.clear()
 })
 
-it('connects visible labels, help and errors to native controls without sharing generated ids', () => {
+it('connects visible labels, help and errors to native controls without sharing generated ids', async () => {
   const host = mount(
     {
       render: () =>
@@ -71,15 +73,15 @@ it('connects visible labels, help and errors to native controls without sharing 
     },
     {},
   )
+  await nextTick()
   const [input, second] = host.querySelectorAll('input')
   expect(input!.id).not.toBe(second!.id)
   expect(input!.labels?.[0]?.textContent).toBe('Display name')
   expect(input!.getAttribute('aria-invalid')).toBe('true')
   const described = input!.getAttribute('aria-describedby')!.split(' ')
-  expect(described.map((id) => host.querySelector(`[id="${id}"]`)?.textContent)).toEqual([
-    'Visible to you',
-    'Required',
-  ])
+  expect(described.map((id) => host.querySelector(`[id="${id}"]`)?.textContent)).toEqual(
+    expect.arrayContaining(['Visible to you', 'Required']),
+  )
   expect(host.querySelector('[role="alert"]')?.textContent).toBe('Required')
   expect(second!.labels?.[0]?.textContent).toBe('Other field')
 })
@@ -132,7 +134,7 @@ it('commits valid numbers once and restores empty, out-of-range or fractional in
   expect(value.value).toBe(12)
 })
 
-it('previews slider movement and submits only the finished value', async () => {
+it('commits an accessible keyboard slider adjustment and exposes its formatted value', async () => {
   const { host, updates } = field({
     type: 'range',
     label: 'Volume',
@@ -142,19 +144,22 @@ it('previews slider movement and submits only the finished value', async () => {
     step: 5,
     unit: '%',
   })
-  const input = host.querySelector('input')!
-  await edit(input, '35', 'input')
-  expect(host.querySelector('output')?.textContent).toBe('35%')
-  expect(input.getAttribute('aria-valuetext')).toBe('35 %')
-  expect(updates).not.toHaveBeenCalled()
-  await edit(input, '35', 'change')
-  expect(updates).toHaveBeenCalledExactlyOnceWith(35)
+  await nextTick()
+  const slider = host.querySelector<HTMLElement>('[role="slider"]')!
+  expect(slider.getAttribute('aria-label')).toBe('Volume')
+  slider.focus()
+  slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+  await nextTick()
+  expect(host.querySelector('output')?.textContent).toBe('10%')
+  expect(slider.getAttribute('aria-valuetext')).toBe('10 %')
+  await vi.waitFor(() => expect(updates).toHaveBeenCalledExactlyOnceWith(10))
 })
 
-it('uses native binary controls and never publishes edits to readonly fields', async () => {
+it('uses Nuxt binary controls and never publishes edits to readonly fields', async () => {
   const enabled = field({ type: 'switch', label: 'Enabled', modelValue: false })
-  const input = enabled.host.querySelector('input')!
-  expect(input.getAttribute('role')).toBe('switch')
+  await nextTick()
+  const input = enabled.host.querySelector('[role="switch"]')!
+  expect(input.getAttribute('aria-checked')).toBe('false')
   enabled.host.querySelector<HTMLLabelElement>('label')!.click()
   await nextTick()
   expect(enabled.updates).toHaveBeenCalledExactlyOnceWith(true)
@@ -173,28 +178,38 @@ it('uses native binary controls and never publishes edits to readonly fields', a
   expect(readonly.host.querySelector('.ui-setting-field--mono')).not.toBeNull()
 })
 
-it('selects options and exposes native radio and checkbox groups with disabled options', async () => {
+it('selects Nuxt options and exposes accessible radio and checkbox groups with disabled options', async () => {
   const options = [
     { value: 'a', label: 'Alpha' },
     { value: 'b', label: 'Beta' },
     { value: 'c', label: 'Unavailable', disabled: true },
   ]
   const selected = field({ type: 'select', label: 'Language', modelValue: 'a', options })
-  const select = selected.host.querySelector('select')!
-  expect(select.labels?.[0]?.textContent).toBe('Language')
-  await edit(select, 'b', 'change')
-  expect(selected.updates).toHaveBeenCalledExactlyOnceWith('b')
-  expect(select.options[2]!.disabled).toBe(true)
+  await nextTick()
+  const select = selected.host.querySelector<HTMLButtonElement>('[role="combobox"]')!
+  expect(selected.host.querySelector(`label[for="${select.id}"]`)?.textContent).toBe('Language')
+  select.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+  await vi.waitFor(() => expect(document.querySelectorAll('[role="option"]')).toHaveLength(3))
+  const selectOptions = [...document.querySelectorAll<HTMLElement>('[role="option"]')]
+  expect(selectOptions[2]!.getAttribute('aria-disabled')).toBe('true')
+  selectOptions[1]!.focus()
+  selectOptions[1]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await nextTick()
+  await vi.waitFor(() => expect(selected.updates).toHaveBeenCalledExactlyOnceWith('b'))
   const radios = field({ type: 'radio', label: 'Method', modelValue: 'a', options })
-  const radioInputs = radios.host.querySelectorAll<HTMLInputElement>('input')
-  expect(radios.host.querySelector('legend')!.textContent).toBe('Method')
-  expect(radioInputs[0]!.name).toBe(radioInputs[1]!.name)
+  await nextTick()
+  const radioInputs = radios.host.querySelectorAll<HTMLButtonElement>('[role="radio"]')
+  expect(radios.host.querySelector('[role="radiogroup"]')?.getAttribute('aria-label')).toBe(
+    'Method',
+  )
   radioInputs[1]!.click()
   await nextTick()
   expect(radios.updates).toHaveBeenCalledExactlyOnceWith('b')
   expect(radioInputs[2]!.disabled).toBe(true)
   const multiple = field({ type: 'multiselect', label: 'Days', modelValue: ['a'], options })
-  const checks = multiple.host.querySelectorAll<HTMLInputElement>('input')
+  await nextTick()
+  const checks = multiple.host.querySelectorAll<HTMLButtonElement>('[role="checkbox"]')
+  expect(checks[2]!.disabled).toBe(true)
   checks[1]!.click()
   await nextTick()
   expect(multiple.value.value).toEqual(['a', 'b'])
@@ -213,6 +228,35 @@ it('keeps plain text drafts until change when explicitly requested', async () =>
   expect(value.value).toBe('New')
 })
 
+it('clears a reactive validation error after a committed text change', async () => {
+  const value = ref('example')
+  const updates = vi.fn((next: SettingValue) => {
+    value.value = String(next)
+  })
+  const host = mount(
+    {
+      setup: () => () =>
+        h(SettingField, {
+          label: 'Contact email',
+          modelValue: value.value,
+          commit: 'change',
+          error: value.value.includes('@') ? '' : 'Enter an email address containing @.',
+          'onUpdate:modelValue': updates,
+        }),
+    },
+    {},
+  )
+  const input = host.querySelector('input')!
+  await nextTick()
+  expect(input.getAttribute('aria-invalid')).toBe('true')
+  await edit(input, 'demo@example.invalid', 'input')
+  expect(updates).not.toHaveBeenCalled()
+  await edit(input, 'demo@example.invalid', 'change')
+  expect(updates).toHaveBeenCalledExactlyOnceWith('demo@example.invalid')
+  expect(input.getAttribute('aria-invalid')).not.toBe('true')
+  expect(host.querySelector('[role=alert]')).toBeNull()
+})
+
 it('provides named groups and non-submitting action buttons with a native busy state', () => {
   const host = mount(
     SettingGroup,
@@ -227,13 +271,14 @@ it('provides named groups and non-submitting action buttons with a native busy s
   expect(button.type).toBe('button')
   expect(button.disabled).toBe(true)
   expect(button.getAttribute('aria-busy')).toBe('true')
-  expect(button.classList.contains('primary')).toBe(true)
+  expect(button.dataset.variant).toBe('primary')
 })
 
-it('names settings sections without overriding an explicit accessible name', () => {
+it('names settings sections without overriding an explicit accessible name', async () => {
   const host = mount(SettingSection, { title: 'Account', description: 'Choose a site' }, () =>
     h(SettingField, { label: 'Session', modelValue: '' }),
   )
+  await nextTick()
   const section = host.querySelector('section')!
   expect(host.querySelector(`#${section.getAttribute('aria-labelledby')}`)?.textContent).toBe(
     'Account',
@@ -260,7 +305,7 @@ it('distinguishes persistent notes from live feedback and retains caller-owned s
     {},
   )
   expect(host.querySelector('.ui-notice')?.getAttribute('role')).toBe('note')
-  expect(host.querySelector('.ui-notice__title')?.textContent).toBe('Connection')
+  expect(host.querySelector('.ui-notice [data-slot="title"]')?.textContent).toBe('Connection')
   tone.value = 'error'
   await nextTick()
   expect(host.querySelector('[role=alert]')?.textContent).toContain('Network unavailable')

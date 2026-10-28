@@ -1,19 +1,12 @@
 <script setup lang="ts">
-import { vUiButton } from './ui'
+import UDropdownMenu, { type DropdownMenuItem } from '@nuxt/ui/components/DropdownMenu.vue'
+import UProgress from '@nuxt/ui/components/Progress.vue'
+import { UiButton } from './ui'
 import { t, msg } from '../i18n'
 import { useNotifications } from '../notifications'
 
 import { defineAsyncComponent, computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import {
-  ArrowLeft,
-  Check,
-  CornerDownLeft,
-  RotateCcw,
-  Ellipsis,
-  Pencil,
-  Plus,
-  Trash2,
-} from '@lucide/vue'
+import { ArrowLeft, Check, CornerDownLeft, RotateCcw, Ellipsis } from '@lucide/vue'
 import { shortcutBlocked } from '../shortcuts'
 import type { Operation } from '../core/operations'
 import {
@@ -86,7 +79,7 @@ const currentOrigin = computed(() =>
 )
 const completed = ref(0)
 const revision = ref(0)
-const menu = ref<HTMLDetailsElement>()
+const menuOpen = ref(false)
 const currentId = ref<string>()
 const automatic = computed(() => questionState.assessment?.mode === 'automatic')
 const suggestedName = computed(
@@ -124,6 +117,53 @@ const cardHistory = computed(() => {
   }
 })
 const questionState = reactive<QuestionState>({ allowedGrades: [], busy: false })
+const actionsLocked = computed(
+  () => props.busy || props.editing || questionState.busy || grading.value,
+)
+const menuItems = computed<DropdownMenuItem[]>(() => [
+  {
+    label: t('添加'),
+    icon: 'i-lucide-plus',
+    kbds: ['A'],
+    disabled: actionsLocked.value,
+    onSelect: addCurrent,
+  },
+  {
+    label: t('编辑'),
+    icon: 'i-lucide-pencil',
+    kbds: ['E'],
+    disabled: actionsLocked.value,
+    onSelect: editCurrent,
+  },
+  {
+    label: t('删除'),
+    icon: 'i-lucide-trash-2',
+    kbds: ['Ctrl', 'Del'],
+    color: 'error',
+    disabled: actionsLocked.value,
+    onSelect: deleteCurrent,
+  },
+  ...(!practice.value
+    ? [
+        {
+          label: t('今天暂缓'),
+          kbds: ['B'],
+          disabled: actionsLocked.value,
+          onSelect: () => {
+            void changeCurrent('bury')
+          },
+        },
+        {
+          label: t('暂停此卡'),
+          kbds: ['S'],
+          disabled: actionsLocked.value,
+          onSelect: () => {
+            void changeCurrent('suspend')
+          },
+        },
+      ]
+    : []),
+])
 watch(
   () => props.busy || props.editing || questionState.busy || grading.value,
   (value) => emit('activity', value),
@@ -232,17 +272,17 @@ defineExpose({
 })
 function addCurrent() {
   if (!current.value || props.busy || props.editing || questionState.busy || grading.value) return
-  if (menu.value) menu.value.open = false
+  menuOpen.value = false
   emit('add', current.value)
 }
 function deleteCurrent() {
   if (!current.value || props.busy || props.editing || questionState.busy || grading.value) return
-  if (menu.value) menu.value.open = false
+  menuOpen.value = false
   emit('delete', current.value)
 }
 function editCurrent() {
   if (!current.value || props.busy || props.editing || questionState.busy || grading.value) return
-  if (menu.value) menu.value.open = false
+  menuOpen.value = false
   emit('edit', current.value)
 }
 watch(queue, (cards) => {
@@ -309,7 +349,7 @@ async function undoLast() {
 }
 async function changeCurrent(action: 'suspend' | 'bury') {
   if (props.busy || props.editing || grading.value || questionState.busy || !current.value) return
-  if (menu.value) menu.value.open = false
+  menuOpen.value = false
   grading.value = true
   try {
     if (await props.change([current.value.id], action)) {
@@ -369,7 +409,7 @@ function keydown(event: KeyboardEvent) {
   if (!automatic.value && [1, 2, 3, 4].includes(value) && revealed.value) void grade(value as Grade)
   if (event.key === 'Escape') {
     event.preventDefault()
-    if (menu.value?.open) menu.value.open = false
+    if (menuOpen.value) menuOpen.value = false
     else emit('close')
   }
 }
@@ -391,14 +431,14 @@ onUnmounted(() => {
 <template>
   <section class="review-space">
     <header v-if="!mixedCardId" class="review-header">
-      <button
-        v-ui-button="'ghost'"
+      <UiButton
+        variant="ghost"
         class="text-button"
         :disabled="busy || questionState.busy || grading"
         @click="emit('close')"
       >
         <ArrowLeft :size="17" /> {{ study ? t('结束专项练习') : t('结束复习') }}
-      </button>
+      </UiButton>
       <span class="muted">{{
         t('已复习 {p0} 次 · 当前待学 {p1} 张', { p0: completed, p1: queue.length })
       }}</span>
@@ -412,89 +452,60 @@ onUnmounted(() => {
         })
       }}
     </p>
-    <div v-if="!mixedCardId" class="review-progress">
-      <span
-        :style="{
-          width: `${Math.min(100, (completed / Math.max(startedWith, completed + queue.length, 1)) * 100)}%`,
-        }"
-      />
-    </div>
+    <UProgress
+      v-if="!mixedCardId"
+      class="mt-5"
+      :model-value="
+        Math.min(100, (completed / Math.max(startedWith, completed + queue.length, 1)) * 100)
+      "
+      :aria-label="t('复习')"
+    />
 
     <div class="review-tools">
-      <details v-if="current" ref="menu" class="review-menu">
-        <summary v-ui-button="{ variant: 'ghost', icon: true }" :aria-label="t('更多操作')">
+      <UDropdownMenu
+        v-if="current"
+        v-model:open="menuOpen"
+        :items="menuItems"
+        :content="{
+          align: 'start',
+          onEscapeKeyDown: (event: KeyboardEvent) => event.stopPropagation(),
+        }"
+      >
+        <UiButton
+          variant="ghost"
+          icon
+          class="review-menu"
+          :aria-label="t('更多操作')"
+          :disabled="actionsLocked"
+        >
           <Ellipsis :size="22" />
-        </summary>
-        <div>
-          <button
-            v-ui-button="'ghost'"
-            class="text-button"
-            :disabled="busy || editing || questionState.busy || grading"
-            @click="addCurrent"
-          >
-            <Plus :size="17" />{{ t('添加') }} <kbd>A</kbd>
-          </button>
-          <button
-            v-ui-button="'ghost'"
-            class="text-button"
-            :disabled="busy || editing || questionState.busy || grading"
-            @click="editCurrent"
-          >
-            <Pencil :size="17" />{{ t('编辑') }} <kbd>E</kbd>
-          </button>
-          <button
-            v-ui-button="'danger'"
-            class="text-button danger"
-            :disabled="busy || editing || questionState.busy || grading"
-            @click="deleteCurrent"
-          >
-            <Trash2 :size="17" />{{ t('删除') }} <kbd>Ctrl / ⌘ Del</kbd>
-          </button>
-          <template v-if="!practice">
-            <button
-              v-ui-button="'ghost'"
-              class="text-button"
-              :disabled="busy || editing || questionState.busy || grading"
-              @click="changeCurrent('bury')"
-            >
-              {{ t('今天暂缓') }} <kbd>B</kbd>
-            </button>
-            <button
-              v-ui-button="'ghost'"
-              class="text-button"
-              :disabled="busy || editing || questionState.busy || grading"
-              @click="changeCurrent('suspend')"
-            >
-              {{ t('暂停此卡') }} <kbd>S</kbd>
-            </button>
-          </template>
-        </div>
-      </details>
-      <button
-        v-ui-button="'ghost'"
+        </UiButton>
+      </UDropdownMenu>
+      <UiButton
+        variant="ghost"
         v-if="!mixedCardId"
         class="text-button"
         :disabled="busy || questionState.busy || grading || !canUndo"
         @click="undoLast"
       >
         {{ t('撤销上次评分') }}
-      </button>
+      </UiButton>
       <template v-if="current && !practice"
-        ><button
-          v-ui-button="'ghost'"
+        ><UiButton
+          variant="ghost"
           class="text-button"
           :disabled="busy || questionState.busy || grading"
           @click="changeCurrent('bury')"
         >
-          {{ t('今天暂缓') }}</button
-        ><button
-          v-ui-button="'ghost'"
+          {{ t('今天暂缓') }}</UiButton
+        ><UiButton
+          variant="ghost"
           class="text-button"
           :disabled="busy || questionState.busy || grading"
           @click="changeCurrent('suspend')"
         >
           {{ t('暂停此卡') }}
-        </button></template
+        </UiButton></template
       >
     </div>
     <template v-if="current && plugin">
@@ -548,13 +559,8 @@ onUnmounted(() => {
           />
         </div>
         <div v-if="revealed && currentSource" class="review-source">
-          <button
-            v-ui-button="'ghost'"
-            type="button"
-            class="text-button"
-            @click="sourceOpen = true"
-          >
-            {{ t('查看原文') }} · {{ currentSource.title }}</button
+          <UiButton variant="ghost" type="button" class="text-button" @click="sourceOpen = true">
+            {{ t('查看原文') }} · {{ currentSource.title }}</UiButton
           ><SourceContext
             v-if="sourceOpen"
             :source="currentSource"
@@ -571,14 +577,14 @@ onUnmounted(() => {
         </div>
       </article>
       <div v-if="!revealed" class="reveal-action">
-        <button
-          v-ui-button="'primary'"
+        <UiButton
+          variant="primary"
           class="button primary"
           :disabled="questionState.busy"
           @click="revealed = true"
         >
           {{ t(current.type === 'plugin' ? '结束作答并查看答案' : '显示答案')
-          }}<CornerDownLeft :size="17" /></button
+          }}<CornerDownLeft :size="17" /></UiButton
         ><span class="muted">{{ t('或按空格键') }}</span>
       </div>
       <div v-else class="grade-area">
@@ -587,8 +593,8 @@ onUnmounted(() => {
           <p v-if="!questionState.suggestedGrade">
             {{ t('尚无判题结果。可以继续作答，或将本次记为“重来”。') }}
           </p>
-          <button
-            v-ui-button="'primary'"
+          <UiButton
+            variant="primary"
             class="button primary"
             :disabled="
               busy ||
@@ -598,11 +604,12 @@ onUnmounted(() => {
             @click="grade(questionState.suggestedGrade ?? 1)"
           >
             {{ t('保存评分：{grade}', { grade: t(suggestedName || '重来') }) }}
-          </button>
+          </UiButton>
         </template>
         <div v-else class="grade-buttons">
-          <button
-            v-ui-button="{ variant: 'rating', tone: item.class }"
+          <UiButton
+            variant="rating"
+            :tone="item.class"
             v-for="item in grades"
             :key="item.value"
             :class="['grade-button', item.class]"
@@ -623,7 +630,7 @@ onUnmounted(() => {
                 ? t('不改进度')
                 : preview && intervalLabel(preview[item.value].card.due, clock)
             }}</strong>
-          </button>
+          </UiButton>
         </div>
       </div>
     </template>
@@ -666,44 +673,18 @@ onUnmounted(() => {
           })
         }}
       </p>
-      <button v-ui-button="'primary'" class="button primary" @click="emit('close')">
+      <UiButton variant="primary" class="button primary" @click="emit('close')">
         {{ t('返回') }}<ArrowLeft :size="16" />
-      </button>
-      <button v-ui-button="'ghost'" v-if="!study" class="text-button" @click="selectNext">
+      </UiButton>
+      <UiButton variant="ghost" v-if="!study" class="text-button" @click="selectNext">
         <RotateCcw :size="15" />{{ t('检查到期卡片') }}
-      </button>
+      </UiButton>
     </div>
   </section>
 </template>
 <style scoped>
 .review-menu {
-  position: relative;
   margin-right: auto;
-}
-.review-menu summary {
-  list-style: none;
-}
-.review-menu summary::-webkit-details-marker {
-  display: none;
-}
-.review-menu > div {
-  position: absolute;
-  z-index: 10;
-  top: calc(100% + 0.4rem);
-  left: 0;
-  min-width: 240px;
-  max-width: calc(100vw - 3rem);
-  padding: 0.5rem;
-  background: var(--ui-surface);
-  border: 1px solid var(--ui-control-border);
-  border-radius: var(--ui-control-radius);
-  box-shadow: 0 8px 24px #20351b18;
-}
-.review-menu button {
-  display: flex;
-  gap: 0.7rem;
-  width: 100%;
-  justify-content: flex-start;
 }
 kbd {
   margin-left: auto;

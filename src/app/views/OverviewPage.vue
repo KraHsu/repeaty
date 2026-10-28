@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { vUiButton } from '../../components/ui'
+import { UiButton } from '../../components/ui'
 import { t } from '../../i18n'
 import {
   ArrowRight,
@@ -46,9 +46,9 @@ const {
       <div>
         <h1>{{ t('学习概览') }}</h1>
       </div>
-      <button v-ui-button class="button secondary" :disabled="busy" @click="editCard()">
+      <UiButton variant="secondary" type="submit" :disabled="busy" @click="editCard()">
         <Plus :size="17" />{{ t('添加卡片') }}
-      </button>
+      </UiButton>
     </header>
     <div class="dashboard-top">
       <section class="daily-card">
@@ -84,9 +84,9 @@ const {
           <p v-else>
             {{ t('添加卡片后即可开始学习。') }}
           </p>
-          <button
-            v-ui-button
-            class="button dark"
+          <UiButton
+            variant="primary"
+            type="submit"
             :disabled="busy"
             @click="library.cards.length ? startReview() : editCard()"
           >
@@ -94,7 +94,7 @@ const {
               due.length ? t('开始复习') : library.cards.length ? t('查看复习安排') : t('添加卡片')
             }}
             <ArrowRight :size="17" />
-          </button>
+          </UiButton>
         </div>
         <div class="card-art" aria-hidden="true">
           <div class="art-card art-back" />
@@ -155,26 +155,26 @@ const {
         </p>
       </div>
       <div class="daily-reading-actions">
-        <button
-          v-ui-button
-          class="button secondary"
+        <UiButton
+          variant="secondary"
+          type="submit"
           :disabled="busy || (!due.length && !readyReading.length)"
           @click="modal = 'mixed'"
         >
           {{ t('开始混合学习') }}
-        </button>
-        <button
-          v-ui-button
+        </UiButton>
+        <UiButton
+          variant="primary"
+          type="submit"
           v-if="readyReading.length"
-          class="button primary"
           :disabled="busy"
           @click="startReading"
         >
           {{ t('开始今日阅读') }}<ArrowRight :size="17" />
-        </button>
-        <button v-ui-button class="button secondary" :disabled="busy" @click="navigate('sources')">
+        </UiButton>
+        <UiButton variant="secondary" type="submit" :disabled="busy" @click="navigate('sources')">
           {{ t('管理学习材料') }}
-        </button>
+        </UiButton>
       </div>
     </section>
     <div class="stats-strip">
@@ -213,30 +213,33 @@ const {
         <h2>
           {{ t('我的卡组') }}<span>{{ library.decks.length }}</span>
         </h2>
-        <button v-ui-button class="text-button" :disabled="busy" @click="editDeck()">
+        <UiButton variant="ghost" type="submit" :disabled="busy" @click="editDeck()">
           <Plus :size="17" />{{ t('创建卡组') }}
-        </button>
+        </UiButton>
       </div>
       <div v-if="library.decks.length" class="deck-grid">
         <article v-for="deck in library.decks" :key="deck.id" class="deck-card">
           <div class="deck-card-top">
-            <button
-              v-ui-button="{ variant: 'ghost', icon: true }"
+            <UiButton
+              v-bind="{ variant: 'ghost', icon: true }"
+              type="submit"
               :class="['deck-icon', deck.color]"
               :aria-label="t('打开卡组 {p0}', { p0: deck.name })"
               @click="openDeck(deck)"
             >
-              <Layers :size="22" /></button
-            ><button
-              v-ui-button="{ variant: 'ghost', icon: true }"
-              class="icon-button"
+              <Layers :size="22" /></UiButton
+            ><UiButton
+              v-bind="{ variant: 'ghost', icon: true }"
+              type="submit"
               :aria-label="t('编辑卡组 {p0}', { p0: deck.name })"
               @click="editDeck(deck)"
             >
               <Ellipsis :size="21" />
-            </button>
+            </UiButton>
           </div>
-          <button class="deck-title" @click="openDeck(deck)">{{ deck.name }}</button>
+          <UiButton variant="ghost" class="deck-title" @click="openDeck(deck)">{{
+            deck.name
+          }}</UiButton>
           <p v-if="deck.description">{{ deck.description }}</p>
           <DeckStatus :status="deckStates.get(deck.id)!" compact />
           <div class="deck-card-bottom">
@@ -245,19 +248,20 @@ const {
               <span :class="{ 'green-text': deckDue(deck.id) }">{{
                 t('{p0} 张待学', { p0: deckDue(deck.id) })
               }}</span></span
-            ><button
-              v-ui-button="{ variant: 'ghost', icon: true }"
-              class="icon-button deck-review"
+            ><UiButton
+              v-bind="{ variant: 'ghost', icon: true }"
+              type="submit"
+              class="deck-review"
               :aria-label="t('复习卡组 {p0}', { p0: deck.name })"
               @click="startReview(deck.id)"
             >
               <ArrowRight :size="18" />
-            </button>
+            </UiButton>
           </div>
         </article>
-        <button v-ui-button class="add-deck-tile" @click="editDeck()">
+        <UiButton variant="secondary" type="submit" class="add-deck-tile" @click="editDeck()">
           <Plus :size="24" /><span>{{ t('新建卡组') }}</span>
-        </button>
+        </UiButton>
       </div>
       <div v-else class="welcome-card">
         <div class="welcome-icon"><Layers :size="27" /></div>
@@ -266,16 +270,16 @@ const {
           <p>{{ t('创建自己的卡组，或添加入门卡组。') }}</p>
         </div>
         <div class="welcome-actions">
-          <button
-            v-ui-button
-            class="button secondary"
+          <UiButton
+            variant="secondary"
+            type="submit"
             :disabled="busy"
             @click="run(workspace.addSample, '入门卡组已添加')"
           >
-            {{ t('添加入门卡组') }}</button
-          ><button v-ui-button class="button primary" @click="editDeck()">
+            {{ t('添加入门卡组') }}</UiButton
+          ><UiButton variant="primary" type="submit" @click="editDeck()">
             <Plus :size="16" />{{ t('创建卡组') }}
-          </button>
+          </UiButton>
         </div>
       </div>
     </section>

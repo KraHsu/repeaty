@@ -4,7 +4,7 @@
 
 ## 使用与配置
 
-在插件管理页启用「答题历史」后，复习时会显示历史评分。进入「设置 → 学习 → 复习」可以调整，也可在插件管理页点击「配置插件」直接进入：
+在主侧栏「插件」中启用「答题历史」后，复习时会显示历史评分。进入「设置 → 学习 → 复习」可以调整，也可在插件页点击「配置插件」直接进入：
 
 - **显示条数**：展示最近 1–50 次已保存评分。
 - **翻面后才显示历史**：开启时，在显示答案后才展示评分记录；关闭时，题面阶段也会显示。
@@ -17,7 +17,7 @@
 
 ## 开发
 
-本插件是独立项目。运行预构建包不需要 Node.js；修改源码时需要 Node.js 24.15+ 和公开的 `@repeaty/plugin-api` SDK。
+本插件 1.6.0 是独立项目，使用公开的 `@repeaty/plugin-api` SDK 1.6.0。设置控件与 Vue 运行时由宿主提供，插件包不重复打入这些库。运行预构建包不需要 Node.js；修改源码时需要 Node.js 24.15+。
 
 在仓库根目录安装依赖后，进入此插件目录运行：
 
@@ -28,6 +28,6 @@ npm run build
 npm run dev
 ```
 
-安装 `dist/review-history.repeaty-plugin` 即可更新，无需重编译 Repeaty。开发输出可指向专用测试学习库的 `.repeaty/plugins/review-history/`，再通过插件管理页重新扫描并确认启用。
+在主侧栏「插件」中安装 `dist/review-history.repeaty-plugin` 即可更新，无需重编译 Repeaty。开发输出可指向专用测试学习库的 `.repeaty/plugins/review-history/`，再通过该页面重新扫描并确认启用。
 
 独立 SDK 的使用见 [插件开发文档](https://github.com/KraHsu/repeaty/blob/main/docs/PLUGINS.md#独立开发与构建)。

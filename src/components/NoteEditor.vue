@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { vUiButton, vUiControl } from './ui'
+import { UiSelect, UiButton, UiTextarea, UiInput, UiCheckbox, UiCollapsible } from './ui'
 import { desktopEdition } from '../edition'
 import { t, msg, LocalizedError, type DisplayMessage } from '../i18n'
 
@@ -42,7 +42,7 @@ const emit = defineEmits<{
   close: []
 }>()
 const editor = ref<HTMLFormElement>()
-const frontInput = ref<HTMLTextAreaElement>()
+const frontInput = ref<{ textareaRef?: HTMLTextAreaElement }>()
 const savedCount = ref(0)
 const form = reactive<NoteInput>({
   deckId:
@@ -115,19 +115,19 @@ function paste(event: ClipboardEvent, side: 'frontMedia' | 'backMedia') {
   attachFiles(files, side)
 }
 async function addCloze() {
-  if (props.busy || !frontInput.value) return
+  if (props.busy || !frontInput.value?.textareaRef) return
   try {
     const result = insertCloze(
       form.front,
-      frontInput.value.selectionStart,
-      frontInput.value.selectionEnd,
+      frontInput.value?.textareaRef.selectionStart,
+      frontInput.value?.textareaRef.selectionEnd,
     )
     form.front = result.text
     form.type = 'cloze'
     error.value = ''
     await nextTick()
-    frontInput.value.focus()
-    frontInput.value.setSelectionRange(result.cursor, result.cursor)
+    frontInput.value?.textareaRef.focus()
+    frontInput.value?.textareaRef.setSelectionRange(result.cursor, result.cursor)
   } catch (issue) {
     error.value = issue as Error
   }
@@ -141,7 +141,11 @@ function shortcut(event: KeyboardEvent) {
   // Enter/Shift+C while an IME composition is open belongs to the IME, not to the form.
   if (event.isComposing || event.keyCode === 229) return
   if (!(event.ctrlKey || event.metaKey) || event.repeat) return
-  if (event.shiftKey && event.key.toLowerCase() === 'c' && event.target === frontInput.value) {
+  if (
+    event.shiftKey &&
+    event.key.toLowerCase() === 'c' &&
+    event.target === frontInput.value?.textareaRef
+  ) {
     event.preventDefault()
     void addCloze()
   } else if (event.key === 'Enter') {
@@ -155,6 +159,7 @@ function remove(id: string, side: 'frontMedia' | 'backMedia') {
 }
 async function save(continueAdding = false) {
   if (props.busy || !editor.value?.reportValidity()) return
+  if (removed.value.length && !allowRemove.value) return
   error.value = ''
   if (form.type === 'plugin' && (!selectedPlugin.value || (form.plugin && !canReviewCard(form)))) {
     error.value = '请先在插件页面启用对应插件，再编辑或保存题目。'
@@ -197,7 +202,7 @@ async function save(continueAdding = false) {
       allowRemove.value = false
       savedCount.value++
       await nextTick()
-      frontInput.value?.focus()
+      frontInput.value?.textareaRef?.focus()
     } else emit('close')
   }
 }
@@ -233,57 +238,65 @@ async function keepDraft() {
         </p>
         <p v-if="error" class="import-warning" role="alert">{{ t(error) }}</p>
         <p v-if="saveDraft" class="form-note">{{ t('尚未完成时可先保存草稿，下次继续编辑。') }}</p>
-        <details v-if="form.excerpt" class="source-note-excerpt">
-          <summary v-ui-button="'ghost'">
-            {{ t('原文摘录') }} ·
-            {{ library.sources.find((source) => source.id === form.excerpt?.sourceId)?.title }}
-          </summary>
-          <blockquote>{{ form.excerpt.quote }}</blockquote>
-        </details>
+        <UiCollapsible :unmount-on-hide="false" v-if="form.excerpt" class="source-note-excerpt">
+          <template #default="{ open }"
+            ><UiButton type="button" variant="ghost" :aria-expanded="open">
+              {{ t('原文摘录') }} ·
+              {{ library.sources.find((source) => source.id === form.excerpt?.sourceId)?.title }}
+            </UiButton></template
+          ><template #content>
+            <blockquote>{{ form.excerpt.quote }}</blockquote>
+          </template></UiCollapsible
+        >
         <div class="note-metadata">
           <div class="form-field">
             <label for="note-type">{{ t('笔记类型') }}</label>
-            <select v-ui-control id="note-type" v-model="form.type">
-              <option
-                v-for="(label, key) in noteTypes"
-                :key="key"
-                :value="key"
-                :disabled="key === 'plugin' && (draft || !pluginChoices.length)"
-              >
-                {{ t(label) }}
-              </option>
-            </select>
+            <UiSelect
+              :items="[
+                ...Object.entries(noteTypes).map(([key, label]) => ({
+                  label: t(label),
+                  value: key,
+                  disabled: !!(key === 'plugin' && (draft || !pluginChoices.length)),
+                })),
+              ]"
+              id="note-type"
+              v-model="form.type"
+            ></UiSelect>
           </div>
           <div class="form-field">
             <label for="card-deck">{{ t('所属卡组') }}</label>
-            <select v-ui-control id="card-deck" v-model="form.deckId" required>
-              <option v-for="deck in library.decks" :key="deck.id" :value="deck.id">
-                {{ deck.name }}
-              </option>
-            </select>
+            <UiSelect
+              :items="[...library.decks.map((deck) => ({ label: deck.name, value: deck.id }))]"
+              id="card-deck"
+              name="deckId"
+              v-model="form.deckId"
+              required
+            ></UiSelect>
           </div>
           <div v-if="form.type !== 'plugin'" class="form-field">
             <label for="note-format">{{ t('内容格式') }}</label>
-            <select v-ui-control id="note-format" v-model="form.format">
-              <option value="markdown">{{ t('Markdown / 数学公式') }}</option>
-              <option value="plain">{{ t('纯文本') }}</option>
-            </select>
+            <UiSelect
+              :items="[
+                { label: t('Markdown / 数学公式'), value: 'markdown' },
+                { label: t('纯文本'), value: 'plain' },
+              ]"
+              id="note-format"
+              v-model="form.format"
+            ></UiSelect>
           </div>
           <div v-else class="form-field">
             <label for="question-plugin">{{ t('题目插件') }}</label>
-            <select
-              v-ui-control
+            <UiSelect
+              :items="[
+                ...(!selectedPlugin
+                  ? [{ label: selectedPluginId ?? '', value: selectedPluginId ?? '' }]
+                  : []),
+                ...pluginChoices.map((plugin) => ({ label: t(plugin.label), value: plugin.id })),
+              ]"
               id="question-plugin"
               v-model="selectedPluginId"
               @change="form.plugin = undefined"
-            >
-              <option v-if="!selectedPlugin" :value="selectedPluginId">
-                {{ selectedPluginId }}
-              </option>
-              <option v-for="plugin in pluginChoices" :key="plugin.id" :value="plugin.id">
-                {{ t(plugin.label) }}
-              </option>
-            </select>
+            ></UiSelect>
           </div>
         </div>
         <div v-if="form.type !== 'plugin'" class="editor-hints">
@@ -294,16 +307,16 @@ async function keepDraft() {
                 : t('图片可直接粘贴到输入框。')
             }}
           </p>
-          <button
-            v-ui-button="'ghost'"
+          <UiButton
+            variant="ghost"
             v-for="plugin in !draft ? pluginChoices.filter((entry) => entry.createLabel) : []"
             :key="plugin.id"
             type="button"
-            class="text-button plugin-shortcut"
+            class="plugin-shortcut"
             @click="selectQuestionPlugin(plugin.id)"
           >
             {{ t(plugin.createLabel!) }}
-          </button>
+          </UiButton>
         </div>
         <component
           v-if="form.type === 'plugin' && selectedPlugin?.editor"
@@ -319,20 +332,19 @@ async function keepDraft() {
           <section v-if="form.type !== 'plugin'" class="note-side">
             <div class="note-side-heading">
               <label for="card-front">{{ t('正面 · 问题') }}</label>
-              <button
-                v-ui-button="'ghost'"
+              <UiButton
+                variant="ghost"
                 type="button"
-                class="text-button cloze-button"
+                class="cloze-button"
                 :aria-label="t('选中文字挖空 · Ctrl / ⌘ + Shift + C')"
                 :title="t('选中文字挖空 · Ctrl / ⌘ + Shift + C')"
                 @mousedown.prevent
                 @click="addCloze"
               >
                 {{ t('挖空') }}
-              </button>
+              </UiButton>
             </div>
-            <textarea
-              v-ui-control
+            <UiTextarea
               id="card-front"
               ref="frontInput"
               v-model="form.front"
@@ -379,8 +391,7 @@ async function keepDraft() {
                 }}</span></label
               >
             </div>
-            <textarea
-              v-ui-control
+            <UiTextarea
               id="card-back"
               v-model="form.back"
               @paste="paste($event, 'backMedia')"
@@ -410,28 +421,29 @@ async function keepDraft() {
           <label for="card-tags"
             >{{ t('标签') }}<span class="optional">{{ t('可选，用逗号分隔') }}</span></label
           >
-          <input
-            v-ui-control
+          <UiInput
             id="card-tags"
             v-model="tagsText"
             maxlength="820"
             :placeholder="t('英语, 常用词')"
           />
         </div>
-        <details v-if="form.type !== 'plugin'" class="note-preview">
-          <summary v-ui-button="'ghost'">
-            {{ t('将生成 {p0} 张卡片 · 预览', { p0: generated.length }) }}
-          </summary>
-          <article v-for="card in previews" :key="card.variant">
-            <CardContent :text="card.front" :format="card.format" />
-            <MediaList :ids="card.frontMedia" :media="media" :get-media="getMedia" />
-            <hr />
-            <CardContent :text="card.back" :format="card.format" />
-            <MediaList :ids="card.backMedia" :media="media" :get-media="getMedia" />
-          </article>
-        </details>
+        <UiCollapsible :unmount-on-hide="false" v-if="form.type !== 'plugin'" class="note-preview">
+          <template #default="{ open }"
+            ><UiButton type="button" variant="ghost" :aria-expanded="open">
+              {{ t('将生成 {p0} 张卡片 · 预览', { p0: generated.length }) }}
+            </UiButton></template
+          ><template #content>
+            <article v-for="card in previews" :key="card.variant">
+              <CardContent :text="card.front" :format="card.format" />
+              <MediaList :ids="card.frontMedia" :media="media" :get-media="getMedia" />
+              <hr />
+              <CardContent :text="card.back" :format="card.format" />
+              <MediaList :ids="card.backMedia" :media="media" :get-media="getMedia" />
+            </article> </template
+        ></UiCollapsible>
         <label v-if="removed.length" class="check-line import-warning">
-          <input v-ui-control v-model="allowRemove" type="checkbox" required />{{
+          <UiCheckbox name="confirm-removed-cards" v-model="allowRemove" required />{{
             t(
               desktopEdition
                 ? '确认让不再生成的 {p0} 张卡片暂不复习，记录保留，重新添加后恢复。'
@@ -444,38 +456,31 @@ async function keepDraft() {
         </label>
       </div>
       <div class="form-actions editor-actions">
-        <button
-          v-ui-button="'secondary'"
+        <UiButton
+          variant="secondary"
           v-if="saveDraft"
           type="button"
-          class="button secondary"
           :disabled="busy"
           @click="keepDraft"
         >
           {{ t('保存草稿') }}
-        </button>
-        <button
-          v-ui-button="'secondary'"
+        </UiButton>
+        <UiButton
+          variant="secondary"
           v-if="!note && !initial?.excerpt"
           type="button"
-          class="button secondary save-continue"
+          class="save-continue"
           :disabled="busy"
           @click="save(true)"
         >
           {{ t('保存并继续') }}
-        </button>
-        <button
-          v-ui-button="'secondary'"
-          type="button"
-          class="button secondary"
-          :disabled="busy"
-          @click="emit('close')"
-        >
+        </UiButton>
+        <UiButton variant="secondary" type="button" :disabled="busy" @click="emit('close')">
           {{ t('取消') }}
-        </button>
-        <button v-ui-button="'primary'" type="submit" class="button primary" :disabled="busy">
+        </UiButton>
+        <UiButton variant="primary" type="submit" :disabled="busy">
           {{ busy ? t('保存中…') : t(draft ? '确认并保存卡片' : '保存卡片') }}
-        </button>
+        </UiButton>
       </div>
     </fieldset>
   </form>

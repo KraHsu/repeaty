@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { vUiButton, vUiControl } from '../../components/ui'
+import { UiInput, UiTextarea, UiCheckbox, UiButton } from '../../components/ui'
+import URadioGroup from '@nuxt/ui/components/RadioGroup.vue'
 import { t } from '../../i18n'
-import { Check } from '@lucide/vue'
 import AppModal from '../../components/AppModal.vue'
 import NoteEditor from '../../components/NoteEditor.vue'
 import ImportNotes from '../../components/ImportNotes.vue'
@@ -36,8 +36,7 @@ const {
     @close="modal = null"
     ><form class="editor-form" @submit.prevent="saveDeck">
       <label for="deck-name">{{ t('卡组名称') }}</label
-      ><input
-        v-ui-control
+      ><UiInput
         id="deck-name"
         v-model.trim="deckForm.name"
         autofocus
@@ -46,8 +45,7 @@ const {
         :placeholder="t('例如：英语词汇、计算机基础…')"
       /><label for="deck-description"
         >{{ t('描述') }}<span class="optional">{{ t('可选') }}</span></label
-      ><textarea
-        v-ui-control
+      ><UiTextarea
         id="deck-description"
         v-model.trim="deckForm.description"
         maxlength="300"
@@ -57,8 +55,7 @@ const {
       <div class="limit-fields">
         <label for="new-limit"
           >{{ t('每日新卡上限')
-          }}<input
-            v-ui-control
+          }}<UiInput
             id="new-limit"
             v-model.number="deckForm.newLimit"
             type="number"
@@ -67,8 +64,7 @@ const {
             required /></label
         ><label for="review-limit"
           >{{ t('每日复习上限')
-          }}<input
-            v-ui-control
+          }}<UiInput
             id="review-limit"
             v-model.number="deckForm.reviewLimit"
             type="number"
@@ -81,15 +77,14 @@ const {
         {{ t('每日上限按本机日期重置。设为 0 则不安排该类卡片；学习和重学步骤不受此限制。') }}
       </p>
       <label class="check-line"
-        ><input v-ui-control v-model="deckForm.burySiblings" type="checkbox" />{{
+        ><UiCheckbox v-model="deckForm.burySiblings" />{{
           t('评分后自动暂缓同笔记的其他卡片至明天')
         }}</label
       >
       <div class="limit-fields">
         <label for="leech-threshold"
           >{{ t('顽固卡遗忘阈值')
-          }}<input
-            v-ui-control
+          }}<UiInput
             id="leech-threshold"
             v-model.number="deckForm.leechThreshold"
             type="number"
@@ -99,8 +94,7 @@ const {
         /></label>
         <label for="retention"
           >{{ t('目标记忆保留率（%）')
-          }}<input
-            v-ui-control
+          }}<UiInput
             id="retention"
             v-model.number="retentionPercent"
             type="number"
@@ -117,41 +111,38 @@ const {
           )
         }}
       </p>
-      <fieldset class="color-picker">
-        <legend>{{ t('卡组颜色') }}</legend>
-        <label
-          v-for="color in colors"
-          :key="color"
-          :class="['color-option', color, { chosen: deckForm.color === color }]"
-          ><input
-            v-ui-control="{ swatch: true }"
-            v-model="deckForm.color"
-            type="radio"
-            name="color"
-            :value="color"
-            :aria-label="
-              {
-                sage: t('鼠尾草绿'),
-                sand: t('暖沙色'),
-                lavender: t('薰衣草紫'),
-                blue: t('雾蓝色'),
-                rose: t('蔷薇粉'),
-              }[color]
-            " /><Check v-if="deckForm.color === color" :size="17"
-        /></label>
-      </fieldset>
+      <URadioGroup
+        v-model="deckForm.color"
+        :legend="t('卡组颜色')"
+        name="color"
+        orientation="horizontal"
+        :disabled="busy"
+        :items="
+          colors.map((value) => ({
+            value,
+            label: {
+              sage: t('鼠尾草绿'),
+              sand: t('暖沙色'),
+              lavender: t('薰衣草紫'),
+              blue: t('雾蓝色'),
+              rose: t('蔷薇粉'),
+            }[value],
+          }))
+        "
+      >
+        <template #label="{ item }">
+          <span class="inline-flex items-center gap-2">
+            <span :class="['inline-block size-3 rounded-full', item.value]" aria-hidden="true" />
+            {{ item.label }}
+          </span>
+        </template>
+      </URadioGroup>
       <div class="form-actions">
-        <button
-          v-ui-button="'secondary'"
-          type="button"
-          class="button secondary"
-          :disabled="busy"
-          @click="modal = null"
-        >
-          {{ t('取消') }}</button
-        ><button v-ui-button="'primary'" type="submit" class="button primary" :disabled="busy">
+        <UiButton variant="secondary" type="button" :disabled="busy" @click="modal = null">
+          {{ t('取消') }}</UiButton
+        ><UiButton variant="primary" type="submit" :disabled="busy">
           {{ busy ? t('保存中…') : t('保存卡组') }}
-        </button>
+        </UiButton>
       </div>
     </form></AppModal
   >
@@ -199,16 +190,11 @@ const {
     @close="modal = null"
     ><p class="confirmation-text">{{ t(confirmation.message) }}</p>
     <div class="form-actions">
-      <button
-        v-ui-button="'secondary'"
-        class="button secondary"
-        :disabled="busy"
-        @click="modal = null"
-      >
-        {{ t('取消') }}</button
-      ><button v-ui-button="'danger'" class="button danger" :disabled="busy" @click="confirmAction">
+      <UiButton variant="secondary" type="submit" :disabled="busy" @click="modal = null">
+        {{ t('取消') }}</UiButton
+      ><UiButton variant="danger" type="submit" :disabled="busy" @click="confirmAction">
         {{ t('确认删除') }}
-      </button>
+      </UiButton>
     </div></AppModal
   >
 </template>

@@ -1,0 +1,46 @@
+@import 'tailwindcss';
+@import '@nuxt/ui';
+
+@theme {
+  --color-sage-50: #f4f7f1;
+  --color-sage-100: #e7eee3;
+  --color-sage-200: #cdddc6;
+  --color-sage-300: #a8c09f;
+  --color-sage-400: #7c9e76;
+  --color-sage-500: #5c825a;
+  --color-sage-600: #456b48;
+  --color-sage-700: #37634b;
+  --color-sage-800: #2d4e3b;
+  --color-sage-900: #293d33;
+  --color-sage-950: #15251c;
+  --font-sans: var(--font-ui);
+  --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', 'Noto Sans Mono', monospace;
+  --text-xs: 0.875rem;
+  --text-sm: 1rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2rem;
+}
+
+:root {
+  --ui-primary: var(--color-sage-700);
+  --ui-bg: #ffffff;
+  --ui-bg-muted: #f4f6f0;
+  --ui-bg-elevated: #f4f6f0;
+  --ui-text: #293d33;
+  --ui-text-muted: #63715e;
+  --ui-border: #d9dfd3;
+  --ui-radius: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

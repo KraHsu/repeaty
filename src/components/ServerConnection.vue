@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { vUiControl, vUiButton } from './ui'
+import { UiInput, UiButton } from './ui'
 import { onMounted, ref } from 'vue'
 import { t } from '../i18n'
 import { apiJson } from '../backend/client'
@@ -46,8 +46,7 @@ async function connect() {
     <h2>{{ t(register ? '创建账户' : '登录') }}</h2>
     <label class="form-field" for="account-username"
       >{{ t('用户名') }}
-      <input
-        v-ui-control
+      <UiInput
         id="account-username"
         v-model="username"
         required
@@ -60,8 +59,7 @@ async function connect() {
     </label>
     <label class="form-field" for="account-password"
       >{{ t('密码') }}
-      <input
-        v-ui-control
+      <UiInput
         id="account-password"
         v-model="password"
         type="password"
@@ -76,19 +74,18 @@ async function connect() {
     </p>
     <p v-if="error" role="alert" class="import-warning">{{ t(error) }}</p>
     <div class="connection-actions">
-      <button v-ui-button class="button primary" :disabled="busy || saving">
+      <UiButton variant="primary" type="submit" :disabled="busy || saving">
         {{ t(register ? '创建账户' : '登录') }}
-      </button>
-      <button
-        v-ui-button
+      </UiButton>
+      <UiButton
+        variant="ghost"
         v-if="registration"
         type="button"
-        class="text-button"
         :disabled="saving"
         @click="toggleMode"
       >
         {{ t(register ? '已有账户，登录' : '创建账户') }}
-      </button>
+      </UiButton>
     </div>
   </form>
 </template>

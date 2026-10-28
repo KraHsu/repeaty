@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { vUiButton } from '../components/ui'
+import { UiButton } from '../components/ui'
 import { useEventListener } from '@vueuse/core'
 import { FolderOpen } from '@lucide/vue'
 import { t } from '../i18n'
@@ -30,7 +30,7 @@ useEventListener(window, 'beforeunload', beforeUnload)
       <strong>{{ t('正在试用「{name}」', { name: browserWorkspace.name }) }}</strong>
       {{ t('修改和评分只保留在本页，原目录不变。') }}
     </p>
-    <button v-ui-button class="text-button" @click="$emit('open')">{{ t('工作目录') }}</button>
+    <UiButton variant="ghost" type="submit" @click="$emit('open')">{{ t('工作目录') }}</UiButton>
   </aside>
 </template>
 

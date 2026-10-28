@@ -1,19 +1,21 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { t } from '../i18n'
 import { desktopEdition } from '../edition'
 import { workspaceAvailable } from '@repeaty-platform'
 import { usePlugins } from '../plugins'
 import { readPluginFile, pluginIssueMessage, type PluginManifest } from '../plugins/package'
-import { usePluginManager, officialPluginBundles } from '../plugins/manager'
-import { SettingGroup, SettingField, UiButton, UiNotice, UiStatus } from './ui'
+import { usePluginManager, officialPluginBundles, type PackageEntry } from '../plugins/manager'
+import { SettingGroup, SettingField, UiButton, UiCollapsible, UiNotice, UiStatus } from './ui'
 import CardContent from './CardContent.vue'
+import AppModal from './AppModal.vue'
 const { installedPlugins, pluginEnabled, pluginPreferenceError } = usePlugins()
 const {
   pluginPackages,
   pluginManagerBusy,
   pluginManagerError,
   activePluginViews,
+  pluginScope,
   installPlugin,
   enablePlugin,
   removePlugin,
@@ -25,8 +27,22 @@ const picker = ref<HTMLInputElement>()
 const panel = ref<HTMLElement>()
 const openReadmes = ref(new Set<string>())
 const error = ref('')
+const pending = ref(false)
+type Confirmation = {
+  id: number
+  title: () => string
+  message: () => string
+  permissions?: () => string
+  isCurrent: () => boolean
+  resolve: (accepted: boolean) => void
+}
+const confirmation = shallowRef<Confirmation>()
 const locked = computed(
-  () => pluginManagerBusy.value || activePluginViews.value > 0 || !workspaceAvailable.value,
+  () =>
+    pending.value ||
+    pluginManagerBusy.value ||
+    activePluginViews.value > 0 ||
+    !workspaceAvailable.value,
 )
 const entries = computed(() =>
   pluginPackages.map((entry) => ({
@@ -37,17 +53,19 @@ const entries = computed(() =>
 )
 let alive = true
 watch(
-  [() => props.focusPlugin, () => pluginPackages.length],
+  [() => props.focusPlugin, () => pluginPackages.slice()],
   async () => {
-    if (!props.focusPlugin) return
+    const requested = props.focusPlugin
+    if (!requested) return
     await nextTick()
-    if (!alive) return
+    if (!alive || props.focusPlugin !== requested) return
     const target = [...(panel.value?.querySelectorAll<HTMLElement>('[data-plugin-id]') ?? [])].find(
-      (entry) => entry.dataset.pluginId === props.focusPlugin,
+      (entry) => entry.dataset.pluginId === requested,
     )
-    const readme = target?.querySelector<HTMLDetailsElement>('.plugin-readme')
-    if (readme) readme.open = true
-    const focus = readme?.querySelector<HTMLElement>('summary') ?? target
+    if (target) openReadmes.value.add(requested)
+    await nextTick()
+    if (!alive || props.focusPlugin !== requested || !target?.isConnected) return
+    const focus = target?.querySelector<HTMLElement>('.plugin-readme-trigger') ?? target
     focus?.focus({ preventScroll: true })
     target?.scrollIntoView({ block: 'start' })
   },
@@ -55,9 +73,9 @@ watch(
 )
 onBeforeUnmount(() => {
   alive = false
+  answerConfirmation(false)
 })
-function toggleReadme(id: string, event: Event) {
-  const open = (event.currentTarget as HTMLDetailsElement).open
+function toggleReadme(id: string, open: boolean) {
   if (open) openReadmes.value.add(id)
   else openReadmes.value.delete(id)
 }
@@ -69,12 +87,64 @@ function capabilities(manifest?: PluginManifest) {
   if (manifest?.permissions?.files) values.push(t('插件文件'))
   return values.length ? values.join(' · ') : t('无原生能力')
 }
-async function run(action: () => Promise<unknown>) {
+let generation = 0,
+  operation = 0
+watch(
+  pluginScope,
+  () => {
+    generation++
+    operation++
+    pending.value = false
+    answerConfirmation(false)
+    error.value = ''
+    openReadmes.value = new Set()
+  },
+  { flush: 'sync' },
+)
+watch(
+  () => [workspaceAvailable.value, activePluginViews.value, ...pluginPackages],
+  () => {
+    if (confirmation.value && !confirmation.value.isCurrent()) answerConfirmation(false)
+  },
+  { flush: 'sync' },
+)
+function currentOperation(entry?: PackageEntry) {
+  const scope = pluginScope.value,
+    epoch = generation
+  return () =>
+    alive &&
+    generation === epoch &&
+    scope === pluginScope.value &&
+    workspaceAvailable.value &&
+    activePluginViews.value === 0 &&
+    (!entry || pluginPackages.includes(entry))
+}
+let confirmationId = 0
+function answerConfirmation(accepted: boolean, expected?: Confirmation) {
+  const request = confirmation.value
+  if (expected && request !== expected) return
+  confirmation.value = undefined
+  request?.resolve(accepted && request.isCurrent())
+}
+function ask(request: Omit<Confirmation, 'resolve' | 'id'>) {
+  answerConfirmation(false)
+  if (!request.isCurrent()) return Promise.resolve(false)
+  return new Promise<boolean>((resolve) => {
+    confirmation.value = { ...request, id: ++confirmationId, resolve }
+  })
+}
+async function run(action: (isCurrent: () => boolean) => Promise<unknown>, entry?: PackageEntry) {
+  if (locked.value) return
+  const owned = ++operation
+  const isCurrent = currentOperation(entry)
   error.value = ''
+  pending.value = true
   try {
-    await action()
+    await action(isCurrent)
   } catch (issue) {
-    error.value = pluginIssueMessage(issue)
+    if (isCurrent()) error.value = pluginIssueMessage(issue)
+  } finally {
+    if (owned === operation) pending.value = false
   }
 }
 async function choose(event: Event) {
@@ -82,39 +152,61 @@ async function choose(event: Event) {
   const file = input.files?.[0]
   input.value = ''
   if (!file) return
-  await run(async () => {
+  await run(async (isCurrent) => {
     const bundle = await readPluginFile(file)
     if (
-      !confirm(
-        t('插件将在应用中执行代码。确认安装并启用 {name}？', { name: bundle.manifest.name }) +
-          '\n\n' +
-          capabilities(bundle.manifest),
-      )
+      !isCurrent() ||
+      !(await ask({
+        title: () => t('安装插件包'),
+        message: () =>
+          t('插件将在应用中执行代码。确认安装并启用 {name}？', { name: bundle.manifest.name }),
+        permissions: () => capabilities(bundle.manifest),
+        isCurrent,
+      }))
     )
       return
     await installPlugin(bundle)
   })
 }
 function toggle(id: string, enabled: boolean, trusted: boolean, name: string) {
-  if (
-    enabled &&
-    !trusted &&
-    !confirm(
-      t('插件将在应用中执行代码。确认启用 {name}？', { name }) +
-        '\n\n' +
-        capabilities(pluginPackages.find((entry) => entry.id === id)?.bundle?.manifest),
+  const entry = pluginPackages.find((entry) => entry.id === id)
+  if (!entry) return
+  void run(async (isCurrent) => {
+    if (
+      enabled &&
+      !trusted &&
+      !(await ask({
+        title: () => t('启用 {name}', { name }),
+        message: () => t('插件将在应用中执行代码。确认启用 {name}？', { name }),
+        permissions: () => capabilities(entry.bundle?.manifest),
+        isCurrent,
+      }))
     )
-  )
-    return
-  void run(() => enablePlugin(id, enabled))
+      return
+    if (isCurrent()) await enablePlugin(id, enabled)
+  }, entry)
 }
 function uninstall(id: string) {
-  if (!confirm(t('卸载插件代码？题目、历史、设置和插件数据会保留。'))) return
-  void run(() => removePlugin(id))
+  const entry = pluginPackages.find((entry) => entry.id === id)
+  if (!entry) return
+  void run(async (isCurrent) => {
+    if (
+      (await ask({
+        title: () => t('卸载插件'),
+        message: () => t('卸载插件代码？题目、历史、设置和插件数据会保留。'),
+        isCurrent,
+      })) &&
+      isCurrent()
+    )
+      await removePlugin(id)
+  }, entry)
 }
 async function installOfficial() {
-  await run(async () => {
-    for (const bundle of await officialPluginBundles()) await installPlugin(bundle)
+  await run(async (isCurrent) => {
+    for (const bundle of await officialPluginBundles()) {
+      if (!isCurrent()) return
+      await installPlugin(bundle)
+    }
   })
 }
 </script>
@@ -155,19 +247,21 @@ async function installOfficial() {
       <UiNotice v-if="error || pluginManagerError || pluginPreferenceError" tone="error">
         {{ t(error || pluginManagerError || pluginPreferenceError) }}
       </UiNotice>
-      <details class="ui-setting-help">
-        <summary>{{ t('插件安装与存储') }}</summary>
-        <p>
-          {{
-            t(
-              desktopEdition
-                ? '插件代码保存在当前学习目录中，随目录移动。新设备首次启用时需确认，登录凭据留在设备上。'
-                : '前端插件保存在此浏览器的独立副本中，不写入只读打开的原目录。',
-            )
-          }}
-        </p>
-        <p>{{ t('插件独立安装和更新，无需重新编译 Repeaty。') }}</p>
-      </details>
+      <UiCollapsible class="ui-setting-help">
+        <UiButton variant="ghost">{{ t('插件安装与存储') }}</UiButton>
+        <template #content>
+          <p>
+            {{
+              t(
+                desktopEdition
+                  ? '插件代码保存在当前学习目录中，随目录移动。新设备首次启用时需确认，登录凭据留在设备上。'
+                  : '前端插件保存在此浏览器的独立副本中，不写入只读打开的原目录。',
+              )
+            }}
+          </p>
+          <p>{{ t('插件独立安装和更新，无需重新编译 Repeaty。') }}</p>
+        </template>
+      </UiCollapsible>
     </SettingGroup>
     <SettingGroup
       v-for="entry in entries"
@@ -240,24 +334,55 @@ async function installOfficial() {
         {{ t('此设备尚未信任此插件包。启用前请确认代码来源。') }}
       </UiNotice>
       <UiNotice v-if="entry.error" tone="error">{{ t(entry.error) }}</UiNotice>
-      <details class="plugin-readme ui-setting-help" @toggle="toggleReadme(entry.id, $event)">
-        <summary>{{ t('介绍与使用') }}</summary>
-        <CardContent
-          v-if="openReadmes.has(entry.id) && entry.bundle?.readme"
-          :text="entry.bundle.readme"
-          format="markdown"
-        />
-        <p v-else-if="!entry.bundle?.readme">{{ t('此插件包尚未提供使用说明。') }}</p>
-      </details>
+      <UiCollapsible
+        class="plugin-readme ui-setting-help"
+        :open="openReadmes.has(entry.id)"
+        @update:open="toggleReadme(entry.id, $event)"
+      >
+        <UiButton variant="ghost" class="plugin-readme-trigger">{{ t('介绍与使用') }}</UiButton>
+        <template #content>
+          <CardContent
+            v-if="openReadmes.has(entry.id) && entry.bundle?.readme"
+            :text="entry.bundle.readme"
+            format="markdown"
+          />
+          <p v-else-if="!entry.bundle?.readme">{{ t('此插件包尚未提供使用说明。') }}</p>
+        </template>
+      </UiCollapsible>
     </SettingGroup>
     <UiNotice v-if="!entries.length">
       {{ t('当前学习库尚未安装插件。普通卡片可正常使用。') }}
     </UiNotice>
+    <AppModal
+      v-for="request in confirmation ? [confirmation] : []"
+      :key="request.id"
+      :title="request.title()"
+      @close="answerConfirmation(false, request)"
+    >
+      <p>{{ request.message() }}</p>
+      <UiNotice v-if="request.permissions">{{ request.permissions() }}</UiNotice>
+      <div class="plugin-confirm-actions">
+        <UiButton @click="answerConfirmation(false, request)">{{ t('取消') }}</UiButton>
+        <UiButton
+          variant="primary"
+          data-plugin-confirm
+          @click="answerConfirmation(true, request)"
+          >{{ request.title() }}</UiButton
+        >
+      </div>
+    </AppModal>
   </div>
 </template>
 <style scoped>
 .plugin-actions {
   margin: 0 0 1rem;
+}
+.plugin-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
 }
 .plugin-summary {
   padding: 0.25rem 0 1.25rem;

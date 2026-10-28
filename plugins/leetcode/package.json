@@ -1,6 +1,6 @@
 {
   "name": "@repeaty/plugin-leetcode",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "private": true,
   "type": "module",
   "description": "Read LeetCode questions and keep local practice and submission history.",

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { UiButton } from '../components/ui'
 import { onMounted, onUnmounted, shallowRef, watch } from 'vue'
 import { Copy, Minus, Repeat2, Square, X } from '@lucide/vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -10,9 +11,10 @@ import { createSnapRegionController, nativeSnapDriver, snapRegion } from './snap
 const appWindow = getCurrentWindow()
 const controls = createWindowControls(appWindow)
 const { maximized, focused, failed } = controls
-const maximizeButton = shallowRef<HTMLButtonElement>()
+const maximizeButton = shallowRef<InstanceType<typeof UiButton>>()
+const maximizeElement = () => maximizeButton.value?.$el as HTMLButtonElement | undefined
 const snap = createSnapRegionController(nativeSnapDriver(appWindow), () => {
-  const button = maximizeButton.value
+  const button = maximizeElement()
   return button?.isConnected
     ? snapRegion(button.getBoundingClientRect(), window.innerWidth, window.innerHeight)
     : null
@@ -56,11 +58,12 @@ function ownNative(registration: Promise<() => void | Promise<void>>) {
     })
     .catch(() => {})
 }
-const modalHost = shallowRef<HTMLDialogElement>()
+const modalHost = shallowRef<HTMLElement>()
 let observer: MutationObserver | undefined
-let dialogs: HTMLDialogElement[] = []
+let dialogs: HTMLElement[] = []
+const modalSelector = 'dialog[open], [data-app-modal-content]'
 function updateHost(records: MutationRecord[] = []) {
-  const opened = [...document.querySelectorAll<HTMLDialogElement>('dialog[open]')]
+  const opened = [...document.querySelectorAll<HTMLElement>(modalSelector)]
   dialogs = dialogs.filter((dialog) => opened.includes(dialog))
   for (const { type, target } of records) {
     if (type === 'attributes' && target instanceof HTMLDialogElement) {
@@ -71,7 +74,7 @@ function updateHost(records: MutationRecord[] = []) {
   for (const dialog of opened) if (!dialogs.includes(dialog)) dialogs.push(dialog)
   // A modal makes the rest of the document inert. Keep the same titlebar instance
   // inside its top layer so window controls remain usable while editing.
-  const focusedDialog = document.activeElement?.closest<HTMLDialogElement>('dialog[open]')
+  const focusedDialog = document.activeElement?.closest<HTMLElement>(modalSelector)
   modalHost.value = focusedDialog && opened.includes(focusedDialog) ? focusedDialog : dialogs.at(-1)
 }
 useEventListener(document, 'focusin', () => updateHost())
@@ -93,7 +96,8 @@ onMounted(() => {
   })
   void controls.start()
   geometryObserver = new ResizeObserver(() => requestGeometry())
-  if (maximizeButton.value) geometryObserver.observe(maximizeButton.value)
+  const button = maximizeElement()
+  if (button) geometryObserver.observe(button)
   geometryObserver.observe(document.documentElement)
   ownNative(appWindow.onResized(() => requestGeometry(true)))
   ownNative(appWindow.onScaleChanged(() => requestGeometry(true)))
@@ -118,7 +122,8 @@ onUnmounted(() => {
         </span>
       </div>
       <div class="desktop-window-controls" role="group" :aria-label="t('窗口控制')">
-        <button
+        <UiButton
+          variant="ghost"
           type="button"
           class="desktop-window-button"
           :aria-label="t('最小化窗口')"
@@ -126,8 +131,9 @@ onUnmounted(() => {
           @click="controls.run('minimize')"
         >
           <Minus :size="16" :stroke-width="1.5" aria-hidden="true" />
-        </button>
-        <button
+        </UiButton>
+        <UiButton
+          variant="ghost"
           ref="maximizeButton"
           type="button"
           class="desktop-window-button"
@@ -142,8 +148,9 @@ onUnmounted(() => {
         >
           <Copy v-if="maximized" :size="13" :stroke-width="1.5" aria-hidden="true" />
           <Square v-else :size="13" :stroke-width="1.5" aria-hidden="true" />
-        </button>
-        <button
+        </UiButton>
+        <UiButton
+          variant="ghost"
           type="button"
           class="desktop-window-button desktop-window-close"
           :aria-label="t('关闭窗口')"
@@ -151,7 +158,7 @@ onUnmounted(() => {
           @click="controls.run('close')"
         >
           <X :size="17" :stroke-width="1.5" aria-hidden="true" />
-        </button>
+        </UiButton>
       </div>
     </div>
   </Teleport>
@@ -203,6 +210,7 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 .desktop-window-button {
+  min-height: 0;
   display: grid;
   place-items: center;
   width: 44px;

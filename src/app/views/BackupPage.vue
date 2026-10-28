@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { vUiControl, vUiButton } from '../../components/ui'
+import { UiProgress, UiButton } from '../../components/ui'
 import { version } from '../../../package.json'
 import { t, locale } from '../../i18n'
 import { ArrowDownToLine, ArrowUpFromLine, BookOpen, Repeat2, ShieldCheck } from '@lucide/vue'
@@ -70,10 +70,10 @@ function bindUpload(instance: unknown) {
     </section>
     <div v-if="transfer" class="transfer-status" role="status">
       <span>{{ t(transfer.label) }} {{ Math.floor(transfer.percent) }}%</span>
-      <progress v-ui-control :value="transfer.percent" max="100" :aria-label="t(transfer.label)" />
-      <button v-ui-button class="button secondary" @click="cancelTransfer">
+      <UiProgress :model-value="transfer.percent" :max="100" :aria-label="t(transfer.label)" />
+      <UiButton variant="secondary" type="submit" @click="cancelTransfer">
         {{ t('取消传输') }}
-      </button>
+      </UiButton>
     </div>
     <div class="backup-grid">
       <section class="backup-card">
@@ -93,31 +93,31 @@ function bindUpload(instance: unknown) {
           }}
         </div>
         <div class="backup-actions">
-          <button
-            v-ui-button
-            class="button primary"
+          <UiButton
+            variant="primary"
+            type="submit"
             :disabled="busy || !!transfer"
             @click="exportData()"
           >
             <ArrowDownToLine :size="16" />{{ t('导出 .repeaty') }}
-          </button>
-          <button
-            v-ui-button
+          </UiButton>
+          <UiButton
+            variant="secondary"
+            type="submit"
             v-if="filePicker"
-            class="button secondary"
             :disabled="busy || !!transfer"
             @click="exportData('file')"
           >
             {{ t('直接保存到文件') }}
-          </button>
-          <button
-            v-ui-button
-            class="text-button"
+          </UiButton>
+          <UiButton
+            variant="ghost"
+            type="submit"
             :disabled="busy || !!transfer"
             @click="exportData('json')"
           >
             {{ t('导出旧版 JSON') }}
-          </button>
+          </UiButton>
         </div>
         <p v-if="filePicker" class="form-note">
           {{ t('大备份可直接写入文件，减少内存占用。') }}
@@ -129,21 +129,20 @@ function bindUpload(instance: unknown) {
         <p>{{ t('支持 .repeaty 备份包和旧版 JSON。检查完成并确认后才会替换当前数据。') }}</p>
         <div class="backup-meta">{{ t('.repeaty 最大 2 GB · 旧版 JSON 最大 100 MB') }}</div>
         <input
-          v-ui-control
           :ref="bindUpload"
           class="sr-only"
           type="file"
           accept=".repeaty,.zip,.json,application/zip,application/json"
           :aria-label="t('导入备份文件')"
           @change="importData"
-        /><button
-          v-ui-button
-          class="button secondary"
+        /><UiButton
+          variant="secondary"
+          type="submit"
           :disabled="busy || !!transfer"
           @click="upload?.click()"
         >
           <ArrowUpFromLine :size="16" />{{ t('选择备份文件') }}
-        </button>
+        </UiButton>
       </section>
     </div>
     <section class="storage-banner">
@@ -155,27 +154,27 @@ function bindUpload(instance: unknown) {
             t('通过 24 条笔记学习评分、复习和制卡。按当前界面语言添加一份，已有卡片和进度会保留。')
           }}
         </p>
-        <button
-          v-ui-button
-          class="button secondary"
+        <UiButton
+          variant="secondary"
+          type="submit"
           :disabled="busy || !!transfer"
           @click="run(workspace.addSample, '入门卡组已添加')"
         >
           {{ t('添加入门卡组') }}
-        </button>
+        </UiButton>
       </div>
     </section>
     <section class="snapshot-section">
       <div class="section-heading">
         <h2>{{ t('自动快照') }}</h2>
-        <button
-          v-ui-button
-          class="button secondary"
+        <UiButton
+          variant="secondary"
+          type="submit"
           :disabled="busy || !library.notes.length"
           @click="run(() => workspace.backupNow(true), '快照已保存；未变化的数据不会重复备份')"
         >
           {{ t('立即创建快照') }}
-        </button>
+        </UiButton>
       </div>
       <p class="form-note">
         {{
@@ -199,14 +198,14 @@ function bindUpload(instance: unknown) {
               })
             }}</span>
           </div>
-          <button
-            v-ui-button
-            class="button secondary"
+          <UiButton
+            variant="secondary"
+            type="submit"
             :disabled="busy"
             @click="openSnapshot(backup.id)"
           >
             {{ t('恢复此快照') }}
-          </button>
+          </UiButton>
         </li>
       </ul>
       <p v-else class="form-note">
@@ -226,15 +225,15 @@ function bindUpload(instance: unknown) {
             )
           }}
         </p>
-        <button
-          v-ui-button
+        <UiButton
+          variant="secondary"
+          type="submit"
           v-if="offline.updateReady.value"
-          class="button secondary"
           :disabled="busy"
           @click="offline.applyUpdate"
         >
           {{ t('刷新以更新版本') }}
-        </button>
+        </UiButton>
       </div>
     </section>
     <div class="about-core">

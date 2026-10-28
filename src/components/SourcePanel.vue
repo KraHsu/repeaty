@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { vUiControl, vUiButton } from './ui'
+import { UiButton, UiInput, UiSelect, UiCheckbox, UiTextarea, UiCollapsible } from './ui'
+import URadioGroup from '@nuxt/ui/components/RadioGroup.vue'
 import { computed, nextTick, onUnmounted, reactive, ref, shallowRef, watch } from 'vue'
 import { FileText, Plus, Upload } from '@lucide/vue'
 import { t, locale, duration, type DisplayMessage } from '../i18n'
@@ -15,7 +16,6 @@ import {
   type SourceExcerpt,
   type SourceQueueAction,
   type SourceQueueUpdate,
-  type SourcePriority,
   type ReadingUpdate,
   type Source,
   type SourceTarget,
@@ -725,11 +725,8 @@ async function arrange(action: SourceQueueAction) {
     arranging.value = false
   }
 }
-function changePriority(event: Event) {
-  const select = event.target as HTMLSelectElement
-  const priority = select.value as SourcePriority
-  // Show the persisted value until the transaction succeeds, including on failure.
-  select.value = source.value?.priority ?? 'normal'
+function changePriority(priority: string) {
+  if (priority !== 'high' && priority !== 'normal' && priority !== 'low') return
   return arrange({ type: 'priority', priority })
 }
 async function locateExcerpt(id: string) {
@@ -935,33 +932,33 @@ async function download() {
         <p>{{ t('保存原文，选取摘录制作卡片。') }}</p>
       </div>
       <div class="source-actions">
-        <button
-          v-ui-button
+        <UiButton
+          variant="secondary"
+          type="submit"
           v-if="canUndoReading && !session"
           :title="t('撤销最近一次阅读安排（刷新后清除）')"
-          class="button secondary"
           :disabled="busy || moving || arranging || undoing"
           @click="undoArrangement"
         >
           {{ t('撤销阅读安排') }}
-        </button>
-        <button
-          v-ui-button
+        </UiButton>
+        <UiButton
+          variant="secondary"
+          type="submit"
           v-if="!inRound"
-          class="button secondary"
           :disabled="busy || moving || arranging || !readyCount || (!!source && !canMove)"
           @click="beginRound()"
         >
           {{ t('开始一轮阅读') }}
-        </button>
-        <button
-          v-ui-button="'primary'"
-          class="button primary"
+        </UiButton>
+        <UiButton
+          variant="primary"
+          type="submit"
           :disabled="busy || moving || inRound"
           @click="openImport"
         >
           <Plus :size="18" />{{ t('导入材料') }}
-        </button>
+        </UiButton>
       </div>
     </header>
     <div v-if="!library.sources.length && !inRound" class="empty-state">
@@ -972,14 +969,14 @@ async function download() {
     <template v-else>
       <section v-if="session" class="reading-round" :aria-label="t('本轮阅读')">
         <p>{{ t('阅读位置会保存；可安排下次阅读，或直接继续。') }}</p>
-        <button
-          v-ui-button="'primary'"
-          class="button primary"
+        <UiButton
+          variant="primary"
+          type="submit"
           :disabled="busy || moving || arranging || loading"
           @click="finishSession"
         >
           {{ t(error ? '跳过本篇' : '完成阅读，继续学习') }}
-        </button>
+        </UiButton>
       </section>
       <section
         v-if="round && !roundEnded"
@@ -998,27 +995,22 @@ async function download() {
           <p v-if="roundFilter" class="form-note reading-round-filter">{{ roundFilterLabel }}</p>
         </div>
         <div class="source-actions">
-          <button
-            v-ui-button="'primary'"
-            class="button primary"
-            :disabled="!canMove"
-            @click="nextSource"
-          >
+          <UiButton variant="primary" type="submit" :disabled="!canMove" @click="nextSource">
             {{ t(round.cursor + 1 === round.entries.length ? '完成本轮' : '下一篇') }}
-          </button>
-          <button
-            v-ui-button="'ghost'"
-            class="text-button"
+          </UiButton>
+          <UiButton
+            variant="ghost"
+            type="submit"
             :disabled="busy || moving || arranging"
             @click="stopRound"
           >
             {{ t('结束本轮') }}
-          </button>
+          </UiButton>
         </div>
       </section>
       <nav v-if="!inRound" class="source-queue-filters" :aria-label="t('阅读队列')">
-        <button
-          v-ui-button
+        <UiButton
+          variant="secondary"
           v-for="value in queueViews"
           :key="value"
           type="button"
@@ -1027,14 +1019,13 @@ async function download() {
           @click="view = value"
         >
           {{ t(queueLabels[value]) }} <span>{{ counts[value] }}</span>
-        </button>
+        </UiButton>
       </nav>
       <section v-if="!inRound" class="source-filters" :aria-label="t('材料筛选')">
         <div class="source-filter-fields">
           <div class="source-filter-field source-search">
             <label for="source-search">{{ t('搜索材料') }}</label>
-            <input
-              v-ui-control
+            <UiInput
               id="source-search"
               v-model="query"
               type="search"
@@ -1044,37 +1035,39 @@ async function download() {
           </div>
           <div class="source-filter-field">
             <label for="source-kind-filter">{{ t('材料类型') }}</label>
-            <select
-              v-ui-control
+            <UiSelect
+              :items="[
+                ...Object.entries(kindLabels).map(([value, label]) => ({
+                  label: t(label),
+                  value: value,
+                })),
+              ]"
               id="source-kind-filter"
               v-model="kind"
               :disabled="busy || moving || arranging"
-            >
-              <option v-for="(label, value) in kindLabels" :key="value" :value="value">
-                {{ t(label) }}
-              </option>
-            </select>
+            ></UiSelect>
           </div>
           <div class="source-filter-field">
             <label for="source-priority-filter">{{ t('优先级筛选') }}</label>
-            <select
-              v-ui-control
+            <UiSelect
+              :items="[
+                { label: t('全部优先级'), value: 'all' },
+                ...Object.entries(priorityBadges).map(([value, label]) => ({
+                  label: t(label),
+                  value: value,
+                })),
+              ]"
               id="source-priority-filter"
               v-model="priority"
               :disabled="busy || moving || arranging"
-            >
-              <option value="all">{{ t('全部优先级') }}</option>
-              <option v-for="(label, value) in priorityBadges" :key="value" :value="value">
-                {{ t(label) }}
-              </option>
-            </select>
+            ></UiSelect>
           </div>
         </div>
         <div class="source-filter-footer">
           <div class="source-actions">
-            <button
-              v-ui-button
-              class="button secondary"
+            <UiButton
+              variant="secondary"
+              type="submit"
               :disabled="
                 busy || moving || arranging || !filteredReadyCount || (!!source && !canMove)
               "
@@ -1082,16 +1075,16 @@ async function download() {
               @click="beginRound(filters)"
             >
               {{ t('阅读筛选结果') }}
-            </button>
-            <button
-              v-ui-button="'ghost'"
+            </UiButton>
+            <UiButton
+              variant="ghost"
+              type="submit"
               v-if="hasFilters"
-              class="text-button"
               :disabled="busy || moving || arranging"
               @click="resetFilters"
             >
               {{ t('清除筛选') }}
-            </button>
+            </UiButton>
           </div>
           <p id="source-filter-count" class="form-note" role="status">
             {{
@@ -1110,39 +1103,39 @@ async function download() {
       >
         <p role="status">{{ t('已选 {count} 篇材料', { count: selection.size }) }}</p>
         <div class="source-actions">
-          <button
-            v-ui-button="'ghost'"
-            class="text-button"
+          <UiButton
+            variant="ghost"
+            type="submit"
             :disabled="busy || moving || arranging"
             @click="selectSources(visibleSources)"
           >
             {{ t('选择本页') }}
-          </button>
-          <button
-            v-ui-button="'ghost'"
-            class="text-button"
+          </UiButton>
+          <UiButton
+            variant="ghost"
+            type="submit"
             :disabled="busy || moving || arranging"
             @click="selectSources(filteredSources)"
           >
             {{ t('选择全部筛选结果（{count}）', { count: filteredSources.length }) }}
-          </button>
-          <button
-            v-ui-button="'ghost'"
+          </UiButton>
+          <UiButton
+            variant="ghost"
+            type="submit"
             v-if="selection.size"
-            class="text-button"
             :disabled="busy || moving || arranging"
             @click="selection = new Map()"
           >
             {{ t('取消选择') }}
-          </button>
-          <button
-            v-ui-button
-            class="button secondary"
+          </UiButton>
+          <UiButton
+            variant="secondary"
+            type="submit"
             :disabled="busy || moving || arranging || !selection.size"
             @click="openBatch"
           >
             {{ t('批量安排') }}
-          </button>
+          </UiButton>
         </div>
       </section>
       <div class="sources-layout" :class="{ 'round-layout': inRound }">
@@ -1155,23 +1148,22 @@ async function download() {
             :class="{ selected: entry.id === selectedId }"
           >
             <label class="source-selection">
-              <input
-                v-ui-control
-                type="checkbox"
-                :checked="selection.has(entry.id)"
+              <UiCheckbox
+                :model-value="selection.has(entry.id)"
                 :disabled="busy || moving || arranging"
                 :aria-label="t('选择材料「{title}」', { title: entry.title })"
-                @change="toggleSelection(entry)"
+                @update:model-value="toggleSelection(entry)"
               />
               <span>{{ t('选择') }}</span>
             </label>
-            <button
+            <UiButton
+              variant="ghost"
               class="source-list-title"
               :aria-pressed="entry.id === selectedId"
               :disabled="busy || moving || inRound"
               @click="openSource(entry.id)"
             >
-              <strong>{{ entry.title }}</strong></button
+              <strong>{{ entry.title }}</strong></UiButton
             ><span
               >{{ entry.format === 'markdown' ? 'Markdown' : t('纯文本') }} ·
               {{ new Date(entry.createdAt).toLocaleDateString(locale) }}</span
@@ -1196,35 +1188,24 @@ async function download() {
                   date: new Date(entry.reading.updatedAt).toLocaleString(locale),
                 })
               }}</span>
-              <button
-                v-ui-button="'ghost'"
-                class="text-button source-continue"
+              <UiButton
+                variant="ghost"
+                type="submit"
+                class="source-continue"
                 :disabled="busy || moving || inRound"
                 @click="resume(entry.id)"
               >
                 {{ t('继续阅读') }}
-              </button>
+              </UiButton>
             </template>
           </div>
           <nav v-if="pages > 1" class="source-list-pages" :aria-label="t('材料列表分页')">
-            <button
-              v-ui-button="'ghost'"
-              type="button"
-              class="text-button"
-              :disabled="page === 0"
-              @click="page--"
-            >
-              {{ t('上一页') }}</button
+            <UiButton variant="ghost" type="button" :disabled="page === 0" @click="page--">
+              {{ t('上一页') }}</UiButton
             ><span>{{ page + 1 }} / {{ pages }}</span
-            ><button
-              v-ui-button="'ghost'"
-              type="button"
-              class="text-button"
-              :disabled="page + 1 >= pages"
-              @click="page++"
-            >
+            ><UiButton variant="ghost" type="button" :disabled="page + 1 >= pages" @click="page++">
               {{ t('下一页') }}
-            </button>
+            </UiButton>
           </nav>
         </aside>
         <section
@@ -1237,30 +1218,30 @@ async function download() {
           <p>{{ t('已到本轮末尾，阅读位置已保存。') }}</p>
           <p v-if="roundFilter" class="form-note reading-round-filter">{{ roundFilterLabel }}</p>
           <div class="source-actions">
-            <button
-              v-ui-button="'primary'"
-              class="button primary"
+            <UiButton
+              variant="primary"
+              type="submit"
               :disabled="busy || moving || !(roundFilter ? filteredReadyCount : readyCount)"
               @click="beginRound(roundFilter)"
             >
               {{ t('再读一轮') }}
-            </button>
-            <button
-              v-ui-button
-              class="button secondary"
+            </UiButton>
+            <UiButton
+              variant="secondary"
+              type="submit"
               :disabled="busy || moving"
               @click="stopRound"
             >
               {{ t('返回材料') }}
-            </button>
-            <button
-              v-ui-button
-              class="button secondary"
+            </UiButton>
+            <UiButton
+              variant="secondary"
+              type="submit"
               :disabled="busy || moving"
               @click="emit('review')"
             >
               {{ t('去复习卡片') }}
-            </button>
+            </UiButton>
           </div>
         </section>
         <section v-else-if="source" class="source-reader">
@@ -1274,15 +1255,15 @@ async function download() {
                   <span v-if="entry.source.id === source.id" aria-current="page">{{
                     entry.source.title
                   }}</span>
-                  <button
-                    v-ui-button="'ghost'"
+                  <UiButton
+                    variant="ghost"
+                    type="submit"
                     v-else
-                    class="text-button"
                     :disabled="busy || moving"
                     @click="ancestrySource = entry.source"
                   >
                     {{ entry.source.title }}
-                  </button>
+                  </UiButton>
                 </template>
               </nav>
               <h2>{{ source.title }}</h2>
@@ -1296,38 +1277,38 @@ async function download() {
               </p>
             </div>
             <div class="source-actions">
-              <button
-                v-ui-button
-                class="button secondary"
+              <UiButton
+                variant="secondary"
+                type="submit"
                 :disabled="busy || moving || arranging || exporting || savingDetails"
                 @click="openDetails"
               >
                 {{ t('编辑材料信息') }}
-              </button>
-              <button
-                v-ui-button
+              </UiButton>
+              <UiButton
+                variant="secondary"
+                type="submit"
                 v-if="source.versions?.length"
-                class="button secondary"
                 :disabled="busy || moving"
                 @click="versionsOpen = true"
               >
                 {{ t('历史版本') }}
-              </button>
-              <button
-                v-ui-button
-                class="button secondary"
+              </UiButton>
+              <UiButton
+                variant="secondary"
+                type="submit"
                 :disabled="loading || !!error || exporting"
                 @click="download"
               >
-                {{ t('导出原文') }}</button
-              ><button
-                v-ui-button="'danger'"
-                class="text-button danger"
+                {{ t('导出原文') }}</UiButton
+              ><UiButton
+                variant="danger"
+                type="submit"
                 :disabled="(busy && !reading.savingId.value) || exporting || moving"
                 @click="openDelete"
               >
                 {{ t('删除材料') }}
-              </button>
+              </UiButton>
             </div>
           </div>
           <div class="source-reading-actions">
@@ -1340,56 +1321,57 @@ async function download() {
             }}</span>
             <div class="source-priority-control">
               <label for="source-reading-priority">{{ t('阅读优先级') }}</label>
-              <select
-                v-ui-control
+              <UiSelect
+                :items="[
+                  ...Object.entries(priorityLabels).map(([value, label]) => ({
+                    label: t(label),
+                    value: value,
+                  })),
+                ]"
                 id="source-reading-priority"
-                :value="source.priority ?? 'normal'"
+                :model-value="source.priority ?? 'normal'"
                 :disabled="busy || arranging || moving"
                 aria-describedby="source-priority-help"
-                @change="changePriority"
-              >
-                <option v-for="(label, value) in priorityLabels" :key="value" :value="value">
-                  {{ t(label) }}
-                </option>
-              </select>
+                @update:model-value="changePriority"
+              ></UiSelect>
             </div>
             <div class="source-actions">
-              <button
-                v-ui-button="'primary'"
+              <UiButton
+                variant="primary"
+                type="submit"
                 v-if="queueState !== 'archived'"
-                class="button primary"
                 :disabled="!canMove"
                 @click="openReadSchedule"
               >
                 {{ t('读过，安排下次') }}
-              </button>
-              <button
-                v-ui-button
+              </UiButton>
+              <UiButton
+                variant="secondary"
+                type="submit"
                 v-if="queueState !== 'ready'"
-                class="button secondary"
                 :disabled="busy || arranging || moving"
                 @click="arrange({ type: 'restore' })"
               >
                 {{ t('加入待阅读') }}
-              </button>
-              <button
-                v-ui-button
+              </UiButton>
+              <UiButton
+                variant="secondary"
+                type="submit"
                 v-if="queueState !== 'archived'"
-                class="button secondary"
                 :disabled="busy || arranging || moving"
                 @click="openDefer"
               >
                 {{ t('稍后阅读') }}
-              </button>
-              <button
-                v-ui-button="'ghost'"
+              </UiButton>
+              <UiButton
+                variant="ghost"
+                type="submit"
                 v-if="queueState !== 'archived'"
-                class="text-button"
                 :disabled="busy || arranging || moving"
                 @click="arrange({ type: 'archive' })"
               >
                 {{ t('归档材料') }}
-              </button>
+              </UiButton>
             </div>
           </div>
           <p id="source-priority-help" class="form-note source-priority-help">
@@ -1409,21 +1391,21 @@ async function download() {
                 })
               }}
             </p>
-            <button
-              v-ui-button="'ghost'"
-              class="text-button"
+            <UiButton
+              variant="ghost"
+              type="submit"
               :disabled="busy || arranging || moving"
               @click="openIntervalReset"
             >
               {{ t('重置间隔') }}
-            </button>
+            </UiButton>
           </div>
           <p v-if="loading" role="status">{{ t('正在读取原文…') }}</p>
           <template v-else-if="error"
             ><p class="import-warning" role="alert">{{ t(error) }}</p>
-            <button v-ui-button class="button secondary" @click="load">
+            <UiButton variant="secondary" type="submit" @click="load">
               {{ t('重试') }}
-            </button></template
+            </UiButton></template
           >
           <template v-else>
             <div
@@ -1451,31 +1433,31 @@ async function download() {
                 }}
               </p>
               <div class="source-actions">
-                <button
-                  v-ui-button="'ghost'"
+                <UiButton
+                  variant="ghost"
+                  type="submit"
                   v-if="readingError"
-                  class="text-button"
                   :disabled="busy"
                   @click="reading.flush()"
                 >
                   {{ t('重试保存位置') }}
-                </button>
-                <button
-                  v-ui-button="'ghost'"
-                  class="text-button"
+                </UiButton>
+                <UiButton
+                  variant="ghost"
+                  type="submit"
                   :disabled="busy || !reader?.ready"
                   @click="remember"
                 >
                   {{ t('保存阅读位置') }}
-                </button>
-                <button
-                  v-ui-button="'ghost'"
-                  class="text-button"
+                </UiButton>
+                <UiButton
+                  variant="ghost"
+                  type="submit"
                   :disabled="busy || !reader?.ready"
                   @click="reader?.restart()"
                 >
                   {{ t('从头阅读') }}
-                </button>
+                </UiButton>
               </div>
             </div>
             <SourceReader
@@ -1491,36 +1473,35 @@ async function download() {
             <div v-if="source.kind === 'excerpt'" class="source-excerpt-tools">
               <p v-if="!original" class="form-note">{{ t('原文已删除，摘录内容仍保留。') }}</p>
               <div class="source-actions">
-                <button
-                  v-ui-button
+                <UiButton
+                  variant="secondary"
+                  type="submit"
                   v-if="original"
-                  class="button secondary"
                   :disabled="busy"
                   @click="originOpen = true"
                 >
                   {{ t('查看出处') }}
-                </button>
-                <button
-                  v-ui-button="'primary'"
-                  class="button primary"
+                </UiButton>
+                <UiButton
+                  variant="primary"
+                  type="submit"
                   :disabled="busy || !library.decks.length"
                   @click="createFromWholeExcerpt"
                 >
                   {{ t('用此摘录制卡') }}
-                </button>
+                </UiButton>
               </div>
             </div>
             <p v-if="duplicates.length" class="source-duplicate" role="status">
               <span>{{ t('这段原文已有 {count} 份摘录。', { count: duplicates.length }) }}</span>
-              <button
-                v-ui-button="'ghost'"
+              <UiButton
+                variant="ghost"
                 type="button"
-                class="text-button"
                 :disabled="busy || moving"
                 @click="excerptList?.showMatches()"
               >
                 {{ t('查看已有摘录') }}
-              </button>
+              </UiButton>
             </p>
             <div class="source-excerpt-action">
               <span>{{
@@ -1528,47 +1509,50 @@ async function download() {
                   ? t('已选 {count} 个字符', { count: excerpt.quote.length })
                   : t('尚未选取摘录')
               }}</span>
-              <button
-                v-ui-button
-                class="button secondary"
+              <UiButton
+                variant="secondary"
+                type="submit"
                 :disabled="busy || !excerpt"
                 @click="openExcerpt"
               >
                 {{ t('保存为摘录') }}
-              </button>
-              <button
-                v-ui-button="'primary'"
-                class="button primary"
+              </UiButton>
+              <UiButton
+                variant="primary"
+                type="submit"
                 :disabled="busy || !excerpt || !library.decks.length"
                 @click="excerpt && emit('create', excerpt, source.format)"
               >
                 {{ t('用摘录制卡') }}
-              </button>
-              <button
-                v-ui-button
+              </UiButton>
+              <UiButton
+                variant="secondary"
+                type="submit"
                 v-if="canShare"
-                class="button secondary"
                 :disabled="busy || !excerpt || !library.decks.length"
                 @click="excerpt && emit('share', excerpt)"
               >
                 {{ t('通过 MCP 制卡') }}
-              </button>
+              </UiButton>
             </div>
             <p v-if="!library.decks.length" class="form-note">
               {{ t('请先新建一个卡组，再用摘录制卡。') }}
             </p>
-            <details v-if="linked.length" class="source-linked">
-              <summary v-ui-button="'ghost'">
-                {{ t('关联笔记（{count}）', { count: linked.length }) }}
-              </summary>
-              <ul>
-                <li v-for="note in linked" :key="note.id">
-                  <button v-ui-button="'ghost'" class="text-button" @click="emit('edit', note.id)">
-                    {{ note.front.slice(0, 120) }}
-                  </button>
-                </li>
-              </ul>
-            </details>
+            <UiCollapsible :unmount-on-hide="false" v-if="linked.length" class="source-linked">
+              <template #default="{ open }"
+                ><UiButton type="button" variant="ghost" :aria-expanded="open">
+                  {{ t('关联笔记（{count}）', { count: linked.length }) }}
+                </UiButton></template
+              ><template #content>
+                <ul>
+                  <li v-for="note in linked" :key="note.id">
+                    <UiButton variant="ghost" type="submit" @click="emit('edit', note.id)">
+                      {{ note.front.slice(0, 120) }}
+                    </UiButton>
+                  </li>
+                </ul>
+              </template></UiCollapsible
+            >
           </template>
           <p v-if="navigationError" class="import-warning" role="alert">{{ t(navigationError) }}</p>
           <SourceExcerptList
@@ -1653,13 +1637,13 @@ async function download() {
       <p>{{ t('旧版正文和阅读位置保留。查看旧版不会改变当前阅读进度。') }}</p>
       <ul class="source-version-list">
         <li v-for="(version, index) in source.versions" :key="version.mediaId">
-          <button v-ui-button class="button secondary" @click="openVersion(version.mediaId)">
+          <UiButton variant="secondary" type="submit" @click="openVersion(version.mediaId)">
             {{
               t('版本 {number} · {date}', {
                 number: index + 1,
                 date: new Date(version.acceptedAt).toLocaleString(locale),
               })
-            }}</button
+            }}</UiButton
           ><span v-if="version.reading" class="form-note">{{
             t('阅读位置：{offset}', { offset: version.reading.offset })
           }}</span>
@@ -1675,8 +1659,7 @@ async function download() {
     >
       <form class="editor-form source-details-form" @submit.prevent="saveDetails">
         <label for="source-details-title">{{ t('材料标题') }}</label>
-        <input
-          v-ui-control
+        <UiInput
           id="source-details-title"
           v-model="detailsDraft.details.title"
           required
@@ -1684,10 +1667,14 @@ async function download() {
           :disabled="busy || savingDetails"
         />
         <label for="source-details-url">{{ t('来源链接（可选）') }}</label>
-        <input
-          v-ui-control
+        <UiInput
           id="source-details-url"
-          v-model="detailsDraft.details.url"
+          :model-value="detailsDraft?.details.url ?? ''"
+          @update:model-value="
+            (value: string) => {
+              if (detailsDraft) detailsDraft.details.url = value
+            }
+          "
           type="url"
           maxlength="2048"
           placeholder="https://"
@@ -1695,23 +1682,17 @@ async function download() {
         />
         <p class="form-note">{{ t('操作前会保存快照，可在「数据与备份」中恢复。') }}</p>
         <div class="form-actions">
-          <button
-            v-ui-button
+          <UiButton
+            variant="secondary"
             type="button"
-            class="button secondary"
             :disabled="busy || savingDetails"
             @click="detailsDraft = undefined"
           >
             {{ t('取消') }}
-          </button>
-          <button
-            v-ui-button="'primary'"
-            type="submit"
-            class="button primary"
-            :disabled="busy || savingDetails"
-          >
+          </UiButton>
+          <UiButton variant="primary" type="submit" :disabled="busy || savingDetails">
             {{ t('保存材料信息') }}
-          </button>
+          </UiButton>
         </div>
       </form>
     </AppModal>
@@ -1725,8 +1706,7 @@ async function download() {
     >
       <form class="editor-form source-excerpt-form" @submit.prevent="saveExcerpt">
         <label for="excerpt-title">{{ t('摘录标题') }}</label>
-        <input
-          v-ui-control
+        <UiInput
           id="excerpt-title"
           v-model="excerptTitle"
           required
@@ -1734,32 +1714,25 @@ async function download() {
           :disabled="busy || savingExcerpt"
         />
         <label for="excerpt-body">{{ t('选中的原文') }}</label>
-        <textarea
-          v-ui-control
+        <UiTextarea
           id="excerpt-body"
-          :value="excerptDraft.input.excerpt.quote"
+          :model-value="excerptDraft.input.excerpt.quote"
           readonly
           rows="8"
         />
         <p class="form-note">{{ t('摘录会加入待阅读列表，可单独阅读和制卡。') }}</p>
         <div class="form-actions">
-          <button
-            v-ui-button
+          <UiButton
+            variant="secondary"
             type="button"
-            class="button secondary"
             :disabled="busy || savingExcerpt"
             @click="excerptDraft = undefined"
           >
             {{ t('取消') }}
-          </button>
-          <button
-            v-ui-button="'primary'"
-            type="submit"
-            class="button primary"
-            :disabled="busy || savingExcerpt"
-          >
+          </UiButton>
+          <UiButton variant="primary" type="submit" :disabled="busy || savingExcerpt">
             {{ t('保存摘录') }}
-          </button>
+          </UiButton>
         </div>
       </form>
     </AppModal>
@@ -1772,34 +1745,31 @@ async function download() {
     >
       <form class="source-defer-form" @submit.prevent="saveReadSchedule">
         <label for="reading-schedule-mode">{{ t('间隔方式') }}</label>
-        <select
-          v-ui-control
+        <UiSelect
+          :items="[
+            { label: t('固定递增'), value: 'fixed' },
+            { label: t('自适应'), value: 'adaptive' },
+          ]"
           id="reading-schedule-mode"
           v-model="scheduleMode"
           :disabled="busy || arranging"
-        >
-          <option value="fixed">{{ t('固定递增') }}</option>
-          <option value="adaptive">{{ t('自适应') }}</option>
-        </select>
+        ></UiSelect>
         <fieldset
           v-if="scheduleMode === 'adaptive'"
           class="reading-feedback"
           :disabled="busy || arranging"
         >
           <legend>{{ t('这次理解如何？') }}</legend>
-          <label
-            v-for="(label, value) in { again: '需要再读', good: '基本理解', easy: '已经熟悉' }"
-            :key="value"
-          >
-            <input
-              v-ui-control
-              v-model="readingFeedback"
-              type="radio"
-              name="reading-feedback"
-              :value="value"
-            />
-            {{ t(label) }}
-          </label>
+          <URadioGroup
+            v-model="readingFeedback"
+            name="reading-feedback"
+            :disabled="busy || arranging"
+            :items="[
+              { value: 'again', label: t('需要再读') },
+              { value: 'good', label: t('基本理解') },
+              { value: 'easy', label: t('已经熟悉') },
+            ]"
+          />
         </fieldset>
         <p class="source-interval-summary">
           {{ t('本次间隔：{interval}', { interval: duration(selectedPlan.intervalDays, 'day') }) }}
@@ -1828,23 +1798,17 @@ async function download() {
         </p>
         <p class="form-note">{{ t('按本机日期安排，到这一天会自动加入待阅读列表。') }}</p>
         <div class="form-actions">
-          <button
-            v-ui-button
+          <UiButton
+            variant="secondary"
             type="button"
-            class="button secondary"
             :disabled="busy || arranging"
             @click="schedulingRead = false"
           >
             {{ t('取消') }}
-          </button>
-          <button
-            v-ui-button="'primary'"
-            type="submit"
-            class="button primary"
-            :disabled="busy || arranging || !canMove"
-          >
+          </UiButton>
+          <UiButton variant="primary" type="submit" :disabled="busy || arranging || !canMove">
             {{ t('保存阅读安排') }}
-          </button>
+          </UiButton>
         </div>
       </form>
     </AppModal>
@@ -1858,23 +1822,17 @@ async function download() {
       <form class="source-defer-form" @submit.prevent="arrange({ type: 'reset-interval' })">
         <p>{{ t('下次从 1 天开始，已安排的阅读日期保持不变。') }}</p>
         <div class="form-actions">
-          <button
-            v-ui-button
+          <UiButton
+            variant="secondary"
             type="button"
-            class="button secondary"
             :disabled="busy || arranging"
             @click="resettingInterval = false"
           >
             {{ t('取消') }}
-          </button>
-          <button
-            v-ui-button="'primary'"
-            type="submit"
-            class="button primary"
-            :disabled="busy || arranging"
-          >
+          </UiButton>
+          <UiButton variant="primary" type="submit" :disabled="busy || arranging">
             {{ t('重置间隔') }}
-          </button>
+          </UiButton>
         </div>
       </form>
     </AppModal>
@@ -1889,23 +1847,22 @@ async function download() {
         <fieldset class="source-defer-options" :disabled="busy || arranging">
           <legend>{{ t('快捷安排') }}</legend>
           <div>
-            <button
-              v-ui-button
+            <UiButton
+              variant="secondary"
               v-for="option in deferOptions"
               :key="option.label"
               type="button"
-              class="button secondary source-defer-option"
+              class="source-defer-option"
               :aria-pressed="deferDate === option.date"
               @click="deferDate = option.date"
             >
               <span>{{ t(option.label) }}</span>
               <time :datetime="option.date">{{ readingDate(option.date) }}</time>
-            </button>
+            </UiButton>
           </div>
         </fieldset>
         <label for="source-reading-date">{{ t('下次阅读日期') }}</label>
-        <input
-          v-ui-control
+        <UiInput
           id="source-reading-date"
           v-model="deferDate"
           type="date"
@@ -1916,23 +1873,17 @@ async function download() {
         />
         <p class="form-note">{{ t('按本机日期安排，到这一天会自动加入待阅读列表。') }}</p>
         <div class="form-actions">
-          <button
-            v-ui-button
+          <UiButton
+            variant="secondary"
             type="button"
-            class="button secondary"
             :disabled="busy || arranging"
             @click="deferring = false"
           >
             {{ t('取消') }}
-          </button>
-          <button
-            v-ui-button="'primary'"
-            type="submit"
-            class="button primary"
-            :disabled="busy || arranging"
-          >
+          </UiButton>
+          <UiButton variant="primary" type="submit" :disabled="busy || arranging">
             {{ t('保存阅读安排') }}
-          </button>
+          </UiButton>
         </div>
       </form>
     </AppModal>
@@ -1957,25 +1908,23 @@ async function download() {
           :disabled="busy || readingFile"
           :aria-label="t('选择材料文件')"
           @change="fileChanged"
-        /><button
-          v-ui-button
+        /><UiButton
+          variant="secondary"
           type="button"
-          class="button attachment-button"
+          class="attachment-button"
           :disabled="busy || readingFile"
           @click="fileInput?.click()"
         >
-          <Upload :size="18" />{{ t('选择材料文件') }}</button
+          <Upload :size="18" />{{ t('选择材料文件') }}</UiButton
         ><label for="source-title">{{ t('材料标题') }}</label
-        ><input
-          v-ui-control
+        ><UiInput
           id="source-title"
           v-model="form.title"
           required
           maxlength="160"
           :disabled="busy || readingFile"
         /><label for="source-url">{{ t('来源链接（可选）') }}</label
-        ><input
-          v-ui-control
+        ><UiInput
           id="source-url"
           v-model="form.url"
           type="url"
@@ -1983,17 +1932,17 @@ async function download() {
           placeholder="https://"
           :disabled="busy || readingFile"
         /><label for="source-format">{{ t('内容格式') }}</label
-        ><select
-          v-ui-control
+        ><UiSelect
+          :items="[
+            { label: 'Markdown', value: 'markdown' },
+            { label: t('纯文本'), value: 'plain' },
+          ]"
           id="source-format"
           v-model="form.format"
           :disabled="busy || readingFile"
-        >
-          <option value="markdown">Markdown</option>
-          <option value="plain">{{ t('纯文本') }}</option></select
+        ></UiSelect
         ><label for="source-content">{{ t('粘贴正文') }}</label
-        ><textarea
-          v-ui-control
+        ><UiTextarea
           id="source-content"
           v-model="form.content"
           required
@@ -2004,22 +1953,11 @@ async function download() {
         <p v-if="readingFile" role="status">{{ t('正在读取原文…') }}</p>
         <p v-if="importError" class="import-warning" role="alert">{{ t(importError) }}</p>
         <div class="form-actions">
-          <button
-            v-ui-button
-            type="button"
-            class="button secondary"
-            :disabled="busy"
-            @click="closeImport"
-          >
-            {{ t('取消') }}</button
-          ><button
-            v-ui-button="'primary'"
-            type="submit"
-            class="button primary"
-            :disabled="busy || readingFile"
-          >
+          <UiButton variant="secondary" type="button" :disabled="busy" @click="closeImport">
+            {{ t('取消') }}</UiButton
+          ><UiButton variant="primary" type="submit" :disabled="busy || readingFile">
             {{ t('保存材料') }}
-          </button>
+          </UiButton>
         </div>
       </form>
     </AppModal>
@@ -2046,11 +1984,11 @@ async function download() {
         </p>
         <p class="form-note">{{ t('操作前会保存快照，可在「数据与备份」中恢复。') }}</p>
         <div class="form-actions">
-          <button v-ui-button class="button secondary" :disabled="busy" @click="deleting = false">
-            {{ t('取消') }}</button
-          ><button v-ui-button="'danger'" class="button danger" :disabled="busy" @click="remove">
+          <UiButton variant="secondary" type="submit" :disabled="busy" @click="deleting = false">
+            {{ t('取消') }}</UiButton
+          ><UiButton variant="danger" type="submit" :disabled="busy" @click="remove">
             {{ t('确认删除') }}
-          </button>
+          </UiButton>
         </div>
       </div></AppModal
     >

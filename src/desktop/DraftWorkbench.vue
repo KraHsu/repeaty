@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { vUiControl, vUiButton } from '../components/ui'
+import { UiButton, UiSelect } from '../components/ui'
 import { computed, ref, watch } from 'vue'
 import { t, type DisplayMessage } from '../i18n'
 import { remoteWorkspace } from '../edition'
@@ -168,14 +168,14 @@ async function discard(id: string) {
 </script>
 
 <template>
-  <button
-    v-ui-button
+  <UiButton
+    variant="ghost"
+    type="submit"
     v-if="!remoteWorkspace && (count || draftSession.selection || draftState.error)"
-    class="text-button"
     @click="openQueue"
   >
     {{ t('制卡草稿（{count}）', { count }) }}
-  </button>
+  </UiButton>
   <AppModal
     v-if="selection && !remoteWorkspace"
     wide
@@ -192,35 +192,35 @@ async function discard(id: string) {
       <blockquote class="draft-quote">{{ selection.quote }}</blockquote>
       <label class="form-field" for="draft-deck"
         >{{ t('草稿默认卡组') }}
-        <select v-ui-control id="draft-deck" v-model="deckId" :disabled="sharing">
-          <option v-for="deck in library.decks" :key="deck.id" :value="deck.id">
-            {{ deck.name }}
-          </option>
-        </select>
+        <UiSelect
+          :items="[...library.decks.map((deck) => ({ label: deck.name, value: deck.id }))]"
+          id="draft-deck"
+          v-model="deckId"
+          :disabled="sharing"
+        ></UiSelect>
       </label>
       <p class="form-note">
         {{ t('客户端可能将摘录发送给它使用的模型服务。请确认选区中包含的内容。') }}
       </p>
       <McpSettings />
       <div class="form-actions">
-        <button
-          v-ui-button
-          class="button secondary"
+        <UiButton
+          variant="secondary"
           type="button"
           :disabled="sharing"
           @click="emit('closeSelection')"
         >
           {{ t('取消') }}
-        </button>
-        <button
-          v-ui-button
-          class="button primary"
+        </UiButton>
+        <UiButton
+          variant="primary"
+          type="submit"
           :disabled="
             sharing || !deckId || !mcpStatus.enabled || !mcpStatus.available || !draftState.ready
           "
         >
           {{ t(sharing ? '正在分享…' : '分享这段摘录') }}
-        </button>
+        </UiButton>
       </div>
     </form>
   </AppModal>
@@ -234,21 +234,21 @@ async function discard(id: string) {
   >
     <section class="draft-queue">
       <p v-if="draftState.error" role="alert">{{ t(draftState.error) }}</p>
-      <button
-        v-ui-button
+      <UiButton
+        variant="secondary"
+        type="submit"
         v-if="draftState.error"
-        class="button secondary"
         :disabled="draftState.loading || workspace.busy.value || saving"
         @click="reloadDrafts(workspace)"
       >
         {{ t('重新读取草稿') }}
-      </button>
+      </UiButton>
       <template v-if="draftSession.selection">
         <div class="draft-sharing">
           <strong>{{ t('当前分享的摘录') }}</strong>
-          <button v-ui-button class="text-button" @click="draftSession.revoke()">
+          <UiButton variant="ghost" type="submit" @click="draftSession.revoke()">
             {{ t('停止分享') }}
-          </button>
+          </UiButton>
         </div>
         <p>{{ draftSession.selection.title }}</p>
         <blockquote class="draft-quote">{{ draftSession.selection.excerpt.quote }}</blockquote>
@@ -273,9 +273,9 @@ async function discard(id: string) {
             {{ t('材料或卡组已不存在，请丢弃草稿后重新选取。') }}
           </p>
           <div class="connection-actions">
-            <button
-              v-ui-button
-              class="button secondary"
+            <UiButton
+              variant="secondary"
+              type="submit"
               :disabled="
                 workspace.busy.value ||
                 saving ||
@@ -285,15 +285,15 @@ async function discard(id: string) {
               @click="openDraft(draft.id)"
             >
               {{ t('检查并编辑') }}
-            </button>
-            <button
-              v-ui-button
-              class="text-button"
+            </UiButton>
+            <UiButton
+              variant="ghost"
+              type="submit"
               :disabled="workspace.busy.value || saving || !draftState.ready"
               @click="discard(draft.id)"
             >
               {{ t('丢弃草稿') }}
-            </button>
+            </UiButton>
           </div>
         </li>
       </ol>

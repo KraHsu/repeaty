@@ -1,28 +1,10 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { createApp, defineComponent, h, nextTick, ref, type Component } from 'vue'
+import { afterEach, beforeEach, expect, it } from 'vitest'
+import { createApp, defineComponent, h, type Component } from 'vue'
 import { createApplicationSettings } from './application'
 import { locale, setLocale } from '../i18n'
 import { PREFERENCES_KEY, restorePreferences, setPreference } from '../preferences'
 import { useSettingsStore } from '../settings-store'
-
-vi.mock('../components/PluginPanel.vue', () => ({
-  default: defineComponent({
-    props: { focusPlugin: String },
-    emits: ['configure'],
-    setup:
-      (props, { emit }) =>
-      () =>
-        h(
-          'button',
-          {
-            'data-plugin': props.focusPlugin,
-            onClick: () => emit('configure', 'example'),
-          },
-          'Configure',
-        ),
-  }),
-}))
 
 const cleanups: (() => void)[] = []
 let values: Map<string, string>
@@ -56,7 +38,7 @@ function mount(component: Component) {
 
 it('keeps builtin declarations reactive and writes only the existing preference records in their active scope', () => {
   let scope = 'first-library'
-  const entries = createApplicationSettings({ scope: () => scope, onConfigurePlugin: vi.fn() })
+  const entries = createApplicationSettings({ scope: () => scope })
   const appearance = entries.find(({ contribution }) => contribution.id === 'appearance')!
   const notifications = entries.find(({ contribution }) => contribution.id === 'notifications')!
   const language = appearance.contribution.fields![0]!
@@ -83,14 +65,9 @@ it('keeps builtin declarations reactive and writes only the existing preference 
   expect(entries.some(({ contribution }) => contribution.id === 'workspace')).toBe(false)
 })
 
-it('splits desktop sections and forwards reactive plugin detail targets without allowing stale navigation', async () => {
-  const details = ref('first-plugin')
-  const configure = vi.fn()
-  let scope = 'workspace-one'
+it('provides individual desktop configuration views without registering plugin management in settings', () => {
   const entries = createApplicationSettings({
-    scope: () => scope,
-    onConfigurePlugin: configure,
-    detailsPlugin: () => details.value,
+    scope: () => 'workspace-one',
     platformSettings: defineComponent({
       props: { section: String },
       setup: (props) => () => h('p', { 'data-section': props.section }, props.section),
@@ -102,15 +79,14 @@ it('splits desktop sections and forwards reactive plugin detail targets without 
   expect(mcp.standalone).toBe(true)
   expect(mount(workspace.contribution.component!).textContent).toBe('workspace')
   expect(mount(mcp.contribution.component!).textContent).toBe('mcp')
-  const plugin = entries.find(({ contribution }) => contribution.id === 'plugins')!
-  const host = mount(plugin.contribution.component!)
-  expect(host.querySelector('button')?.dataset.plugin).toBe('first-plugin')
-  details.value = 'second-plugin'
-  await nextTick()
-  expect(host.querySelector('button')?.dataset.plugin).toBe('second-plugin')
-  host.querySelector('button')!.click()
-  expect(configure).toHaveBeenCalledExactlyOnceWith('example')
-  scope = 'workspace-two'
-  host.querySelector('button')!.click()
-  expect(configure).toHaveBeenCalledTimes(1)
+  expect(entries.map(({ contribution }) => contribution.id)).toEqual([
+    'appearance',
+    'notifications',
+    'workspace',
+    'mcp',
+    'ai',
+  ])
+  expect(
+    entries.some(({ contribution }) => contribution.category?.some(({ id }) => id === 'plugins')),
+  ).toBe(false)
 })

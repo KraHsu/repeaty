@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { vUiButton } from '../../components/ui'
+import { UiButton } from '../../components/ui'
 import { version } from '../../../package.json'
 import { t } from '../../i18n'
 import {
@@ -13,6 +13,7 @@ import {
   Plus,
   Repeat2,
   Settings,
+  Puzzle,
 } from '@lucide/vue'
 import { remoteWorkspace, desktopEdition } from '../../edition'
 import { WorkspaceBrowser, workspacePendingCount, workspaceDetectionError } from '@repeaty-platform'
@@ -40,7 +41,8 @@ const {
     <div class="sidebar-content">
       <span class="sidebar-label">{{ t('间隔复习') }}</span>
       <nav class="main-nav" :aria-label="t('主导航')">
-        <button
+        <UiButton
+          :variant="tab === 'workspace' && !review ? 'primary' : 'ghost'"
           v-if="WorkspaceBrowser"
           class="workspace-nav"
           :class="{ active: tab === 'workspace' && !review }"
@@ -76,8 +78,9 @@ const {
             :title="t('文件检测需要检查，请打开工作目录。')"
             >!</span
           >
-        </button>
-        <button
+        </UiButton>
+        <UiButton
+          :variant="tab === 'overview' && !review ? 'primary' : 'ghost'"
           :class="{ active: tab === 'overview' && !review }"
           :aria-current="tab === 'overview' && !review ? 'page' : undefined"
           :aria-label="t('学习概览')"
@@ -85,8 +88,9 @@ const {
           @click="navigate('overview')"
         >
           <LayoutGrid :size="19" /><span class="nav-label">{{ t('学习概览') }}</span>
-        </button>
-        <button
+        </UiButton>
+        <UiButton
+          :variant="tab === 'cards' && !review ? 'primary' : 'ghost'"
           :class="{ active: tab === 'cards' && !review }"
           :aria-current="tab === 'cards' && !review ? 'page' : undefined"
           :aria-label="t('全部卡片')"
@@ -95,8 +99,9 @@ const {
         >
           <Layers :size="19" /><span class="nav-label">{{ t('全部卡片') }}</span
           ><span class="nav-count">{{ library.cards.length }}</span>
-        </button>
-        <button
+        </UiButton>
+        <UiButton
+          :variant="tab === 'sources' && !review ? 'primary' : 'ghost'"
           :class="{ active: tab === 'sources' && !review }"
           :aria-current="tab === 'sources' && !review ? 'page' : undefined"
           :aria-label="t('学习材料')"
@@ -104,8 +109,9 @@ const {
           @click="navigate('sources')"
         >
           <FileText :size="19" /><span class="nav-label">{{ t('学习材料') }}</span>
-        </button>
-        <button
+        </UiButton>
+        <UiButton
+          :variant="tab === 'history' && !review ? 'primary' : 'ghost'"
           v-if="desktopEdition || library.practices.length"
           :class="{ active: tab === 'history' && !review }"
           :aria-current="tab === 'history' && !review ? 'page' : undefined"
@@ -114,17 +120,29 @@ const {
           @click="openHistory()"
         >
           <History :size="19" /><span class="nav-label">{{ t('练习历史') }}</span>
-        </button>
-        <button
-          :class="{ active: (tab === 'settings' || tab === 'plugins') && !review }"
-          :aria-current="(tab === 'settings' || tab === 'plugins') && !review ? 'page' : undefined"
+        </UiButton>
+        <UiButton
+          :variant="tab === 'plugins' && !review ? 'primary' : 'ghost'"
+          :class="{ active: tab === 'plugins' && !review }"
+          :aria-current="tab === 'plugins' && !review ? 'page' : undefined"
+          :aria-label="t('插件')"
+          :title="t('插件')"
+          @click="navigate('plugins')"
+        >
+          <Puzzle :size="19" /><span class="nav-label">{{ t('插件') }}</span>
+        </UiButton>
+        <UiButton
+          :variant="tab === 'settings' && !review ? 'primary' : 'ghost'"
+          :class="{ active: tab === 'settings' && !review }"
+          :aria-current="tab === 'settings' && !review ? 'page' : undefined"
           :aria-label="t('设置')"
           :title="t('设置')"
           @click="navigate('settings')"
         >
           <Settings :size="19" /><span class="nav-label">{{ t('设置') }}</span>
-        </button>
-        <button
+        </UiButton>
+        <UiButton
+          :variant="tab === 'data' && !review ? 'primary' : 'ghost'"
           :class="{ active: tab === 'data' && !review }"
           :aria-current="tab === 'data' && !review ? 'page' : undefined"
           :aria-label="t('数据与备份')"
@@ -132,23 +150,24 @@ const {
           @click="navigate('data')"
         >
           <Database :size="19" /><span class="nav-label">{{ t('数据与备份') }}</span>
-        </button>
+        </UiButton>
       </nav>
       <div class="sidebar-decks">
         <div class="sidebar-section-title">
           <span class="sidebar-section-label">{{ t('我的卡组') }}</span
-          ><button
-            v-ui-button="{ variant: 'ghost', icon: true }"
-            class="icon-button"
+          ><UiButton
+            v-bind="{ variant: 'ghost', icon: true }"
+            type="submit"
             :aria-label="t('新建卡组')"
             :title="t('新建卡组')"
             :disabled="!ready || busy"
             @click="editDeck()"
           >
             <Plus :size="16" />
-          </button>
+          </UiButton>
         </div>
-        <button
+        <UiButton
+          :variant="selectedDeck === deck.id ? 'primary' : 'ghost'"
           v-for="deck in library.decks"
           :key="deck.id"
           class="sidebar-deck"
@@ -161,7 +180,7 @@ const {
             deck.name
           }}</span
           ><span class="deck-count">{{ deckCards(deck.id) }}</span>
-        </button>
+        </UiButton>
         <p v-if="!library.decks.length" class="sidebar-empty">
           {{ t('暂无卡组') }}
         </p>

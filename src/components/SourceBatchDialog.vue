@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { vUiControl, vUiButton } from './ui'
+import { UiSelect, UiButton, UiInput } from './ui'
 import { computed, ref } from 'vue'
 import { t, locale } from '../i18n'
 import type { SourceBatchAction, SourcePriority } from '../core/source-data'
@@ -47,38 +47,46 @@ function submit() {
         {{ t('以及另外 {count} 篇。', { count: titles.length - 5 }) }}
       </p>
       <label for="source-batch-action">{{ t('批量操作') }}</label>
-      <select v-ui-control id="source-batch-action" v-model="operation" :disabled="busy">
-        <option value="priority">{{ t('设置优先级') }}</option>
-        <option value="defer">{{ t('稍后阅读') }}</option>
-        <option value="archive">{{ t('归档材料') }}</option>
-        <option value="restore">{{ t('加入待阅读') }}</option>
-      </select>
+      <UiSelect
+        :items="[
+          { label: t('设置优先级'), value: 'priority' },
+          { label: t('稍后阅读'), value: 'defer' },
+          { label: t('归档材料'), value: 'archive' },
+          { label: t('加入待阅读'), value: 'restore' },
+        ]"
+        id="source-batch-action"
+        v-model="operation"
+        :disabled="busy"
+      ></UiSelect>
       <template v-if="operation === 'priority'">
         <label for="source-batch-priority">{{ t('阅读优先级') }}</label>
-        <select v-ui-control id="source-batch-priority" v-model="priority" :disabled="busy">
-          <option value="high">{{ t('高') }}</option>
-          <option value="normal">{{ t('普通') }}</option>
-          <option value="low">{{ t('低') }}</option>
-        </select>
+        <UiSelect
+          :items="[
+            { label: t('高'), value: 'high' },
+            { label: t('普通'), value: 'normal' },
+            { label: t('低'), value: 'low' },
+          ]"
+          id="source-batch-priority"
+          v-model="priority"
+          :disabled="busy"
+        ></UiSelect>
       </template>
       <template v-if="operation === 'defer'">
         <div class="source-batch-dates" :aria-label="t('快捷安排')">
-          <button
-            v-ui-button
+          <UiButton
+            variant="secondary"
             v-for="option in options"
             :key="option.days"
             type="button"
-            class="button secondary"
             :disabled="busy"
             :aria-pressed="date === nextReadingDay(now, option.days)"
             @click="date = nextReadingDay(now, option.days)"
           >
             {{ t(option.label) }}
-          </button>
+          </UiButton>
         </div>
         <label for="source-batch-date">{{ t('下次阅读日期') }}</label>
-        <input
-          v-ui-control
+        <UiInput
           id="source-batch-date"
           v-model="date"
           type="date"
@@ -91,18 +99,12 @@ function submit() {
       </template>
       <p class="form-note">{{ t('整批保存后可撤销。卡片和复习进度保持不变。') }}</p>
       <div class="form-actions">
-        <button
-          v-ui-button
-          type="button"
-          class="button secondary"
-          :disabled="busy"
-          @click="emit('close')"
-        >
+        <UiButton variant="secondary" type="button" :disabled="busy" @click="emit('close')">
           {{ t('取消') }}
-        </button>
-        <button v-ui-button="'primary'" type="submit" class="button primary" :disabled="busy">
+        </UiButton>
+        <UiButton variant="primary" type="submit" :disabled="busy">
           {{ t('确认批量安排') }}
-        </button>
+        </UiButton>
       </div>
     </form>
   </AppModal>

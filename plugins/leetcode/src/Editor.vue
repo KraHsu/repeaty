@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { vUiControl, vUiButton } from '@repeaty/plugin-api'
+import { UiInput, UiButton, UiSelect, UiCollapsible } from '@repeaty/plugin-api'
+
 import { computed, onUnmounted, ref } from 'vue'
 import { t } from './i18n'
 import type { NoteInput } from '@repeaty/plugin-api'
@@ -58,21 +59,20 @@ async function load() {
     <div class="leetcode-source">
       <div class="form-field">
         <label for="leetcode-site">{{ t('LeetCode 站点') }}</label>
-        <select
-          v-ui-control
+        <UiSelect
           id="leetcode-site"
           v-model="site"
           :disabled="loading"
           @change="rememberSite(site)"
-        >
-          <option value="leetcode.cn">{{ t('中国站 · leetcode.cn') }}</option>
-          <option value="leetcode.com">{{ t('国际站 · leetcode.com') }}</option>
-        </select>
+          :items="[
+            { value: 'leetcode.cn', label: t('中国站 · leetcode.cn') },
+            { value: 'leetcode.com', label: t('国际站 · leetcode.com') },
+          ]"
+        />
       </div>
       <div class="form-field">
         <label for="leetcode-link">{{ t('题目链接或英文标识') }}</label>
-        <input
-          v-ui-control
+        <UiInput
           id="leetcode-link"
           v-model="input"
           :disabled="loading"
@@ -81,15 +81,14 @@ async function load() {
           @keydown.enter.prevent="load"
         />
       </div>
-      <button
-        v-ui-button="'secondary'"
-        class="button secondary"
+      <UiButton
+        variant="secondary"
         type="button"
         :disabled="loading || !input.trim()"
         @click="load"
       >
         {{ loading ? t('读取中…') : t('读取题目') }}
-      </button>
+      </UiButton>
     </div>
     <p v-if="error" role="alert" class="import-warning">{{ t(error) }}</p>
     <Connection :site="site" />
@@ -98,10 +97,10 @@ async function load() {
         {{ t('已读取：{title}', { title: `${problem.frontendId}. ${problem.title}` }) }} ·
         {{ t(problem.difficulty) }} · {{ problem.site }}
       </p>
-      <details>
-        <summary v-ui-button="'ghost'">{{ t('题目预览') }}</summary>
-        <Statement :content="problem.content" />
-      </details>
+      <UiCollapsible>
+        <UiButton variant="ghost">{{ t('题目预览') }}</UiButton>
+        <template #content><Statement :content="problem.content" /></template>
+      </UiCollapsible>
     </template>
     <p v-else class="form-note">
       {{ t('读取题目后再保存。题面保存在服务数据库中，提交判题需要联网。') }}

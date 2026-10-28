@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { vUiControl, vUiButton } from './ui'
+import { UiButton, UiTextarea } from './ui'
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { t } from '../i18n'
 import { useInlineMedia } from '../composables/useInlineMedia'
@@ -24,7 +24,7 @@ const emit = defineEmits<{
   position: [update: ReadingUpdate]
 }>()
 const preview = ref(props.source.reading?.view === 'preview' && props.source.format === 'markdown')
-const reader = ref<HTMLTextAreaElement>(),
+const reader = ref<{ textareaRef?: HTMLTextAreaElement }>(),
   rendered = ref<HTMLElement>()
 const media = useInlineMedia(() => ({
   text: props.text,
@@ -41,8 +41,8 @@ let restoreSequence = 0
 function capture(): ReadingPosition {
   return preview.value && rendered.value
     ? capturePreview(rendered.value)
-    : reader.value
-      ? (mirror ??= new TextareaPosition(reader.value)).capture()
+    : reader.value?.textareaRef
+      ? (mirror ??= new TextareaPosition(reader.value?.textareaRef)).capture()
       : last
 }
 function update(): ReadingUpdate {
@@ -58,8 +58,13 @@ function scrolled() {
   if (!restoring.value && alive) emit('position', update())
 }
 function selected() {
-  if (reader.value)
-    emit('select', props.source.id, reader.value.selectionStart, reader.value.selectionEnd)
+  if (reader.value?.textareaRef)
+    emit(
+      'select',
+      props.source.id,
+      reader.value?.textareaRef.selectionStart,
+      reader.value?.textareaRef.selectionEnd,
+    )
 }
 async function restore(position: ReadingPosition, focus = false) {
   const sequence = ++restoreSequence
@@ -67,10 +72,13 @@ async function restore(position: ReadingPosition, focus = false) {
   await nextTick()
   if (!alive || sequence !== restoreSequence) return
   if (preview.value && rendered.value) restorePreview(rendered.value, position)
-  else if (reader.value)
-    (mirror ??= new TextareaPosition(reader.value)).restore(position.offset, focus)
+  else if (reader.value?.textareaRef)
+    (mirror ??= new TextareaPosition(reader.value?.textareaRef)).restore(position.offset, focus)
   last = capture()
-  if (focus) (preview.value ? rendered.value : reader.value)?.scrollIntoView({ block: 'nearest' })
+  if (focus)
+    (preview.value ? rendered.value : reader.value?.textareaRef)?.scrollIntoView({
+      block: 'nearest',
+    })
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
   if (alive && sequence === restoreSequence) restoring.value = false
 }
@@ -110,11 +118,12 @@ async function locate(origin: SourceOrigin) {
   preview.value = false
   const sequence = restoreSequence + 1
   await restore({ offset: selection.start, fraction: 0, view: 'source' }, true)
-  if (!alive || sequence !== restoreSequence || preview.value || !reader.value) return false
-  reader.value.focus({ preventScroll: true })
-  reader.value.setSelectionRange(selection.start, selection.end)
+  if (!alive || sequence !== restoreSequence || preview.value || !reader.value?.textareaRef)
+    return false
+  reader.value?.textareaRef.focus({ preventScroll: true })
+  reader.value?.textareaRef.setSelectionRange(selection.start, selection.end)
   // Selecting a long range can scroll to its end; keep the start visible instead.
-  ;(mirror ??= new TextareaPosition(reader.value)).restore(selection.start)
+  ;(mirror ??= new TextareaPosition(reader.value?.textareaRef)).restore(selection.start)
   observeReader()
   emit('select', props.source.id, selection.start, selection.end)
   emit('position', update())
@@ -122,7 +131,7 @@ async function locate(origin: SourceOrigin) {
 }
 function observeReader() {
   observer?.disconnect()
-  if (reader.value) observer?.observe(reader.value)
+  if (reader.value?.textareaRef) observer?.observe(reader.value?.textareaRef)
   if (rendered.value) observer?.observe(rendered.value)
 }
 onMounted(async () => {
@@ -154,15 +163,15 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
         )
       }}
     </p>
-    <button
-      v-ui-button="'ghost'"
+    <UiButton
+      variant="ghost"
+      type="submit"
       v-if="source.format === 'markdown'"
-      class="text-button"
       :aria-pressed="preview"
       @click="toggle"
     >
       {{ t(preview ? '返回原文选取摘录' : '阅读 Markdown 预览') }}
-    </button>
+    </UiButton>
   </div>
   <div
     v-if="preview"
@@ -174,13 +183,13 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
     @scroll.passive="scrolled"
     v-html="html"
   />
-  <textarea
-    v-ui-control="{ reading: true }"
+  <UiTextarea
+    :ui="{
+      base: `source-text ${source.kind === 'excerpt' && text.length < 600 ? 'short-excerpt' : ''}`,
+    }"
     v-else
     ref="reader"
-    class="source-text"
-    :class="{ 'short-excerpt': source.kind === 'excerpt' && text.length < 600 }"
-    :value="text"
+    :model-value="text"
     readonly
     :aria-label="t('材料正文')"
     :aria-busy="restoring"
@@ -202,14 +211,16 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
   gap: 0.6rem;
   align-items: center;
 }
-.source-text {
-  --ui-textarea-min-height: 28rem;
+:deep(.source-text) {
+  min-height: 28rem;
   width: 100%;
   min-width: 0;
   resize: vertical;
+  font-size: var(--font-size-reading);
+  line-height: var(--line-height-reading);
 }
-.source-text.short-excerpt {
-  --ui-textarea-min-height: 10rem;
+:deep(.source-text.short-excerpt) {
+  min-height: 10rem;
 }
 .source-markdown-preview {
   max-height: 36rem;
