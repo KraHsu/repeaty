@@ -130,6 +130,7 @@ export interface QuestionPlugin {
   showAnswer: Component
   editor?: Component
   description?: string
+  /** @deprecated Register contributions through registerSettings instead. */
   settings?: Component
   history?: Component
   createLabel?: string
@@ -142,6 +143,7 @@ export interface ReviewPanelPlugin {
   version: number
   description?: string
   reviewPanel: Component
+  /** @deprecated Register contributions through registerSettings instead. */
   settings?: Component
   dispose?: () => void | Promise<void>
 }
@@ -216,6 +218,21 @@ export interface SettingFieldProps {
   commit?: 'input' | 'change'
   layout?: 'row' | 'stack'
 }
+/** Values and labels may be reactive getters owned by the plugin. */
+export interface PluginSettingField extends SettingFieldProps {
+  key: string
+  onChange: (value: SettingValue) => void | Promise<void>
+}
+export interface PluginSettingsContribution {
+  id: string
+  title: string
+  description?: string
+  fields?: readonly PluginSettingField[]
+  component?: Component
+  error?: string
+}
+/** Registers with the active plugin instance; unload and scope changes remove the contribution. */
+export declare function registerSettings(contribution: PluginSettingsContribution): () => void
 export declare const SettingField: DefineComponent<
   SettingFieldProps & { 'onUpdate:modelValue'?: (value: SettingValue) => void }
 >

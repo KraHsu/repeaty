@@ -1,5 +1,9 @@
 import { test, expect, storedLibrary } from './fixture'
-import { openPluginSettings, setInterfaceLanguage } from '../fixtures/settings-flow'
+import {
+  openPluginManager,
+  openPluginSettings,
+  setInterfaceLanguage,
+} from '../fixtures/settings-flow'
 import type { Locator, Page } from '@playwright/test'
 
 async function savedHistoryPreferences(page: Page) {
@@ -31,14 +35,13 @@ async function fits(page: Page, cards: Locator[]) {
 }
 
 for (const language of ['zh-CN', 'en'] as const) {
-  test(`official plugin settings share a readable hierarchy and retain preferences (${language})`, async ({
+  test(`plugin details stay separate from registered settings and retain preferences (${language})`, async ({
     page,
   }, info) => {
     const labels =
       language === 'en'
         ? {
             history: 'Review history',
-            display: 'History display',
             length: 'Number of ratings',
             reveal: 'Show history after revealing the answer',
             china: 'China',
@@ -48,10 +51,11 @@ for (const language of ['zh-CN', 'en'] as const) {
             unconfigured: 'Credentials not configured',
             help: 'Where do I find these values?',
             docs: 'Full setup guide',
+            configure: 'Configure plugin',
+            enableHistory: 'Enable Review history',
           }
         : {
             history: '答题历史',
-            display: '历史显示',
             length: '显示条数',
             reveal: '翻面后才显示历史',
             china: '中国站',
@@ -61,33 +65,51 @@ for (const language of ['zh-CN', 'en'] as const) {
             unconfigured: '未配置登录信息',
             help: '在哪里找到这两个值？',
             docs: '完整配置文档',
+            configure: '配置插件',
+            enableHistory: '启用 答题历史',
           }
     await page.setViewportSize({ width: 1280, height: 950 })
     await setInterfaceLanguage(page, language)
     const before = await storedLibrary(page)
-    await openPluginSettings(page)
+    await openPluginManager(page)
     const dismiss = page.getByRole('button', { name: /^(关闭提示|Dismiss notification)$/ })
     while (await dismiss.count()) await dismiss.first().click()
-    const history = page.locator('.plugin-settings').filter({
+    const historyDetails = page.locator('.plugin-settings').filter({
       has: page.getByRole('heading', { name: labels.history, exact: true, level: 2 }),
     })
-    const leetcode = page.locator('.plugin-settings').filter({
+    const leetcodeDetails = page.locator('.plugin-settings').filter({
       has: page.getByRole('heading', { name: 'LeetCode', exact: true, level: 2 }),
     })
-    const historySection = history.getByRole('region', { name: labels.display, exact: true })
+    for (const details of [historyDetails, leetcodeDetails]) {
+      await expect(details.getByRole('heading', { level: 2 })).toHaveCSS('font-size', '20px')
+      await expect(details.locator('dl')).toBeVisible()
+      await expect(details.getByRole('spinbutton')).toHaveCount(0)
+      await expect(details.locator('input[type=password]')).toHaveCount(0)
+    }
+    await expect(page.locator('.plugin-configuration')).toHaveCount(0)
+    await fits(page, [historyDetails, leetcodeDetails])
+    await page.screenshot({ path: info.outputPath('plugin-management.png') })
+    await historyDetails.getByRole('button', { name: labels.configure, exact: true }).click()
+    const history = page.locator('.plugin-configuration[data-plugin-id="review-history"]')
+    const leetcode = page.locator('.plugin-configuration[data-plugin-id="leetcode"]')
+    await expect(page.getByRole('tab', { name: /^(插件设置|Plugin settings)$/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    await expect(history).toBeFocused()
+    await expect(page.locator('.plugin-settings')).toHaveCount(0)
     const china = leetcode.getByRole('region', { name: labels.chinaRegion, exact: true })
     const international = leetcode.getByRole('region', {
       name: labels.internationalRegion,
       exact: true,
     })
-    await expect(historySection.getByRole('heading', { level: 3 })).toHaveText(labels.display)
     await expect(china.getByRole('heading', { level: 3 })).toHaveText(labels.china)
     await expect(international.getByRole('heading', { level: 3 })).toHaveText(labels.international)
     for (const card of [history, leetcode]) {
       await expect(card.getByRole('heading', { level: 2 })).toHaveCSS('font-size', '20px')
-      await expect(card.locator('dl')).toBeVisible()
+      await expect(card.locator('.ui-setting-group__description')).toHaveCSS('font-size', '14px')
     }
-    for (const section of [historySection, china, international]) {
+    for (const section of [china, international]) {
       await expect(section.getByRole('heading', { level: 3 })).toHaveCSS('font-size', '16px')
       await expect(section.locator('.ui-setting-section__description')).toHaveCSS(
         'font-size',
@@ -118,10 +140,10 @@ for (const language of ['zh-CN', 'en'] as const) {
     await help.click()
     await expect(china.locator('details')).not.toHaveAttribute('open')
 
-    const length = historySection.getByRole('spinbutton', { name: labels.length, exact: true })
+    const length = history.getByRole('spinbutton', { name: labels.length, exact: true })
     await length.fill('7')
     await length.press('Tab')
-    await historySection.getByRole('switch', { name: labels.reveal, exact: true }).uncheck()
+    await history.getByRole('switch', { name: labels.reveal, exact: true }).uncheck()
     await expect
       .poll(() => savedHistoryPreferences(page))
       .toMatchObject({ historyLength: 7, historyAfterReveal: false })
@@ -145,7 +167,7 @@ for (const language of ['zh-CN', 'en'] as const) {
     await openPluginSettings(page)
     await expect(length).toHaveValue('7')
     await expect(
-      historySection.getByRole('switch', { name: labels.reveal, exact: true }),
+      history.getByRole('switch', { name: labels.reveal, exact: true }),
     ).not.toBeChecked()
     expect(await storedLibrary(page)).toEqual(before)
     await page.setViewportSize({ width: 500, height: 750 })
@@ -158,5 +180,17 @@ for (const language of ['zh-CN', 'en'] as const) {
       path: info.outputPath('plugin-leetcode-cn-500.png'),
       style: captureStyle,
     })
+    await openPluginManager(page)
+    await historyDetails.getByRole('switch', { name: labels.enableHistory, exact: true }).uncheck()
+    await openPluginSettings(page)
+    await expect(history).toHaveCount(0)
+    await openPluginManager(page)
+    await historyDetails.getByRole('switch', { name: labels.enableHistory, exact: true }).check()
+    await openPluginSettings(page)
+    await expect(length).toHaveValue('7')
+    await expect(
+      history.getByRole('switch', { name: labels.reveal, exact: true }),
+    ).not.toBeChecked()
+    expect(await storedLibrary(page)).toEqual(before)
   })
 }

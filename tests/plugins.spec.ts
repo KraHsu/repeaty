@@ -1,4 +1,4 @@
-import { openPluginSettings } from './fixtures/settings-flow'
+import { openPluginManager } from './fixtures/settings-flow'
 import { expect, test } from '@playwright/test'
 import { fixture } from '../src/core/test-fixtures'
 import { readFile } from 'node:fs/promises'
@@ -11,7 +11,7 @@ test('the static edition has no LeetCode plugin, backend calls, or connector dow
     if (new URL(request.url()).pathname.includes('/api/')) backendRequests.push(request.url())
   })
   await page.goto('./')
-  await openPluginSettings(page)
+  await openPluginManager(page)
   await expect(page.getByRole('heading', { name: '答题历史', exact: true })).toBeVisible()
   await expect(page.getByRole('switch', { name: '启用 答题历史', exact: true })).toBeChecked()
   await expect(page.getByText('LeetCode', { exact: true })).toHaveCount(0)

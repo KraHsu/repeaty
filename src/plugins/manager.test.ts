@@ -15,6 +15,7 @@ import { createPluginRegistry, usePlugins } from '.'
 import { packageHash, type PluginBundle } from './package'
 import { useApplicationLifecycle } from '../app/useApplicationLifecycle'
 import type { useLibrary } from '../composables/useLibrary'
+import type { createPluginApi } from './sdk'
 
 const managers: PluginManager[] = []
 afterEach(async () => {
@@ -34,7 +35,10 @@ function bundle(main = 'first'): PluginBundle {
     styles: '.sample {}',
   }
 }
-function environment(initial: PackageEntry[] = []) {
+function environment(
+  initial: PackageEntry[] = [],
+  register?: (api: ReturnType<typeof createPluginApi>) => void,
+) {
   const records = new Map(
     initial.filter((entry) => entry.bundle).map((entry) => [entry.id, entry.bundle!]),
   )
@@ -43,9 +47,10 @@ function environment(initial: PackageEntry[] = []) {
   )
   const settings = new Map<string, string>()
   const calls: { main: string; trust: boolean }[] = []
+  let workspace = 'local:test'
   const storage: PluginStorage = {
     async scope() {
-      return 'local:test'
+      return workspace
     },
     async list() {
       return [...records.values()].map((value) => ({
@@ -74,8 +79,9 @@ function environment(initial: PackageEntry[] = []) {
     writeSetting: (key, value) => {
       settings.set(key, value)
     },
-    evaluate: async (code) => {
+    evaluate: async (code, api) => {
       if (code === 'broken') throw new Error('Broken module')
+      register?.(api)
       return {
         default: {
           id: 'sample',
@@ -89,8 +95,55 @@ function environment(initial: PackageEntry[] = []) {
     },
   })
   managers.push(manager)
-  return { manager, records, trusted, calls, storage, settings }
+  return {
+    manager,
+    records,
+    trusted,
+    calls,
+    storage,
+    settings,
+    switchScope: (scope: string) => {
+      workspace = scope
+    },
+  }
 }
+
+it('isolates registered settings per manager and revokes the old API on disable or library switch', async () => {
+  const apis: ReturnType<typeof createPluginApi>[] = []
+  const contribution = () => ({
+    id: 'preferences',
+    title: 'Sample preferences',
+    component: { render: () => h('div', 'Sample') },
+  })
+  const register = (api: ReturnType<typeof createPluginApi>) => {
+    apis.push(api)
+    api.registerSettings(contribution())
+  }
+  const entries = [{ id: 'sample', bundle: bundle(), trusted: true }]
+  const a = environment(entries, register),
+    b = environment(entries, register)
+  await a.manager.initializePlugins()
+  const firstApi = apis[0]!
+  const oldA = a.manager.pluginRuntime.installations[0]!
+  await b.manager.initializePlugins()
+  const other = b.manager.pluginRuntime.installations[0]!
+  expect(oldA.settings).toHaveLength(1)
+  expect(other.settings).toHaveLength(1)
+  expect(oldA.settings).not.toBe(other.settings)
+  await a.manager.enablePlugin('sample', false)
+  expect(oldA.settings).toHaveLength(0)
+  expect(other.settings).toHaveLength(1)
+  expect(() => firstApi.registerSettings(contribution())).toThrow('已卸载')
+  await a.manager.enablePlugin('sample', true)
+  const previousScopeApi = apis.at(-1)!
+  const previousScope = a.manager.pluginRuntime.installations[0]!
+  a.switchScope('local:next-library')
+  await a.manager.initializePlugins('local:next-library')
+  expect(previousScope.settings).toHaveLength(0)
+  expect(a.manager.pluginRuntime.installations[0]!.settings).toHaveLength(1)
+  expect(() => previousScopeApi.registerSettings(contribution())).toThrow('已卸载')
+  expect(other.settings).toHaveLength(1)
+})
 it('keeps app-owned registries, module instances, preferences and disposal independent', async () => {
   const a = environment([{ id: 'sample', bundle: bundle(), trusted: true }]),
     b = environment([{ id: 'sample', bundle: bundle(), trusted: true }])

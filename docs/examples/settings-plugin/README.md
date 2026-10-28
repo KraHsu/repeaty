@@ -1,6 +1,6 @@
 # 共享设置控件示例
 
-这个独立插件使用公开 SDK 1.3.0，导入 `SettingGroup`、`SettingField`、`UiButton`、`UiIconButton`、`vUiControl` 和 `vUiButton`。分组、控件、字体、焦点和窄屏布局均由宿主提供；插件只声明标签、选项、值与业务动作。
+这个独立插件通过公开 SDK 1.4.0 的 `registerSettings` 注册配置视图，使用宿主提供的 `SettingGroup`、`SettingField`、`UiButton`、`UiIconButton`、`vUiControl` 和 `vUiButton`。分组、控件、字体、焦点和窄屏布局均由宿主提供；插件只声明标签、选项、值与业务动作。
 
 在此目录运行：
 
@@ -10,7 +10,7 @@ npm run typecheck
 npm run build
 ```
 
-在 Repeaty「设置 → 插件」安装生成的 `dist/settings-design-example.repeaty-plugin`。开发时可使用 `npm run dev` 监视此插件项目，重新构建后重新安装插件包。无需编译 Repeaty。
+在 Repeaty「设置 → 插件」安装生成的 `dist/settings-design-example.repeaty-plugin`，再通过「配置插件」或「插件设置」分类查看控件。管理页不挂载此配置视图。开发时可使用 `npm run dev` 监视此插件项目，重新构建后重新安装插件包。无需编译 Repeaty。
 
 示例覆盖文本、密码、多行文本、数字、下拉选项、单选、多选、滑块、开关和勾选框，并展示说明、错误、只读、禁用和恢复默认。偏好通过 SDK 保存，使用插件自己的命名空间；滑块在拖动时预览，松手后保存。
 

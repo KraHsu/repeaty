@@ -2,7 +2,7 @@ import { test, expect, storedLibrary } from './fixture'
 import type { Page } from '@playwright/test'
 import { resolve } from 'node:path'
 import { buildPlugin } from '../../packages/plugin-api/build.mjs'
-import { openPluginSettings } from '../fixtures/settings-flow'
+import { openPluginManager, openPluginSettings } from '../fixtures/settings-flow'
 
 async function savedPreferences(page: Page) {
   const value = await page.evaluate(async () => {
@@ -35,14 +35,16 @@ test('an independently built plugin uses shared accessible controls, saves prefe
     outdir: resolve('test-results/design-system-example'),
   })
   const before = await storedLibrary(page)
-  await openPluginSettings(page)
+  await openPluginManager(page)
   page.once('dialog', (dialog) => dialog.accept())
   await page.locator('.plugin-actions input[type=file]').setInputFiles({
     name: 'settings-design-example.repeaty-plugin',
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(bundle)),
   })
-  const panel = page.locator('.plugin-settings').filter({
+  await expect(page.locator('.settings-example')).toHaveCount(0)
+  await openPluginSettings(page)
+  const panel = page.locator('.plugin-configuration').filter({
     has: page.getByRole('heading', { name: 'Settings design example', exact: true }),
   })
   const demo = panel.locator('.settings-example')

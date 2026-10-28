@@ -13,6 +13,7 @@ const runtimeExports = [
   'locale',
   'readSetting',
   'writeSetting',
+  'registerSettings',
   'practiceContentRevision',
   'hasAttemptBody',
   'MediaList',

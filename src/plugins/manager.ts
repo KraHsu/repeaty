@@ -240,9 +240,15 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
     if (requireMutable) mutable()
     const bundle = entry.bundle,
       scope = pluginScope.value
-    await pluginRuntime.load(bundle, async (code, disposers) => {
+    await pluginRuntime.load(bundle, async (code, disposers, registerSettings) => {
       check(generation)
-      const api = createPluginApi(bundle.manifest, scope, disposers, () => current(generation))
+      const api = createPluginApi(
+        bundle.manifest,
+        scope,
+        disposers,
+        () => current(generation),
+        registerSettings,
+      )
       const module = await (environment.evaluate ?? evaluatePlugin)(code, api)
       check(generation)
       if (requireMutable) mutable()

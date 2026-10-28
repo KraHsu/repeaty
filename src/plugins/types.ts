@@ -2,6 +2,12 @@ import type { Component } from 'vue'
 import type { CardView, Grade, Media, Review } from '../core/model'
 import type { Assessment } from './data'
 import type { Practice, Attempt, AttemptRecord } from '../core/practice-data'
+import type { PluginSettingsContribution } from './settings'
+export type {
+  PluginSettingField,
+  PluginSettingsContribution,
+  RegisterPluginSettings,
+} from './settings'
 
 export interface QuestionState {
   allowedGrades: Grade[]
@@ -41,6 +47,7 @@ export interface QuestionPlugin {
   showAnswer: Component
   editor?: Component
   description?: string
+  /** @deprecated Register contributions through registerSettings instead. */
   settings?: Component
   /** Read-only practice history. Receives PracticeHistoryProps. */
   history?: Component
@@ -61,6 +68,7 @@ export interface ReviewPanelPlugin {
   version: number
   description?: string
   reviewPanel: Component
+  /** @deprecated Register contributions through registerSettings instead. */
   settings?: Component
   dispose?: () => void | Promise<void>
 }
@@ -73,6 +81,7 @@ export function isQuestionPlugin(
 /** Installed by the deployment, then optionally enabled by each browser. */
 export interface PluginInstallation {
   plugin: QuestionPlugin | ReviewPanelPlugin
+  settings?: readonly PluginSettingsContribution[]
   enabledByDefault?: boolean
   builtin?: boolean
 }

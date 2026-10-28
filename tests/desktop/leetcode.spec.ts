@@ -4,7 +4,11 @@ import { readFile } from 'node:fs/promises'
 import { practiceHistoryFixture } from '../fixtures/practice-history'
 import { importReading, readingText } from '../fixtures/reading-flow'
 import { startMixed } from '../fixtures/adaptive-mixed-flow'
-import { openPluginSettings, setInterfaceLanguage } from '../fixtures/settings-flow'
+import {
+  openPluginManager,
+  openPluginSettings,
+  setInterfaceLanguage,
+} from '../fixtures/settings-flow'
 import { setResponsiveViewport } from '../fixtures/viewport-flow'
 
 const question = {
@@ -530,7 +534,7 @@ test('independent history filters, paginates, opens from cards, and stays readab
   await page.screenshot({ path: 'test-results/independent-history-mobile.png', fullPage: true })
   await page.screenshot({ path: 'test-results/independent-history-viewport-zh.png' })
   expect(await storedLibrary(page)).toEqual(before)
-  await openPluginSettings(page)
+  await openPluginManager(page)
   await page.getByRole('switch', { name: '启用 LeetCode' }).click()
   await page.getByRole('button', { name: '练习历史', exact: true }).click()
   await expect(page.locator('.practice-history')).toHaveCount(20)
@@ -758,17 +762,17 @@ test('plugin switches persist in the workspace without changing questions or pro
   await connect(context)
   await create(page)
   const before = await storedLibrary(page)
-  await openPluginSettings(page)
+  await openPluginManager(page)
   await expect(page.getByRole('switch', { name: '启用 LeetCode' })).toBeChecked()
   await page.getByRole('switch', { name: '启用 LeetCode' }).click()
   await page.reload()
-  await openPluginSettings(page)
+  await openPluginManager(page)
   await expect(page.getByRole('switch', { name: '启用 LeetCode' })).not.toBeChecked()
   await page.getByRole('button', { name: '全部卡片' }).click()
   await page.getByRole('button', { name: '复习', exact: true }).click()
   await expect(page.getByLabel('代码', { exact: true })).toHaveCount(0)
   expect(await storedLibrary(page)).toEqual(before)
-  await openPluginSettings(page)
+  await openPluginManager(page)
   await page.getByRole('switch', { name: '启用 LeetCode' }).click()
   await page.getByRole('button', { name: '全部卡片' }).click()
   await page.getByRole('button', { name: '复习', exact: true }).click()

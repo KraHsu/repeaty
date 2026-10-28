@@ -1,5 +1,5 @@
 import { setResponsiveViewport } from './viewport-flow'
-import { openPluginSettings, setInterfaceLanguage } from './settings-flow'
+import { openPluginManager, openPluginSettings, setInterfaceLanguage } from './settings-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { fixture, input, now } from '../../src/core/test-fixtures'
@@ -92,7 +92,7 @@ export async function reviewPolishFlow(page: Page, read: () => Promise<Library>,
   await page.reload()
   await page.locator('.deck-review').click()
   await expect(page.locator('.review-history-dots .history-dot')).toHaveCount(3)
-  await openPluginSettings(page)
+  await openPluginManager(page)
   await page.getByRole('switch', { name: '启用 答题历史', exact: true }).uncheck()
   await page.getByRole('button', { name: '学习概览', exact: true }).click()
   await page.locator('.deck-review').click()
@@ -100,7 +100,7 @@ export async function reviewPolishFlow(page: Page, read: () => Promise<Library>,
   expect([...(await read()).cards].sort((a, b) => a.id.localeCompare(b.id))).toEqual(
     [...before.cards].sort((a, b) => a.id.localeCompare(b.id)),
   )
-  await openPluginSettings(page)
+  await openPluginManager(page)
   await page.getByRole('switch', { name: '启用 答题历史', exact: true }).check()
   await setInterfaceLanguage(page, 'en')
   await openPluginSettings(page)

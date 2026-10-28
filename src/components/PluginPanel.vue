@@ -19,6 +19,7 @@ const {
   reloadPlugins,
 } = usePluginManager()
 defineProps<{ embedded?: boolean }>()
+const emit = defineEmits<{ configure: [id: string] }>()
 const picker = ref<HTMLInputElement>()
 const error = ref('')
 const locked = computed(
@@ -28,6 +29,7 @@ const entries = computed(() =>
   pluginPackages.map((entry) => ({
     ...entry,
     plugin: installedPlugins.find(({ plugin }) => plugin.id === entry.id)?.plugin,
+    settings: installedPlugins.find(({ plugin }) => plugin.id === entry.id)?.settings ?? [],
   })),
 )
 function capabilities(manifest?: PluginManifest) {
@@ -151,11 +153,21 @@ async function installOfficial() {
     >
       <template #actions>
         <UiStatus v-if="entry.bundle">v{{ entry.bundle.manifest.version }}</UiStatus>
+        <UiButton
+          v-if="entry.settings.length"
+          :disabled="locked"
+          @click="emit('configure', entry.id)"
+          >{{ t('配置插件') }}</UiButton
+        >
         <UiButton variant="ghost" :disabled="locked" @click="uninstall(entry.id)">
           {{ t('卸载插件') }}
         </UiButton>
       </template>
       <dl class="ui-setting-meta plugin-summary">
+        <dt>{{ t('插件标识') }}</dt>
+        <dd>{{ entry.id }}</dd>
+        <dt>{{ t('安装位置') }}</dt>
+        <dd>{{ desktopEdition ? `.repeaty/plugins/${entry.id}/` : t('浏览器副本') }}</dd>
         <dt>{{ t('运行环境') }}</dt>
         <dd>{{ t(entry.bundle?.manifest.kind === 'local' ? '桌面应用' : '桌面与网页') }}</dd>
         <dt>{{ t('访问权限') }}</dt>
@@ -197,9 +209,6 @@ async function installOfficial() {
         {{ t('此设备尚未信任此插件包。启用前请确认代码来源。') }}
       </UiNotice>
       <UiNotice v-if="entry.error" tone="error">{{ t(entry.error) }}</UiNotice>
-      <div v-if="pluginEnabled(entry.id) && entry.plugin?.settings" class="plugin-configuration">
-        <component :is="entry.plugin.settings" />
-      </div>
     </SettingGroup>
     <UiNotice v-if="!entries.length">
       {{ t('当前学习库尚未安装插件。普通卡片可正常使用。') }}
@@ -217,9 +226,5 @@ async function installOfficial() {
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem 1rem;
-}
-.plugin-configuration {
-  margin: 0;
-  min-width: 0;
 }
 </style>

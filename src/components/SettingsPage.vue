@@ -3,22 +3,33 @@ import { computed, defineAsyncComponent, nextTick, ref, type Component } from 'v
 import { t, locale, setLocale } from '../i18n'
 import { preferences, setPreference, preferenceError } from '../preferences'
 import PluginPanel from './PluginPanel.vue'
+import PluginSettingsPanel from './PluginSettingsPanel.vue'
 import { SettingGroup, SettingField } from './ui'
 const props = defineProps<{ initialTab?: 'general' | 'plugins'; platformSettings?: Component }>()
-const selected = ref<'general' | 'plugins' | 'ai'>(props.initialTab ?? 'general')
+const selected = ref<'general' | 'configuration' | 'plugins' | 'ai'>(props.initialTab ?? 'general')
+const focusPlugin = ref<string>()
 const AiCardSkill = defineAsyncComponent(() => import('./AiCardSkill.vue'))
-const categories = ['general', 'plugins', 'ai'] as const
+const categories = ['general', 'configuration', 'plugins', 'ai'] as const
+function selectTab(value: (typeof categories)[number]) {
+  focusPlugin.value = undefined
+  selected.value = value
+}
+function configurePlugin(id: string) {
+  focusPlugin.value = id
+  selected.value = 'configuration'
+}
 async function moveTab(event: KeyboardEvent) {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
   event.preventDefault()
+  focusPlugin.value = undefined
   const index = categories.indexOf(selected.value)
   selected.value =
     categories[
       event.key === 'Home'
         ? 0
         : event.key === 'End'
-          ? 2
-          : (index + (event.key === 'ArrowRight' ? 1 : 2)) % 3
+          ? categories.length - 1
+          : (index + (event.key === 'ArrowRight' ? 1 : categories.length - 1)) % categories.length
     ]!
   await nextTick()
   document.getElementById(`settings-tab-${selected.value}`)?.focus()
@@ -53,6 +64,7 @@ const popupOptions = computed(() => [
       <button
         v-for="item in [
           { id: 'general', label: '通用' },
+          { id: 'configuration', label: '插件设置' },
           { id: 'plugins', label: '插件' },
           { id: 'ai', label: 'AI 制卡' },
         ] as const"
@@ -62,7 +74,7 @@ const popupOptions = computed(() => [
         :aria-selected="selected === item.id"
         :tabindex="selected === item.id ? 0 : -1"
         :aria-controls="selected === item.id ? `settings-panel-${item.id}` : undefined"
-        @click="selected = item.id"
+        @click="selectTab(item.id)"
       >
         {{ t(item.label) }}
       </button>
@@ -102,7 +114,8 @@ const popupOptions = computed(() => [
         </SettingGroup>
         <component v-if="platformSettings" :is="platformSettings" />
       </template>
-      <PluginPanel v-else-if="selected === 'plugins'" embedded />
+      <PluginSettingsPanel v-else-if="selected === 'configuration'" :focus-plugin="focusPlugin" />
+      <PluginPanel v-else-if="selected === 'plugins'" embedded @configure="configurePlugin" />
       <AiCardSkill v-else />
     </section>
     <p v-if="preferenceError" class="import-warning" role="alert">{{ t(preferenceError) }}</p>

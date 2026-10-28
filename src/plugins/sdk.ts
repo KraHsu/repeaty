@@ -6,6 +6,7 @@ import { hasAttemptBody } from '../core/practice-data'
 import { callPluginHost, readPluginData, writePluginData } from '@repeaty-plugin-host'
 import type { PluginManifest } from './package'
 import type { PluginModule } from './runtime'
+import type { PluginSettingsContribution, RegisterPluginSettings } from './settings'
 import {
   SettingGroup,
   SettingSection,
@@ -36,6 +37,7 @@ export function createPluginApi(
   scope: string,
   disposers: (() => void)[],
   isCurrent: () => boolean = () => true,
+  registerContribution?: RegisterPluginSettings,
 ) {
   let alive = true
   disposers.push(() => {
@@ -81,6 +83,13 @@ export function createPluginApi(
     vUiButton,
     practiceContentRevision,
     hasAttemptBody,
+    registerSettings(contribution: PluginSettingsContribution) {
+      guard()
+      if (!registerContribution) throw new Error('当前宿主不支持插件设置注册。')
+      const remove = registerContribution(contribution)
+      disposers.push(remove)
+      return remove
+    },
     pluginData,
     readSetting(key: string) {
       guard()

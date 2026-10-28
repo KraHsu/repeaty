@@ -1,4 +1,4 @@
-import { openPluginSettings } from '../fixtures/settings-flow'
+import { openPluginManager } from '../fixtures/settings-flow'
 import { test, expect, headers } from './fixture'
 import { test as isolatedTest } from '@playwright/test'
 import { openAsBlob } from 'node:fs'
@@ -184,7 +184,7 @@ isolatedTest(
     expect(
       await page.evaluate(() => JSON.stringify([localStorage, sessionStorage, document.cookie])),
     ).not.toContain(cookie.value)
-    await openPluginSettings(page)
+    await openPluginManager(page)
     await expect(page.getByRole('switch', { name: '启用 LeetCode' })).toHaveCount(0)
     const cookieUsername = await page.locator('.account-controls > span').innerText()
     await page.getByRole('button', { name: '修改密码', exact: true }).click()

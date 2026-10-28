@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 import { fixture } from '../../src/core/test-fixtures'
 import type { PluginBundle } from '../../src/plugins/package'
-import { openPluginSettings } from '../fixtures/settings-flow'
+import { openPluginManager, openPluginSettings } from '../fixtures/settings-flow'
 
 function standaloneBundle(version = '1.0.0', id = 'external-check'): PluginBundle {
   const color = version === '1.0.0' ? 'rgb(17, 34, 51)' : 'rgb(51, 68, 85)'
@@ -41,9 +41,10 @@ const Settings = {
     ]);
   },
 };
+if (id === 'external-check') api.registerSettings({ id: 'main', title: 'External Check', component: Settings });
 export default {
   id, label: 'External Check', kind: 'frontend', version: 1,
-  settings: Settings,
+  ...(id === 'external-check' ? {} : { settings: Settings }),
   reviewPanel: { props: ['card'], setup(props) { return () => h('aside', { 'data-testid': 'external-review' }, version + ': ' + props.card.front); } },
   dispose() { counters.disposed++; },
 };
@@ -93,6 +94,8 @@ const panel = (page: Page) =>
   page.locator('.plugin-settings').filter({
     has: page.getByRole('heading', { name: 'External Check', exact: true }),
   })
+const configuration = (page: Page, id = 'external-check') =>
+  page.locator(`.plugin-configuration[data-plugin-id="${id}"]`)
 
 test('installs independent code, reloads versions and retains records and private data after uninstall', async ({
   page,
@@ -107,10 +110,15 @@ test('installs independent code, reloads versions and retains records and privat
   await page.getByRole('button', { name: '替换并恢复', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   const original = await storedLibrary(page)
-  await openPluginSettings(page)
+  await openPluginManager(page)
   await install(page, standaloneBundle())
-  await expect(panel(page).getByTestId('external-version')).toHaveText('1.0.0')
-  await expect(panel(page).locator('.external-check-view')).toHaveCSS('color', 'rgb(17, 34, 51)')
+  await expect(panel(page).getByTestId('external-version')).toHaveCount(0)
+  await openPluginSettings(page)
+  await expect(configuration(page).getByTestId('external-version')).toHaveText('1.0.0')
+  await expect(configuration(page).locator('.external-check-view')).toHaveCSS(
+    'color',
+    'rgb(17, 34, 51)',
+  )
   expect(await storedLibrary(page)).toEqual(original)
   const directory = (await workspace(page)).active.path
   const packageDirectory = join(directory, '.repeaty', 'plugins', 'external-check')
@@ -119,12 +127,14 @@ test('installs independent code, reloads versions and retains records and privat
   )
   expect(await readFile(join(packageDirectory, 'main.js'), 'utf8')).toContain('missing shared SDK')
 
-  await panel(page).getByRole('button', { name: 'Save external marker' }).click()
+  await configuration(page).getByRole('button', { name: 'Save external marker' }).click()
   await expect
     .poll(() => value(page, 'settings', 'plugin:external-check:marker'))
     .toBe('saved-1.0.0')
+  await openPluginManager(page)
   await panel(page).getByRole('switch', { name: '启用 External Check' }).click()
-  await expect(panel(page).getByTestId('external-version')).toHaveCount(0)
+  await openPluginSettings(page)
+  await expect(configuration(page)).toHaveCount(0)
   await expect(page.locator('style[data-repeaty-plugin="external-check"]')).toHaveCount(0)
   await expect
     .poll(() =>
@@ -138,9 +148,11 @@ test('installs independent code, reloads versions and retains records and privat
       ),
     )
     .toMatchObject({ disposed: 1, cleaned: 1 })
+  await openPluginManager(page)
   await panel(page).getByRole('switch', { name: '启用 External Check' }).click()
-  await expect(panel(page).getByTestId('external-version')).toHaveText('1.0.0')
-  await expect(panel(page).getByTestId('external-saved')).toHaveText('saved-1.0.0')
+  await openPluginSettings(page)
+  await expect(configuration(page).getByTestId('external-version')).toHaveText('1.0.0')
+  await expect(configuration(page).getByTestId('external-saved')).toHaveText('saved-1.0.0')
 
   await page.getByRole('button', { name: '全部卡片' }).click()
   await page.getByRole('button', { name: '复习', exact: true }).click()
@@ -152,19 +164,25 @@ test('installs independent code, reloads versions and retains records and privat
   await expect(page.getByRole('heading', { name: '本轮复习结束' })).toBeVisible()
   const studied = await storedLibrary(page)
   expect(studied.reviews).toHaveLength(1)
-  await openPluginSettings(page)
+  await openPluginManager(page)
   await install(page, standaloneBundle('2.0.0'))
-  await expect(panel(page).getByTestId('external-version')).toHaveText('2.0.0')
-  await expect(panel(page).locator('.external-check-view')).toHaveCSS('color', 'rgb(51, 68, 85)')
+  await openPluginSettings(page)
+  await expect(configuration(page).getByTestId('external-version')).toHaveText('2.0.0')
+  await expect(configuration(page).locator('.external-check-view')).toHaveCSS(
+    'color',
+    'rgb(51, 68, 85)',
+  )
   await expect(page.locator('style[data-repeaty-plugin="external-check"]')).toHaveCount(1)
 
   const broken = standaloneBundle('3.0.0')
   broken.main = 'throw new Error("external-update-rejected")'
+  await openPluginManager(page)
   await install(page, broken)
   await expect(
     page.getByRole('alert').filter({ hasText: 'external-update-rejected' }),
   ).toBeVisible()
-  await expect(panel(page).getByTestId('external-version')).toHaveText('2.0.0')
+  await openPluginSettings(page)
+  await expect(configuration(page).getByTestId('external-version')).toHaveText('2.0.0')
   expect(JSON.parse(await readFile(join(packageDirectory, 'manifest.json'), 'utf8')).version).toBe(
     '2.0.0',
   )
@@ -172,7 +190,7 @@ test('installs independent code, reloads versions and retains records and privat
     standaloneBundle('2.0.0').main,
   )
   expect(await storedLibrary(page)).toEqual(studied)
-  await panel(page).getByRole('button', { name: 'Save external marker' }).click()
+  await configuration(page).getByRole('button', { name: 'Save external marker' }).click()
   await expect
     .poll(() => value(page, 'settings', 'plugin:external-check:marker'))
     .toBe('saved-2.0.0')
@@ -195,9 +213,12 @@ test('installs independent code, reloads versions and retains records and privat
       },
     })
   })
+  await openPluginManager(page)
   page.once('dialog', (dialog) => dialog.accept())
   await panel(page).getByRole('button', { name: '卸载插件', exact: true }).click()
   await expect(panel(page)).toHaveCount(0)
+  await openPluginSettings(page)
+  await expect(configuration(page)).toHaveCount(0)
   await expect(page.locator('style[data-repeaty-plugin="external-check"]')).toHaveCount(0)
   expect(await storedLibrary(page)).toEqual(studied)
   expect(await value(page, 'settings', 'plugin:external-check:marker')).toBe('saved-2.0.0')
@@ -206,7 +227,7 @@ test('installs independent code, reloads versions and retains records and privat
     code: 'ENOENT',
   })
   await page.reload()
-  await openPluginSettings(page)
+  await openPluginManager(page)
   await expect(panel(page)).toHaveCount(0)
   expect(await storedLibrary(page)).toEqual(studied)
 })
@@ -222,7 +243,7 @@ test('discovers copied package files without executing them until their exact co
   await writeFile(join(packageDirectory, 'main.js'), copied.main)
   await writeFile(join(packageDirectory, 'styles.css'), copied.styles!)
   const before = await storedLibrary(page)
-  await openPluginSettings(page)
+  await openPluginManager(page)
   await page.getByRole('button', { name: '重新扫描插件', exact: true }).click()
   await expect(panel(page)).toContainText('此设备尚未信任此插件包')
   await expect(panel(page).getByRole('switch')).not.toBeChecked()
@@ -239,11 +260,15 @@ test('discovers copied package files without executing them until their exact co
   ).toBeUndefined()
   page.once('dialog', (dialog) => dialog.accept())
   await panel(page).getByRole('switch').click()
-  await expect(panel(page).getByTestId('external-version')).toHaveText('1.0.0')
+  await openPluginSettings(page)
+  await expect(configuration(page, 'manual-check').getByTestId('external-version')).toHaveText(
+    '1.0.0',
+  )
   const replacement = standaloneBundle('2.0.0', 'manual-check')
   await writeFile(join(packageDirectory, 'manifest.json'), JSON.stringify(replacement.manifest))
   await writeFile(join(packageDirectory, 'main.js'), replacement.main)
   await writeFile(join(packageDirectory, 'styles.css'), replacement.styles!)
+  await openPluginManager(page)
   await page.getByRole('button', { name: '重新扫描插件', exact: true }).click()
   await expect(panel(page)).toContainText('此设备尚未信任此插件包')
   await expect(panel(page).getByTestId('external-version')).toHaveCount(0)
@@ -259,6 +284,9 @@ test('discovers copied package files without executing them until their exact co
   ).toEqual(['1.0.0'])
   page.once('dialog', (dialog) => dialog.accept())
   await panel(page).getByRole('switch').click()
-  await expect(panel(page).getByTestId('external-version')).toHaveText('2.0.0')
+  await openPluginSettings(page)
+  await expect(configuration(page, 'manual-check').getByTestId('external-version')).toHaveText(
+    '2.0.0',
+  )
   expect(await storedLibrary(page)).toEqual(before)
 })

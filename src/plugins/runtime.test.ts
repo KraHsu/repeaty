@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from 'vitest'
+import { computed, ref } from 'vue'
 import { PluginRuntime } from './runtime'
 import type { PluginBundle } from './package'
+import type { RegisterPluginSettings, PluginSettingsContribution } from './settings'
 
 const runtimes: PluginRuntime[] = []
 const ownedIds = new Set<string>()
@@ -25,6 +27,131 @@ const styles = () =>
   [...document.head.querySelectorAll<HTMLStyleElement>('style[data-repeaty-plugin]')].filter(
     (style) => ownedIds.has(style.dataset.repeatyPlugin!),
   )
+
+const settingsEntry = (id = 'display'): PluginSettingsContribution => ({
+  id,
+  title: 'Display',
+  fields: [
+    { key: 'enabled', type: 'switch', label: 'Enabled', modelValue: true, onChange: vi.fn() },
+  ],
+})
+
+it('publishes settings only after a successful activation and retains them after a failed update', async () => {
+  const value = runtime()
+  const original = await value.load(bundle(), async (_code, _disposers, register) => {
+    register(settingsEntry())
+    expect(value.installations).toHaveLength(0)
+    return { default: definition() }
+  })
+  expect(original.settings).toHaveLength(1)
+  await expect(
+    value.load(bundle(), async (_code, _disposers, register) => {
+      register(settingsEntry('replacement'))
+      throw new Error('bad activation')
+    }),
+  ).rejects.toThrow('bad activation')
+  expect(value.installations).toEqual([original])
+  expect(original.settings?.[0]?.id).toBe('display')
+})
+
+it('owns asynchronous registrations, idempotent removal and duplicate ids for each active instance', async () => {
+  const value = runtime()
+  let register!: RegisterPluginSettings
+  const installed = await value.load(bundle(), async (_code, _disposers, callback) => {
+    register = callback
+    return { default: definition() }
+  })
+  await Promise.resolve()
+  const remove = register(settingsEntry())
+  expect(() => register(settingsEntry())).toThrow('标识重复')
+  expect(installed.settings).toHaveLength(1)
+  remove()
+  const removeNext = register(settingsEntry())
+  remove()
+  expect(installed.settings).toHaveLength(1)
+  removeNext()
+  expect(installed.settings).toHaveLength(0)
+  register(settingsEntry())
+  await value.unload('example')
+  expect(installed.settings).toHaveLength(0)
+  expect(() => register(settingsEntry())).toThrow('已卸载')
+})
+
+it('gives reused declarations distinct registration lifetimes while preserving getter receivers and reactivity', async () => {
+  const value = runtime()
+  let register!: RegisterPluginSettings
+  const installed = await value.load(bundle(), async (_code, _disposers, callback) => {
+    register = callback
+    return { default: definition() }
+  })
+  class Declaration implements PluginSettingsContribution {
+    readonly id = 'display'
+    readonly fields = settingsEntry().fields
+    #title = ref('Initial display')
+    get title() {
+      return this.#title.value
+    }
+    rename(next: string) {
+      this.#title.value = next
+    }
+  }
+  const source = new Declaration()
+  const remove = register(source)
+  const first = installed.settings![0]!
+  expect(first).not.toBe(source)
+  const title = computed(() => first.title)
+  expect(title.value).toBe('Initial display')
+  source.rename('Updated display')
+  expect(title.value).toBe('Updated display')
+  remove()
+  register(source)
+  const second = installed.settings![0]!
+  expect(second).not.toBe(first)
+  expect(second).not.toBe(source)
+  expect(second.title).toBe('Updated display')
+  remove()
+  expect(installed.settings).toEqual([second])
+})
+
+it('cancels staged settings when the library closes during an asynchronous plugin factory', async () => {
+  const value = runtime()
+  let finish!: () => void
+  let register!: RegisterPluginSettings
+  const pending = value.load(bundle(), async (_code, _disposers, callback) => {
+    register = callback
+    register(settingsEntry())
+    return {
+      default: async () => {
+        await new Promise<void>((resolve) => {
+          finish = resolve
+        })
+        return definition()
+      },
+    }
+  })
+  await Promise.resolve()
+  await value.close()
+  expect(() => register(settingsEntry('late'))).toThrow('已卸载')
+  finish()
+  await expect(pending).rejects.toThrow('已切换')
+  expect(value.installations).toHaveLength(0)
+})
+
+it('places legacy views in the settings registry while explicit registrations take precedence', async () => {
+  const value = runtime()
+  const view = { template: '<div>Legacy settings</div>' }
+  const legacy = await value.load(bundle(), async () => ({
+    default: { ...definition(), settings: view },
+  }))
+  expect(legacy.settings?.[0]?.component).toBe(view)
+  expect(legacy.settings?.[0]?.title).toBe('example')
+  const modern = await value.load(bundle(), async (_code, _disposers, register) => {
+    register(settingsEntry())
+    return { default: { ...definition(), settings: view } }
+  })
+  expect(modern.settings?.map(({ id }) => id)).toEqual(['display'])
+  expect(legacy.settings).toHaveLength(0)
+})
 afterEach(async () => {
   await Promise.all(runtimes.splice(0).map((runtime) => runtime.close()))
   expect(styles()).toHaveLength(0)

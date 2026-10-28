@@ -4,6 +4,9 @@ export const readSetting = (key: string) => settings.get(key) ?? null
 export const writeSetting = (key: string, value: string) => {
   settings.set(key, value)
 }
+export function registerSettings(_contribution: unknown): () => void {
+  throw new Error('Mock registerSettings explicitly in activation tests')
+}
 export const pluginData = {
   async get(_id: string, _scope: string): Promise<unknown> {
     throw new Error('Mock pluginData explicitly in storage tests')
