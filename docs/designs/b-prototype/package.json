@@ -1,0 +1,22 @@
+{
+  "name": "repeaty-design-b",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 4194",
+    "build": "vite build",
+    "verify": "node verify.mjs"
+  },
+  "dependencies": {
+    "@primeuix/themes": "1.2.5",
+    "primevue": "4.5.5",
+    "vue": "3.5.44",
+    "@lucide/vue": "1.31.0"
+  },
+  "devDependencies": {
+    "vite": "8.3.4",
+    "@vitejs/plugin-vue": "6.0.10",
+    "@playwright/test": "1.64.1"
+  }
+}
