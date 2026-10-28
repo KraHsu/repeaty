@@ -14,7 +14,7 @@ test.use({
 
 async function settings(page: Page) {
   await page.goto('./')
-  await expect(page.locator('.sidebar-section-title button')).toBeEnabled()
+  await expect(page.getByRole('button', { name: '创建卡组', exact: true }).first()).toBeEnabled()
   await openSettings(page)
   for (const close of await page.getByRole('button', { name: '关闭提示', exact: true }).all())
     await close.click()
@@ -112,7 +112,7 @@ test('shared scrollbars remain usable and settings respect high contrast and lar
     return { width: rail.width, color: thumb.backgroundColor, radius: thumb.borderRadius }
   })
   expect(documentRail.width).toBe('10px')
-  expect(documentRail.color).toBe('rgb(184, 196, 177)')
+  expect(documentRail.color).toBe('rgb(170, 188, 162)')
   expect(parseFloat(documentRail.radius)).toBeGreaterThan(10)
   await page.screenshot({ path: info.outputPath('settings-document-scrollbar.png') })
 

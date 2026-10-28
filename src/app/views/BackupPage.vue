@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../../styles/content-pages.css'
 import { UiProgress, UiButton } from '../../components/ui'
 import { version } from '../../../package.json'
 import { t, locale } from '../../i18n'

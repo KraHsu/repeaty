@@ -7,6 +7,7 @@ import { startMixed } from '../fixtures/adaptive-mixed-flow'
 import {
   openPluginManager,
   openPluginSettings,
+  selectPlugin,
   setInterfaceLanguage,
   selectUiOption,
   selectUiValue,
@@ -557,6 +558,7 @@ test('independent history filters, paginates, opens from cards, and stays readab
   await page.screenshot({ path: 'test-results/independent-history-viewport-zh.png' })
   expect(await storedLibrary(page)).toEqual(before)
   await openPluginManager(page)
+  await selectPlugin(page, 'leetcode')
   await page.getByRole('switch', { name: '启用 LeetCode' }).click()
   await page.getByRole('button', { name: '练习历史', exact: true }).click()
   await expect(page.locator('.practice-history')).toHaveCount(20)
@@ -785,16 +787,19 @@ test('plugin switches persist in the workspace without changing questions or pro
   await create(page)
   const before = await storedLibrary(page)
   await openPluginManager(page)
+  await selectPlugin(page, 'leetcode')
   await expect(page.getByRole('switch', { name: '启用 LeetCode' })).toBeChecked()
   await page.getByRole('switch', { name: '启用 LeetCode' }).click()
   await page.reload()
   await openPluginManager(page)
+  await selectPlugin(page, 'leetcode')
   await expect(page.getByRole('switch', { name: '启用 LeetCode' })).not.toBeChecked()
   await page.getByRole('button', { name: '全部卡片' }).click()
   await page.getByRole('button', { name: '复习', exact: true }).click()
   await expect(page.getByLabel('代码', { exact: true })).toHaveCount(0)
   expect(await storedLibrary(page)).toEqual(before)
   await openPluginManager(page)
+  await selectPlugin(page, 'leetcode')
   await page.getByRole('switch', { name: '启用 LeetCode' }).click()
   await page.getByRole('button', { name: '全部卡片' }).click()
   await page.getByRole('button', { name: '复习', exact: true }).click()
@@ -823,8 +828,9 @@ test('plugin settings distinguish website login from per-site judge credentials 
   )
   await page.goto('./')
   await openPluginManager(page)
+  await selectPlugin(page, 'leetcode')
   const details = page.locator('.plugin-settings[data-plugin-id="leetcode"]')
-  await details.locator('.plugin-readme-trigger').click()
+  await expect(details.locator('.plugin-readme-trigger')).toHaveAttribute('aria-expanded', 'true')
   await expect(details.locator('.plugin-readme')).toContainText(
     '打开力扣网站并登录，不会自动连接 Repeaty',
   )

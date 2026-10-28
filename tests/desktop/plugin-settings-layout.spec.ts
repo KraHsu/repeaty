@@ -3,6 +3,7 @@ import {
   openPluginManager,
   openPluginSettings,
   openSettings,
+  selectPlugin,
   setInterfaceLanguage,
 } from '../fixtures/settings-flow'
 import type { Locator, Page } from '@playwright/test'
@@ -79,22 +80,30 @@ for (const language of ['zh-CN', 'en'] as const) {
     await expect(page.locator('.settings-categories')).toHaveCount(0)
     const historyDetails = page.locator('.plugin-settings[data-plugin-id="review-history"]')
     const leetcodeDetails = page.locator('.plugin-settings[data-plugin-id="leetcode"]')
-    for (const details of [historyDetails, leetcodeDetails]) {
-      await expect(details.getByRole('heading', { level: 2 })).toHaveCSS('font-size', '20px')
+    for (const [id, details] of [
+      ['review-history', historyDetails],
+      ['leetcode', leetcodeDetails],
+    ] as const) {
+      await selectPlugin(page, id)
+      await expect(details.locator(':scope > [data-slot="header"] h2')).toHaveCSS(
+        'font-size',
+        '20px',
+      )
       await expect(details.locator('dl')).toBeVisible()
       await expect(details.getByRole('spinbutton')).toHaveCount(0)
       await expect(details.locator('input[type=password]')).toHaveCount(0)
       await expect(details.locator('.plugin-readme-trigger')).toHaveAttribute(
         'aria-expanded',
-        'false',
+        'true',
       )
+      await fits(page, [details])
     }
-    await leetcodeDetails.locator('.plugin-readme-trigger').click()
     await expect(leetcodeDetails.locator('.plugin-readme')).toContainText('LEETCODE_SESSION')
     await expect(leetcodeDetails.locator('input[type=password]')).toHaveCount(0)
     await leetcodeDetails.locator('.plugin-readme-trigger').click()
-    await fits(page, [historyDetails, leetcodeDetails])
+    await fits(page, [leetcodeDetails])
     await page.screenshot({ path: info.outputPath('plugin-management.png') })
+    await selectPlugin(page, 'review-history')
     await historyDetails.getByRole('button', { name: labels.configure, exact: true }).click()
     const navigation = page.getByRole('tree', { name: /^(设置分类|Settings categories)$/ })
     await expect(navigation).toBeVisible()
@@ -213,6 +222,7 @@ for (const language of ['zh-CN', 'en'] as const) {
       style: captureStyle,
     })
     await openPluginManager(page)
+    await selectPlugin(page, 'review-history')
     await historyDetails.getByRole('switch', { name: labels.enableHistory, exact: true }).click()
     await expect(
       historyDetails.getByRole('switch', { name: labels.enableHistory, exact: true }),
@@ -221,6 +231,7 @@ for (const language of ['zh-CN', 'en'] as const) {
     await expect(history).toHaveCount(0)
     await expect(category(page, 'study.review')).toHaveCount(0)
     await openPluginManager(page)
+    await selectPlugin(page, 'review-history')
     await historyDetails.getByRole('switch', { name: labels.enableHistory, exact: true }).click()
     await expect(
       historyDetails.getByRole('switch', { name: labels.enableHistory, exact: true }),

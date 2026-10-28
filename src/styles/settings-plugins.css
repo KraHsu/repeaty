@@ -1,0 +1,259 @@
+/* B direction: navigation remains light; configuration and README share one reading surface.
+   Nuxt UI and the public SDK continue to own every control and save interaction. */
+.settings-mobile-category {
+  display: none;
+}
+.settings-panel {
+  padding: 0.5rem 2.25rem;
+  background: var(--ui-bg);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+}
+.settings-panel .settings-configuration,
+.settings-panel .settings-view > .ui-setting-group {
+  margin: 0;
+  padding: 1.5rem 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  --tw-ring-shadow: 0 0 #0000;
+}
+.settings-panel .settings-content > .settings-configuration + .settings-configuration,
+.settings-panel .settings-content > .settings-view + .settings-configuration,
+.settings-panel .settings-content > .settings-configuration + .settings-view {
+  border-top: 1px solid var(--line);
+}
+.settings-panel .settings-configuration > [data-slot='header'],
+.settings-panel .settings-view > .ui-setting-group > [data-slot='header'] {
+  padding: 0 0 1.5rem;
+  border: 0;
+}
+.settings-panel .settings-configuration > [data-slot='body'],
+.settings-panel .settings-view > .ui-setting-group > [data-slot='body'] {
+  padding: 0;
+}
+.settings-panel .ui-setting-field {
+  padding-block: 0.75rem;
+}
+.settings-panel .ui-setting-group__description {
+  max-width: 44rem;
+  line-height: var(--line-height-reading);
+}
+.settings-categories > [role='tree'] > .branched-menu__section + .branched-menu__section {
+  margin-top: 0.75rem;
+}
+.settings-categories .branched-menu__row:has(> [data-active]) {
+  background: #e5eddf;
+  border-radius: 0.5rem;
+}
+.settings-mobile-category label {
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+}
+.plugins-page,
+.settings-plugins {
+  container-type: inline-size;
+}
+.plugin-manager {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+.plugin-manager .plugin-actions {
+  align-items: start;
+}
+.plugin-storage-help {
+  flex: 1 1 15rem;
+  max-width: 40rem;
+  min-width: 0;
+}
+.plugin-storage-help p {
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+  line-height: var(--line-height-reading);
+  margin-top: 0.75rem;
+}
+.plugin-workbench {
+  display: grid;
+  grid-template-columns: minmax(12rem, 18rem) minmax(0, 1fr);
+  align-items: start;
+  gap: 2rem;
+}
+.plugin-directory {
+  position: sticky;
+  top: calc(var(--desktop-titlebar-height, 0px) + 1rem);
+  min-width: 0;
+  max-width: 100%;
+}
+.plugin-directory-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.25rem 0.75rem 1rem;
+  font-size: var(--font-size-meta);
+  color: var(--muted);
+}
+.plugin-directory-heading h2 {
+  margin: 0;
+  font: inherit;
+  font-weight: var(--font-weight-semibold);
+}
+.plugin-directory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.plugin-directory-list .plugin-directory-item {
+  display: flex;
+  align-items: center;
+  justify-content: start;
+  gap: 0.75rem;
+  min-width: 0;
+  width: 100%;
+  min-height: 5.25rem;
+  padding: 1rem 0.875rem;
+  border: 1px solid transparent;
+  border-radius: 0.75rem;
+  text-align: left;
+  white-space: normal;
+}
+.plugin-directory-item.selected {
+  background: #e5eddf;
+  border-color: #c5d4bc;
+}
+.plugin-directory-mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 2.75rem;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.625rem;
+  border: 1px solid var(--line);
+  background: var(--ui-bg);
+  color: var(--ui-primary);
+}
+.plugin-directory-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 0.25rem;
+  overflow-wrap: anywhere;
+}
+.plugin-directory-copy strong {
+  color: var(--text);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+}
+.plugin-directory-copy > span {
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+  font-weight: var(--font-weight-regular);
+}
+.plugin-directory-state {
+  flex: 0 0 0.5rem;
+  height: 0.5rem;
+  margin-left: auto;
+  border-radius: 50%;
+  background: #899586;
+}
+.plugin-directory-state.enabled {
+  background: var(--ui-primary);
+}
+.plugin-directory-state.issue {
+  background: #976225;
+}
+.plugin-detail-pane {
+  min-width: 0;
+}
+.plugin-detail-pane .plugin-settings {
+  margin-bottom: 0;
+  border-radius: 1rem;
+  scroll-margin-top: 4rem;
+}
+.plugin-detail-pane .plugin-settings > [data-slot='header'] {
+  padding: 2rem 2rem 1.5rem;
+}
+.plugin-detail-pane .plugin-settings > [data-slot='body'] {
+  padding: 1.5rem 2rem 2rem;
+}
+.plugin-configure-row,
+.plugin-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: 1.25rem;
+  border-block: 1px solid var(--line);
+}
+.plugin-configure-row > span {
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+}
+.plugin-detail-actions {
+  justify-content: end;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.plugin-readme-trigger {
+  font-weight: var(--font-weight-semibold);
+}
+.plugin-readme .card-content {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-reading);
+}
+.plugin-readme pre,
+.plugin-readme table {
+  font-size: inherit;
+}
+.plugin-metadata {
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+.plugin-metadata h3 {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  margin: 0 0 1rem;
+}
+.plugin-permissions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+}
+.plugin-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+@container (max-width: 50rem) {
+  .plugin-workbench {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+  }
+  .plugin-directory {
+    position: static;
+  }
+  .plugin-directory-list {
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 0.25rem 0.25rem 0.75rem;
+  }
+  .plugin-directory-list .plugin-directory-item {
+    flex: 0 0 14rem;
+  }
+}
+@container (max-width: 40rem) {
+  .settings-panel {
+    padding: 0.25rem 1.25rem;
+  }
+  .plugin-detail-pane .plugin-settings > [data-slot='header'] {
+    padding: 1.5rem 1.25rem 1rem;
+  }
+  .plugin-detail-pane .plugin-settings > [data-slot='body'] {
+    padding: 1rem 1.25rem 1.5rem;
+  }
+}

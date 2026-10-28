@@ -1,4 +1,4 @@
-import { openPluginManager, uiOption } from './fixtures/settings-flow'
+import { openPluginManager, selectPlugin, uiOption } from './fixtures/settings-flow'
 import { expect, test } from '@playwright/test'
 import { fixture } from '../src/core/test-fixtures'
 import { readFile } from 'node:fs/promises'
@@ -12,7 +12,12 @@ test('the static edition has no LeetCode plugin, backend calls, or connector dow
   })
   await page.goto('./')
   await openPluginManager(page)
-  await expect(page.getByRole('heading', { name: '答题历史', exact: true })).toBeVisible()
+  await selectPlugin(page, 'review-history')
+  await expect(
+    page
+      .locator('.plugin-settings > [data-slot="header"]')
+      .getByRole('heading', { name: '答题历史', exact: true }),
+  ).toBeVisible()
   await expect(page.getByRole('switch', { name: '启用 答题历史', exact: true })).toBeChecked()
   await expect(page.getByText('LeetCode', { exact: true })).toHaveCount(0)
   await expect(page.getByRole('link', { name: '下载浏览器扩展' })).toHaveCount(0)

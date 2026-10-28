@@ -9,6 +9,8 @@ import { usePluginManager, officialPluginBundles, type PackageEntry } from '../p
 import { SettingGroup, SettingField, UiButton, UiCollapsible, UiNotice, UiStatus } from './ui'
 import CardContent from './CardContent.vue'
 import AppModal from './AppModal.vue'
+import { Puzzle, Download, RefreshCw } from '@lucide/vue'
+import '../styles/settings-plugins.css'
 const { installedPlugins, pluginEnabled, pluginPreferenceError } = usePlugins()
 const {
   pluginPackages,
@@ -26,6 +28,7 @@ const emit = defineEmits<{ configure: [id: string] }>()
 const picker = ref<HTMLInputElement>()
 const panel = ref<HTMLElement>()
 const openReadmes = ref(new Set<string>())
+const selectedPlugin = ref<string>()
 const error = ref('')
 const pending = ref(false)
 type Confirmation = {
@@ -51,12 +54,31 @@ const entries = computed(() =>
     settings: installedPlugins.find(({ plugin }) => plugin.id === entry.id)?.settings ?? [],
   })),
 )
+const selectedEntries = computed(() =>
+  entries.value.filter((entry) => entry.id === selectedPlugin.value),
+)
+function selectPlugin(id: string) {
+  if (!entries.value.some((entry) => entry.id === id)) return
+  selectedPlugin.value = id
+  openReadmes.value.add(id)
+}
+watch(
+  [entries, pluginScope],
+  ([current]) => {
+    if (!current.some((entry) => entry.id === selectedPlugin.value)) {
+      selectedPlugin.value = current[0]?.id
+      if (selectedPlugin.value) openReadmes.value.add(selectedPlugin.value)
+    }
+  },
+  { immediate: true },
+)
 let alive = true
 watch(
   [() => props.focusPlugin, () => pluginPackages.slice()],
   async () => {
     const requested = props.focusPlugin
     if (!requested) return
+    selectPlugin(requested)
     await nextTick()
     if (!alive || props.focusPlugin !== requested) return
     const target = [...(panel.value?.querySelectorAll<HTMLElement>('[data-plugin-id]') ?? [])].find(
@@ -98,6 +120,7 @@ watch(
     answerConfirmation(false)
     error.value = ''
     openReadmes.value = new Set()
+    selectedPlugin.value = undefined
   },
   { flush: 'sync' },
 )
@@ -214,16 +237,12 @@ async function installOfficial() {
 <template>
   <div ref="panel" :class="embedded ? 'settings-plugins' : 'page plugins-page'">
     <header v-if="!embedded" class="page-heading">
-      <div>
-        <h1>{{ t('插件') }}</h1>
-        <p>{{ t('插件独立安装和更新，无需重新编译 Repeaty。') }}</p>
-      </div>
+      <h1>{{ t('插件') }}</h1>
+      <UiButton variant="primary" :disabled="locked" @click="picker?.click()">
+        <Download :size="18" />{{ t('安装插件包') }}
+      </UiButton>
     </header>
-    <SettingGroup
-      :title="t('插件管理')"
-      :description="t('安装、更新与管理当前学习库的插件。')"
-      class="plugin-manager"
-    >
+    <section class="plugin-manager" :aria-label="t('插件管理')">
       <div class="plugin-actions ui-setting-actions">
         <input
           ref="picker"
@@ -232,128 +251,173 @@ async function installOfficial() {
           hidden
           @change="choose"
         />
-        <UiButton variant="primary" :disabled="locked" @click="picker?.click()">
-          {{ t('安装插件包') }}
-        </UiButton>
-        <UiButton :disabled="locked" @click="installOfficial">
-          {{ t('安装或更新官方插件') }}
-        </UiButton>
-        <UiButton :disabled="locked" @click="run(reloadPlugins)">
-          {{ t('重新扫描插件') }}
-        </UiButton>
-      </div>
-      <UiNotice v-if="activePluginViews" tone="warning">
-        {{ t('请先结束复习或关闭编辑器，再修改插件。') }}
-      </UiNotice>
-      <UiNotice v-if="error || pluginManagerError || pluginPreferenceError" tone="error">
-        {{ t(error || pluginManagerError || pluginPreferenceError) }}
-      </UiNotice>
-      <UiCollapsible class="ui-setting-help">
-        <UiButton variant="ghost">{{ t('插件安装与存储') }}</UiButton>
-        <template #content>
-          <p>
-            {{
-              t(
-                desktopEdition
-                  ? '插件代码保存在当前学习目录中，随目录移动。新设备首次启用时需确认，登录凭据留在设备上。'
-                  : '前端插件保存在此浏览器的独立副本中，不写入只读打开的原目录。',
-              )
-            }}
-          </p>
-          <p>{{ t('插件独立安装和更新，无需重新编译 Repeaty。') }}</p>
-        </template>
-      </UiCollapsible>
-    </SettingGroup>
-    <SettingGroup
-      v-for="entry in entries"
-      :key="entry.id"
-      class="plugin-settings"
-      :data-plugin-id="entry.id"
-      tabindex="-1"
-      :title="t(entry.plugin?.label ?? entry.bundle?.manifest.name ?? entry.id)"
-      :description="
-        entry.plugin?.description || entry.bundle?.manifest.description
-          ? t(entry.plugin?.description ?? entry.bundle!.manifest.description!)
-          : undefined
-      "
-    >
-      <template #actions>
-        <UiStatus v-if="entry.bundle">v{{ entry.bundle.manifest.version }}</UiStatus>
-        <UiButton
-          v-if="entry.settings.length"
-          :disabled="locked"
-          @click="emit('configure', entry.id)"
-          >{{ t('配置插件') }}</UiButton
+        <UiButton v-if="embedded" variant="primary" :disabled="locked" @click="picker?.click()">{{
+          t('安装插件包')
+        }}</UiButton>
+        <UiButton :disabled="locked" @click="installOfficial">{{
+          t('安装或更新官方插件')
+        }}</UiButton>
+        <UiButton variant="ghost" :disabled="locked" @click="run(reloadPlugins)"
+          ><RefreshCw :size="17" />{{ t('重新扫描插件') }}</UiButton
         >
-        <UiButton variant="ghost" :disabled="locked" @click="uninstall(entry.id)">
-          {{ t('卸载插件') }}
-        </UiButton>
-      </template>
-      <dl class="ui-setting-meta plugin-summary">
-        <dt>{{ t('插件标识') }}</dt>
-        <dd>{{ entry.id }}</dd>
-        <dt>{{ t('安装位置') }}</dt>
-        <dd>{{ desktopEdition ? `.repeaty/plugins/${entry.id}/` : t('浏览器副本') }}</dd>
-        <dt>{{ t('运行环境') }}</dt>
-        <dd>{{ t(entry.bundle?.manifest.kind === 'local' ? '桌面应用' : '桌面与网页') }}</dd>
-        <dt>{{ t('访问权限') }}</dt>
-        <dd class="plugin-permissions">
-          <template v-if="entry.bundle?.manifest.permissions">
-            <span v-for="origin in entry.bundle.manifest.permissions.origins" :key="origin">{{
-              origin
-            }}</span>
-            <span v-if="entry.bundle.manifest.permissions.secrets">{{ t('设备凭据') }}</span>
-            <span v-if="entry.bundle.manifest.permissions.files">{{ t('插件文件') }}</span>
+        <UiCollapsible class="plugin-storage-help">
+          <UiButton variant="ghost">{{ t('插件安装与存储') }}</UiButton>
+          <template #content>
+            <p>
+              {{
+                t(
+                  desktopEdition
+                    ? '插件代码保存在当前学习目录中，随目录移动。新设备首次启用时需确认，登录凭据留在设备上。'
+                    : '前端插件保存在此浏览器的独立副本中，不写入只读打开的原目录。',
+                )
+              }}
+            </p>
+            <p>{{ t('插件独立安装和更新，无需重新编译 Repeaty。') }}</p>
           </template>
-          <span
-            v-if="
-              !entry.bundle?.manifest.permissions?.origins?.length &&
-              !entry.bundle?.manifest.permissions?.secrets &&
-              !entry.bundle?.manifest.permissions?.files
-            "
-            >{{ t('无原生能力') }}</span
+        </UiCollapsible>
+      </div>
+      <UiNotice v-if="activePluginViews" tone="warning">{{
+        t('请先结束复习或关闭编辑器，再修改插件。')
+      }}</UiNotice>
+      <UiNotice v-if="error || pluginManagerError || pluginPreferenceError" tone="error">{{
+        t(error || pluginManagerError || pluginPreferenceError)
+      }}</UiNotice>
+    </section>
+    <div v-if="entries.length" class="plugin-workbench">
+      <aside class="plugin-directory">
+        <div class="plugin-directory-heading">
+          <h2>{{ t('插件管理') }}</h2>
+          <span>{{ entries.length }}</span>
+        </div>
+        <nav class="plugin-directory-list" :aria-label="t('插件')">
+          <UiButton
+            v-for="entry in entries"
+            :key="entry.id"
+            variant="ghost"
+            class="plugin-directory-item"
+            :class="{ selected: selectedPlugin === entry.id }"
+            :data-plugin-select="entry.id"
+            :aria-pressed="selectedPlugin === entry.id"
+            @click="selectPlugin(entry.id)"
           >
-        </dd>
-      </dl>
-      <SettingField
-        type="switch"
-        :label="
-          t('启用 {name}', {
-            name: t(entry.plugin?.label ?? entry.bundle?.manifest.name ?? entry.id),
-          })
-        "
-        :description="t('关闭插件会保留题目、历史和设置。')"
-        :disabled="
-          locked || !entry.bundle || (entry.bundle.manifest.kind === 'local' && !desktopEdition)
-        "
-        :model-value="pluginEnabled(entry.id)"
-        @update:model-value="
-          toggle(entry.id, $event === true, entry.trusted, entry.bundle?.manifest.name ?? entry.id)
-        "
-      />
-      <UiNotice v-if="!entry.trusted" tone="warning">
-        {{ t('此设备尚未信任此插件包。启用前请确认代码来源。') }}
-      </UiNotice>
-      <UiNotice v-if="entry.error" tone="error">{{ t(entry.error) }}</UiNotice>
-      <UiCollapsible
-        class="plugin-readme ui-setting-help"
-        :open="openReadmes.has(entry.id)"
-        @update:open="toggleReadme(entry.id, $event)"
-      >
-        <UiButton variant="ghost" class="plugin-readme-trigger">{{ t('介绍与使用') }}</UiButton>
-        <template #content>
-          <CardContent
-            v-if="openReadmes.has(entry.id) && entry.bundle?.readme"
-            :text="entry.bundle.readme"
-            format="markdown"
+            <span class="plugin-directory-mark" aria-hidden="true"><Puzzle :size="22" /></span>
+            <span class="plugin-directory-copy"
+              ><strong>{{
+                t(entry.plugin?.label ?? entry.bundle?.manifest.name ?? entry.id)
+              }}</strong
+              ><span>{{
+                t(entry.bundle?.manifest.kind === 'local' ? '桌面应用' : '桌面与网页')
+              }}</span></span
+            >
+            <span
+              class="plugin-directory-state"
+              :class="{ enabled: pluginEnabled(entry.id), issue: entry.error || !entry.trusted }"
+              :title="t(entry.error ? entry.error : pluginEnabled(entry.id) ? '已启用' : '未启用')"
+            />
+          </UiButton>
+        </nav>
+      </aside>
+      <div class="plugin-detail-pane">
+        <SettingGroup
+          v-for="entry in selectedEntries"
+          :key="entry.id"
+          class="plugin-settings"
+          :data-plugin-id="entry.id"
+          tabindex="-1"
+          :title="t(entry.plugin?.label ?? entry.bundle?.manifest.name ?? entry.id)"
+          :description="
+            entry.plugin?.description || entry.bundle?.manifest.description
+              ? t(entry.plugin?.description ?? entry.bundle!.manifest.description!)
+              : undefined
+          "
+        >
+          <template #actions
+            ><UiStatus v-if="entry.bundle">v{{ entry.bundle.manifest.version }}</UiStatus></template
+          >
+          <SettingField
+            type="switch"
+            :label="
+              t('启用 {name}', {
+                name: t(entry.plugin?.label ?? entry.bundle?.manifest.name ?? entry.id),
+              })
+            "
+            :description="t('关闭插件会保留题目、历史和设置。')"
+            :disabled="
+              locked || !entry.bundle || (entry.bundle.manifest.kind === 'local' && !desktopEdition)
+            "
+            :model-value="pluginEnabled(entry.id)"
+            @update:model-value="
+              toggle(
+                entry.id,
+                $event === true,
+                entry.trusted,
+                entry.bundle?.manifest.name ?? entry.id,
+              )
+            "
           />
-          <p v-else-if="!entry.bundle?.readme">{{ t('此插件包尚未提供使用说明。') }}</p>
-        </template>
-      </UiCollapsible>
-    </SettingGroup>
-    <UiNotice v-if="!entries.length">
-      {{ t('当前学习库尚未安装插件。普通卡片可正常使用。') }}
-    </UiNotice>
+          <UiNotice v-if="!entry.trusted" tone="warning">{{
+            t('此设备尚未信任此插件包。启用前请确认代码来源。')
+          }}</UiNotice>
+          <UiNotice v-if="entry.error" tone="error">{{ t(entry.error) }}</UiNotice>
+          <div v-if="entry.settings.length" class="plugin-configure-row">
+            <span>{{ t('设置') }}</span
+            ><UiButton variant="primary" :disabled="locked" @click="emit('configure', entry.id)">{{
+              t('配置插件')
+            }}</UiButton>
+          </div>
+          <UiCollapsible
+            class="plugin-readme ui-setting-help"
+            :open="openReadmes.has(entry.id)"
+            @update:open="toggleReadme(entry.id, $event)"
+          >
+            <UiButton variant="ghost" class="plugin-readme-trigger">{{ t('介绍与使用') }}</UiButton>
+            <template #content>
+              <CardContent
+                v-if="openReadmes.has(entry.id) && entry.bundle?.readme"
+                :text="entry.bundle.readme"
+                format="markdown"
+              />
+              <p v-else-if="!entry.bundle?.readme">{{ t('此插件包尚未提供使用说明。') }}</p>
+            </template>
+          </UiCollapsible>
+          <section class="plugin-metadata" :aria-label="t('插件信息')">
+            <h3>{{ t('插件信息') }}</h3>
+            <dl class="ui-setting-meta plugin-summary">
+              <dt>{{ t('插件标识') }}</dt>
+              <dd>{{ entry.id }}</dd>
+              <dt>{{ t('安装位置') }}</dt>
+              <dd>{{ desktopEdition ? `.repeaty/plugins/${entry.id}/` : t('浏览器副本') }}</dd>
+              <dt>{{ t('运行环境') }}</dt>
+              <dd>{{ t(entry.bundle?.manifest.kind === 'local' ? '桌面应用' : '桌面与网页') }}</dd>
+              <dt>{{ t('访问权限') }}</dt>
+              <dd class="plugin-permissions">
+                <template v-if="entry.bundle?.manifest.permissions">
+                  <span v-for="origin in entry.bundle.manifest.permissions.origins" :key="origin">{{
+                    origin
+                  }}</span>
+                  <span v-if="entry.bundle.manifest.permissions.secrets">{{ t('设备凭据') }}</span>
+                  <span v-if="entry.bundle.manifest.permissions.files">{{ t('插件文件') }}</span>
+                </template>
+                <span
+                  v-if="
+                    !entry.bundle?.manifest.permissions?.origins?.length &&
+                    !entry.bundle?.manifest.permissions?.secrets &&
+                    !entry.bundle?.manifest.permissions?.files
+                  "
+                  >{{ t('无原生能力') }}</span
+                >
+              </dd>
+            </dl>
+          </section>
+          <div class="plugin-detail-actions">
+            <UiButton variant="ghost" :disabled="locked" @click="uninstall(entry.id)">{{
+              t('卸载插件')
+            }}</UiButton>
+          </div>
+        </SettingGroup>
+      </div>
+    </div>
+    <UiNotice v-else>{{ t('当前学习库尚未安装插件。普通卡片可正常使用。') }}</UiNotice>
     <AppModal
       v-for="request in confirmation ? [confirmation] : []"
       :key="request.id"
@@ -363,8 +427,8 @@ async function installOfficial() {
       <p>{{ request.message() }}</p>
       <UiNotice v-if="request.permissions">{{ request.permissions() }}</UiNotice>
       <div class="plugin-confirm-actions">
-        <UiButton @click="answerConfirmation(false, request)">{{ t('取消') }}</UiButton>
-        <UiButton
+        <UiButton @click="answerConfirmation(false, request)">{{ t('取消') }}</UiButton
+        ><UiButton
           variant="primary"
           data-plugin-confirm
           @click="answerConfirmation(true, request)"
@@ -374,34 +438,3 @@ async function installOfficial() {
     </AppModal>
   </div>
 </template>
-<style scoped>
-.plugin-actions {
-  margin: 0 0 1rem;
-}
-.plugin-confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-top: 1.5rem;
-}
-.plugin-summary {
-  padding: 0.25rem 0 1.25rem;
-}
-.plugin-permissions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 1rem;
-}
-.plugin-settings {
-  scroll-margin-top: 4rem;
-}
-.plugin-readme :deep(.card-content) {
-  font-size: var(--font-size-body);
-  line-height: var(--line-height-ui);
-}
-.plugin-readme :deep(pre),
-.plugin-readme :deep(table) {
-  font-size: inherit;
-}
-</style>

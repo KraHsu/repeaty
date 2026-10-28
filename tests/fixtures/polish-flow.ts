@@ -2,6 +2,7 @@ import { setResponsiveViewport } from './viewport-flow'
 import {
   openPluginManager,
   openPluginSettings,
+  selectPlugin,
   selectSettingsCategory,
   setInterfaceLanguage,
 } from './settings-flow'
@@ -46,8 +47,8 @@ export async function reviewPolishFlow(page: Page, read: () => Promise<Library>,
   await page.getByLabel('显示条数', { exact: true }).fill('2')
   await page.getByLabel('显示条数', { exact: true }).blur()
   await page.getByRole('button', { name: '学习概览', exact: true }).click()
-  await expect(page.locator('.deck-study-status .new dd')).toHaveText('2')
-  await page.locator('.deck-review').click()
+  await expect(page.locator('.b-focus-counts dd').nth(1)).toHaveText('2')
+  await page.locator('.b-start-review').click()
   await expect(page.locator('.flashcard')).toContainText('History card')
   await expect(page.locator('.review-history-dots')).toHaveCount(0)
   await page.getByRole('button', { name: '显示答案', exact: true }).click()
@@ -95,18 +96,20 @@ export async function reviewPolishFlow(page: Page, read: () => Promise<Library>,
   await openPluginSettings(page)
   await page.getByLabel('翻面后才显示历史', { exact: true }).uncheck()
   await page.reload()
-  await page.locator('.deck-review').click()
+  await page.locator('.b-start-review').click()
   await expect(page.locator('.review-history-dots .history-dot')).toHaveCount(3)
   await openPluginManager(page)
+  await selectPlugin(page, 'review-history')
   await page.getByRole('switch', { name: '启用 答题历史', exact: true }).click()
   await expect(page.getByRole('switch', { name: '启用 答题历史', exact: true })).not.toBeChecked()
   await page.getByRole('button', { name: '学习概览', exact: true }).click()
-  await page.locator('.deck-review').click()
+  await page.locator('.b-start-review').click()
   await expect(page.locator('.review-history-dots')).toHaveCount(0)
   expect([...(await read()).cards].sort((a, b) => a.id.localeCompare(b.id))).toEqual(
     [...before.cards].sort((a, b) => a.id.localeCompare(b.id)),
   )
   await openPluginManager(page)
+  await selectPlugin(page, 'review-history')
   await page.getByRole('switch', { name: '启用 答题历史', exact: true }).click()
   await expect(page.getByRole('switch', { name: '启用 答题历史', exact: true })).toBeChecked()
   await setInterfaceLanguage(page, 'en')

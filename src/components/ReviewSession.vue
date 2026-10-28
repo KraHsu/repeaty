@@ -6,7 +6,8 @@ import { t, msg } from '../i18n'
 import { useNotifications } from '../notifications'
 
 import { defineAsyncComponent, computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { ArrowLeft, Check, CornerDownLeft, RotateCcw, Ellipsis } from '@lucide/vue'
+import { ArrowLeft, Check, CornerDownLeft, RotateCcw, Ellipsis, Layers } from '@lucide/vue'
+import '../styles/review-deck.css'
 import { shortcutBlocked } from '../shortcuts'
 import type { Operation } from '../core/operations'
 import {
@@ -429,7 +430,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="review-space">
+  <section class="review-space b-review-space">
     <header v-if="!mixedCardId" class="review-header">
       <UiButton
         variant="ghost"
@@ -439,6 +440,11 @@ onUnmounted(() => {
       >
         <ArrowLeft :size="17" /> {{ study ? t('结束专项练习') : t('结束复习') }}
       </UiButton>
+      <span v-if="deck || deckId" class="b-review-deck"
+        ><Layers :size="18" aria-hidden="true" />{{
+          deck?.name ?? library.decks.find((entry) => entry.id === deckId)?.name
+        }}</span
+      >
       <span class="muted">{{
         t('已复习 {p0} 次 · 当前待学 {p1} 张', { p0: completed, p1: queue.length })
       }}</span>
@@ -454,7 +460,7 @@ onUnmounted(() => {
     </p>
     <UProgress
       v-if="!mixedCardId"
-      class="mt-5"
+      class="mt-3"
       :model-value="
         Math.min(100, (completed / Math.max(startedWith, completed + queue.length, 1)) * 100)
       "
@@ -510,18 +516,19 @@ onUnmounted(() => {
     </div>
     <template v-if="current && plugin">
       <div class="review-context">
-        <span class="pill">{{ deck?.name }}</span
+        <span v-if="!deckId" class="pill">{{ deck?.name }}</span
         ><span>{{ current.schedule.state === 0 ? t('新卡片') : t('复习卡片') }}</span>
         <span v-if="current.leech" class="status-chip leech">{{ t('顽固卡 · 多次遗忘') }}</span>
       </div>
-      <component
-        v-for="panel in enabledReviewPanels"
-        :is="panel.reviewPanel"
-        :key="panel.id"
-        :card="current"
-        :reviews="library.reviews"
-        :revealed="revealed"
-      />
+      <div v-for="panel in enabledReviewPanels" :key="panel.id" class="b-review-panel">
+        <component
+          :is="panel.reviewPanel"
+          :key="panel.id"
+          :card="current"
+          :reviews="library.reviews"
+          :revealed="revealed"
+        />
+      </div>
       <article
         :key="`${current.id}:${revision}`"
         class="flashcard"
@@ -579,7 +586,7 @@ onUnmounted(() => {
       <div v-if="!revealed" class="reveal-action">
         <UiButton
           variant="primary"
-          class="button primary"
+          class="button primary min-h-12 justify-center gap-3 px-6"
           :disabled="questionState.busy"
           @click="revealed = true"
         >
@@ -612,7 +619,10 @@ onUnmounted(() => {
             :tone="item.class"
             v-for="item in grades"
             :key="item.value"
-            :class="['grade-button', item.class]"
+            :class="[
+              'grade-button p-4 text-[var(--rating-foreground)] bg-[var(--rating-background)] hover:bg-[var(--rating-hover)]',
+              item.class,
+            ]"
             :disabled="
               busy ||
               questionState.busy ||

@@ -188,7 +188,7 @@ it('keeps drafts and revealed answers while translating authoring, statuses, and
   expect(host.querySelector('.grade-title')!.textContent).toContain('重来')
   await language('en')
   expect(host.querySelector('.grade-title')!.textContent).toContain('Again')
-  expect(host.querySelector('.review-context')!.textContent).toContain('我的卡组')
+  expect(host.querySelector('.b-review-deck')!.textContent).toContain('我的卡组')
   expect(host.querySelector('.grade-button strong')!.textContent).toBe('1 minute')
 })
 
@@ -197,7 +197,7 @@ it('translates an already visible backup error and legacy snapshot labels withou
   button('Add starter deck').click()
   await vi.waitFor(
     () => {
-      const deck = host.querySelector('.sidebar-deck')
+      const deck = host.querySelector('.deck-title')
       expect(deck).not.toBeNull()
       expect(deck!.textContent).toContain('Start here: FSRS & Repeaty')
     },
@@ -215,7 +215,7 @@ it('translates an already visible backup error and legacy snapshot labels withou
   )
   await language('zh-CN')
   expect(host.querySelector('[role="alert"]')!.textContent).toContain('不是有效的 JSON')
-  expect(host.querySelector('.sidebar-deck')!.textContent).toContain('Start here: FSRS & Repeaty')
+  await vi.waitFor(() => expect(button('立即创建快照').disabled).toBe(false))
   button('立即创建快照').click()
   await vi.waitFor(() =>
     expect(host.querySelector('.snapshot-list')!.textContent).toContain('手动快照'),
@@ -223,12 +223,15 @@ it('translates an already visible backup error and legacy snapshot labels withou
   await language('en')
   expect(host.querySelector('.snapshot-list')!.textContent).toContain('Manual snapshot')
   expect(host.querySelector('.backup-meta')!.textContent).toContain('Cards: 27')
+  const repository = createRepository()
+  expect((await repository.load()).library.decks[0]!.name).toContain('Start here: FSRS & Repeaty')
+  await repository.close()
 })
 
 it('keeps persisted filter values and typed search terms unchanged across UI languages', async () => {
   await start()
   button('Add starter deck').click()
-  await vi.waitFor(() => expect(host.querySelector('.sidebar-deck')).not.toBeNull())
+  await vi.waitFor(() => expect(host.querySelector('.deck-title')).not.toBeNull())
   const cardsNav = [...host.querySelectorAll<HTMLButtonElement>('.main-nav button')].find(
     (button) => button.textContent?.trim().startsWith('All cards'),
   )!

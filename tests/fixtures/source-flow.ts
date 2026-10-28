@@ -24,7 +24,8 @@ export const sourceText =
   `\n${sourceQuote}\n\n$$R=e^{-t/S}$$\n\n![outside](https://example.invalid/tracker.png)\n<script>globalThis.sourceExecuted=true</script>`
 
 export async function createSourceDeck(page: Page) {
-  await page.getByRole('button', { name: '新建卡组', exact: true }).click()
+  await page.locator('.main-nav').getByRole('button', { name: '学习概览', exact: true }).click()
+  await page.getByRole('button', { name: '创建卡组', exact: true }).first().click()
   await page.getByLabel('卡组名称').fill('摘录卡组')
   await page.getByRole('button', { name: '保存卡组', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)

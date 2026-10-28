@@ -69,7 +69,8 @@ async function sourcePages(page: Page) {
 
 export async function fullUiFlow(page: Page, info: TestInfo) {
   await page.setViewportSize({ width: 1280, height: 950 })
-  await page.getByRole('button', { name: '新建卡组', exact: true }).click()
+  await page.locator('.main-nav').getByRole('button', { name: '学习概览', exact: true }).click()
+  await page.getByRole('button', { name: '创建卡组', exact: true }).first().click()
   let dialog = page.getByRole('dialog', { name: '创建卡组', exact: true })
   await sharedControls(dialog)
   await dialog.getByLabel('卡组名称', { exact: true }).fill('Unified GUI')

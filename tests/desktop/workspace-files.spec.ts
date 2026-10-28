@@ -35,7 +35,8 @@ const values = <T>(rows: unknown) => (rows as { value: T }[]).map((row) => row.v
 test('external create, cloze retirement, restore, deletion and undo preserve study records and original files', async ({
   page,
 }) => {
-  await page.getByRole('button', { name: '新建卡组', exact: true }).last().click()
+  await page.locator('.main-nav').getByRole('button', { name: '学习概览', exact: true }).click()
+  await page.getByRole('button', { name: '创建卡组', exact: true }).first().click()
   await page.getByLabel('卡组名称').fill('文件学习库')
   await page.getByRole('button', { name: '保存卡组', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
@@ -145,7 +146,8 @@ test('external create, cloze retirement, restore, deletion and undo preserve stu
 test('duplicate identities cannot be accepted and changed files invalidate a deletion confirmation', async ({
   page,
 }) => {
-  await page.getByRole('button', { name: '新建卡组', exact: true }).last().click()
+  await page.locator('.main-nav').getByRole('button', { name: '学习概览', exact: true }).click()
+  await page.getByRole('button', { name: '创建卡组', exact: true }).first().click()
   await page.getByLabel('卡组名称').fill('Safety')
   await page.getByRole('button', { name: '保存卡组', exact: true }).click()
   await page.getByRole('button', { name: '添加卡片', exact: true }).first().click()
@@ -192,7 +194,8 @@ test('duplicate identities cannot be accepted and changed files invalidate a del
 })
 
 test('removed-note search stays paginated when the last page is restored', async ({ page }) => {
-  await page.getByRole('button', { name: '新建卡组', exact: true }).last().click()
+  await page.locator('.main-nav').getByRole('button', { name: '学习概览', exact: true }).click()
+  await page.getByRole('button', { name: '创建卡组', exact: true }).first().click()
   await page.getByLabel('卡组名称').fill('Paging')
   await page.getByRole('button', { name: '保存卡组', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)

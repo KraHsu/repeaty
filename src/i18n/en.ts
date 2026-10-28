@@ -1,5 +1,18 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  展开侧栏: 'Expand sidebar',
+  收起侧栏: 'Collapse sidebar',
+  学习与管理: 'Study and management',
+  帮助: 'Help',
+  '{p0} 个卡组 · {p1} 张卡片': '{p0} decks · {p1} cards',
+  当前卡组: 'Current deck',
+  '其中 {count} 张正在学习': '{count} cards in learning',
+  '稍后到期 {count} 张': '{count} due later',
+  '选择卡组 {p0}': 'Select deck {p0}',
+  '今日已复习 {count} 次': '{count} reviews today',
+  插件信息: 'Plugin information',
+  已启用: 'Enabled',
+  未启用: 'Disabled',
   '收起 {name}': 'Collapse {name}',
   '展开 {name}': 'Expand {name}',
   调整侧栏宽度: 'Resize sidebar',

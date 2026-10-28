@@ -9,6 +9,7 @@ import {
   openPluginManager,
   openPluginSettings,
   openSettings,
+  selectPlugin,
 } from '../fixtures/settings-flow'
 
 function standaloneBundle(version = '1.0.0', id = 'external-check'): PluginBundle {
@@ -94,6 +95,7 @@ async function install(page: Page, bundle: PluginBundle) {
     buffer: Buffer.from(JSON.stringify(bundle)),
   })
   await confirmPluginAction(page)
+  await selectPlugin(page, bundle.manifest.id)
 }
 const panel = (page: Page) =>
   page.locator('.plugin-settings').filter({
@@ -137,6 +139,7 @@ test('installs independent code, reloads versions and retains records and privat
     .poll(() => value(page, 'settings', 'plugin:external-check:marker'))
     .toBe('saved-1.0.0')
   await openPluginManager(page)
+  await selectPlugin(page, 'external-check')
   await panel(page).getByRole('switch', { name: '启用 External Check' }).click()
   await openSettings(page)
   await expect(configuration(page)).toHaveCount(0)
@@ -154,6 +157,7 @@ test('installs independent code, reloads versions and retains records and privat
     )
     .toMatchObject({ disposed: 1, cleaned: 1 })
   await openPluginManager(page)
+  await selectPlugin(page, 'external-check')
   await panel(page).getByRole('switch', { name: '启用 External Check' }).click()
   await openPluginSettings(page, 'external-check')
   await expect(configuration(page).getByTestId('external-version')).toHaveText('1.0.0')
@@ -219,6 +223,7 @@ test('installs independent code, reloads versions and retains records and privat
     })
   })
   await openPluginManager(page)
+  await selectPlugin(page, 'external-check')
   await panel(page).getByRole('button', { name: '卸载插件', exact: true }).click()
   await confirmPluginAction(page)
   await expect(panel(page)).toHaveCount(0)
@@ -253,10 +258,14 @@ test('discovers copied package files without executing them until their exact co
   const before = await storedLibrary(page)
   await openPluginManager(page)
   await page.getByRole('button', { name: '重新扫描插件', exact: true }).click()
+  await selectPlugin(page, 'manual-check')
   await expect(panel(page)).toContainText('此设备尚未信任此插件包')
   await expect(panel(page).getByRole('switch')).not.toBeChecked()
   const documentation = panel(page).locator('.plugin-readme')
-  await documentation.locator('.plugin-readme-trigger').click()
+  await expect(documentation.locator('.plugin-readme-trigger')).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  )
   await expect(
     documentation.getByRole('heading', { name: 'Manual plugin documentation', exact: true }),
   ).toBeVisible()
@@ -295,6 +304,7 @@ test('discovers copied package files without executing them until their exact co
   await writeFile(join(packageDirectory, 'styles.css'), replacement.styles!)
   await openPluginManager(page)
   await page.getByRole('button', { name: '重新扫描插件', exact: true }).click()
+  await selectPlugin(page, 'manual-check')
   await expect(panel(page)).toContainText('此设备尚未信任此插件包')
   await expect(panel(page).getByTestId('external-version')).toHaveCount(0)
   expect(

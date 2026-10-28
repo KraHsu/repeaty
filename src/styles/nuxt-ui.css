@@ -5,17 +5,17 @@
 @source '../../config/ui.ts';
 
 @theme {
-  --color-sage-50: #f4f7f1;
-  --color-sage-100: #e7eee3;
-  --color-sage-200: #cdddc6;
-  --color-sage-300: #a8c09f;
-  --color-sage-400: #7c9e76;
-  --color-sage-500: #5c825a;
-  --color-sage-600: #456b48;
-  --color-sage-700: #37634b;
-  --color-sage-800: #2d4e3b;
-  --color-sage-900: #293d33;
-  --color-sage-950: #15251c;
+  --color-sage-50: #f3f7ef;
+  --color-sage-100: #e5eddf;
+  --color-sage-200: #cbdcc1;
+  --color-sage-300: #aac49d;
+  --color-sage-400: #76986c;
+  --color-sage-500: #527c50;
+  --color-sage-600: #40765a;
+  --color-sage-700: #34674d;
+  --color-sage-800: #29563f;
+  --color-sage-900: #244637;
+  --color-sage-950: #14271f;
   --font-sans: var(--font-ui);
   --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', 'Noto Sans Mono', monospace;
   --text-xs: 0.875rem;
@@ -30,11 +30,11 @@
 :root {
   --ui-primary: var(--color-sage-700);
   --ui-bg: #ffffff;
-  --ui-bg-muted: #f4f6f0;
-  --ui-bg-elevated: #f4f6f0;
-  --ui-text: #293d33;
-  --ui-text-muted: #63715e;
-  --ui-border: #d9dfd3;
+  --ui-bg-muted: #f3f5f0;
+  --ui-bg-elevated: #edf1e8;
+  --ui-text: #243c31;
+  --ui-text-muted: #52665a;
+  --ui-border: #d8e1d4;
   --ui-radius: 0.5rem;
 }
 

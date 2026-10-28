@@ -26,8 +26,13 @@
   --text-sm: var(--font-size-body);
   --text-base: var(--font-size-body);
   --scrollbar-size: 10px;
-  --scrollbar-track: #f0f3ed;
-  --scrollbar-thumb: #b8c4b1;
+  --scrollbar-track: #f3f5f0;
+  --scrollbar-thumb: #aabca2;
   --scrollbar-thumb-hover: #8fa184;
   --scrollbar-thumb-active: #6d8462;
+  --app-canvas: #f3f5f0;
+  --app-rail: #edf1e8;
+  --app-selected: #e5eddf;
+  --app-soft-line: #e7ece3;
+  --app-radius: 0.75rem;
 }

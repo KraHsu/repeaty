@@ -2,7 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick, ref } from 'vue'
 import type { SettingsStore } from '../settings-store'
-import { SIDEBAR_WIDTH_KEY, useSidebarLayout } from './useSidebarLayout'
+import { SIDEBAR_EXPANDED_WIDTH_KEY, SIDEBAR_WIDTH_KEY, useSidebarLayout } from './useSidebarLayout'
 
 const cleanups = new Set<() => void>()
 const originalWidth = window.innerWidth
@@ -61,12 +61,12 @@ afterEach(() => {
 it('captures the primary pointer, resizes continuously, and saves only the completed gesture', () => {
   resizeWindow(1200)
   const { layout, settings, pointer, capture, release } = mountLayout()
-  layout.startResize(pointer(230, { button: 2 }))
+  layout.startResize(pointer(80, { button: 2 }))
   expect(capture).not.toHaveBeenCalled()
-  layout.startResize(pointer(230))
+  layout.startResize(pointer(80))
   expect(capture).toHaveBeenCalledWith(7)
   layout.moveResize(pointer(150, { pointerId: 8 }))
-  expect(layout.width.value).toBe(230)
+  expect(layout.width.value).toBe(80)
   layout.moveResize(pointer(120))
   expect(layout.width.value).toBe(120)
   expect(layout.collapsed.value).toBe(true)
@@ -82,12 +82,12 @@ it('captures the primary pointer, resizes continuously, and saves only the compl
 it('rolls back canceled gestures and releases a captured pointer on unmount', () => {
   resizeWindow(1200)
   const { layout, settings, pointer, release, unmount } = mountLayout()
-  layout.startResize(pointer(230))
+  layout.startResize(pointer(80))
   layout.moveResize(pointer(100))
   layout.cancelResize(pointer(100))
-  expect(layout.width.value).toBe(230)
+  expect(layout.width.value).toBe(80)
   expect(settings.setItem).not.toHaveBeenCalled()
-  layout.startResize(pointer(230))
+  layout.startResize(pointer(80))
   layout.moveResize(pointer(180))
   unmount()
   expect(layout.resizing.value).toBe(false)
@@ -100,7 +100,7 @@ it('restores after settings hydration and isolates late pointers from a new work
   let saved = '290'
   const settings = { getItem: vi.fn(() => saved), setItem: vi.fn() }
   const { layout, ready, scope, pointer } = mountLayout({ ready: false, settings })
-  expect(layout.width.value).toBe(230)
+  expect(layout.width.value).toBe(80)
   expect(settings.getItem).not.toHaveBeenCalled()
   ready.value = true
   expect(layout.width.value).toBe(290)
@@ -123,6 +123,10 @@ it('clamps the visible sidebar in a narrow desktop window without losing the cho
   expect(layout.vertical.value).toBe(true)
   expect(layout.width.value).toBe(100)
   expect(layout.collapsed.value).toBe(true)
+  expect(layout.canToggle.value).toBe(false)
+  layout.toggle()
+  expect(layout.width.value).toBe(100)
+  expect(settings.setItem).not.toHaveBeenCalled()
   resizeWindow(1200)
   await nextTick()
   expect(layout.width.value).toBe(320)
@@ -133,18 +137,20 @@ it('clamps the visible sidebar in a narrow desktop window without losing the cho
 it('keeps mobile browser navigation horizontal and cancels a gesture when switching layout', async () => {
   resizeWindow(1200)
   const { layout, settings, pointer } = mountLayout({ desktop: false })
-  layout.startResize(pointer(230))
+  layout.startResize(pointer(80))
   layout.moveResize(pointer(180))
   resizeWindow(720)
   await nextTick()
   expect(layout.vertical.value).toBe(false)
   expect(layout.collapsed.value).toBe(false)
   expect(layout.resizing.value).toBe(false)
-  layout.startResize(pointer(230))
+  expect(layout.canToggle.value).toBe(false)
+  layout.toggle()
+  layout.startResize(pointer(80))
   expect(layout.resizing.value).toBe(false)
   resizeWindow(1200)
   await nextTick()
-  expect(layout.width.value).toBe(230)
+  expect(layout.width.value).toBe(80)
   expect(settings.setItem).not.toHaveBeenCalled()
 })
 
@@ -160,9 +166,9 @@ it('provides keyboard bounds and reset while leaving other application instances
   first.layout.resizeWithKeyboard(new KeyboardEvent('keydown', { key: 'End' }))
   expect(first.layout.width.value).toBe(360)
   first.layout.resetWidth()
-  expect(first.layout.width.value).toBe(230)
+  expect(first.layout.width.value).toBe(80)
   expect(first.settings.setItem).toHaveBeenCalledTimes(4)
-  expect(second.layout.width.value).toBe(230)
+  expect(second.layout.width.value).toBe(80)
   expect(second.settings.setItem).not.toHaveBeenCalled()
 })
 
@@ -170,7 +176,7 @@ it('falls back on malformed or unavailable storage and keeps resizing when savin
   resizeWindow(1200)
   const settings = { getItem: vi.fn(() => 'invalid'), setItem: vi.fn() }
   const first = mountLayout({ settings })
-  expect(first.layout.width.value).toBe(230)
+  expect(first.layout.width.value).toBe(80)
   settings.getItem.mockImplementation(() => {
     throw new Error('unavailable')
   })
@@ -186,4 +192,99 @@ it('falls back on malformed or unavailable storage and keeps resizing when savin
   rejected.layout.resizeWithKeyboard(new KeyboardEvent('keydown', { key: 'End' }))
   await Promise.resolve()
   expect(rejected.layout.width.value).toBe(360)
+})
+
+it('starts as an icon rail and expands to the default reading width', () => {
+  resizeWindow(1200)
+  const { layout, settings } = mountLayout()
+  expect(layout.width.value).toBe(80)
+  expect(layout.collapsed.value).toBe(true)
+  expect(layout.canToggle.value).toBe(true)
+  layout.toggle()
+  expect(layout.width.value).toBe(208)
+  expect(layout.collapsed.value).toBe(false)
+  expect(settings.setItem).toHaveBeenCalledExactlyOnceWith(SIDEBAR_WIDTH_KEY, '208')
+  layout.toggle()
+  expect(layout.width.value).toBe(80)
+  expect(settings.setItem).toHaveBeenCalledWith(SIDEBAR_EXPANDED_WIDTH_KEY, '208')
+  expect(settings.setItem).toHaveBeenLastCalledWith(SIDEBAR_WIDTH_KEY, '80')
+})
+
+it('remembers a resized expanded width across collapse and application reload', () => {
+  resizeWindow(1200)
+  const values = new Map<string, string>()
+  const settings = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: vi.fn((key: string, value: string) => {
+      values.set(key, value)
+    }),
+  }
+  const first = mountLayout({ settings })
+  first.layout.startResize(first.pointer(80))
+  first.layout.moveResize(first.pointer(288))
+  first.layout.endResize(first.pointer(288))
+  first.layout.toggle()
+  expect(values.get(SIDEBAR_WIDTH_KEY)).toBe('80')
+  expect(values.get(SIDEBAR_EXPANDED_WIDTH_KEY)).toBe('288')
+  first.unmount()
+
+  const reloaded = mountLayout({ settings })
+  expect(reloaded.layout.width.value).toBe(80)
+  reloaded.layout.toggle()
+  expect(reloaded.layout.width.value).toBe(288)
+  expect(settings.setItem).toHaveBeenLastCalledWith(SIDEBAR_WIDTH_KEY, '288')
+})
+
+it('restores each workspace expanded width without carrying the previous workspace preference', () => {
+  resizeWindow(1200)
+  const libraries = [
+    new Map([
+      [SIDEBAR_WIDTH_KEY, '80'],
+      [SIDEBAR_EXPANDED_WIDTH_KEY, '288'],
+    ]),
+    new Map([
+      [SIDEBAR_WIDTH_KEY, '80'],
+      [SIDEBAR_EXPANDED_WIDTH_KEY, '192'],
+    ]),
+    new Map<string, string>(),
+  ]
+  let activeLibrary = 0
+  const settings = {
+    getItem: (key: string) => libraries[activeLibrary]!.get(key) ?? null,
+    setItem: vi.fn((key: string, value: string) => {
+      libraries[activeLibrary]!.set(key, value)
+    }),
+  }
+  const { layout, scope } = mountLayout({ settings })
+  layout.toggle()
+  expect(layout.width.value).toBe(288)
+  activeLibrary = 1
+  scope.value++
+  expect(layout.width.value).toBe(80)
+  layout.toggle()
+  expect(layout.width.value).toBe(192)
+  expect(libraries[0]!.get(SIDEBAR_WIDTH_KEY)).toBe('288')
+  activeLibrary = 2
+  scope.value++
+  layout.toggle()
+  expect(layout.width.value).toBe(208)
+  expect(libraries[1]!.get(SIDEBAR_WIDTH_KEY)).toBe('192')
+})
+
+it('does not persist toggles before the workspace settings are ready', () => {
+  resizeWindow(1200)
+  const settings = {
+    getItem: vi.fn((key: string) => (key === SIDEBAR_EXPANDED_WIDTH_KEY ? '272' : '80')),
+    setItem: vi.fn(),
+  }
+  const { layout, ready } = mountLayout({ ready: false, settings })
+  layout.toggle()
+  expect(layout.width.value).toBe(208)
+  layout.toggle()
+  expect(layout.width.value).toBe(80)
+  expect(settings.setItem).not.toHaveBeenCalled()
+  ready.value = true
+  layout.toggle()
+  expect(layout.width.value).toBe(272)
+  expect(settings.setItem).toHaveBeenCalledExactlyOnceWith(SIDEBAR_WIDTH_KEY, '272')
 })

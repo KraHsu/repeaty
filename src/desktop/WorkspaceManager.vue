@@ -532,9 +532,12 @@ onUnmounted(() => {
       </UiButton>
     </div>
     <section v-if="status?.active" class="workspace-card workspace-active">
-      <div>
-        <h2>{{ t('当前学习库') }}</h2>
-        <p class="workspace-path">{{ displayFilesystemPath(status.active.path) }}</p>
+      <div class="workspace-identity">
+        <span class="workspace-identity-icon" aria-hidden="true"><FolderOpen :size="28" /></span>
+        <div>
+          <h2>{{ t('当前学习库') }}</h2>
+          <p class="workspace-path">{{ displayFilesystemPath(status.active.path) }}</p>
+        </div>
       </div>
       <div class="workspace-actions">
         <UiButton variant="secondary" type="submit" :disabled="locked" @click="run(refresh)">
@@ -871,7 +874,26 @@ onUnmounted(() => {
 .workspace-manager {
   display: grid;
   gap: 1.5rem;
-  max-width: 1500px;
+  min-width: 0;
+}
+.workspace-identity {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+.workspace-identity > div {
+  min-width: 0;
+}
+.workspace-identity-icon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 3.75rem;
+  height: 3.75rem;
+  border-radius: 0.75rem;
+  color: var(--green);
+  background: var(--sage);
 }
 .workspace-actions {
   display: flex;
@@ -880,10 +902,10 @@ onUnmounted(() => {
   gap: 0.6rem;
 }
 .workspace-card {
-  padding: 1.3rem;
-  border: 1px solid #dfe5d8;
-  border-radius: 13px;
-  background: white;
+  padding: 2rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
 }
 .workspace-card h2,
 .workspace-document h2 {
@@ -899,25 +921,28 @@ onUnmounted(() => {
 .workspace-path {
   overflow-wrap: anywhere;
   margin: 0.3rem 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-meta);
 }
 .workspace-welcome p {
   line-height: var(--line-height-ui);
 }
 .workspace-inspector {
   display: grid;
-  grid-template-columns: minmax(210px, 280px) minmax(0, 1fr);
-  background: #fff;
-  border: 1px solid #dfe5d8;
-  border-radius: 13px;
+  grid-template-columns: minmax(13rem, 18rem) minmax(0, 1fr);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 14px;
   overflow: hidden;
 }
 .workspace-files,
 .workspace-document {
-  padding: 1.3rem;
+  padding: 1.75rem;
   min-width: 0;
 }
 .workspace-files {
-  border-right: 1px solid #dfe5d8;
+  border-right: 1px solid var(--line);
 }
 .workspace-field {
   display: grid;
@@ -943,7 +968,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  border-top: 1px solid #dfe5d8;
+  border-top: 1px solid var(--line);
   padding: 1rem 0;
   overflow-wrap: anywhere;
 }
@@ -975,8 +1000,8 @@ onUnmounted(() => {
   font: inherit;
 }
 .workspace-file.selected {
-  background: #f3f6ef;
-  border-color: #dfe5d8;
+  background: var(--sage);
+  border-color: var(--line);
 }
 .workspace-file strong {
   font-weight: var(--font-weight-medium);
@@ -984,14 +1009,14 @@ onUnmounted(() => {
 .workspace-file-status,
 .form-note {
   font-size: var(--font-size-meta);
-  color: #67765e;
+  color: var(--muted);
 }
 .workspace-versions {
   margin: 0.8rem 0 1.2rem;
 }
 .workspace-versions .selected {
-  background: #edf2e7;
-  border-color: #9aad8b;
+  background: var(--sage);
+  border-color: var(--green);
 }
 .workspace-raw {
   font-family: var(--font-mono);
@@ -1023,11 +1048,26 @@ onUnmounted(() => {
   }
   .workspace-files {
     border-right: 0;
-    border-bottom: 1px solid #dfe5d8;
+    border-bottom: 1px solid var(--line);
   }
   .workspace-active {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+@media (max-width: 720px) {
+  .workspace-card,
+  .workspace-files,
+  .workspace-document {
+    padding: 1.25rem;
+  }
+  .workspace-identity {
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  .workspace-identity-icon {
+    width: 3rem;
+    height: 3rem;
   }
 }
 </style>

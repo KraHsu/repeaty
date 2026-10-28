@@ -49,6 +49,8 @@ const {
   width: sidebarWidth,
   maxWidth: sidebarMaxWidth,
   collapsed: sidebarCollapsed,
+  canToggle: canToggleSidebar,
+  toggle: toggleSidebar,
   resizing: sidebarResizing,
   vertical: verticalSidebar,
   startResize,
@@ -89,7 +91,11 @@ watch(workspace.scope, () => {
       :style="{ '--sidebar-width': `${sidebarWidth}px` }"
     >
       <component v-if="DesktopTitlebar" :is="DesktopTitlebar" />
-      <AppSidebar />
+      <AppSidebar
+        :collapsed="sidebarCollapsed"
+        :can-toggle="canToggleSidebar"
+        @toggle="toggleSidebar"
+      />
       <div
         v-if="verticalSidebar"
         class="sidebar-resizer"

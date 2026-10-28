@@ -1,0 +1,185 @@
+/* The B direction uses the same paper surfaces and reading rhythm as the
+   central review deck. Controls continue to come from the shared Nuxt UI SDK. */
+@layer components {
+  .cards-page .library-toolbar {
+    gap: 1rem;
+    margin-top: 2rem;
+  }
+  .cards-page .library-count {
+    margin: 1.5rem 0;
+    color: var(--muted);
+  }
+  .cards-page .card-table-wrap {
+    border-radius: 0.875rem;
+    background: var(--paper);
+  }
+  .cards-page .card-table th {
+    background: var(--ui-bg-muted);
+    padding: 1rem 1.5rem;
+    font-size: var(--font-size-meta);
+  }
+  .cards-page .card-table td {
+    padding: 1.5rem;
+    vertical-align: top;
+    border-color: var(--line);
+    line-height: 1.65;
+  }
+  .cards-page .expanded-table td:first-child,
+  .cards-page .expanded-table th:first-child {
+    padding: 1.25rem 0.75rem;
+    vertical-align: middle;
+  }
+  .cards-page .card-row-content {
+    gap: 0.875rem;
+  }
+  .cards-page .card-row-title {
+    color: var(--ui-text);
+    font-weight: var(--font-weight-semibold);
+    line-height: 1.6;
+  }
+  .cards-page .card-row-answer {
+    max-width: 42em;
+    font-size: var(--font-size-body);
+    line-height: 1.7;
+    white-space: pre-wrap;
+  }
+  .cards-page .tag-list {
+    gap: 0.375rem;
+    margin-top: 0.875rem;
+  }
+  .cards-page .tag {
+    background: var(--ui-bg-muted);
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.3125rem;
+  }
+  .cards-page .due-date {
+    color: var(--muted);
+  }
+  .cards-page .status-chip.fresh {
+    color: var(--green);
+    background: var(--sage);
+  }
+  .cards-page .row-actions {
+    gap: 0.125rem;
+  }
+  .cards-page .pagination {
+    margin-top: 1.5rem;
+  }
+
+  .data-page .storage-banner {
+    align-items: flex-start;
+    gap: 1.25rem;
+    margin-top: 1.5rem;
+    padding: 1.75rem 2rem;
+    color: var(--ui-text);
+    background: var(--paper);
+    border-color: var(--line);
+    border-radius: 0.875rem;
+  }
+  .data-page .storage-banner > svg {
+    flex-shrink: 0;
+    width: 3.25rem;
+    height: 3.25rem;
+    padding: 0.8125rem;
+    border-radius: 0.75rem;
+    background: var(--sage);
+    color: var(--green);
+  }
+  .data-page .storage-banner h2 {
+    color: var(--ui-text);
+    font-size: var(--font-size-section);
+    margin: 0 0 0.5rem;
+  }
+  .data-page .storage-banner p {
+    margin: 0;
+    line-height: 1.7;
+    color: var(--muted);
+  }
+  .data-page .backup-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.5rem;
+  }
+  .data-page .backup-card {
+    min-width: 0;
+    padding: 2rem;
+    border-radius: 0.875rem;
+    background: var(--paper);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .data-page .backup-card .stat-icon {
+    width: 3.25rem;
+    height: 3.25rem;
+    border-radius: 0.75rem;
+    background: var(--sage);
+    color: var(--green);
+  }
+  .data-page .backup-card h2 {
+    margin: 1.5rem 0 0.625rem;
+  }
+  .data-page .backup-card p {
+    min-height: 0;
+    max-width: none;
+    margin: 0 0 1rem;
+    color: var(--muted);
+    font-size: var(--font-size-body);
+    line-height: 1.75;
+  }
+  .data-page .backup-card p.form-note {
+    font-size: var(--font-size-meta);
+  }
+  .data-page .backup-meta {
+    color: var(--muted);
+    margin: 0 0 1.5rem;
+    padding-top: 1rem;
+    line-height: 1.7;
+  }
+  .data-page .backup-actions {
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+  .data-page .snapshot-section {
+    margin-top: 2rem;
+    padding-top: 2rem;
+  }
+  .data-page .snapshot-list {
+    border-radius: 0.875rem;
+    overflow: hidden;
+  }
+  .data-page .snapshot-list li {
+    padding: 1.25rem 1.5rem;
+  }
+  .data-page .snapshot-list span,
+  .data-page .about-core,
+  .data-page .about-core p {
+    color: var(--muted);
+  }
+  .data-page .about-core h3 {
+    color: var(--ui-text);
+  }
+  @media (max-width: 1000px) {
+    .data-page .backup-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  @media (max-width: 720px) {
+    .cards-page .card-table td,
+    .cards-page .card-table th {
+      padding: 1.125rem;
+    }
+    .data-page .backup-card,
+    .data-page .storage-banner {
+      padding: 1.5rem;
+    }
+    .data-page .storage-banner {
+      gap: 1rem;
+    }
+    .data-page .storage-banner > svg {
+      display: block;
+      width: 2.75rem;
+      height: 2.75rem;
+      padding: 0.625rem;
+    }
+  }
+}

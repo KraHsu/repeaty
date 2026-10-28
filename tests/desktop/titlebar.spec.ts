@@ -206,7 +206,7 @@ test('a failed window request is visible and can be retried without leaving the 
 test('the same window controls remain accessible inside modal and nested dialogs', async ({
   page,
 }) => {
-  await page.getByRole('button', { name: '快捷键', exact: true }).click()
+  await page.locator('.sidebar-help').click()
   const modal = page.getByRole('dialog')
   await expect(modal).toBeVisible()
   const controls = page.locator('.desktop-titlebar')

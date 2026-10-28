@@ -390,7 +390,7 @@ export const test = base.extend<{ native: void; emptyWorkspace: void }>({
   emptyWorkspace: [
     async ({ page, native: _native }, use) => {
       await page.goto('./')
-      await page.locator('.deck-title').click()
+      await page.locator('.b-browse-deck').click()
       await page.getByRole('button', { name: '删除当前卡组' }).click()
       await page.getByRole('button', { name: '确认删除', exact: true }).click()
       await expect(page.getByRole('dialog')).toHaveCount(0)

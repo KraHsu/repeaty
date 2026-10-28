@@ -107,7 +107,7 @@ test('mobile workspace and sample deck fit without page overflow', async ({ page
   await page.goto('./')
   await page.getByRole('button', { name: '添加入门卡组', exact: true }).click()
   await expect(
-    page.getByRole('button', { name: '从这里开始：FSRS 与 Repeaty', exact: true }),
+    page.getByRole('button', { name: '选择卡组 从这里开始：FSRS 与 Repeaty', exact: true }),
   ).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
@@ -128,7 +128,7 @@ test('desktop sample dashboard renders cleanly', async ({ page }) => {
   await expect(
     page
       .locator('.dashboard')
-      .getByRole('button', { name: '从这里开始：FSRS 与 Repeaty', exact: true }),
+      .getByRole('button', { name: '选择卡组 从这里开始：FSRS 与 Repeaty', exact: true }),
   ).toBeVisible()
   await page.screenshot({ path: 'test-results/desktop-dashboard.png', fullPage: true })
 })

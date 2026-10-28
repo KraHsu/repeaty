@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, type TestInfo } from '@playwright/test'
-import { openSettings } from './settings-flow'
+import { openSettings, selectSettingsCategory } from './settings-flow'
 
 async function noPageOverflow(page: Page) {
   expect(
@@ -25,6 +25,28 @@ export async function settingsAlignmentFlow(page: Page, info: TestInfo, narrowWi
     await page.evaluate((value) => {
       document.documentElement.style.fontSize = `${value * 100}%`
     }, scale)
+    const compactCategory = page.locator('.settings-mobile-category').getByRole('combobox')
+    if (await compactCategory.isVisible()) {
+      await expect(menu).toBeHidden()
+      await selectSettingsCategory(page, 'general.notifications')
+      await expect(page.locator('[data-settings-id="notifications"]')).toBeVisible()
+      await expect(page.locator('[data-settings-id="appearance"]')).toHaveCount(0)
+      await selectSettingsCategory(page, 'general.appearance')
+      await expect(page.getByRole('combobox', { name: '界面语言', exact: true })).toBeVisible()
+      await expect(page.locator('[data-settings-id="notifications"]')).toHaveCount(0)
+      await noPageOverflow(page)
+      const bounds = (await compactCategory.boundingBox())!
+      expect(bounds.width).toBeGreaterThan(0)
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(width)
+      await page.screenshot({
+        path: info.outputPath(`settings-alignment-${width}-${scale}.png`),
+        fullPage: true,
+        animations: 'disabled',
+      })
+      await selectSettingsCategory(page, 'general')
+      continue
+    }
+    await expect(menu).toBeVisible()
     if ((await toggle.getAttribute('aria-expanded')) === 'false') await toggle.click()
     await expect(general).toHaveAttribute('aria-expanded', 'true')
     await expect
@@ -80,7 +102,7 @@ export async function settingsAlignmentFlow(page: Page, info: TestInfo, narrowWi
   }
 }
 
-async function centeredIcon(button: Locator, scale: number) {
+async function centeredIcon(button: Locator) {
   await expect(button).toBeVisible()
   const metrics = await button.evaluate((element) => {
     const button = element.getBoundingClientRect()
@@ -92,8 +114,8 @@ async function centeredIcon(button: Locator, scale: number) {
       dy: Math.abs(button.y + button.height / 2 - icon.y - icon.height / 2),
     }
   })
-  expect(metrics.width).toBeGreaterThanOrEqual(44 * scale)
-  expect(metrics.height).toBeGreaterThanOrEqual(44 * scale)
+  expect(metrics.width).toBeGreaterThanOrEqual(44)
+  expect(metrics.height).toBeGreaterThanOrEqual(44)
   expect(metrics.dx).toBeLessThanOrEqual(1)
   expect(metrics.dy).toBeLessThanOrEqual(1)
 }
@@ -106,10 +128,17 @@ export async function dashboardAndBackupAlignmentFlow(
   await page.setViewportSize({ width: 1440, height: 1000 })
   const overview = page.locator('.main-nav').getByRole('button', { name: '学习概览', exact: true })
   await overview.click()
-  if (!(await page.locator('.deck-review').count())) {
+  if (!(await page.locator('.b-deck-tile').count())) {
     await page.getByRole('button', { name: '添加入门卡组', exact: true }).click()
-    await expect(page.locator('.deck-review').first()).toBeVisible()
+    await expect(page.locator('.b-deck-tile').first()).toBeVisible()
   }
+  // Selecting a deck changes the central review object without navigating away.
+  const selectedTile = page.locator('.b-deck-tile').last()
+  const selectedName = await selectedTile.locator('.deck-title').innerText()
+  await selectedTile.click()
+  await expect(selectedTile).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.b-focus-card h2')).toHaveText(selectedName)
+  await expect(page.locator('.dashboard')).toBeVisible()
   for (const [width, scale] of [
     [1440, 1],
     [narrowWidth, 1],
@@ -120,11 +149,50 @@ export async function dashboardAndBackupAlignmentFlow(
       document.documentElement.style.fontSize = `${value * 100}%`
     }, scale)
     await overview.click()
-    await centeredIcon(page.locator('.deck-review').first(), scale)
-    await centeredIcon(
-      page.locator('.topbar').getByRole('button', { name: '快捷键', exact: true }),
-      scale,
+    const primary = page.locator('.b-start-review')
+    await expect(primary).toBeVisible()
+    const focusMetrics = await page.locator('.b-focus-stage').evaluate((element) => {
+      const stage = element.getBoundingClientRect()
+      const dashboard = element.closest('.dashboard')!.getBoundingClientRect()
+      const primary = element.querySelector('.b-start-review')!
+      const button = primary.getBoundingClientRect()
+      const arrow = primary.querySelector('svg')!.getBoundingClientRect()
+      return {
+        center: Math.abs(stage.x + stage.width / 2 - dashboard.x - dashboard.width / 2),
+        arrowCenter: Math.abs(button.y + button.height / 2 - arrow.y - arrow.height / 2),
+        buttonHeight: button.height,
+        whitespace: getComputedStyle(primary).whiteSpace,
+        contained: button.left >= stage.left && button.right <= stage.right,
+      }
+    })
+    expect(focusMetrics.center).toBeLessThanOrEqual(1)
+    expect(focusMetrics.arrowCenter).toBeLessThanOrEqual(1)
+    expect(focusMetrics.buttonHeight).toBeGreaterThanOrEqual(44 * scale)
+    expect(focusMetrics.whitespace).toBe('nowrap')
+    expect(focusMetrics.contained).toBe(true)
+    const tiles = await page.locator('.b-deck-tile').evaluateAll((elements) =>
+      elements.map((element) => {
+        const bounds = element.getBoundingClientRect()
+        const title = element.querySelector('.deck-title')!.getBoundingClientRect()
+        return (
+          title.left >= bounds.left && title.right <= bounds.right && title.bottom <= bounds.bottom
+        )
+      }),
     )
+    expect(tiles.every(Boolean)).toBe(true)
+    const help = page.locator('.sidebar-help')
+    await expect(help).toHaveAccessibleName('帮助')
+    if (!(await help.innerText()).trim()) await centeredIcon(help)
+    else {
+      const difference = await help.evaluate((element) => {
+        const button = element.getBoundingClientRect()
+        const icon = element.querySelector('svg')!.getBoundingClientRect()
+        return getComputedStyle(element).flexDirection === 'column'
+          ? Math.abs(button.x + button.width / 2 - icon.x - icon.width / 2)
+          : Math.abs(button.y + button.height / 2 - icon.y - icon.height / 2)
+      })
+      expect(difference).toBeLessThanOrEqual(1)
+    }
     await noPageOverflow(page)
     const dashboard = await page.locator('.dashboard').boundingBox()
     await page.screenshot({

@@ -2,7 +2,8 @@ import { selectUiValue } from './ui-flow'
 import { expect, type Page } from '@playwright/test'
 
 export async function createImportDeck(page: Page) {
-  await page.getByRole('button', { name: '新建卡组', exact: true }).click()
+  await page.locator('.main-nav').getByRole('button', { name: '学习概览', exact: true }).click()
+  await page.getByRole('button', { name: '创建卡组', exact: true }).first().click()
   await page.getByLabel('卡组名称').fill('From Anki')
   await page.getByRole('button', { name: '保存卡组', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)

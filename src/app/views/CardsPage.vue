@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../../styles/content-pages.css'
 import { UiButton } from '../../components/ui'
 import { t } from '../../i18n'
 import { ArrowUpFromLine, Pencil, Plus, Trash2 } from '@lucide/vue'
@@ -30,7 +31,7 @@ const {
 } = useApplication()
 </script>
 <template>
-  <div class="page">
+  <div class="page cards-page">
     <header class="page-heading">
       <div>
         <h1>{{ currentDeck?.name ?? t('全部卡片') }}</h1>

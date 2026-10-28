@@ -176,12 +176,26 @@ it('ties enable and uninstall confirmation to the exact package entry and reques
   expect(boundary.manager.removePlugin).not.toHaveBeenCalled()
 })
 
-it('renders README lazily and opens and focuses the requested plugin documentation', async () => {
+it('shows only the selected package and opens and focuses requested plugin documentation', async () => {
+  boundary.manager.pluginPackages.push({
+    id: 'second',
+    trusted: true,
+    bundle: {
+      ...bundle,
+      manifest: { ...bundle.manifest, id: 'second', name: 'Second' },
+      readme: '# Second documentation',
+    },
+  })
   const props = reactive({ focusPlugin: undefined as string | undefined })
   app = createApp({ render: () => h(PluginPanel, props) })
   app.mount(host)
   await settle()
-  expect(host.querySelector('.readme-rendered')).toBeNull()
+  expect(host.querySelector('.readme-rendered')?.textContent).toContain('Example documentation')
+  expect(host.querySelectorAll('.plugin-settings')).toHaveLength(1)
+  host.querySelector<HTMLButtonElement>('[data-plugin-select="second"]')!.click()
+  await settle()
+  expect(host.querySelector('.readme-rendered')?.textContent).toContain('Second documentation')
+  expect(host.querySelector('.plugin-settings')?.getAttribute('data-plugin-id')).toBe('second')
   props.focusPlugin = 'example'
   await settle()
   const trigger = host.querySelector<HTMLButtonElement>('.plugin-readme-trigger')!
@@ -191,4 +205,22 @@ it('renders README lazily and opens and focuses the requested plugin documentati
   trigger.click()
   await settle()
   expect(host.querySelector('.readme-rendered')).toBeNull()
+})
+
+it('selects a current package after removal and resets selection when the workspace changes', async () => {
+  boundary.manager.pluginPackages.push({ id: 'second', trusted: true, bundle })
+  await mount()
+  host.querySelector<HTMLButtonElement>('[data-plugin-select="second"]')!.click()
+  await settle()
+  expect(host.querySelector('.plugin-settings')?.getAttribute('data-plugin-id')).toBe('second')
+  boundary.manager.pluginScope.value = 'second-workspace'
+  await settle()
+  expect(host.querySelector('.plugin-settings')?.getAttribute('data-plugin-id')).toBe('example')
+  boundary.manager.pluginPackages.splice(0, 1)
+  await settle()
+  expect(host.querySelector('.plugin-settings')?.getAttribute('data-plugin-id')).toBe('second')
+  boundary.manager.pluginPackages.splice(0)
+  await settle()
+  expect(host.querySelector('.plugin-settings')).toBeNull()
+  expect(host.textContent).toContain('当前学习库尚未安装插件')
 })

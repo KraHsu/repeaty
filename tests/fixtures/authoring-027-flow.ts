@@ -48,7 +48,7 @@ export async function rendering027Flow(page: Page, info: TestInfo) {
   )
   await seedPolish(page, library)
   await page.getByRole('button', { name: '学习概览', exact: true }).click()
-  await page.locator('.deck-review').click()
+  await page.locator('.b-start-review').click()
   const question = page.locator('.card-question')
   await expect(question.locator('.rich-content')).toHaveCSS('text-align', 'left')
   await expect(question.locator('.styled')).toHaveCSS('color', 'rgb(12, 34, 56)')
@@ -139,8 +139,10 @@ export async function reviewActions027Flow(page: Page, read: () => Promise<Libra
     new Date(now.getTime() + 1000),
   )
   await seedPolish(page, library)
-  await page.getByRole('button', { name: '学习概览', exact: true }).click()
-  await page.getByRole('button', { name: '开始复习', exact: true }).first().click()
+  // This scenario spans two decks. The overview starts only its focused deck;
+  // use the collection's global review entry to keep the cross-deck undo coverage.
+  await page.getByRole('button', { name: '全部卡片', exact: true }).click()
+  await page.getByRole('button', { name: '复习', exact: true }).click()
   const question = page.locator('.card-question')
   await expect(question).toContainText('Original front')
   await page.locator('.flashcard').click()

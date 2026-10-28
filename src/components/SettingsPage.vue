@@ -8,6 +8,8 @@ import { buildSettingsCategories, collectSettingsCategoryEntries } from '../sett
 import type { SettingsCategoryNode, SettingsContribution, SettingsEntry } from '../settings/types'
 import SettingsContent from './SettingsContent.vue'
 import BranchedMenu from './ui/BranchedMenu.vue'
+import { UiSelect } from './ui'
+import '../styles/settings-plugins.css'
 
 const props = defineProps<{ focusPlugin?: string; platformSettings?: Component }>()
 const emit = defineEmits<{ pluginDetails: [id: string] }>()
@@ -96,6 +98,21 @@ function flatten(
   return nodes.flatMap((node) => [{ node, depth }, ...flatten(node.children, depth + 1)])
 }
 const navigation = computed(() => flatten(categories.value))
+const categoryOptions = computed(() =>
+  navigation.value.map(({ node }) => ({
+    value: node.key,
+    label: node.key
+      .split('.')
+      .map(
+        (_, index, path) =>
+          navigation.value.find(
+            ({ node: ancestor }) => ancestor.key === path.slice(0, index + 1).join('.'),
+          )?.node.title,
+      )
+      .filter(Boolean)
+      .join(' / '),
+  })),
+)
 const active = computed(
   () => navigation.value.find(({ node }) => node.key === selected.value)?.node,
 )
@@ -132,10 +149,19 @@ watch(
     <header class="page-heading">
       <div>
         <h1>{{ t('设置') }}</h1>
-        <p>{{ t('按分类调整软件与插件提供的选项。') }}</p>
       </div>
     </header>
     <div class="settings-layout">
+      <div class="settings-mobile-category">
+        <label :for="`${domId}-mobile-category`">{{ t('设置分类') }}</label>
+        <UiSelect
+          :id="`${domId}-mobile-category`"
+          :aria-label="t('设置分类')"
+          :model-value="selected"
+          :items="categoryOptions"
+          @update:model-value="selectCategory"
+        />
+      </div>
       <BranchedMenu
         class="settings-categories"
         :items="categories"
@@ -164,14 +190,13 @@ watch(
 </template>
 <style scoped>
 .settings-page {
-  max-width: 1280px;
   container-type: inline-size;
 }
 .settings-layout {
   display: grid;
-  grid-template-columns: minmax(8rem, 12rem) minmax(0, 1fr);
+  grid-template-columns: minmax(10rem, 12rem) minmax(0, 1fr);
   align-items: start;
-  gap: 2rem;
+  gap: 2.75rem;
 }
 .settings-categories {
   position: sticky;
@@ -189,10 +214,17 @@ watch(
     gap: 1rem;
   }
 }
-@container (max-width: 30rem) {
+@container (max-width: 40rem) {
   .settings-layout {
-    grid-template-columns: 6rem minmax(0, 1fr);
-    gap: 0.75rem;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+  }
+  .settings-categories {
+    display: none;
+  }
+  .settings-mobile-category {
+    display: grid;
+    gap: 0.5rem;
   }
 }
 </style>

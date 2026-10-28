@@ -32,6 +32,15 @@ export async function openSettings(page: Page, category = 'general') {
 }
 
 export async function selectSettingsCategory(page: Page, category: string) {
+  // Navigation mounts Settings asynchronously; inspect its responsive controls only
+  // after that page exists, otherwise isVisible() can choose the wrong layout.
+  await expect(page.locator('.settings-page')).toBeVisible()
+  const compactCategory = page.locator('.settings-mobile-category').getByRole('combobox')
+  if (await compactCategory.isVisible()) {
+    await chooseUiValue(compactCategory, category)
+    await expect(compactCategory).toHaveAttribute('value', category)
+    return
+  }
   const navigation = page.getByRole('tree', { name: /^(设置分类|Settings categories)$/ })
   const segments = category.split('.')
   for (let depth = 1; depth < segments.length; depth++) {
@@ -63,10 +72,18 @@ export async function setInterfaceLanguage(page: Page, language: 'zh-CN' | 'en')
 
 export async function openPluginSettings(page: Page, pluginId = 'review-history') {
   await openPluginManager(page)
+  await selectPlugin(page, pluginId)
   await page
     .locator(`.plugin-settings[data-plugin-id="${pluginId}"]`)
     .getByRole('button', { name: /^(配置插件|Configure plugin)$/ })
     .click()
+}
+
+export async function selectPlugin(page: Page, pluginId: string) {
+  const item = page.locator(`.plugin-directory-item[data-plugin-select="${pluginId}"]`)
+  await item.click()
+  await expect(item).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator(`.plugin-settings[data-plugin-id="${pluginId}"]`)).toBeVisible()
 }
 
 export async function openPluginManager(page: Page) {

@@ -174,9 +174,9 @@ onUnmounted(() => {
   height: var(--desktop-titlebar-height, 36px);
   display: flex;
   align-items: stretch;
-  background: #f0f2ec;
-  color: #405940;
-  border-bottom: 1px solid #e2e6dc;
+  background: var(--app-rail);
+  color: var(--ui-text);
+  border-bottom: 1px solid var(--line);
   user-select: none;
   -webkit-user-select: none;
 }

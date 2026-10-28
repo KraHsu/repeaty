@@ -2,28 +2,28 @@ import { expect, type Page } from '@playwright/test'
 
 export async function sidebarDragFlow(page: Page) {
   await page.setViewportSize({ width: 1280, height: 800 })
-  await expect(page.locator('.sidebar-section-title button')).toBeEnabled()
+  await expect(page.getByRole('button', { name: '创建卡组', exact: true }).first()).toBeEnabled()
   const separator = page.getByRole('separator', { name: '调整侧栏宽度', exact: true })
   await expect(separator).toHaveAttribute('aria-orientation', 'vertical')
-  await expect(separator).toHaveAttribute('aria-valuenow', '230')
+  await expect(separator).toHaveAttribute('aria-valuenow', '80')
   const box = (await separator.boundingBox())!
   await page.mouse.move(box.x + box.width / 2, box.y + 90)
   await page.mouse.down()
-  await page.mouse.move(box.x + box.width / 2 + 70, box.y + 130, { steps: 5 })
+  await page.mouse.move(box.x + box.width / 2 + 220, box.y + 130, { steps: 5 })
   await page.mouse.up()
   await expect(separator).toHaveAttribute('aria-valuenow', '300')
   await expect(page.locator('.app-layout')).not.toHaveClass(/sidebar-resizing/)
   await page.reload()
   await expect(separator).toHaveAttribute('aria-valuenow', '300')
   await separator.dblclick()
-  await expect(separator).toHaveAttribute('aria-valuenow', '230')
+  await expect(separator).toHaveAttribute('aria-valuenow', '80')
   await page.reload()
-  await expect(separator).toHaveAttribute('aria-valuenow', '230')
+  await expect(separator).toHaveAttribute('aria-valuenow', '80')
 }
 
 export async function sidebarKeyboardFlow(page: Page) {
   await page.setViewportSize({ width: 1280, height: 800 })
-  await expect(page.locator('.sidebar-section-title button')).toBeEnabled()
+  await expect(page.getByRole('button', { name: '创建卡组', exact: true }).first()).toBeEnabled()
   const separator = page.getByRole('separator', { name: '调整侧栏宽度', exact: true })
   await separator.focus()
   await separator.press('End')
@@ -32,23 +32,19 @@ export async function sidebarKeyboardFlow(page: Page) {
   await expect(separator).toHaveAttribute('aria-valuenow', '72')
   await expect(page.locator('.app-layout')).toHaveClass(/sidebar-collapsed/)
   await expect(page.locator('.topbar select')).toHaveCount(0)
-  const createDeck = page
-    .locator('.sidebar-section-title')
-    .getByRole('button', { name: '新建卡组', exact: true })
-  await expect(createDeck).toHaveAttribute('title', '新建卡组')
+  const createDeck = page.getByRole('button', { name: '创建卡组', exact: true }).first()
   await createDeck.click()
   await page.getByRole('dialog').getByLabel('卡组名称', { exact: true }).fill('Sidebar icon deck')
   await page.getByRole('dialog').getByRole('button', { name: '保存卡组', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  const deck = page.locator('.sidebar-deck').getByText('Sidebar icon deck', { exact: true })
-  const deckButton = page
-    .locator('.sidebar')
-    .getByRole('button', { name: 'Sidebar icon deck', exact: true })
-  await expect(deckButton).toHaveAttribute('title', 'Sidebar icon deck')
-  await expect(deck).toBeHidden()
-  await expect(deckButton.locator('.color-dot')).toBeVisible()
-  await deckButton.click()
+  await page.locator('.main-nav').getByRole('button', { name: '学习概览', exact: true }).click()
+  await page.getByRole('button', { name: '选择卡组 Sidebar icon deck', exact: true }).click()
+  await page.locator('.b-browse-deck').click()
   await expect(page.getByRole('heading', { name: 'Sidebar icon deck', exact: true })).toBeVisible()
+  const overview = page.locator('.main-nav').getByRole('button', { name: '学习概览', exact: true })
+  await expect(overview).toHaveAttribute('title', '学习概览')
+  await expect(overview.locator('.nav-label')).toBeHidden()
+  await expect(overview.locator('svg')).toBeVisible()
   const footer = page.locator('.sidebar-bottom').getByRole('link', { name: 'GitHub', exact: true })
   await expect(footer).toHaveAttribute('title', 'GitHub')
   await expect(footer.locator('.sidebar-footer-icon')).toBeVisible()
@@ -61,6 +57,12 @@ export async function sidebarKeyboardFlow(page: Page) {
   await expect(plugins).toHaveAttribute('title', '插件')
   await expect(plugins.locator('.nav-label')).toBeHidden()
   await expect(plugins.locator('svg')).toBeVisible()
+  const help = page.locator('.main-nav').getByRole('button', { name: '帮助', exact: true })
+  await expect(help.locator('.nav-label')).toBeHidden()
+  await expect(help.locator('svg')).toBeVisible()
+  await help.click()
+  await expect(page.getByRole('dialog', { name: '快捷键', exact: true })).toBeVisible()
+  await page.getByRole('dialog').locator('.modal-header button').click()
   await settings.click()
   await expect(settings).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('heading', { name: '设置', exact: true })).toBeVisible()
@@ -78,4 +80,44 @@ export async function sidebarKeyboardFlow(page: Page) {
   await expect(page.locator('.app-layout')).not.toHaveClass(/sidebar-collapsed/)
   await expect(settings.locator('.nav-label')).toBeVisible()
   await expect(plugins.locator('.nav-label')).toBeVisible()
+  await expect(help.locator('.nav-label')).toHaveText('帮助')
+  await expect(help.locator('.nav-label')).toBeVisible()
+}
+
+export async function sidebarToggleFlow(page: Page) {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await expect(page.getByRole('button', { name: '创建卡组', exact: true }).first()).toBeEnabled()
+  const toggle = page.locator('.sidebar-toggle')
+  const separator = page.getByRole('separator', { name: '调整侧栏宽度', exact: true })
+  const help = page.locator('.main-nav').getByRole('button', { name: '帮助', exact: true })
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(toggle).toHaveAttribute('aria-controls', 'primary-navigation')
+  const origin = (await toggle.boundingBox())!
+  const center = { x: origin.x + origin.width / 2, y: origin.y + origin.height / 2 }
+  // Click the same physical point repeatedly: the affordance must never chase the rail edge.
+  for (const expanded of [true, false, true, false]) {
+    await page.mouse.click(center.x, center.y)
+    await expect(toggle).toHaveAttribute('aria-expanded', String(expanded))
+    await expect(toggle).toHaveAccessibleName(expanded ? '收起侧栏' : '展开侧栏')
+    await expect(separator).toHaveAttribute('aria-valuenow', expanded ? '208' : '80')
+    const box = (await toggle.boundingBox())!
+    expect(Math.abs(box.x + box.width / 2 - center.x)).toBeLessThanOrEqual(0.5)
+    expect(Math.abs(box.y + box.height / 2 - center.y)).toBeLessThanOrEqual(0.5)
+    if (expanded) await expect(help.locator('.nav-label')).toBeVisible()
+    else await expect(help.locator('.nav-label')).toBeHidden()
+  }
+  const divider = page.getByRole('separator', { name: '学习与管理', exact: true })
+  await expect(divider).toBeVisible()
+  await expect(divider).toHaveCSS('border-top-width', '1px')
+  const materials = (await page
+    .locator('.main-nav')
+    .getByRole('button', { name: '学习材料', exact: true })
+    .boundingBox())!
+  const management = (await page
+    .locator('.main-nav')
+    .getByRole('button', { name: '数据与备份', exact: true })
+    .boundingBox())!
+  const dividerBox = (await divider.boundingBox())!
+  expect(dividerBox.y).toBeGreaterThanOrEqual(materials.y + materials.height)
+  expect(dividerBox.y + dividerBox.height).toBeLessThanOrEqual(management.y)
 }

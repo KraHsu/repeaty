@@ -163,11 +163,16 @@ export async function navigationFlow(page: Page, read: () => Promise<Library>, i
     await page.evaluate(() => (window as unknown as { sourceExecuted?: boolean }).sourceExecuted),
   ).toBeUndefined()
   await page.getByRole('button', { name: '阅读 Markdown 预览', exact: true }).click()
+  await expect(page.locator('.source-markdown-preview')).toHaveAttribute('aria-busy', 'false')
   const locate = excerptRow(page, '末尾摘录🙂').getByRole('button', {
     name: '定位「末尾摘录🙂」的原文',
     exact: true,
   })
+  // Preview restores its reading position asynchronously and temporarily disables
+  // navigation. Keyboard actions, unlike click(), do not wait for enablement.
+  await expect(locate).toBeEnabled()
   await locate.focus()
+  await expect(locate).toBeFocused()
   await locate.press('Enter')
   const reader = page.locator('.source-text')
   await expect(reader).toHaveAttribute('aria-busy', 'false')

@@ -1,37 +1,27 @@
 <script setup lang="ts">
-import { UiButton } from '../../components/ui'
+import { computed, watch } from 'vue'
+import { UiButton, UiCollapsible } from '../../components/ui'
 import { t } from '../../i18n'
-import {
-  ArrowRight,
-  BookOpen,
-  Check,
-  CircleHelp,
-  Ellipsis,
-  Layers,
-  Leaf,
-  Plus,
-  Repeat2,
-  Sparkles,
-} from '@lucide/vue'
-import DeckStatus from '../../components/DeckStatus.vue'
+import { ArrowRight, BookOpen, Check, ChevronDown, Ellipsis, Layers, Plus } from '@lucide/vue'
 import { useApplication } from '../context'
+import '../../styles/review-deck.css'
+
 const {
   workspace,
   library,
   busy,
   modal,
+  selectedDeck,
   navigate,
   startReading,
   openDeck,
   due,
-  limited,
   readyReading,
   readyExcerpts,
   newCount,
   todayReviews,
   activity,
   maxActivity,
-  deckDue,
   deckCards,
   deckStates,
   run,
@@ -39,105 +29,194 @@ const {
   editCard,
   startReview,
 } = useApplication()
+
+// Reuse the application's selected deck, so editing, shortcuts and returning from
+// review keep the same object. Library switches already reset this scoped state.
+const focusedDeck = computed(
+  () =>
+    library.value.decks.find((deck) => deck.id === selectedDeck.value) ?? library.value.decks[0],
+)
+const focusedState = computed(() => focusedDeck.value && deckStates.value.get(focusedDeck.value.id))
+watch(
+  focusedDeck,
+  (deck) => {
+    selectedDeck.value = deck?.id ?? ''
+  },
+  { immediate: true },
+)
+function focusDeck(id: string) {
+  selectedDeck.value = id
+}
+function reviewFocused() {
+  if (!focusedDeck.value) return
+  selectedDeck.value = focusedDeck.value.id
+  startReview(focusedDeck.value.id)
+}
+function addToFocused() {
+  if (focusedDeck.value) selectedDeck.value = focusedDeck.value.id
+  editCard()
+}
 </script>
+
 <template>
-  <div class="page dashboard">
-    <header class="page-heading">
-      <div>
+  <div class="page dashboard b-deck-overview">
+    <header class="page-heading b-overview-heading">
+      <div class="b-heading-copy">
         <h1>{{ t('学习概览') }}</h1>
+        <span class="b-meta">{{
+          t('{p0} 个卡组 · {p1} 张卡片', { p0: library.decks.length, p1: library.cards.length })
+        }}</span>
       </div>
-      <UiButton variant="secondary" type="submit" :disabled="busy" @click="editCard()">
-        <Plus :size="17" />{{ t('添加卡片') }}
-      </UiButton>
+      <div class="b-overview-actions">
+        <span class="b-global-counts">{{
+          t('{p0} 张到期卡片 · {p1} 张新卡片', { p0: due.length - newCount, p1: newCount })
+        }}</span>
+        <UiButton
+          v-if="library.decks.length && focusedState?.total !== 0"
+          variant="secondary"
+          :disabled="busy"
+          @click="addToFocused"
+        >
+          <Plus :size="17" />{{ t('添加卡片') }}
+        </UiButton>
+      </div>
     </header>
-    <div class="dashboard-top">
-      <section class="daily-card">
-        <div class="daily-content">
-          <span class="daily-label"><span class="tiny-sun">✳</span>{{ t('今日学习') }}</span>
-          <h2>
-            {{
-              due.length
-                ? t('待学习 {count} 张', { count: due.length })
-                : limited
-                  ? t('已达到今日上限')
-                  : library.cards.length
-                    ? t('暂无待学习卡片')
-                    : t('尚未添加卡片')
-            }}
-          </h2>
-          <p v-if="due.length">
-            {{
-              t('{p0} 张到期卡片 · {p1} 张新卡片', {
-                p0: due.length - newCount,
-                p1: newCount,
-              })
-            }}
-          </p>
-          <p v-else-if="limited">
-            {{ t('还有 {p0} 张卡片因每日上限未加入学习队列。', { p0: limited }) }}<br />{{
-              t('可在卡组设置中调整上限。')
-            }}
-          </p>
-          <p v-else-if="library.cards.length">
-            {{ t('可添加新卡片，或稍后查看复习安排。') }}
-          </p>
-          <p v-else>
-            {{ t('添加卡片后即可开始学习。') }}
-          </p>
+
+    <section v-if="focusedDeck && focusedState" class="b-focus-stage" :aria-label="t('当前卡组')">
+      <div class="b-stack-layer b-stack-far" aria-hidden="true" />
+      <div class="b-stack-layer b-stack-near" aria-hidden="true" />
+      <article class="b-focus-card">
+        <div class="b-focus-top">
+          <span class="b-focus-label"><Layers :size="18" />{{ t('当前卡组') }}</span>
           <UiButton
-            variant="primary"
-            type="submit"
+            variant="ghost"
+            icon
             :disabled="busy"
-            @click="library.cards.length ? startReview() : editCard()"
+            :aria-label="t('编辑卡组 {p0}', { p0: focusedDeck.name })"
+            :title="t('编辑当前卡组')"
+            @click="editDeck(focusedDeck)"
           >
-            {{
-              due.length ? t('开始复习') : library.cards.length ? t('查看复习安排') : t('添加卡片')
-            }}
-            <ArrowRight :size="17" />
+            <Ellipsis :size="21" />
           </UiButton>
         </div>
-        <div class="card-art" aria-hidden="true">
-          <div class="art-card art-back" />
-          <div class="art-card art-middle" />
-          <div class="art-card art-front">
-            <Leaf :size="49" :stroke-width="1.25" />
-            <div class="art-line" />
+        <h2>{{ focusedDeck.name }}</h2>
+        <p v-if="focusedDeck.description" class="b-focus-description">
+          {{ focusedDeck.description }}
+        </p>
+        <p class="b-focus-total">{{ t('{p0} 张卡片', { p0: deckCards(focusedDeck.id) }) }}</p>
+        <dl class="b-focus-counts" :aria-label="t('今日可学')">
+          <div>
+            <dd>{{ focusedState.learningReady + focusedState.reviewReady }}</dd>
+            <dt>{{ t('待复习') }}</dt>
           </div>
-          <span class="art-star">✳</span>
+          <div>
+            <dd>{{ focusedState.newReady }}</dd>
+            <dt>{{ t('新卡') }}</dt>
+          </div>
+        </dl>
+        <div class="b-focus-state">
+          <p v-if="focusedState.learningReady">
+            {{ t('其中 {count} 张正在学习', { count: focusedState.learningReady }) }}
+          </p>
+          <p v-if="focusedState.limited">
+            {{ t('另有 {count} 张已达今日额度', { count: focusedState.limited }) }}
+          </p>
+          <p v-else-if="!focusedState.ready && focusedState.total">{{ t('暂无待学习卡片') }}</p>
+          <p v-if="!focusedState.ready && focusedState.future">
+            {{ t('稍后到期 {count} 张', { count: focusedState.future }) }}
+          </p>
         </div>
-      </section>
-      <section class="activity-card">
-        <div class="section-mini-heading">
-          <span>{{ t('最近 7 天') }}</span
-          ><span class="subtle">{{ t('复习次数') }}</span>
-        </div>
-        <div class="activity-value">
-          {{ activity.reduce((sum, day) => sum + day.count, 0) }}<span>{{ t('次复习') }}</span
-          ><span class="activity-icon"><BookOpen :size="20" /></span>
-        </div>
-        <div class="activity-chart" :aria-label="t('最近七天复习次数')">
-          <div
-            v-for="(day, i) in activity"
-            :key="day.key"
-            class="chart-column"
-            :title="t('{p0}：{p1} 次', { p0: day.label, p1: day.count })"
+        <div class="b-focus-primary">
+          <UiButton
+            variant="primary"
+            class="b-start-review min-h-12 justify-center gap-6 whitespace-nowrap"
+            :disabled="busy"
+            @click="focusedState.total ? reviewFocused() : addToFocused()"
           >
-            <div class="bar-track">
-              <div
-                :class="['chart-bar', { today: i === 6 }]"
-                :style="{ height: `${Math.max(5, (day.count / maxActivity) * 100)}%` }"
-              />
-              <span class="sr-only">{{ t('{p0} 次', { p0: day.count }) }}</span>
-            </div>
-            <span>{{ i === 6 ? t('今天') : day.label }}</span>
-          </div>
+            {{
+              focusedState.ready
+                ? t('开始复习')
+                : focusedState.total
+                  ? t('查看复习安排')
+                  : t('添加卡片')
+            }}<ArrowRight :size="19" />
+          </UiButton>
         </div>
-      </section>
-    </div>
+        <UiButton
+          variant="ghost"
+          class="b-browse-deck"
+          :disabled="busy"
+          @click="openDeck(focusedDeck)"
+        >
+          {{ t('浏览卡片') }}<ArrowRight :size="16" />
+        </UiButton>
+      </article>
+    </section>
 
-    <section v-if="library.sources.length" class="daily-reading" :aria-label="t('今日阅读')">
-      <div>
-        <span class="daily-label">{{ t('今日阅读') }}</span>
+    <section class="decks-section b-deck-queue">
+      <div class="section-heading">
+        <h2>
+          {{ t('我的卡组') }}<span>{{ library.decks.length }}</span>
+        </h2>
+        <UiButton v-if="library.decks.length" variant="ghost" :disabled="busy" @click="editDeck()"
+          ><Plus :size="17" />{{ t('创建卡组') }}</UiButton
+        >
+      </div>
+      <div v-if="library.decks.length" class="deck-grid b-deck-grid">
+        <UiButton
+          v-for="deck in library.decks"
+          :key="deck.id"
+          variant="ghost"
+          class="b-deck-tile items-stretch gap-0 rounded-xl p-5 whitespace-normal"
+          :class="{ selected: focusedDeck?.id === deck.id }"
+          :aria-pressed="focusedDeck?.id === deck.id"
+          :aria-label="t('选择卡组 {p0}', { p0: deck.name })"
+          @click="focusDeck(deck.id)"
+        >
+          <span class="b-deck-title-row"
+            ><Layers :size="18" /><strong class="deck-title">{{ deck.name }}</strong></span
+          >
+          <span class="b-deck-total">{{ t('{p0} 张卡片', { p0: deckCards(deck.id) }) }}</span>
+          <span class="b-deck-counts"
+            ><span
+              >{{ t('待复习') }}
+              <b>{{
+                (deckStates.get(deck.id)?.learningReady ?? 0) +
+                (deckStates.get(deck.id)?.reviewReady ?? 0)
+              }}</b></span
+            ><span
+              >{{ t('新卡') }} <b>{{ deckStates.get(deck.id)?.newReady ?? 0 }}</b></span
+            ><Check v-if="focusedDeck?.id === deck.id" :size="16" aria-hidden="true"
+          /></span>
+        </UiButton>
+      </div>
+      <div v-else class="welcome-card b-welcome-card">
+        <div class="welcome-icon"><Layers :size="27" /></div>
+        <div>
+          <h3>{{ t('还没有卡组') }}</h3>
+          <p>{{ t('创建自己的卡组，或添加入门卡组。') }}</p>
+        </div>
+        <div class="welcome-actions">
+          <UiButton
+            variant="secondary"
+            :disabled="busy"
+            @click="run(workspace.addSample, '入门卡组已添加')"
+            >{{ t('添加入门卡组') }}</UiButton
+          >
+          <UiButton variant="primary" :disabled="busy" @click="editDeck()"
+            ><Plus :size="16" />{{ t('创建卡组') }}</UiButton
+          >
+        </div>
+      </div>
+    </section>
+
+    <section
+      v-if="library.sources.length"
+      class="daily-reading b-reading-band"
+      :aria-label="t('今日阅读')"
+    >
+      <BookOpen :size="23" aria-hidden="true" />
+      <div class="b-reading-copy">
         <h2>
           {{
             readyReading.length
@@ -157,135 +236,51 @@ const {
       <div class="daily-reading-actions">
         <UiButton
           variant="secondary"
-          type="submit"
           :disabled="busy || (!due.length && !readyReading.length)"
           @click="modal = 'mixed'"
+          >{{ t('开始混合学习') }}</UiButton
         >
-          {{ t('开始混合学习') }}
-        </UiButton>
         <UiButton
-          variant="primary"
-          type="submit"
           v-if="readyReading.length"
+          variant="secondary"
           :disabled="busy"
           @click="startReading"
-        >
-          {{ t('开始今日阅读') }}<ArrowRight :size="17" />
-        </UiButton>
-        <UiButton variant="secondary" type="submit" :disabled="busy" @click="navigate('sources')">
-          {{ t('管理学习材料') }}
-        </UiButton>
+          >{{ t('开始今日阅读') }}<ArrowRight :size="17"
+        /></UiButton>
+        <UiButton variant="ghost" :disabled="busy" @click="navigate('sources')">{{
+          t('管理学习材料')
+        }}</UiButton>
       </div>
     </section>
-    <div class="stats-strip">
-      <div>
-        <span class="stat-icon sage"><Layers :size="19" /></span>
-        <div>
-          <strong>{{ library.cards.length }}</strong
-          ><span>{{ t('卡片总数') }}</span>
-        </div>
-      </div>
-      <div>
-        <span class="stat-icon sand"><Repeat2 :size="19" /></span>
-        <div>
-          <strong>{{ due.length - newCount }}</strong
-          ><span>{{ t('今日可复习') }}</span>
-        </div>
-      </div>
-      <div>
-        <span class="stat-icon lavender"><Sparkles :size="19" /></span>
-        <div>
-          <strong>{{ newCount }}</strong
-          ><span>{{ t('今日可学新卡') }}</span>
-        </div>
-      </div>
-      <div>
-        <span class="stat-icon blue"><Check :size="19" /></span>
-        <div>
-          <strong>{{ todayReviews.length }}</strong
-          ><span>{{ t('今日复习次数') }}</span>
-        </div>
-      </div>
-    </div>
 
-    <section class="decks-section">
-      <div class="section-heading">
-        <h2>
-          {{ t('我的卡组') }}<span>{{ library.decks.length }}</span>
-        </h2>
-        <UiButton variant="ghost" type="submit" :disabled="busy" @click="editDeck()">
-          <Plus :size="17" />{{ t('创建卡组') }}
-        </UiButton>
-      </div>
-      <div v-if="library.decks.length" class="deck-grid">
-        <article v-for="deck in library.decks" :key="deck.id" class="deck-card">
-          <div class="deck-card-top">
-            <UiButton
-              v-bind="{ variant: 'ghost', icon: true }"
-              type="submit"
-              :class="['deck-icon', deck.color]"
-              :aria-label="t('打开卡组 {p0}', { p0: deck.name })"
-              @click="openDeck(deck)"
+    <footer class="b-learning-footer">
+      <span>{{ t('今日已复习 {count} 次', { count: todayReviews.length }) }}</span>
+      <UiCollapsible class="b-activity-details">
+        <UiButton variant="ghost" class="b-activity-toggle"
+          >{{ t('最近 7 天') }} ·
+          {{ t('{p0} 次', { p0: activity.reduce((sum, day) => sum + day.count, 0) })
+          }}<ChevronDown :size="16"
+        /></UiButton>
+        <template #content>
+          <div class="activity-chart b-activity-chart" :aria-label="t('最近七天复习次数')">
+            <div
+              v-for="(day, i) in activity"
+              :key="day.key"
+              class="chart-column"
+              :title="t('{p0}：{p1} 次', { p0: day.label, p1: day.count })"
             >
-              <Layers :size="22" /></UiButton
-            ><UiButton
-              v-bind="{ variant: 'ghost', icon: true }"
-              type="submit"
-              :aria-label="t('编辑卡组 {p0}', { p0: deck.name })"
-              @click="editDeck(deck)"
-            >
-              <Ellipsis :size="21" />
-            </UiButton>
+              <div class="bar-track">
+                <div
+                  :class="['chart-bar', { today: i === 6 }]"
+                  :style="{ height: `${Math.max(5, (day.count / maxActivity) * 100)}%` }"
+                />
+                <span class="sr-only">{{ t('{p0} 次', { p0: day.count }) }}</span>
+              </div>
+              <span>{{ i === 6 ? t('今天') : day.label }}</span>
+            </div>
           </div>
-          <UiButton variant="ghost" class="deck-title" @click="openDeck(deck)">{{
-            deck.name
-          }}</UiButton>
-          <p v-if="deck.description">{{ deck.description }}</p>
-          <DeckStatus :status="deckStates.get(deck.id)!" compact />
-          <div class="deck-card-bottom">
-            <span
-              >{{ t('{p0} 张卡片', { p0: deckCards(deck.id) }) }}<span class="divider-dot">·</span>
-              <span :class="{ 'green-text': deckDue(deck.id) }">{{
-                t('{p0} 张待学', { p0: deckDue(deck.id) })
-              }}</span></span
-            ><UiButton
-              v-bind="{ variant: 'ghost', icon: true }"
-              type="submit"
-              class="deck-review"
-              :aria-label="t('复习卡组 {p0}', { p0: deck.name })"
-              @click="startReview(deck.id)"
-            >
-              <ArrowRight :size="18" />
-            </UiButton>
-          </div>
-        </article>
-        <UiButton variant="secondary" type="submit" class="add-deck-tile" @click="editDeck()">
-          <Plus :size="24" /><span>{{ t('新建卡组') }}</span>
-        </UiButton>
-      </div>
-      <div v-else class="welcome-card">
-        <div class="welcome-icon"><Layers :size="27" /></div>
-        <div>
-          <h3>{{ t('还没有卡组') }}</h3>
-          <p>{{ t('创建自己的卡组，或添加入门卡组。') }}</p>
-        </div>
-        <div class="welcome-actions">
-          <UiButton
-            variant="secondary"
-            type="submit"
-            :disabled="busy"
-            @click="run(workspace.addSample, '入门卡组已添加')"
-          >
-            {{ t('添加入门卡组') }}</UiButton
-          ><UiButton variant="primary" type="submit" @click="editDeck()">
-            <Plus :size="16" />{{ t('创建卡组') }}
-          </UiButton>
-        </div>
-      </div>
-    </section>
-    <footer class="learning-tip">
-      <CircleHelp :size="17" />
-      <p>{{ t('复习快捷键：空格显示答案，1–4 评分，Esc 退出。') }}</p>
+        </template>
+      </UiCollapsible>
     </footer>
   </div>
 </template>
