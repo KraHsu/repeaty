@@ -22,3 +22,4 @@ crates/*/Cargo.lock
 playwright-report-desktop/
 plugins/*/dist/
 plugins/packages/
+docs/designs/b-prototype/site/

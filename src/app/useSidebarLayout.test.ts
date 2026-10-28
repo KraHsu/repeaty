@@ -235,6 +235,34 @@ it('remembers a resized expanded width across collapse and application reload', 
   expect(settings.setItem).toHaveBeenLastCalledWith(SIDEBAR_WIDTH_KEY, '288')
 })
 
+it('keeps the remembered expanded width when expanding under a temporary viewport cap', async () => {
+  resizeWindow(1200)
+  const values = new Map([
+    [SIDEBAR_WIDTH_KEY, '80'],
+    [SIDEBAR_EXPANDED_WIDTH_KEY, '288'],
+  ])
+  const settings = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: vi.fn((key: string, value: string) => {
+      values.set(key, value)
+    }),
+  }
+  const { layout } = mountLayout({ settings })
+  resizeWindow(600)
+  await nextTick()
+  expect(layout.canToggle.value).toBe(true)
+  layout.toggle()
+  expect(layout.width.value).toBe(200)
+  expect(layout.collapsed.value).toBe(false)
+  expect(values.get(SIDEBAR_WIDTH_KEY)).toBe('288')
+  expect(values.get(SIDEBAR_EXPANDED_WIDTH_KEY)).toBe('288')
+
+  resizeWindow(1200)
+  await nextTick()
+  expect(layout.width.value).toBe(288)
+  expect(settings.setItem).toHaveBeenCalledExactlyOnceWith(SIDEBAR_WIDTH_KEY, '288')
+})
+
 it('restores each workspace expanded width without carrying the previous workspace preference', () => {
   resizeWindow(1200)
   const libraries = [

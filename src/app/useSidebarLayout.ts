@@ -153,7 +153,9 @@ export function useSidebarLayout({
     if (!canToggle.value) return
     finish(false)
     if (collapsed.value) {
-      preferredWidth.value = Math.min(maxWidth.value, expandedWidth.value)
+      // The computed width clamps the visible rail; keep the user's chosen width
+      // so widening the window restores it instead of persisting a temporary cap.
+      preferredWidth.value = expandedWidth.value
     } else {
       expandedWidth.value = preferredWidth.value
       if (ready.value) {
