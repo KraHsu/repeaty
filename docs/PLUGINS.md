@@ -2,7 +2,7 @@
 
 [返回开发文档](DEVELOPMENT.md) · [LeetCode](LEETCODE.md)
 
-设置与表单使用 SDK 的 `SettingGroup`、`SettingField`、`UiButton`、`UiIconButton`；需要原生选区、代码缩进或现有表单结构时使用 `vUiControl` / `vUiButton`，与软件本体共享控件和状态样式。官方插件的编辑、答题、提交恢复及历史交互也使用这套接口。见[界面规范](DESIGN_SYSTEM.md)及[完整独立示例](examples/settings-plugin/README.md)。
+设置与表单使用 SDK 的 `SettingGroup`、`SettingSection`、`SettingField`，状态和提示分别使用 `UiStatus`、`UiNotice`，操作使用 `UiButton`、`UiIconButton`；需要原生选区、代码缩进或现有表单结构时使用 `vUiControl` / `vUiButton`，与软件本体共享控件和状态样式。官方插件的编辑、答题、提交恢复及历史交互也使用这套接口。见[界面规范](DESIGN_SYSTEM.md)及[控件独立示例](examples/settings-plugin/README.md)。
 
 本页描述当前开发分支的外置插件机制，尚未随新安装包发布。发布页既有的 0.27.0 安装包不代表本分支的实现，也不能作为这套插件机制的安装或 GUI 验收产物。
 
@@ -82,7 +82,7 @@ my-plugin/
 
 ## 独立开发与构建
 
-公开 SDK 位于 [packages/plugin-api](../packages/plugin-api)。它提供类型和独立构建命令 `repeaty-plugin`，运行时实现由 Repeaty 提供。插件作者只需要 SDK、Vue 和自己使用的依赖，不需要复制或导入主程序源码。当前 SDK 与官方预构建包版本为1.2.0；这是 API v1的加法更新，官方插件的 `apiVersion` / `dataVersion` 仍为1。
+公开 SDK 位于 [packages/plugin-api](../packages/plugin-api)。它提供类型和独立构建命令 `repeaty-plugin`，运行时实现由 Repeaty 提供。插件作者只需要 SDK、Vue 和自己使用的依赖，不需要复制或导入主程序源码。当前 SDK 与官方预构建包为1.3.0；这是 API v1的加法更新，官方插件的 `apiVersion` / `dataVersion` 仍为1。已有学习库需在「设置 → 插件」主动更新官方插件代码。
 
 SDK 当前是本地 workspace 包，尚未发布到 npm。可以在 Repeaty 仓库根目录将它打包，然后在另一个独立插件仓库中安装生成的 tarball：
 
@@ -92,7 +92,7 @@ npm pack --workspace @repeaty/plugin-api
 
 # 独立插件仓库；将路径替换为实际生成的 SDK 包
 npm install vue
-npm install --save-dev /path/to/repeaty-plugin-api-1.2.0.tgz typescript vue-tsc
+npm install --save-dev /path/to/repeaty-plugin-api-1.3.0.tgz typescript vue-tsc
 ```
 
 类型从已安装的 SDK 包解析，不设置指向 Repeaty 仓库的 TypeScript `paths`，也不导入应用源码。插件的 package.json 可配置：
@@ -177,7 +177,11 @@ const count = computed(
 
 ## 设置、存储与清理
 
-普通设置通过 `SettingField`声明标签、说明、选项和提交时机。复杂编辑器可在原生 `textarea`上使用 `v-ui-control="{ monospace: true }"`，保留原生 `ref`、选区、IME和事件；动作使用 `UiButton`或 `vUiButton`，评分使用 `rating`变体及四档 `tone`。共享控件只负责界面，插件继续负责草稿、校验、提交与资源回收。SDK1.2.0新增导出由支持该版本的宿主提供，使用这些导出的插件需配套更新宿主；已有插件不会被自动更新。
+普通设置通过 `SettingSection`组织功能分区，再用 `SettingField`声明标签、说明、选项和提交时机。分区支持 `title`、`description`、`level=3|4` 和 `#actions`。插件名称与总说明由宿主展示一次，字段帮助贴近控件；状态使用 `UiStatus`，错误或操作结果使用 `UiNotice`，长帮助集中到 `details`。不重复启用状态，也不将版本和权限拼成无标签的文字。
+
+`UiStatus`提供中性、成功、警告、危险和忙碌外观，不自带实况播报；`UiNotice`支持信息、成功、警告和错误，可设置标题及操作插槽，默认语义分别为 `note`、`status`、`note` 和 `alert`，也可覆盖 `role`。字体和布局约定见[插件设置的信息结构](DESIGN_SYSTEM.md#插件设置的信息结构)。
+
+复杂编辑器可在原生 `textarea`上使用 `v-ui-control="{ monospace: true }"`，保留原生 `ref`、选区、IME和事件；动作使用 `UiButton`或 `vUiButton`，评分使用 `rating`变体及四档 `tone`。共享控件只负责界面，插件继续负责草稿、校验、提交与资源回收。SDK1.3.0中的界面导出由配套宿主提供，使用这些导出的插件需更新宿主；已有插件不会被自动更新。
 
 - `readSetting()` / `writeSetting()` 管理当前插件的设置，宿主自动增加插件命名空间。可通过写入失败回调显示未保存状态。
 - `pluginData.get()` / `set()` 按插件和工作目录作用域存储草稿等 JSON 数据；不会混用其他学习库的数据。

@@ -2721,16 +2721,6 @@ textarea::placeholder {
   white-space: pre;
   overflow-x: auto;
 }
-.leetcode-connection {
-  font-size: var(--font-size-body);
-  line-height: var(--line-height-ui);
-}
-.leetcode-connection ol {
-  padding-left: 24px;
-}
-.leetcode-connection li + li {
-  margin-top: 8px;
-}
 .judge-result {
   display: grid;
   gap: 8px;
@@ -2754,59 +2744,6 @@ textarea::placeholder {
   text-align: left;
 }
 
-/* Shared SettingGroup owns plugin surfaces. Connection layout also appears
-   inside question editors and reviews, so retain its flow and action layout. */
-.connection-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-.connection-header > div {
-  flex: 1 1 260px;
-  min-width: 0;
-}
-.connection-header h3 {
-  font-size: var(--font-size-section);
-  margin-bottom: 4px;
-}
-.connection-header p {
-  color: var(--muted);
-  font-size: var(--font-size-body);
-}
-.connection-header .connection-account {
-  color: var(--green);
-  font-size: var(--font-size-body);
-  overflow-wrap: anywhere;
-}
-.connection-header .connection-status {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 8px;
-  font-size: var(--font-size-meta);
-  margin-top: 8px;
-}
-.connection-status strong {
-  color: #96602d;
-}
-.connection-status strong.configured {
-  color: #37634b;
-}
-.connection-header .button {
-  text-decoration: none;
-}
-.leetcode-connection details {
-  margin-top: 16px;
-}
-.leetcode-connection summary {
-  cursor: pointer;
-}
-.leetcode-connection ol {
-  margin-top: 12px;
-  overflow-wrap: anywhere;
-}
 .plugin-shortcut {
   align-self: flex-start;
   text-align: left;
@@ -3023,11 +2960,6 @@ textarea::placeholder {
   }
 }
 
-.plugin-management-note {
-  max-width: 920px;
-  margin-bottom: 24px;
-  color: var(--muted);
-}
 .server-connection {
   width: min(100%, 440px);
   text-align: left;
@@ -3037,30 +2969,10 @@ textarea::placeholder {
   margin-top: 16px;
 }
 
-.connection-credentials {
-  min-width: 0;
-  margin: 20px 0 0;
-  padding: 16px 0 0;
-  border: 0;
-  border-top: 1px solid var(--line);
-}
-.connection-credentials legend {
-  padding: 0 6px;
-  font-weight: var(--font-weight-semibold);
-}
-.credential-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
-  gap: 16px;
-  margin: 16px 0;
-}
 .connection-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-}
-.credential-confirmation {
-  margin-top: 16px;
 }
 
 .cloze-answers {

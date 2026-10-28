@@ -114,5 +114,11 @@
   "题目链接或英文标识": "Problem URL or slug",
   "题目预览": "Problem preview",
   "验证时间：{time}": "Checked: {time}",
-  "验证暂时受限": "Verification rate limited"
+  "验证暂时受限": "Verification rate limited",
+  "添加题目": "Add problems",
+  "中国站": "China",
+  "国际站": "International",
+  "连接状态": "Connection status",
+  "登录信息": "Credentials",
+  "打开力扣网站并登录，不会自动连接 Repeaty。请在此保存对应 Cookie。": "Signing in on LeetCode does not connect Repeaty automatically. Save the matching cookies here."
 }

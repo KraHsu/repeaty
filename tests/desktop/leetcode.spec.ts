@@ -837,7 +837,7 @@ test('plugin settings distinguish website login from per-site judge credentials 
 
 test('credentials can be saved, replaced and cleared per site without exposing stored values', async ({
   page,
-}) => {
+}, info) => {
   await page.goto('./')
   await openPluginSettings(page)
   const cn = page.getByRole('region', { name: '中国站 · leetcode.cn', exact: true })
@@ -892,6 +892,27 @@ test('credentials can be saved, replaced and cleared per site without exposing s
   await expect(english.getByRole('button', { name: 'Save credentials', exact: true })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: 'test-results/credentials-mobile-en.png', fullPage: true })
+  const international = page.getByRole('region', {
+    name: 'International · leetcode.com',
+    exact: true,
+  })
+  await international.getByRole('button', { name: 'Clear credentials', exact: true }).click()
+  const confirmation = international.locator('.credential-confirmation')
+  await expect(confirmation).toBeVisible()
+  const text = (await confirmation.locator('.ui-notice__content').boundingBox())!
+  const actions = (await confirmation.locator('.ui-notice__actions').boundingBox())!
+  expect(actions.y).toBeGreaterThanOrEqual(text.y + text.height)
+  expect(await confirmation.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+    true,
+  )
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await confirmation.screenshot({
+    path: info.outputPath('credentials-confirmation-390-en.png'),
+    style: '.desktop-titlebar { visibility: hidden !important; }',
+  })
+  await international.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(confirmation).toHaveCount(0)
+  await expect(international.getByRole('status')).toContainText('Signed in')
 })
 
 test('credential errors preserve drafts and changing the editor site clears sensitive inputs', async ({

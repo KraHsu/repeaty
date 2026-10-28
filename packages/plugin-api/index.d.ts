@@ -224,6 +224,18 @@ export declare const SettingGroup: DefineComponent<{
   description?: string
   level?: 2 | 3
 }>
+export declare const SettingSection: DefineComponent<{
+  title: string
+  description?: string
+  level?: 3 | 4
+}>
+export declare const UiNotice: DefineComponent<{
+  tone?: 'info' | 'success' | 'warning' | 'error'
+  title?: string
+}>
+export declare const UiStatus: DefineComponent<{
+  tone?: 'neutral' | 'success' | 'warning' | 'danger' | 'busy'
+}>
 export declare const UiButton: DefineComponent<{
   type?: 'button' | 'submit' | 'reset'
   variant?: UiButtonVariant

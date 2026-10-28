@@ -10,7 +10,7 @@ export default {
   },
   version: 1,
   get description() {
-    return t('在当前卡片上方显示最近的评分，虚线圆表示本次作答。')
+    return t('复习时查看当前卡片的评分记录。')
   },
   reviewPanel: defineAsyncComponent(() => import('./Panel.vue')),
   settings: defineAsyncComponent(() => import('./Settings.vue')),

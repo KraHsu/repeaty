@@ -29,3 +29,11 @@ it('responds to language switches and delegates unknown messages to the SDK', ()
   expect(t('unknown host message')).toBe('unknown host message')
   expect(boundary.fallback).toHaveBeenLastCalledWith('unknown host message', {})
 })
+
+it('keeps the settings hierarchy and connection labels available in English', () => {
+  expect(t('中国站')).toBe('China')
+  expect(t('国际站')).toBe('International')
+  expect(t('连接状态')).toBe('Connection status')
+  expect(t('登录信息')).toBe('Credentials')
+  expect(t('添加题目')).toBe('Add problems')
+})

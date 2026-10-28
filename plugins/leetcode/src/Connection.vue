@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, useId, watch } from 'vue'
-import { SettingGroup, SettingField, UiButton, vUiButton } from '@repeaty/plugin-api'
+import {
+  SettingSection,
+  SettingField,
+  UiButton,
+  UiNotice,
+  UiStatus,
+  vUiButton,
+} from '@repeaty/plugin-api'
 import { t, locale } from './i18n'
 import { bridgeRequest, BridgeError, configureCredentials, pluginRequest } from './bridge'
 import {
@@ -119,6 +126,12 @@ const statusLabel = computed(() => {
   if (validationIssue.value === 'rate-limit') return '验证暂时受限'
   return '尚未确认登录状态'
 })
+const statusTone = computed(() => {
+  if (loading.value || checking.value) return 'busy'
+  if (verified.value) return 'success'
+  if (error.value || account.value?.state === 'expired') return 'danger'
+  return hasCredentials.value ? 'warning' : 'neutral'
+})
 const validationMessages: Record<string, string> = {
   'verification-required': '力扣要求额外验证，请在网站完成验证后重试。',
   'request-failed': '无法连接力扣，已保存的登录信息仍然保留。请检查网络后重试。',
@@ -211,54 +224,47 @@ onUnmounted(() => {
 })
 </script>
 <template>
-  <SettingGroup
+  <SettingSection
     class="leetcode-connection"
-    :title="t(siteName)"
+    :title="t(site === 'leetcode.cn' ? '中国站' : '国际站')"
+    :description="site"
     :level="3"
     :aria-label="t(siteName)"
   >
     <template #actions>
+      <a v-ui-button="'ghost'" :href="`https://${site}/`" target="_blank" rel="noopener noreferrer"
+        >{{ t('打开力扣网站') }} ↗</a
+      >
       <UiButton :disabled="loading || saving || checking" @click="refresh">
         {{ t('刷新状态') }}
       </UiButton>
     </template>
-    <div class="connection-header">
-      <div>
-        <p class="connection-status" role="status">
-          {{ t('LeetCode 登录') }}
-          <strong :class="{ configured: verified }">{{ t(statusLabel) }}</strong>
-        </p>
-        <p v-if="verified && account?.state === 'authenticated'" class="connection-account">
-          {{ t('当前账号：{username}', { username: account.username }) }}
-        </p>
-        <p v-if="checkedAt && !checking" class="form-note">
-          {{ t('验证时间：{time}', { time: checkedAt.toLocaleString(locale) }) }}
-        </p>
-      </div>
+    <div class="leetcode-connection__status-row" role="status" aria-live="polite">
+      <span class="leetcode-connection__status-label">{{ t('连接状态') }}</span>
+      <UiStatus :tone="statusTone">{{ t(statusLabel) }}</UiStatus>
     </div>
-    <p v-if="error" class="import-warning" role="alert">{{ t(error) }}</p>
-    <p v-else-if="issueMessage" class="import-warning" role="alert">{{ t(issueMessage) }}</p>
-    <p v-else-if="account?.state === 'expired'" class="import-warning" role="alert">
+    <div v-if="verified || checkedAt" class="leetcode-connection__metadata">
+      <p v-if="verified && account?.state === 'authenticated'" class="connection-account">
+        {{ t('当前账号：{username}', { username: account.username }) }}
+      </p>
+      <p v-if="checkedAt && !checking">
+        {{ t('验证时间：{time}', { time: checkedAt.toLocaleString(locale) }) }}
+      </p>
+    </div>
+    <UiNotice v-if="error" tone="error">{{ t(error) }}</UiNotice>
+    <UiNotice v-else-if="issueMessage" tone="error">{{ t(issueMessage) }}</UiNotice>
+    <UiNotice v-else-if="account?.state === 'expired'" tone="warning" role="alert">
       {{ t('登录信息无效或已过期，请重新登录力扣并更新下方 Cookie。') }}
-    </p>
-    <p v-else-if="!loading && !hasCredentials">
+    </UiNotice>
+    <UiNotice v-else-if="!loading && !hasCredentials">
       {{ t('可读取公开题目。提交判题前，请填写下方的登录信息。') }}
-    </p>
-    <p v-else-if="checking" class="form-note">
+    </UiNotice>
+    <UiNotice v-else-if="checking">
       {{ t('正在向力扣验证登录。你可以继续编辑代码或更新登录信息。') }}
-    </p>
-    <p>{{ t('打开力扣网站并登录，不会自动连接 Repeaty。请将登录信息填入下方。') }}</p>
-    <a
-      v-ui-button="'ghost'"
-      class="text-button"
-      :href="`https://${site}/`"
-      target="_blank"
-      rel="noopener noreferrer"
-      >{{ t('打开力扣网站') }} ↗</a
-    >
+    </UiNotice>
     <fieldset class="connection-credentials" :disabled="saving || loading">
-      <legend>{{ t(hasCredentials ? '更新登录信息' : '配置登录信息') }}</legend>
-      <p class="form-note">
+      <legend>{{ t('登录信息') }}</legend>
+      <p class="leetcode-connection__description">
         {{ t('填写 Cookie 的值。保存后立即生效；已保存的值不会回填。') }}
       </p>
       <div class="credential-fields" @keydown.enter="enterCredential($event)">
@@ -289,9 +295,11 @@ onUnmounted(() => {
           @update:model-value="csrf = String($event)"
         />
       </div>
-      <p v-if="saveError" class="import-warning" role="alert">{{ t(saveError) }}</p>
-      <p v-if="message" class="form-note" aria-live="polite">{{ t(message) }}</p>
-      <div class="connection-actions">
+      <UiNotice v-if="saveError" tone="error">{{ t(saveError) }}</UiNotice>
+      <UiNotice v-if="message" tone="success" role="note" aria-live="polite">{{
+        t(message)
+      }}</UiNotice>
+      <div class="ui-setting-actions">
         <UiButton
           variant="primary"
           :disabled="saving || !session.trim() || !csrf.trim()"
@@ -303,39 +311,119 @@ onUnmounted(() => {
           {{ t('清除登录信息') }}
         </UiButton>
       </div>
-      <div v-if="confirmation" class="credential-confirmation">
-        <p>{{ t('清除后需重新填写登录信息才能提交判题。') }}</p>
-        <div class="connection-actions">
+      <UiNotice v-if="confirmation" tone="warning" class="credential-confirmation">
+        {{ t('清除后需重新填写登录信息才能提交判题。') }}
+        <template #actions>
           <UiButton variant="danger" @click="configure('clear')">
             {{ t('确认清除') }}
           </UiButton>
           <UiButton @click="confirmation = false">
             {{ t('取消') }}
           </UiButton>
-        </div>
-      </div>
-      <p class="form-note">
-        {{
-          t('登录信息仅保存在本机，由桌面版直接连接力扣，不会发送给上游服务或包含在卡组导出中。')
-        }}
-      </p>
+        </template>
+      </UiNotice>
     </fieldset>
-    <details>
-      <summary v-ui-button="'ghost'">{{ t('在哪里找到这两个值？') }}</summary>
-      <p>
-        {{
-          t(
-            '在对应的力扣站点登录，打开浏览器开发者工具 → 应用（Application）或存储（Storage）→ Cookie，复制 LEETCODE_SESSION 和 csrftoken 的值，粘贴到上方。登录过期后重新填写。',
-          )
-        }}
-      </p>
-      <a
-        v-ui-button="'ghost'"
-        href="https://github.com/KraHsu/repeaty/blob/main/docs/LEETCODE.md#配置与启用"
-        target="_blank"
-        rel="noopener noreferrer"
-        >{{ t('完整配置文档') }} ↗</a
-      >
+    <details class="leetcode-connection__help ui-setting-help">
+      <summary>{{ t('在哪里找到这两个值？') }}</summary>
+      <div class="leetcode-connection__help-body">
+        <p>{{ t('打开力扣网站并登录，不会自动连接 Repeaty。请在此保存对应 Cookie。') }}</p>
+        <p>
+          {{
+            t(
+              '在对应的力扣站点登录，打开浏览器开发者工具 → 应用（Application）或存储（Storage）→ Cookie，复制 LEETCODE_SESSION 和 csrftoken 的值，粘贴到上方。登录过期后重新填写。',
+            )
+          }}
+        </p>
+        <p>
+          {{
+            t('登录信息仅保存在本机，由桌面版直接连接力扣，不会发送给上游服务或包含在卡组导出中。')
+          }}
+        </p>
+        <a
+          v-ui-button="'ghost'"
+          href="https://github.com/KraHsu/repeaty/blob/main/docs/LEETCODE.md#配置与启用"
+          target="_blank"
+          rel="noopener noreferrer"
+          >{{ t('完整配置文档') }} ↗</a
+        >
+      </div>
     </details>
-  </SettingGroup>
+  </SettingSection>
 </template>
+
+<style scoped>
+.leetcode-connection {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-ui);
+}
+.leetcode-connection__status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  min-width: 0;
+}
+.leetcode-connection__status-label {
+  font-size: var(--font-size-control);
+  font-weight: var(--font-weight-medium);
+}
+.leetcode-connection__metadata {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem 1.5rem;
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+  overflow-wrap: anywhere;
+}
+.leetcode-connection__metadata p {
+  margin: 0;
+}
+.leetcode-connection .connection-credentials {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.leetcode-connection .connection-credentials legend {
+  margin-bottom: 0.5rem;
+  padding: 0;
+  font-size: var(--font-size-control);
+  font-weight: var(--font-weight-medium);
+}
+.leetcode-connection__description {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+}
+.leetcode-connection .credential-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  margin: 0;
+  gap: 0 1.5rem;
+}
+.credential-fields > .ui-setting-field {
+  border-top: 0;
+}
+.connection-credentials > .ui-notice {
+  margin-bottom: 1rem;
+}
+.credential-confirmation {
+  margin-top: 1rem;
+}
+.leetcode-connection .leetcode-connection__help {
+  margin: 0;
+}
+.leetcode-connection__help-body {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+  line-height: var(--line-height-ui);
+}
+.leetcode-connection__help-body p {
+  margin: 0;
+}
+</style>

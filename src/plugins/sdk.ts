@@ -8,9 +8,12 @@ import type { PluginManifest } from './package'
 import type { PluginModule } from './runtime'
 import {
   SettingGroup,
+  SettingSection,
   SettingField,
   UiButton,
   UiIconButton,
+  UiNotice,
+  UiStatus,
   vUiControl,
   vUiButton,
 } from '../components/ui'
@@ -68,9 +71,12 @@ export function createPluginApi(
     PracticeHistory,
     AttemptBody,
     SettingGroup,
+    SettingSection,
     SettingField,
     UiButton,
     UiIconButton,
+    UiNotice,
+    UiStatus,
     vUiControl,
     vUiButton,
     practiceContentRevision,

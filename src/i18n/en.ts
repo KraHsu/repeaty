@@ -1595,4 +1595,12 @@ export const en = {
     'Cannot access the plugin files. Check the folder permissions.',
   '无法读写插件文件，请检查磁盘空间和文件权限。':
     'Cannot read or write the plugin files. Check free space and folder permissions.',
+  插件管理: 'Plugin management',
+  '安装、更新与管理当前学习库的插件。': 'Install, update and manage plugins for this workspace.',
+  插件安装与存储: 'Installation and storage',
+  运行环境: 'Availability',
+  访问权限: 'Permissions',
+  桌面应用: 'Desktop app',
+  桌面与网页: 'Desktop and web',
+  '关闭插件会保留题目、历史和设置。': 'Disabling keeps your questions, history and settings.',
 } as const

@@ -4,6 +4,9 @@ import { createApp, h, nextTick, ref, type Component } from 'vue'
 import SettingField from './SettingField.vue'
 import SettingGroup from './SettingGroup.vue'
 import UiButton from './UiButton.vue'
+import SettingSection from './SettingSection.vue'
+import UiNotice from './UiNotice.vue'
+import UiStatus from './UiStatus.vue'
 import type { SettingFieldProps, SettingValue } from './types'
 
 const cleanup = new Set<() => void>()
@@ -225,4 +228,45 @@ it('provides named groups and non-submitting action buttons with a native busy s
   expect(button.disabled).toBe(true)
   expect(button.getAttribute('aria-busy')).toBe('true')
   expect(button.classList.contains('primary')).toBe(true)
+})
+
+it('names settings sections without overriding an explicit accessible name', () => {
+  const host = mount(SettingSection, { title: 'Account', description: 'Choose a site' }, () =>
+    h(SettingField, { label: 'Session', modelValue: '' }),
+  )
+  const section = host.querySelector('section')!
+  expect(host.querySelector(`#${section.getAttribute('aria-labelledby')}`)?.textContent).toBe(
+    'Account',
+  )
+  expect(host.querySelector('h3')?.textContent).toBe('Account')
+  expect(host.querySelector('input')?.labels?.[0]?.textContent).toBe('Session')
+  const named = mount(SettingSection, {
+    title: 'China',
+    'aria-label': 'China · leetcode.cn',
+    level: 4,
+  })
+  expect(named.querySelector('section')?.getAttribute('aria-labelledby')).toBeNull()
+  expect(named.querySelector('section')?.getAttribute('aria-label')).toBe('China · leetcode.cn')
+  expect(named.querySelector('h4')?.textContent).toBe('China')
+})
+
+it('distinguishes persistent notes from live feedback and retains caller-owned status announcements', async () => {
+  const tone = ref<'info' | 'error'>('info')
+  const host = mount(
+    {
+      setup: () => () =>
+        h(UiNotice, { tone: tone.value, title: 'Connection' }, () => 'Network unavailable'),
+    },
+    {},
+  )
+  expect(host.querySelector('.ui-notice')?.getAttribute('role')).toBe('note')
+  expect(host.querySelector('.ui-notice__title')?.textContent).toBe('Connection')
+  tone.value = 'error'
+  await nextTick()
+  expect(host.querySelector('[role=alert]')?.textContent).toContain('Network unavailable')
+  const overridden = mount(UiNotice, { tone: 'success', role: 'note' }, () => 'Saved')
+  expect(overridden.querySelector('.ui-notice')?.getAttribute('role')).toBe('note')
+  const status = mount(UiStatus, { tone: 'success' }, () => 'Signed in')
+  expect(status.querySelector('[role]')).toBeNull()
+  expect(status.querySelector('.ui-status')?.textContent).toBe('Signed in')
 })
