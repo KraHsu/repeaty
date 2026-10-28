@@ -1,3 +1,4 @@
+import { selectUiValue } from './fixtures/ui-flow'
 import { setInterfaceLanguage } from './fixtures/settings-flow'
 import { test, expect } from './fixtures/empty-workspace'
 import { createImportDeck, previewAnki, confirmAnki } from './fixtures/anki-flow'
@@ -24,7 +25,7 @@ test('compares repeated exports, updates selected content and media, and confirm
   await confirmAnki(page)
   await page.getByRole('textbox', { name: '搜索卡片' }).fill('What')
   await page.getByText('高级搜索、常用筛选与专项练习', { exact: true }).click()
-  await page.getByLabel('练习模式').selectOption('true')
+  await selectUiValue(page.getByLabel('练习模式'), 'true')
   await page.getByRole('button', { name: '开始专项练习', exact: true }).click()
   await page.getByRole('button', { name: '显示答案', exact: true }).click()
   await page.getByRole('button', { name: /良好/ }).click()
@@ -48,7 +49,9 @@ test('compares repeated exports, updates selected content and media, and confirm
   await basic.getByRole('button', { name: 'Compare content', exact: true }).click()
   await page.setViewportSize({ width: 320, height: 844 })
   await expect(basic).toContainText('Content in Repeaty')
-  expect(await page.locator('dialog').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
+  expect(await page.getByRole('dialog').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+    true,
+  )
   expect(await basic.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
   await page.screenshot({ path: testInfo.outputPath('comparison-mobile-en.png'), fullPage: true })
   await page.setViewportSize({ width: 1280, height: 900 })

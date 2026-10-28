@@ -1,5 +1,8 @@
-@import 'tailwindcss';
+@import 'tailwindcss' source(none);
 @import '@nuxt/ui';
+/* Plugin projects own their styles and never participate in host compilation. */
+@source '../';
+@source '../../config/ui.ts';
 
 @theme {
   --color-sage-50: #f4f7f1;

@@ -1,3 +1,4 @@
+import { selectUiValue } from './ui-flow'
 import { setResponsiveViewport } from './viewport-flow'
 import { setInterfaceLanguage } from './settings-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
@@ -97,14 +98,14 @@ export async function sourceExcerptFlow(page: Page, read: () => Promise<Library>
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await page.locator('.source-list-title').filter({ hasText: child.title }).click()
   await page.setViewportSize({ width: 1280, height: 900 })
-  await page.getByLabel('阅读优先级', { exact: true }).selectOption('high')
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveValue('high')
+  await selectUiValue(page.getByLabel('阅读优先级', { exact: true }), 'high')
+  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'high')
   expect((await read()).sources.find((source) => source.id === root.id)!.priority).toBeUndefined()
   await page.reload()
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await page.locator('.source-list-title').filter({ hasText: child.title }).click()
   await expect(page.locator('.source-text')).toHaveValue(sourceQuote)
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveValue('high')
+  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'high')
 
   await page.getByRole('button', { name: '学习概览', exact: true }).click()
   await createSourceDeck(page)
@@ -137,7 +138,7 @@ export async function sourceExcerptFlow(page: Page, read: () => Promise<Library>
     element.dispatchEvent(new Event('select', { bubbles: true }))
   }, partialStart)
   await page.getByRole('button', { name: '用摘录制卡', exact: true }).click()
-  await page.getByLabel('笔记类型', { exact: true }).selectOption('cloze')
+  await selectUiValue(page.getByLabel('笔记类型', { exact: true }), 'cloze')
   await page
     .getByLabel('正面 · 问题', { exact: true })
     .fill('间隔复习会根据{{c1::记忆状态}}安排下一次学习。🙂')

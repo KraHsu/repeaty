@@ -14,8 +14,9 @@ test('desktop icon sidebar keeps accessible navigation and keyboard width contro
   page,
 }, info) => {
   await sidebarKeyboardFlow(page)
+  await page.locator('.main-nav').getByRole('button', { name: '设置', exact: true }).click()
   await page.getByRole('separator', { name: '调整侧栏宽度', exact: true }).press('Home')
-  await page.getByRole('tab', { name: '通用', exact: true }).click()
+  await page.getByRole('treeitem', { name: '通用', exact: true }).click()
   await page.screenshot({ path: info.outputPath('sidebar-icons-72.png') })
 })
 

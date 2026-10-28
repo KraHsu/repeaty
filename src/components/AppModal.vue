@@ -161,6 +161,11 @@ const modalContent = computed(() => ({
 </template>
 
 <style>
+/* A native top-layer dialog opened by external code owns its pointer scope,
+   even while Reka locks pointer events on the surrounding document body. */
+dialog:modal {
+  pointer-events: auto;
+}
 .app-modal-layer {
   z-index: 1000;
   display: flex;

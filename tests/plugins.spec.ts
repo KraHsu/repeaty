@@ -1,4 +1,4 @@
-import { openPluginManager } from './fixtures/settings-flow'
+import { openPluginManager, uiOption } from './fixtures/settings-flow'
 import { expect, test } from '@playwright/test'
 import { fixture } from '../src/core/test-fixtures'
 import { readFile } from 'node:fs/promises'
@@ -22,7 +22,9 @@ test('the static edition has no LeetCode plugin, backend calls, or connector dow
   await page.getByRole('button', { name: '保存卡组', exact: true }).click()
   await page.getByRole('button', { name: '添加卡片', exact: true }).first().click()
   await expect(page.getByRole('button', { name: '添加 LeetCode 题目' })).toHaveCount(0)
-  await expect(page.locator('#note-type option[value="plugin"]')).toBeDisabled()
+  await page.getByRole('combobox', { name: '笔记类型', exact: true }).click()
+  await expect(uiOption(page, 'plugin')).toBeDisabled()
+  await page.keyboard.press('Escape')
   expect(backendRequests).toEqual([])
 })
 
@@ -79,12 +81,12 @@ test('imported practice history is readable in the static edition without loadin
   await page.getByRole('button', { name: '练习历史', exact: true }).click()
   await expect(page.locator('.practice-history')).toHaveCount(3)
   await expect(page.locator('.attempt-code')).toHaveCount(0)
-  await page.locator('.attempt-history > summary').first().click()
+  await page.locator('.attempt-history-trigger').first().click()
   await expect(page.locator('.attempt-code code').first()).toContainText(
     '<script>stored text</script>',
   )
   await expect(page.locator('.attempt-code script')).toHaveCount(0)
-  await page.locator('.attempt-history > summary').first().click()
+  await page.locator('.attempt-history-trigger').first().click()
   await expect(page.locator('.attempt-code')).toHaveCount(0)
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
   const download = page.waitForEvent('download')

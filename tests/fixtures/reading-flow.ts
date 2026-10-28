@@ -1,3 +1,4 @@
+import { selectUiValue } from './ui-flow'
 import { setInterfaceLanguage } from './settings-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
@@ -24,7 +25,7 @@ export async function importReading(
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await page.getByRole('button', { name: '导入材料', exact: true }).click()
   await page.getByLabel('材料标题').fill(title)
-  await page.getByLabel('内容格式').selectOption(format)
+  await selectUiValue(page.getByLabel('内容格式'), format)
   await page.getByLabel('粘贴正文').fill(text)
   await page.getByRole('button', { name: '保存材料', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)

@@ -1,3 +1,4 @@
+import { selectUiValue } from './ui-flow'
 import { setResponsiveViewport } from './viewport-flow'
 import { setInterfaceLanguage } from './settings-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
@@ -15,13 +16,13 @@ import { saveIndependentExcerpt, selectForExcerpt } from './source-excerpt-flow'
 async function openBatch(page: Page, operation: 'priority' | 'defer' | 'archive' | 'restore') {
   await page.getByRole('button', { name: /^(批量安排|Arrange selected sources)$/ }).click()
   const dialog = page.getByRole('dialog', { name: /^(批量安排|Arrange selected sources)$/ })
-  await dialog.getByLabel(/^(批量操作|Batch action)$/).selectOption(operation)
+  await selectUiValue(dialog.getByLabel(/^(批量操作|Batch action)$/), operation)
   return dialog
 }
 async function selectTopicBatch(page: Page) {
   await page.getByRole('button', { name: /^(学习材料|Sources)$/ }).click()
-  await page.getByLabel(/^(材料类型|Source type)$/).selectOption('excerpt')
-  await page.getByLabel(/^(优先级筛选|Filter by priority)$/).selectOption('high')
+  await selectUiValue(page.getByLabel(/^(材料类型|Source type)$/), 'excerpt')
+  await selectUiValue(page.getByLabel(/^(优先级筛选|Filter by priority)$/), 'high')
   await page.getByLabel(/^(搜索材料|Search sources)$/).fill('Topic')
   await page.getByRole('button', { name: /^(选择本页|Select this page)$/ }).click()
   await page
@@ -40,8 +41,8 @@ async function confirmBatch(page: Page) {
 export async function batchReadingFlow(page: Page, read: () => Promise<Library>, info: TestInfo) {
   await restoreFilters(page)
   const baseline = await read()
-  await page.getByLabel('材料类型', { exact: true }).selectOption('excerpt')
-  await page.getByLabel('优先级筛选', { exact: true }).selectOption('high')
+  await selectUiValue(page.getByLabel('材料类型', { exact: true }), 'excerpt')
+  await selectUiValue(page.getByLabel('优先级筛选', { exact: true }), 'high')
   await page.getByLabel('搜索材料', { exact: true }).fill('Topic')
   await page.getByRole('button', { name: '选择本页', exact: true }).click()
   await expect(page.locator('.source-selection-toolbar')).toContainText('已选 20 篇材料')
@@ -52,26 +53,26 @@ export async function batchReadingFlow(page: Page, read: () => Promise<Library>,
   await page.getByRole('checkbox', { name: '选择材料「Topic 21」', exact: true }).check()
   await expect(page.locator('.source-selection-toolbar')).toContainText('已选 21 篇材料')
   let dialog = await openBatch(page, 'priority')
-  await dialog.getByLabel('阅读优先级', { exact: true }).selectOption('low')
+  await selectUiValue(dialog.getByLabel('阅读优先级', { exact: true }), 'low')
   await dialog.getByRole('button', { name: '取消', exact: true }).click()
   expect((await read()).sources.map(sourceArrangement)).toEqual(
     baseline.sources.map(sourceArrangement),
   )
   dialog = await openBatch(page, 'priority')
-  await dialog.getByLabel('阅读优先级', { exact: true }).selectOption('low')
+  await selectUiValue(dialog.getByLabel('阅读优先级', { exact: true }), 'low')
   await dialog.getByRole('button', { name: '取消', exact: true }).click()
   await setResponsiveViewport(page, 390, 844)
   await setInterfaceLanguage(page, 'en')
   await selectTopicBatch(page)
   await openBatch(page, 'priority')
   const english = page.getByRole('dialog', { name: 'Arrange selected sources', exact: true })
-  await english.getByLabel('Reading priority', { exact: true }).selectOption('low')
+  await selectUiValue(english.getByLabel('Reading priority', { exact: true }), 'low')
   await expect(english).toContainText('21 selected sources')
   expect(await english.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   expect(
     await english
-      .locator('select')
+      .getByRole('combobox')
       .first()
       .evaluate((el) => parseFloat(getComputedStyle(el).fontSize)),
   ).toBeGreaterThanOrEqual(16)
@@ -80,7 +81,7 @@ export async function batchReadingFlow(page: Page, read: () => Promise<Library>,
   await setInterfaceLanguage(page, 'zh-CN')
   await selectTopicBatch(page)
   dialog = await openBatch(page, 'priority')
-  await dialog.getByLabel('阅读优先级', { exact: true }).selectOption('low')
+  await selectUiValue(dialog.getByLabel('阅读优先级', { exact: true }), 'low')
   await confirmBatch(page)
   await page.setViewportSize({ width: 1280, height: 900 })
   await expect(page.getByRole('heading', { name: '没有匹配的材料', exact: true })).toBeVisible()
@@ -110,7 +111,7 @@ export async function batchReadingFlow(page: Page, read: () => Promise<Library>,
   expect(undone.reviews).toEqual(rated.reviews)
 
   await queueView(page, '全部材料')
-  await page.getByLabel('材料类型', { exact: true }).selectOption('excerpt')
+  await selectUiValue(page.getByLabel('材料类型', { exact: true }), 'excerpt')
   const count = undone.sources.filter((source) => source.kind === 'excerpt').length
   const all = page.getByRole('button', { name: `选择全部筛选结果（${count}）`, exact: true })
   for (const operation of ['archive', 'defer', 'restore'] as const) {

@@ -1,3 +1,4 @@
+import { selectUiValue } from '../fixtures/ui-flow'
 import { test, expect, storedLibrary } from './fixture'
 import { readFile, writeFile, rm, copyFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -47,7 +48,7 @@ test('external create, cloze retirement, restore, deletion and undo preserve stu
   await page.locator('.workspace-file').filter({ hasText: path }).click()
   await page.getByRole('button', { name: '接受修改', exact: true }).click()
   const confirmation = page.getByRole('dialog', { name: '接受文件修改', exact: true })
-  await confirmation.getByLabel('笔记类型').selectOption('cloze')
+  await selectUiValue(confirmation.getByLabel('笔记类型'), 'cloze')
   await expect(confirmation).toContainText('新增 2 张')
   expect((await storedLibrary(page)).notes).toHaveLength(0)
   await confirmation.getByRole('button', { name: '确认接受', exact: true }).click()

@@ -1,3 +1,4 @@
+import { selectUiValue } from './ui-flow'
 import { setResponsiveViewport } from './viewport-flow'
 import { setInterfaceLanguage } from './settings-flow'
 import { notesAfterSourceRekey } from './source-flow'
@@ -33,14 +34,14 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
   await importReading(page, 'Queue B', 'plain', 'Another material\n'.repeat(500))
   const baseline = await read()
   const first = baseline.sources.find((source) => source.title === 'Queue A')!
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveValue('normal')
+  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'normal')
   expect(baseline.sources.every((source) => source.priority === undefined)).toBe(true)
   await page.locator('.source-list-title').filter({ hasText: 'Queue A' }).click()
   await expect(page.locator('.source-text')).toHaveAttribute('aria-busy', 'false')
   await moveReading(page, 0.55)
   const priority = page.getByLabel('阅读优先级', { exact: true })
-  await priority.selectOption('low')
-  await expect(priority).toHaveValue('low')
+  await selectUiValue(priority, 'low')
+  await expect(priority).toHaveAttribute('value', 'low')
   await expect(page.locator('.source-list-title')).toHaveText(['Queue B', 'Queue A'])
   await expect(page.getByRole('heading', { name: 'Queue A', exact: true })).toBeVisible()
   const lowered = (await read()).sources.find((source) => source.id === first.id)!
@@ -49,8 +50,8 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
   expect(
     await page.locator('.source-text').evaluate((element) => element.scrollTop),
   ).toBeGreaterThan(500)
-  await priority.selectOption('high')
-  await expect(priority).toHaveValue('high')
+  await selectUiValue(priority, 'high')
+  await expect(priority).toHaveAttribute('value', 'high')
   await expect(page.locator('.source-list-title')).toHaveText(['Queue A', 'Queue B'])
   await moveReading(page, 0.6)
   // Do not wait for the idle save: archiving must capture the current position.
@@ -168,11 +169,16 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
       .getByRole('button', { name: /^Read later/ }),
   ).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('button', { name: 'Read now', exact: true })).toBeVisible()
-  await expect(page.getByLabel('Reading priority', { exact: true })).toHaveValue('high')
-  await expect(page.getByRole('option', { name: 'High', exact: true })).toHaveAttribute(
+  await expect(page.getByLabel('Reading priority', { exact: true })).toHaveAttribute(
     'value',
     'high',
   )
+  await page.getByLabel('Reading priority', { exact: true }).click()
+  await expect(page.getByRole('option', { name: 'High', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await page.getByRole('option', { name: 'High', exact: true }).press('Escape')
   await page.getByRole('button', { name: 'Read later', exact: true }).click()
   const englishDialog = page.getByRole('dialog', { name: 'Read later', exact: true })
   const englishShortcuts = englishDialog.getByRole('group', { name: 'Quick schedule' })

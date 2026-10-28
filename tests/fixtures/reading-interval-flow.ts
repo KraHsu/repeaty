@@ -1,3 +1,4 @@
+import { selectUiValue } from './ui-flow'
 import { setResponsiveViewport } from './viewport-flow'
 import { setInterfaceLanguage } from './settings-flow'
 import { notesAfterSourceRekey } from './source-flow'
@@ -138,8 +139,8 @@ export async function readingIntervalFlow(
   await manual.getByLabel('下次阅读日期').fill('2099-06-12')
   await manual.getByRole('button', { name: '保存阅读安排', exact: true }).click()
   await expect(manual).toHaveCount(0)
-  await page.getByLabel('阅读优先级', { exact: true }).selectOption('high')
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveValue('high')
+  await selectUiValue(page.getByLabel('阅读优先级', { exact: true }), 'high')
+  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'high')
   const custom = (await read()).sources.find((source) => source.id === root.id)!
   expect(custom.readingIntervalDays).toBe(3)
   expect(custom.queue!.availableOn).toBe('2099-06-12')

@@ -218,7 +218,12 @@ async function editSelected() {
     </UiButton>
   </div>
   <p v-if="result.error" class="import-warning" role="alert">{{ t(result.error) }}</p>
-  <UiCollapsible v-model:open="expanded" :unmount-on-hide="false" class="search-options">
+  <UiCollapsible
+    v-model:open="expanded"
+    :unmount-on-hide="false"
+    :ui="{ content: 'data-[state=open]:animate-none data-[state=closed]:animate-none' }"
+    class="search-options"
+  >
     <template #default="{ open }"
       ><UiButton type="button" variant="ghost" :aria-expanded="open">{{
         t('高级搜索、常用筛选与专项练习')

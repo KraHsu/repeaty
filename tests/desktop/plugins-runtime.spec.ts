@@ -4,7 +4,12 @@ import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 import { fixture } from '../../src/core/test-fixtures'
 import type { PluginBundle } from '../../src/plugins/package'
-import { openPluginManager, openPluginSettings, openSettings } from '../fixtures/settings-flow'
+import {
+  confirmPluginAction,
+  openPluginManager,
+  openPluginSettings,
+  openSettings,
+} from '../fixtures/settings-flow'
 
 function standaloneBundle(version = '1.0.0', id = 'external-check'): PluginBundle {
   const color = version === '1.0.0' ? 'rgb(17, 34, 51)' : 'rgb(51, 68, 85)'
@@ -83,12 +88,12 @@ async function value(page: Page, namespace: string, id: string) {
   )
 }
 async function install(page: Page, bundle: PluginBundle) {
-  page.once('dialog', (dialog) => dialog.accept())
   await page.locator('.plugin-actions input[type=file]').setInputFiles({
     name: `${bundle.manifest.id}.repeaty-plugin`,
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(bundle)),
   })
+  await confirmPluginAction(page)
 }
 const panel = (page: Page) =>
   page.locator('.plugin-settings').filter({
@@ -214,8 +219,8 @@ test('installs independent code, reloads versions and retains records and privat
     })
   })
   await openPluginManager(page)
-  page.once('dialog', (dialog) => dialog.accept())
   await panel(page).getByRole('button', { name: '卸载插件', exact: true }).click()
+  await confirmPluginAction(page)
   await expect(panel(page)).toHaveCount(0)
   await openSettings(page)
   await expect(configuration(page)).toHaveCount(0)
@@ -251,7 +256,7 @@ test('discovers copied package files without executing them until their exact co
   await expect(panel(page)).toContainText('此设备尚未信任此插件包')
   await expect(panel(page).getByRole('switch')).not.toBeChecked()
   const documentation = panel(page).locator('.plugin-readme')
-  await documentation.locator('summary').click()
+  await documentation.locator('.plugin-readme-trigger').click()
   await expect(
     documentation.getByRole('heading', { name: 'Manual plugin documentation', exact: true }),
   ).toBeVisible()
@@ -277,8 +282,8 @@ test('discovers copied package files without executing them until their exact co
         ).__externalPluginMetrics?.['manual-check'],
     ),
   ).toBeUndefined()
-  page.once('dialog', (dialog) => dialog.accept())
   await panel(page).getByRole('switch').click()
+  await confirmPluginAction(page)
   await openPluginSettings(page, 'manual-check')
   await expect(configuration(page, 'manual-check').getByTestId('external-version')).toHaveText(
     '1.0.0',
@@ -302,8 +307,8 @@ test('discovers copied package files without executing them until their exact co
         ).__externalPluginMetrics['manual-check']!.executed,
     ),
   ).toEqual(['1.0.0'])
-  page.once('dialog', (dialog) => dialog.accept())
   await panel(page).getByRole('switch').click()
+  await confirmPluginAction(page)
   await openPluginSettings(page, 'manual-check')
   await expect(configuration(page, 'manual-check').getByTestId('external-version')).toHaveText(
     '2.0.0',

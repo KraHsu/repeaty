@@ -33,9 +33,11 @@ test('a failed adaptive save keeps the mixed item and retries without duplicatin
   })
   await dialog.getByRole('button', { name: '保存阅读安排', exact: true }).click()
   await expect(dialog.getByRole('alert')).toContainText('存储空间不足')
-  await expect(page.getByRole('region', { name: '混合学习', exact: true })).toContainText(
-    '已复习 1 次 · 已处理 0 篇',
-  )
+  // Reka hides the blocked page from accessibility navigation while the retry
+  // modal remains open; inspect its preserved state without interacting with it.
+  await expect(
+    page.getByRole('region', { name: '混合学习', exact: true, includeHidden: true }),
+  ).toContainText('已复习 1 次 · 已处理 0 篇')
   expect((await readBrowserLibrary(page)).sources[0]!.adaptiveReading).toBeUndefined()
   await page.evaluate(() => {
     ;(window as unknown as { failMixed: boolean }).failMixed = false

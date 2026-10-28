@@ -1,3 +1,4 @@
+import { selectUiValue } from '../fixtures/ui-flow'
 import { test, expect, storedLibrary } from './fixture'
 import { writeFile, readFile, rename, mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -60,11 +61,11 @@ test('automatically detects saves and renames, keeps a review stable, and refuse
   await page.getByRole('button', { name: '接受修改', exact: true }).click()
   const modal = page.getByRole('dialog', { name: '接受文件修改', exact: true })
   await expect(modal).toBeVisible()
-  await modal.getByLabel('内容格式').selectOption('markdown')
+  await selectUiValue(modal.getByLabel('内容格式'), 'markdown')
   await writeFile(join(root, doc.path), doc.raw.replace('保存时的原题目', '外部第二次修改'))
   await modal.getByRole('button', { name: '确认接受', exact: true }).click()
   await expect(modal.getByRole('alert')).toContainText('文件已在外部修改')
-  await expect(modal.getByLabel('内容格式')).toHaveValue('markdown')
+  await expect(modal.getByLabel('内容格式')).toHaveAttribute('value', 'markdown')
   expect(await storedLibrary(page)).toEqual(before)
   await modal.getByRole('button', { name: '取消', exact: true }).click()
   await expect(page.locator('.workspace-raw')).toContainText('外部第二次修改')

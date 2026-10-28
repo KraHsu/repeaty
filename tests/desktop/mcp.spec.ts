@@ -1,3 +1,4 @@
+import { selectUiValue } from '../fixtures/ui-flow'
 import type { Page } from '@playwright/test'
 import { test, expect, storedLibrary } from './fixture'
 import { practiceHistoryFixture } from '../fixtures/practice-history'
@@ -35,7 +36,7 @@ test('desktop settings opt in to local read queries, revoke keys, and retain the
   await openSettings(page, 'connections.mcp')
   const dialog = page.getByRole('region', { name: '桌面设置' })
   const mcp = dialog.getByRole('region', { name: 'MCP 连接' })
-  await mcp.getByLabel('MCP 客户端', { exact: true }).selectOption('http')
+  await selectUiValue(mcp.getByLabel('MCP 客户端', { exact: true }), 'http')
   await expect(mcp.getByRole('status')).toHaveText('已关闭')
   await expect(mcp.getByRole('button', { name: '开启 MCP' })).toBeEnabled()
   await mcp.getByRole('button', { name: '开启 MCP' }).click()
@@ -109,7 +110,7 @@ test('client configurations can be copied before enabling MCP and reused after r
     ['claude-code', '.mcp.json'],
     ['claude-desktop', 'claude_desktop_config.json'],
   ]) {
-    await client.selectOption(name!)
+    await selectUiValue(client, name!)
     await expect(mcp.locator('textarea')).toHaveCount(0)
     await mcp.getByRole('button', { name: '显示连接配置' }).click()
     const field = mcp.getByLabel('客户端连接配置')
@@ -144,7 +145,7 @@ test('client configurations can be copied before enabling MCP and reused after r
   )
   await mcp.getByRole('button', { name: '关闭 MCP' }).click()
   await expect(mcp.locator('textarea')).toHaveCount(0)
-  await client.selectOption('http')
+  await selectUiValue(client, 'http')
   await expect(mcp.getByRole('button', { name: '显示连接配置' })).toHaveCount(0)
   await page.reload()
   await setInterfaceLanguage(page, 'en')

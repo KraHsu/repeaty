@@ -47,7 +47,9 @@ test('128 MiB of image/audio and long text survive archive restore, offline revi
   await expect(page.locator('tbody tr')).toHaveCount(2)
   await page.setViewportSize({ width: 320, height: 844 })
   await page.locator('.card-row-title').first().click()
-  expect(await page.locator('dialog').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
+  expect(await page.getByRole('dialog').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+    true,
+  )
   await expect(page.getByLabel('正面 · 问题')).toHaveValue(front)
   await expect(page.getByLabel('背面 · 答案')).toHaveValue(back)
   await page.getByText('将生成 1 张卡片 · 预览', { exact: true }).click()

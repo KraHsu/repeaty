@@ -1,3 +1,4 @@
+import { selectUiValue } from './ui-flow'
 import { setResponsiveViewport } from './viewport-flow'
 import { setInterfaceLanguage } from './settings-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
@@ -39,11 +40,11 @@ export async function readingRoundFlow(page: Page, read: () => Promise<Library>,
   await expect(page.getByRole('heading', { name: '本轮复习结束' })).toBeVisible()
   await importReading(page, 'Round B', 'plain', readingText)
   await importReading(page, 'Round C', 'plain', readingText)
-  await page.getByLabel('阅读优先级', { exact: true }).selectOption('low')
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveValue('low')
+  await selectUiValue(page.getByLabel('阅读优先级', { exact: true }), 'low')
+  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'low')
   await page.locator('.source-list-title').filter({ hasText: 'Round A' }).click()
-  await page.getByLabel('阅读优先级', { exact: true }).selectOption('high')
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveValue('high')
+  await selectUiValue(page.getByLabel('阅读优先级', { exact: true }), 'high')
+  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'high')
   await page.getByRole('button', { name: '阅读 Markdown 预览', exact: true }).click()
   await moveReading(page, 0.2)
   await saveReading(page)
@@ -52,8 +53,8 @@ export async function readingRoundFlow(page: Page, read: () => Promise<Library>,
   await startRound(page, 'Round A')
   await expect(page.getByRole('region', { name: '本轮阅读' })).toContainText('第 1 篇，共 3 篇')
   // Reordering the live list must not change this round or skip its next source.
-  await page.getByLabel('阅读优先级', { exact: true }).selectOption('low')
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveValue('low')
+  await selectUiValue(page.getByLabel('阅读优先级', { exact: true }), 'low')
+  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'low')
   await moveReading(page, 0.6)
   await page.getByRole('button', { name: '下一篇', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Round B', exact: true })).toBeVisible()

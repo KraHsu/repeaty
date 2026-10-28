@@ -1,3 +1,4 @@
+import { selectUiValue } from './fixtures/ui-flow'
 import { setInterfaceLanguage } from './fixtures/settings-flow'
 import { test, expect } from './fixtures/empty-workspace'
 import { storedLibrary } from './fixtures/stored-library'
@@ -129,7 +130,7 @@ test('rejects invalid files, supports pasted text and keeps an existing snapshot
   const before = await storedLibrary(page)
   await page.getByRole('button', { name: '导入材料', exact: true }).click()
   await page.getByLabel('材料标题').fill('学习笔记')
-  await page.getByLabel('内容格式').selectOption('plain')
+  await selectUiValue(page.getByLabel('内容格式'), 'plain')
   await page.getByLabel('粘贴正文').fill('A new snapshot of the source.')
   const original = ((await storedLibrary(page)).sources as { value: Source }[])[0]!.value
   // A layout change can scroll the underlying reader while the dialog is open.

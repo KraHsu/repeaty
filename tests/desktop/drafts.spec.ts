@@ -113,7 +113,7 @@ test('shared excerpts become editable drafts, save all three types with provenan
   await queue().getByRole('button', { name: '检查并编辑' }).first().click()
   let editor = page.getByRole('dialog', { name: '确认制卡草稿' })
   await expect(editor.locator('#card-tags')).toHaveValue('FSRS, 待确认')
-  await editor.locator('.note-preview summary').click()
+  await editor.locator('.note-preview').getByRole('button', { expanded: false }).click()
   expect(
     await page.evaluate(() => (globalThis as Record<string, unknown>).draftExecuted),
   ).toBeUndefined()

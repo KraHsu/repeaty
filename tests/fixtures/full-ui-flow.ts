@@ -4,6 +4,7 @@ import { exportArchive } from '../../src/core/archive'
 import type { MediaUpload } from '../../src/core/model'
 import { readBrowserLibrary } from './adaptive-mixed-flow'
 import { setResponsiveViewport } from './viewport-flow'
+import { selectUiValue } from './settings-flow'
 
 async function dismissNotices(page: Page) {
   const close = page.getByRole('button', { name: '关闭提示', exact: true })
@@ -12,15 +13,19 @@ async function dismissNotices(page: Page) {
 
 async function sharedControls(scope: Locator) {
   const fields = scope.locator(
-    'input:visible:not(.sr-only):not([type="hidden"]), select:visible, textarea:visible',
+    'input:visible:not(.sr-only):not([type="hidden"]):not([aria-hidden="true"]), textarea:visible',
   )
   expect(await fields.count()).toBeGreaterThan(0)
-  for (const field of await fields.all()) await expect(field).toHaveClass(/\bui-control\b/)
+  for (const field of await fields.all()) await expect(field).toHaveAttribute('data-slot', 'base')
   const actions = scope.locator(
-    'button:visible:not(.desktop-window-button):not(.source-list-title)',
+    'button:visible:not(.desktop-window-button):not(.source-list-title):not([role="checkbox"]):not([role="switch"]):not([role="radio"]):not([role="combobox"])',
   )
   expect(await actions.count()).toBeGreaterThan(0)
   for (const action of await actions.all()) await expect(action).toHaveClass(/\bui-button\b/)
+  for (const control of await scope
+    .locator('[role="checkbox"], [role="switch"], [role="radio"], [role="combobox"]')
+    .all())
+    await expect(control).toHaveAttribute('data-slot', 'base')
 }
 
 async function fits(page: Page) {
@@ -68,7 +73,7 @@ export async function fullUiFlow(page: Page, info: TestInfo) {
   let dialog = page.getByRole('dialog', { name: '创建卡组', exact: true })
   await sharedControls(dialog)
   await dialog.getByLabel('卡组名称', { exact: true }).fill('Unified GUI')
-  await expect(dialog.locator('button[type="submit"]')).toHaveClass(/ui-button--primary/)
+  await expect(dialog.locator('button[type="submit"]')).toHaveAttribute('data-variant', 'primary')
   await dialog.getByRole('button', { name: '保存卡组', exact: true }).click()
   await expect(dialog).toHaveCount(0)
   await dismissNotices(page)
@@ -86,10 +91,10 @@ export async function fullUiFlow(page: Page, info: TestInfo) {
     .getByRole('button', { name: '选中文字挖空 · Ctrl / ⌘ + Shift + C', exact: true })
     .click()
   await expect(front).toHaveValue('The {{c1::selected text}} remains intact.')
-  await expect(dialog.getByLabel('笔记类型', { exact: true })).toHaveValue('cloze')
+  await expect(dialog.getByLabel('笔记类型', { exact: true })).toHaveAttribute('value', 'cloze')
   await dialog.getByLabel('补充说明', { exact: false }).fill('The stored answer remains intact.')
-  await expect(dialog.locator('.modal-header button')).toHaveClass(/ui-button--icon/)
-  await expect(dialog.locator('button[type="submit"]')).toHaveClass(/ui-button--primary/)
+  await expect(dialog.locator('.modal-header button')).toHaveAttribute('data-variant', 'ghost')
+  await expect(dialog.locator('button[type="submit"]')).toHaveAttribute('data-variant', 'primary')
   await page.screenshot({ path: info.outputPath('unified-card-editor-wide.png') })
   await setResponsiveViewport(page, 390, 844)
   await fits(page)
@@ -101,7 +106,7 @@ export async function fullUiFlow(page: Page, info: TestInfo) {
   await page.getByRole('button', { name: '学习概览', exact: true }).click()
   await page.getByRole('button', { name: '开始复习', exact: true }).first().click()
   const reveal = page.getByRole('button', { name: '显示答案', exact: true })
-  await expect(reveal).toHaveClass(/ui-button--primary/)
+  await expect(reveal).toHaveAttribute('data-variant', 'primary')
   const undo = page.getByRole('button', { name: '撤销上次评分', exact: true })
   await expect(undo).toHaveClass(/\bui-button\b/)
   await expect(undo).toBeDisabled()
@@ -109,16 +114,16 @@ export async function fullUiFlow(page: Page, info: TestInfo) {
   await reveal.click()
   for (const tone of ['again', 'hard', 'good', 'easy']) {
     const rating = page.locator(`.grade-button.${tone}`)
-    await expect(rating).toHaveClass(/ui-button--rating/)
-    await expect(rating).toHaveClass(new RegExp(`ui-button--${tone}`))
+    await expect(rating).toHaveAttribute('data-variant', 'rating')
+    await expect(rating).toHaveAttribute('data-tone', tone)
     await expect(rating).toBeEnabled()
   }
   const beforeEditing = await readBrowserLibrary(page)
   const menu = page.locator('.review-menu')
-  await expect(menu.locator('summary')).toHaveClass(/ui-button--icon/)
-  await menu.locator('summary').click()
-  await expect(menu.getByRole('button', { name: /^编辑/ })).toHaveClass(/ui-button--ghost/)
-  await menu.getByRole('button', { name: /^编辑/ }).click()
+  await expect(menu).toHaveAttribute('aria-haspopup', 'menu')
+  await menu.click()
+  await expect(page.getByRole('menuitem', { name: /^编辑/ })).toBeEnabled()
+  await page.getByRole('menuitem', { name: /^编辑/ }).click()
   dialog = page.getByRole('dialog', { name: '编辑卡片', exact: true })
   await sharedControls(dialog)
   await dialog.getByLabel('正面 · 问题', { exact: true }).fill('This edit must be discarded.')
@@ -137,20 +142,20 @@ export async function fullUiFlow(page: Page, info: TestInfo) {
   dialog = page.getByRole('dialog', { name: '导入材料', exact: true })
   await sharedControls(dialog)
   await dialog.getByLabel('材料标题', { exact: true }).fill('Unified reading source')
-  await dialog.getByLabel('内容格式', { exact: true }).selectOption('plain')
+  await selectUiValue(page, dialog.getByLabel('内容格式', { exact: true }), 'plain')
   const content = 'A readable paragraph 中文🙂 with the shared GUI.\n\n'.repeat(80)
   await dialog.getByLabel('粘贴正文', { exact: true }).fill(content)
-  await expect(dialog.locator('button[type="submit"]')).toHaveClass(/ui-button--primary/)
+  await expect(dialog.locator('button[type="submit"]')).toHaveAttribute('data-variant', 'primary')
   await dialog.getByRole('button', { name: '保存材料', exact: true }).click()
   await expect(dialog).toHaveCount(0)
   const reader = page.getByRole('textbox', { name: '材料正文', exact: true })
   await expect(reader).toHaveAttribute('aria-busy', 'false')
-  await expect(reader).toHaveClass(/ui-control--reading/)
+  await expect(reader).toHaveAttribute('data-slot', 'base')
   await expect(reader).toHaveCSS('font-size', '18px')
   await expect(reader).toHaveJSProperty('readOnly', true)
   await expect(reader).toHaveValue(content)
   for (const label of ['搜索材料', '材料类型', '优先级筛选'])
-    await expect(page.getByLabel(label, { exact: true })).toHaveClass(/\bui-control\b/)
+    await expect(page.getByLabel(label, { exact: true })).toHaveAttribute('data-slot', 'base')
   const pagination = page.getByRole('navigation', { name: '材料列表分页', exact: true })
   await expect(pagination).toBeVisible()
   for (const button of await pagination.getByRole('button').all())

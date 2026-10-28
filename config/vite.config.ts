@@ -39,7 +39,7 @@ export default defineConfig(({ mode }) => {
         colorMode: false,
         autoImport: false,
         components: false,
-        icon: { clientBundle: { scan: true } },
+        icon: { clientBundle: { scan: { globInclude: ['src/**/*.{vue,ts}'] } } },
       }),
       externalPlugins(desktop),
       ...(server || desktop ? [] : [offlinePlugin()]),

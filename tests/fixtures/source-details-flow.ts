@@ -1,3 +1,4 @@
+import { selectUiValue } from './ui-flow'
 import { setResponsiveViewport } from './viewport-flow'
 import { setInterfaceLanguage } from './settings-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
@@ -118,7 +119,7 @@ export async function sourceDetailsFlow(page: Page, read: () => Promise<Library>
   await expect(page.locator('.source-excerpt-list h4').first()).toHaveText(childTitle)
 
   await page.getByLabel('搜索材料', { exact: true }).fill('同处副本')
-  await page.getByLabel('材料类型', { exact: true }).selectOption('excerpt')
+  await selectUiValue(page.getByLabel('材料类型', { exact: true }), 'excerpt')
   await page.getByRole('button', { name: '阅读筛选结果', exact: true }).click()
   await expect(page.getByRole('region', { name: '本轮阅读', exact: true })).toContainText(
     '第 1 篇，共 1 篇',

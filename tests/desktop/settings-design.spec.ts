@@ -2,7 +2,12 @@ import { test, expect, storedLibrary } from './fixture'
 import type { Page } from '@playwright/test'
 import { resolve } from 'node:path'
 import { buildPlugin } from '../../packages/plugin-api/build.mjs'
-import { openPluginManager, openPluginSettings } from '../fixtures/settings-flow'
+import {
+  confirmPluginAction,
+  openPluginManager,
+  openPluginSettings,
+  selectUiOption,
+} from '../fixtures/settings-flow'
 
 async function savedPreferences(page: Page) {
   const value = await page.evaluate(async () => {
@@ -36,12 +41,12 @@ test('an independently built plugin uses shared accessible controls, saves prefe
   })
   const before = await storedLibrary(page)
   await openPluginManager(page)
-  page.once('dialog', (dialog) => dialog.accept())
   await page.locator('.plugin-actions input[type=file]').setInputFiles({
     name: 'settings-design-example.repeaty-plugin',
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(bundle)),
   })
+  await confirmPluginAction(page)
   await expect(page.locator('.settings-example')).toHaveCount(0)
   await openPluginSettings(page, 'settings-design-example')
   const panel = page.locator('.plugin-configuration').filter({
@@ -49,24 +54,38 @@ test('an independently built plugin uses shared accessible controls, saves prefe
   })
   const demo = panel.locator('.settings-example')
   await expect(demo).toBeVisible()
-  const categories = page.locator('.settings-categories')
-  await expect(categories).toHaveAttribute('aria-orientation', 'vertical')
-  await expect(categories.getByRole('tab', { name: /^(插件设置|Plugin settings)$/ })).toHaveCount(0)
+  const categories = page.getByRole('tree', { name: /^(设置分类|Settings categories)$/ })
+  await expect(categories).toBeVisible()
+  await expect(
+    categories.getByRole('treeitem', { name: /^(插件设置|Plugin settings)$/ }),
+  ).toHaveCount(0)
+  await expect(categories.locator('[data-category-key="plugins"]')).toHaveCount(0)
   const appearanceCategory = categories.locator('[data-category-key="general.appearance"]')
   const exampleCategory = categories.locator('[data-category-key="general.example"]')
   await expect(appearanceCategory).toBeVisible()
+  await expect(exampleCategory).toHaveAttribute('aria-selected', 'true')
+  const generalCategory = categories.locator('[data-category-key="general"]')
+  await generalCategory.focus()
+  await generalCategory.press('ArrowLeft')
+  await expect(generalCategory).toHaveAttribute('aria-expanded', 'false')
+  await expect(exampleCategory).toBeHidden()
+  await expect(demo).toBeVisible()
+  await generalCategory.press('ArrowRight')
+  await expect(generalCategory).toHaveAttribute('aria-expanded', 'true')
+  await expect(exampleCategory).toBeVisible()
   await expect(exampleCategory).toHaveAttribute('aria-selected', 'true')
   await expect(exampleCategory).toHaveCSS(
     'padding-left',
     await appearanceCategory.evaluate((element) => getComputedStyle(element).paddingLeft),
   )
-  await categories.locator('[data-category-key="general"]').click()
+  await generalCategory.click()
   const hostLanguage = page.getByRole('combobox', { name: '界面语言', exact: true })
   await expect(hostLanguage).toBeVisible()
   await expect(demo).toBeVisible()
-  await expect(hostLanguage).toHaveClass(/\bui-control\b/)
-  await expect(demo.getByRole('textbox', { name: 'Workspace name', exact: true })).toHaveClass(
-    /\bui-control\b/,
+  await expect(hostLanguage).toHaveAttribute('data-slot', 'base')
+  await expect(demo.getByRole('textbox', { name: 'Workspace name', exact: true })).toHaveAttribute(
+    'data-slot',
+    'base',
   )
   await expect(hostLanguage).toHaveCSS('font-size', '16px')
   await expect(demo.getByRole('textbox', { name: 'Workspace name', exact: true })).toHaveCSS(
@@ -95,9 +114,13 @@ test('an independently built plugin uses shared accessible controls, saves prefe
   await expect(email).toHaveAttribute('aria-invalid', 'true')
   const description = await email.getAttribute('aria-describedby')
   expect(description).toBeTruthy()
-  await expect(page.locator(`[id="${description}"]`)).toHaveText(
-    'Enter an email address containing @.',
-  )
+  expect(
+    (
+      await Promise.all(
+        description!.split(/\s+/).map((id) => page.locator(`[id="${id}"]`).textContent()),
+      )
+    ).join(' '),
+  ).toContain('Enter an email address containing @.')
   await email.fill('demo@example.invalid')
   await email.press('Tab')
   await expect(email).not.toHaveAttribute('aria-invalid', 'true')
@@ -108,10 +131,10 @@ test('an independently built plugin uses shared accessible controls, saves prefe
   const layout = demo.getByRole('combobox', { name: 'Layout density', exact: true })
   await layout.scrollIntoViewIfNeeded()
   await page.mouse.move(0, 0)
-  const border = await layout.evaluate((element) => getComputedStyle(element).borderColor)
+  const background = await layout.evaluate((element) => getComputedStyle(element).backgroundColor)
   await layout.hover()
-  await expect(layout).not.toHaveCSS('border-color', border)
-  await layout.selectOption('compact')
+  await expect(layout).not.toHaveCSS('background-color', background)
+  await selectUiOption(page, layout, 'Compact')
   await demo.getByRole('radio', { name: 'Below the card', exact: true }).check()
   await demo.getByRole('checkbox', { name: 'Card counts', exact: true }).check()
   await expect(
@@ -133,30 +156,26 @@ test('an independently built plugin uses shared accessible controls, saves prefe
     })
   const slider = demo.getByRole('slider', { name: 'Reading scale', exact: true })
   await slider.scrollIntoViewIfNeeded()
-  const track = (await slider.boundingBox())!
+  const track = (await slider.locator('xpath=ancestor::*[@data-slot="root"][1]').boundingBox())!
   await page.mouse.move(track.x + track.width / 2, track.y + track.height / 2)
   await page.mouse.down()
   await page.mouse.move(track.x + track.width * 0.8, track.y + track.height / 2, { steps: 6 })
-  await expect(slider).not.toHaveValue('50')
+  await expect(slider).not.toHaveAttribute('aria-valuenow', '50')
   expect((await savedPreferences(page)).scale).toBe(50)
-  const adjusted = Number(await slider.inputValue())
+  const adjusted = Number(await slider.getAttribute('aria-valuenow'))
   await page.mouse.up()
   await expect.poll(async () => (await savedPreferences(page)).scale).toBe(adjusted)
   const nativeDraft = demo.getByRole('textbox', { name: 'Native code draft', exact: true })
   const nativeSlider = demo.getByRole('slider', { name: 'Native adjustment', exact: true })
-  await expect(nativeDraft).toHaveClass(/ui-control--mono/)
-  await expect(nativeSlider).toHaveClass(/ui-control--range/)
-  // The raw slider intentionally does not set the optional track-progress custom property.
-  expect(
-    await nativeSlider.evaluate((element) => element.style.getPropertyValue('--ui-range-progress')),
-  ).toBe('')
+  await expect(nativeDraft).toHaveClass(/font-mono/)
+  await expect(nativeSlider).toHaveAttribute('data-slot', 'thumb')
   await nativeDraft.fill('const selected = 42\nreturn selected')
   await nativeDraft.evaluate((element: HTMLTextAreaElement) => {
     element.setSelectionRange(6, 14, 'forward')
   })
   await nativeSlider.focus()
   await nativeSlider.press('ArrowRight')
-  await expect(nativeSlider).toHaveValue('5')
+  await expect(nativeSlider).toHaveAttribute('aria-valuenow', '5')
   expect(
     await nativeDraft.evaluate((element: HTMLTextAreaElement) => ({
       start: element.selectionStart,
@@ -167,11 +186,11 @@ test('an independently built plugin uses shared accessible controls, saves prefe
   await expect(nativeDraft).toHaveValue('const selected = 42\nreturn selected')
   const clearDraft = demo.getByRole('button', { name: 'Clear native draft', exact: true })
   await expect(clearDraft).toHaveAttribute('title', 'Clear native draft')
-  await expect(clearDraft).toHaveClass(/ui-button--icon/)
+  await expect(clearDraft).toHaveAttribute('data-variant', 'ghost')
   const iconBox = await clearDraft.boundingBox()
   expect(iconBox).not.toBeNull()
-  expect(iconBox!.width).toBeCloseTo(44, 1)
-  expect(iconBox!.height).toBeCloseTo(44, 1)
+  expect(iconBox!.width).toBeGreaterThanOrEqual(44)
+  expect(iconBox!.height).toBeGreaterThanOrEqual(44)
   await clearDraft.click()
   await expect(nativeDraft).toHaveValue('')
   await expect(nativeDraft).toBeFocused()
@@ -193,7 +212,7 @@ test('an independently built plugin uses shared accessible controls, saves prefe
   await expect(notes).toHaveValue('Saved independently\nWithout copying host controls.')
   await expect(password).toHaveValue('')
   await expect(limit).toHaveValue('18')
-  await expect(slider).toHaveValue(String(adjusted))
+  await expect(slider).toHaveAttribute('aria-valuenow', String(adjusted))
   await expect(demo.getByRole('radio', { name: 'Below the card', exact: true })).toBeChecked()
   await expect(demo.getByRole('checkbox', { name: 'Card counts', exact: true })).toBeChecked()
   await expect(demo.getByRole('switch', { name: 'Notifications', exact: true })).not.toBeChecked()

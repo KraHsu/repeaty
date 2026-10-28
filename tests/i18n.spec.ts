@@ -1,3 +1,4 @@
+import { selectUiValue } from './fixtures/ui-flow'
 import { openSettings, setInterfaceLanguage } from './fixtures/settings-flow'
 import { expect, test } from '@playwright/test'
 
@@ -14,7 +15,7 @@ for (const width of [320, 390, 768, 1440]) {
     await expect(page.getByRole('heading', { name: '设置', exact: true })).toBeVisible()
     await page.reload()
     await openSettings(page)
-    await expect(page.getByLabel('界面语言')).toHaveValue('zh-CN')
+    await expect(page.getByLabel('界面语言')).toHaveAttribute('value', 'zh-CN')
     await setInterfaceLanguage(page, 'en')
     await page.getByRole('button', { name: 'Overview', exact: true }).click()
     await expect(
@@ -38,15 +39,15 @@ test('Settings language switching preserves authored cards and saved filters acr
   await page.getByLabel('Back · Answer').fill('中文答案')
   await page.getByRole('button', { name: 'Save card', exact: true }).click()
   await page.getByText('Advanced search, saved filters & focused practice', { exact: true }).click()
-  await page.getByLabel('Filter by status').selectOption({ label: 'New' })
+  await selectUiValue(page.getByLabel('Filter by status'), { label: 'New' })
   await page.getByLabel('Filter name').fill('我的筛选')
   await page.getByRole('button', { name: 'Save as new filter', exact: true }).click()
   await expect(page.getByRole('status')).toContainText('Filter saved')
   await setInterfaceLanguage(page, 'zh-CN')
   await page.getByRole('button', { name: /^全部卡片/ }).click()
   await page.getByText('高级搜索、常用筛选与专项练习', { exact: true }).click()
-  await page.getByLabel('常用筛选', { exact: true }).selectOption({ label: '我的筛选' })
-  await expect(page.getByLabel('筛选状态')).toHaveValue('新卡片')
+  await selectUiValue(page.getByLabel('常用筛选', { exact: true }), { label: '我的筛选' })
+  await expect(page.getByLabel('筛选状态')).toHaveAttribute('value', '新卡片')
   await expect(page.getByLabel('筛选名称')).toHaveValue('我的筛选')
   await setInterfaceLanguage(page, 'en')
   await page.locator('.sidebar').getByRole('button', { name: '我的卡组', exact: true }).click()

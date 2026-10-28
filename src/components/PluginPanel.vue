@@ -165,6 +165,7 @@ async function choose(event: Event) {
       }))
     )
       return
+    if (!isCurrent()) return
     await installPlugin(bundle)
   })
 }

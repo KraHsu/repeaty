@@ -84,7 +84,7 @@ test('a real directory supports trial review, editing, source versions and a com
     expect(await originalText.textContent()).toBe(env.oldText)
     await page.keyboard.press('Escape')
     await page.getByRole('button', { name: '练习历史', exact: true }).click()
-    await page.locator('.attempt-history summary').first().click()
+    await page.locator('.attempt-history-trigger').first().click()
     await expect(page.locator('.attempt-body')).toContainText('attempt')
     await page.getByRole('button', { name: '数据与备份', exact: true }).click()
     const downloaded = page.waitForEvent('download')

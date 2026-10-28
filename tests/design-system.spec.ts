@@ -35,7 +35,7 @@ async function typography(page: Page) {
     '16px',
   )
   await expect(page.locator('.ui-setting-group__description')).toHaveCSS('font-size', '14px')
-  await expect(page.locator('.ui-setting-field__description').first()).toHaveCSS(
+  await expect(page.locator('.ui-setting-field [data-slot="description"]').first()).toHaveCSS(
     'font-size',
     '14px',
   )
@@ -65,13 +65,28 @@ test('settings shares typography roles, visible hover feedback and a responsive 
   await page.setViewportSize({ width: 1280, height: 950 })
   const select = page.getByRole('combobox', { name: '界面语言', exact: true })
   await page.mouse.move(0, 0)
-  const normal = await select.evaluate((el) => getComputedStyle(el).borderTopColor)
+  const normal = await select.evaluate((el) => ({
+    background: getComputedStyle(el).backgroundColor,
+    shadow: getComputedStyle(el).boxShadow,
+  }))
   await select.hover()
   await expect
-    .poll(() => select.evaluate((el) => getComputedStyle(el).borderTopColor))
-    .not.toBe(normal)
+    .poll(() =>
+      select.evaluate((el) => ({
+        background: getComputedStyle(el).backgroundColor,
+        shadow: getComputedStyle(el).boxShadow,
+      })),
+    )
+    .not.toEqual(normal)
   await page.mouse.move(0, 0)
-  await expect(select).toHaveCSS('border-top-color', normal)
+  await expect
+    .poll(() =>
+      select.evaluate((el) => ({
+        background: getComputedStyle(el).backgroundColor,
+        shadow: getComputedStyle(el).boxShadow,
+      })),
+    )
+    .toEqual(normal)
   await page.screenshot({ path: info.outputPath('settings-general-wide.png'), fullPage: true })
 })
 
@@ -129,10 +144,16 @@ test('shared scrollbars remain usable and settings respect high contrast and lar
     'opacity',
     '1',
   )
-  await expect(page.getByRole('switch', { name: '信息通知', exact: true })).toHaveCSS(
-    'appearance',
-    'auto',
+  const notificationSwitch = page.getByRole('switch', { name: '信息通知', exact: true })
+  const checked = await notificationSwitch.getAttribute('aria-checked')
+  await notificationSwitch.focus()
+  await notificationSwitch.press('Space')
+  await expect(notificationSwitch).toHaveAttribute(
+    'aria-checked',
+    checked === 'true' ? 'false' : 'true',
   )
+  await notificationSwitch.press('Space')
+  await expect(notificationSwitch).toHaveAttribute('aria-checked', checked!)
   expect(
     await page.evaluate(() => ({
       width: getComputedStyle(document.documentElement).getPropertyValue('scrollbar-width'),
@@ -142,14 +163,19 @@ test('shared scrollbars remain usable and settings respect high contrast and lar
 
   await page.emulateMedia({ forcedColors: 'none' })
   await page.setViewportSize({ width: 1280, height: 950 })
+  const select = page.getByRole('combobox', { name: '界面语言', exact: true })
   await page.evaluate(() => {
     document.documentElement.style.fontSize = '200%'
   })
-  const select = page.getByRole('combobox', { name: '界面语言', exact: true })
   await expect(select).toHaveCSS('font-size', '32px')
-  await expect(select.locator('option').first()).toHaveCSS('font-size', '32px')
+  await select.click()
+  await expect(page.getByRole('option', { name: 'English', exact: true })).toHaveCSS(
+    'font-size',
+    '32px',
+  )
+  await page.keyboard.press('Escape')
   await expect(page.getByText('界面语言', { exact: true })).toHaveCSS('font-size', '32px')
-  await expect(page.locator('.ui-setting-field__description').first()).toHaveCSS(
+  await expect(page.locator('.ui-setting-field [data-slot="description"]').first()).toHaveCSS(
     'font-size',
     '28px',
   )

@@ -1,3 +1,4 @@
+import { selectUiValue } from './ui-flow'
 import { expect, type Page } from '@playwright/test'
 
 export async function createImportDeck(page: Page) {
@@ -9,7 +10,7 @@ export async function createImportDeck(page: Page) {
 export async function previewAnki(page: Page, format: 'modern' | 'legacy' | 'updated' = 'modern') {
   await page.getByRole('button', { name: /^(全部卡片|All cards)/ }).click()
   await page.getByRole('button', { name: /^(批量导入|Bulk import)$/ }).click()
-  await page.getByLabel(/^(导入格式|Import format)$/).selectOption('anki')
+  await selectUiValue(page.getByLabel(/^(导入格式|Import format)$/), 'anki')
   await page
     .getByLabel(/^(选择 Anki 文件|Choose Anki file)$/)
     .setInputFiles(`tests/fixtures/anki/${format}.apkg`)

@@ -72,25 +72,11 @@ for (const language of ['zh-CN', 'en'] as const) {
     await openPluginManager(page)
     const dismiss = page.getByRole('button', { name: /^(关闭提示|Dismiss notification)$/ })
     while (await dismiss.count()) await dismiss.first().click()
-    const navigation = page.getByRole('tablist', { name: /^(设置分类|Settings categories)$/ })
-    await expect(navigation).toHaveAttribute('aria-orientation', 'vertical')
-    await expect(page.getByRole('tab', { name: /^(插件设置|Plugin settings)$/ })).toHaveCount(0)
-    for (const key of [
-      'general',
-      'general.appearance',
-      'general.notifications',
-      'study.review',
-      'connections',
-      'connections.mcp',
-      'connections.leetcode',
-      'workspace',
-      'tools.ai',
-      'plugins',
-    ])
-      await expect(category(page, key)).toBeVisible()
-    const navBox = (await navigation.boundingBox())!
-    const contentBox = (await page.getByRole('tabpanel').boundingBox())!
-    expect(navBox.x + navBox.width).toBeLessThanOrEqual(contentBox.x)
+    const pluginNavigation = page
+      .locator('.main-nav')
+      .getByRole('button', { name: /^(插件|Plugins)$/ })
+    await expect(pluginNavigation).toHaveAttribute('aria-current', 'page')
+    await expect(page.locator('.settings-categories')).toHaveCount(0)
     const historyDetails = page.locator('.plugin-settings[data-plugin-id="review-history"]')
     const leetcodeDetails = page.locator('.plugin-settings[data-plugin-id="leetcode"]')
     for (const details of [historyDetails, leetcodeDetails]) {
@@ -98,15 +84,24 @@ for (const language of ['zh-CN', 'en'] as const) {
       await expect(details.locator('dl')).toBeVisible()
       await expect(details.getByRole('spinbutton')).toHaveCount(0)
       await expect(details.locator('input[type=password]')).toHaveCount(0)
-      await expect(details.locator('.plugin-readme')).not.toHaveAttribute('open')
+      await expect(details.locator('.plugin-readme-trigger')).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      )
     }
-    await leetcodeDetails.locator('.plugin-readme summary').click()
+    await leetcodeDetails.locator('.plugin-readme-trigger').click()
     await expect(leetcodeDetails.locator('.plugin-readme')).toContainText('LEETCODE_SESSION')
     await expect(leetcodeDetails.locator('input[type=password]')).toHaveCount(0)
-    await leetcodeDetails.locator('.plugin-readme summary').click()
+    await leetcodeDetails.locator('.plugin-readme-trigger').click()
     await fits(page, [historyDetails, leetcodeDetails])
     await page.screenshot({ path: info.outputPath('plugin-management.png') })
     await historyDetails.getByRole('button', { name: labels.configure, exact: true }).click()
+    const navigation = page.getByRole('tree', { name: /^(设置分类|Settings categories)$/ })
+    await expect(navigation).toBeVisible()
+    await expect(navigation.locator('[data-category-key="plugins"]')).toHaveCount(0)
+    const navigationBox = (await navigation.boundingBox())!
+    const contentBox = (await page.locator('.settings-panel').boundingBox())!
+    expect(navigationBox.x + navigationBox.width).toBeLessThanOrEqual(contentBox.x)
     const history = page.locator('.settings-configuration[data-plugin-id="review-history"]')
     const leetcode = page.locator('.settings-configuration[data-plugin-id="leetcode"]')
     await expect(category(page, 'study.review')).toHaveAttribute('aria-selected', 'true')
@@ -191,9 +186,13 @@ for (const language of ['zh-CN', 'en'] as const) {
       })
     }
     await leetcode.getByRole('button', { name: /^(插件说明|Plugin documentation)$/ }).click()
-    await expect(category(page, 'plugins')).toHaveAttribute('aria-selected', 'true')
-    await expect(leetcodeDetails.locator('.plugin-readme')).toHaveAttribute('open')
-    await expect(leetcodeDetails.locator('.plugin-readme summary')).toBeFocused()
+    await expect(pluginNavigation).toHaveAttribute('aria-current', 'page')
+    await expect(navigation).toHaveCount(0)
+    await expect(leetcodeDetails.locator('.plugin-readme-trigger')).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+    await expect(leetcodeDetails.locator('.plugin-readme-trigger')).toBeFocused()
     await expect(leetcodeDetails.locator('input[type=password]')).toHaveCount(0)
     await page.reload()
     await openPluginSettings(page)
@@ -214,12 +213,18 @@ for (const language of ['zh-CN', 'en'] as const) {
       style: captureStyle,
     })
     await openPluginManager(page)
-    await historyDetails.getByRole('switch', { name: labels.enableHistory, exact: true }).uncheck()
+    await historyDetails.getByRole('switch', { name: labels.enableHistory, exact: true }).click()
+    await expect(
+      historyDetails.getByRole('switch', { name: labels.enableHistory, exact: true }),
+    ).not.toBeChecked()
     await openSettings(page)
     await expect(history).toHaveCount(0)
     await expect(category(page, 'study.review')).toHaveCount(0)
     await openPluginManager(page)
-    await historyDetails.getByRole('switch', { name: labels.enableHistory, exact: true }).check()
+    await historyDetails.getByRole('switch', { name: labels.enableHistory, exact: true }).click()
+    await expect(
+      historyDetails.getByRole('switch', { name: labels.enableHistory, exact: true }),
+    ).toBeChecked()
     await openPluginSettings(page)
     await expect(length).toHaveValue('7')
     await expect(

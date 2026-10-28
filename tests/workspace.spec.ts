@@ -1,3 +1,4 @@
+import { selectUiValue } from './fixtures/ui-flow'
 import { setInterfaceLanguage } from './fixtures/settings-flow'
 import { expect, test } from './fixtures/empty-workspace'
 import type { Page } from '@playwright/test'
@@ -137,7 +138,7 @@ test('reverse cards share note content, preserve independent progress and suppor
 }) => {
   await createCard(page)
   await page.getByRole('button', { name: '编辑卡片 What is active recall?', exact: true }).click()
-  await page.getByLabel('笔记类型').selectOption('reversed')
+  await selectUiValue(page.getByLabel('笔记类型'), 'reversed')
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   await expect(page.locator('tbody tr')).toHaveCount(2)
   await expect(page.locator('tbody .tag').filter({ hasText: '正面 → 背面' })).toBeVisible()
@@ -170,7 +171,7 @@ test('reverse cards share note content, preserve independent progress and suppor
 test('cloze generation and daily new-card quotas work together', async ({ page }) => {
   await createCard(page)
   await page.getByRole('button', { name: '编辑卡片 What is active recall?', exact: true }).click()
-  await page.getByLabel('笔记类型').selectOption('cloze')
+  await selectUiValue(page.getByLabel('笔记类型'), 'cloze')
   await page
     .getByLabel('正面 · 问题')
     .fill('法国的首都是 {{c1::巴黎::城市}}，日本的首都是 {{c2::东京}}。')
@@ -342,8 +343,8 @@ test('continuous authoring, selected cloze, Markdown, formulas and image paste p
   await expect(front).toHaveValue('Capital: {{c1::Paris}}')
   await page.getByRole('button', { name: '保存并继续', exact: true }).click()
   await expect(front).toHaveValue('')
-  await expect(page.getByLabel('笔记类型')).toHaveValue('cloze')
-  await page.getByLabel('笔记类型').selectOption('basic')
+  await expect(page.getByLabel('笔记类型')).toHaveAttribute('value', 'cloze')
+  await selectUiValue(page.getByLabel('笔记类型'), 'basic')
   await front.fill('**Formula** $x^2$')
   await page.getByLabel('背面 · 答案').fill('$$\\frac{1}{2}$$')
   const bytes = [...(await readFile('public/icon-192.png'))]
@@ -386,7 +387,7 @@ test('saved filters persist and practice mode never changes durable progress', a
   await page.reload()
   await page.getByRole('button', { name: '全部卡片' }).click()
   await page.getByText('高级搜索、常用筛选与专项练习', { exact: true }).click()
-  await page.getByLabel('常用筛选', { exact: true }).selectOption({ label: 'New study cards' })
+  await selectUiValue(page.getByLabel('常用筛选', { exact: true }), { label: 'New study cards' })
   await expect(page.getByRole('textbox', { name: '搜索卡片' })).toHaveValue(
     'tag:study is:new lapses:0',
   )
@@ -401,7 +402,23 @@ test('saved filters persist and practice mode never changes durable progress', a
   expect(await readWorkspace(page)).toEqual(original)
   await page.getByRole('button', { name: '结束专项练习' }).click()
   await page.getByText('高级搜索、常用筛选与专项练习', { exact: true }).click()
-  await page.getByLabel('练习模式').selectOption({ label: '评分并更新进度' })
+  await page.getByLabel('练习模式').click()
+  // Opening a menu while its form expands must keep every option in view after
+  // layout settles, including when the select has already locked body scrolling.
+  await page.locator('.search-options [data-slot=content]').evaluate(async (element) => {
+    await Promise.all(
+      element.getAnimations().map((animation) => animation.finished.catch(() => {})),
+    )
+  })
+  const gradedPractice = page.getByRole('option', { name: '评分并更新进度', exact: true })
+  await page.getByRole('listbox').evaluate(async (element) => {
+    await Promise.all(
+      element.getAnimations().map((animation) => animation.finished.catch(() => {})),
+    )
+  })
+  await expect(gradedPractice).toBeInViewport({ ratio: 1 })
+  await page.screenshot({ path: test.info().outputPath('practice-mode-menu.png') })
+  await gradedPractice.click()
   await page.getByRole('button', { name: '开始专项练习' }).click()
   await page.getByRole('button', { name: '显示答案' }).click()
   await page.getByRole('button', { name: /简单/ }).click()
@@ -415,7 +432,7 @@ test('saved filters persist and practice mode never changes durable progress', a
 test('automatic sibling burying and deck settings survive reload and undo', async ({ page }) => {
   await createCard(page)
   await page.getByRole('button', { name: '编辑卡片 What is active recall?', exact: true }).click()
-  await page.getByLabel('笔记类型').selectOption('reversed')
+  await selectUiValue(page.getByLabel('笔记类型'), 'reversed')
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   await page.getByRole('button', { name: '编辑当前卡组' }).click()
   await page.getByLabel('目标记忆保留率（%）', { exact: true }).fill('95')

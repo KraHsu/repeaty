@@ -218,6 +218,9 @@ test('the same window controls remain accessible inside modal and nested dialogs
   await expect(modal).toBeVisible()
   await page.evaluate(() => {
     const nested = document.createElement('dialog')
+    // Tailwind resets the UA's dialog margin/padding. An external native
+    // dialog owns its layout and must leave space for the shared titlebar.
+    nested.style.cssText = 'margin: auto; padding: 48px 24px 24px'
     nested.setAttribute('aria-label', 'Nested window controls check')
     const close = document.createElement('button')
     close.type = 'button'

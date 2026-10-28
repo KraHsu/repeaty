@@ -1,3 +1,4 @@
+import { selectUiValue } from './ui-flow'
 import { setResponsiveViewport } from './viewport-flow'
 import { setInterfaceLanguage } from './settings-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
@@ -46,7 +47,7 @@ export async function adaptiveDialog(page: Page) {
   await expect(page.locator('.source-text')).toHaveAttribute('aria-busy', 'false')
   await page.getByRole('button', { name: '读过，安排下次', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '读过，安排下次', exact: true })
-  await dialog.getByLabel('间隔方式', { exact: true }).selectOption('adaptive')
+  await selectUiValue(dialog.getByLabel('间隔方式', { exact: true }), 'adaptive')
   return dialog
 }
 export async function adaptiveFlow(page: Page, read: () => Promise<Library>, info: TestInfo) {
@@ -75,7 +76,7 @@ export async function adaptiveFlow(page: Page, read: () => Promise<Library>, inf
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await queueView(page, '稍后阅读')
   dialog = await adaptiveDialog(page)
-  await expect(dialog.getByLabel('间隔方式')).toHaveValue('adaptive')
+  await expect(dialog.getByLabel('间隔方式')).toHaveAttribute('value', 'adaptive')
   await dialog.getByLabel('需要再读', { exact: true }).check()
   await expect(dialog).toContainText('本次间隔：2天')
   await dialog.getByRole('button', { name: '保存阅读安排', exact: true }).click()
@@ -95,7 +96,7 @@ export async function adaptiveFlow(page: Page, read: () => Promise<Library>, inf
   await page.getByRole('button', { name: 'Sources', exact: true }).click()
   await page.getByRole('button', { name: /^Read later 1$/ }).click()
   await page.getByRole('button', { name: 'Read and schedule next', exact: true }).click()
-  await page.getByLabel('Interval method', { exact: true }).selectOption('adaptive')
+  await selectUiValue(page.getByLabel('Interval method', { exact: true }), 'adaptive')
   await setResponsiveViewport(page, 390, 844)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: info.outputPath('adaptive-reading-en.png'), fullPage: true })

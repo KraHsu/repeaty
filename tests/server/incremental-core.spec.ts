@@ -1,3 +1,4 @@
+import { selectUiValue } from '../fixtures/ui-flow'
 import { test, headers, expect } from './fixture'
 import {
   batchReadingFlow,
@@ -57,12 +58,12 @@ test('a stale batch or undo cannot replace an arrangement committed by another a
   await page.getByRole('button', { name: '选择本页', exact: true }).click()
   await page.getByRole('button', { name: '批量安排', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '批量安排', exact: true })
-  await dialog.getByLabel('批量操作', { exact: true }).selectOption('archive')
+  await selectUiValue(dialog.getByLabel('批量操作', { exact: true }), 'archive')
   const other = await context.newPage()
   await other.goto('./')
   await other.getByRole('button', { name: '学习材料', exact: true }).click()
-  await other.getByLabel('阅读优先级', { exact: true }).selectOption('high')
-  await expect(other.getByLabel('阅读优先级', { exact: true })).toHaveValue('high')
+  await selectUiValue(other.getByLabel('阅读优先级', { exact: true }), 'high')
+  await expect(other.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'high')
   const read = async () => (await (await request.get('api/library', { headers })).json()).library
   const concurrent = await read()
   await dialog.getByRole('button', { name: '确认批量安排', exact: true }).click()
@@ -71,12 +72,12 @@ test('a stale batch or undo cannot replace an arrangement committed by another a
   await dialog.getByRole('button', { name: '取消', exact: true }).click()
   await page.reload()
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
-  await page.getByLabel('阅读优先级', { exact: true }).selectOption('low')
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveValue('low')
+  await selectUiValue(page.getByLabel('阅读优先级', { exact: true }), 'low')
+  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'low')
   await other.reload()
   await other.getByRole('button', { name: '学习材料', exact: true }).click()
-  await other.getByLabel('阅读优先级', { exact: true }).selectOption('normal')
-  await expect(other.getByLabel('阅读优先级', { exact: true })).toHaveValue('normal')
+  await selectUiValue(other.getByLabel('阅读优先级', { exact: true }), 'normal')
+  await expect(other.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'normal')
   const latest = await read()
   await page.getByRole('button', { name: '撤销阅读安排', exact: true }).click()
   await expect(page.locator('.notification.error').last()).toBeVisible()
