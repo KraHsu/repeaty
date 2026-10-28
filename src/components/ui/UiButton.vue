@@ -43,7 +43,10 @@ const appearance = computed(() =>
     :square="icon"
     :loading="busy"
     class="ui-button"
-    :class="{ 'flex-col items-stretch text-left': variant === 'rating', 'min-w-11': icon }"
+    :class="{
+      'flex-col items-stretch text-left': variant === 'rating',
+      'min-w-11 justify-center': icon,
+    }"
     :data-variant="variant"
     :data-tone="tone"
     :disabled="disabled || busy"

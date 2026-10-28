@@ -176,12 +176,8 @@ watch(
 .settings-categories {
   position: sticky;
   top: calc(var(--desktop-titlebar-height, 0px) + 1rem);
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
   max-height: calc(100dvh - var(--desktop-titlebar-height, 0px) - 2rem);
   overflow: auto;
-  padding: 0.125rem;
   min-width: 0;
 }
 .settings-panel {

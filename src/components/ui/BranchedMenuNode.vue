@@ -75,7 +75,7 @@ function updateOpen(next: boolean) {
         class="branched-menu__toggle"
         color="neutral"
         variant="ghost"
-        icon="i-lucide-chevron-right"
+        :icon="open ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
         :aria-label="t(open ? '收起 {name}' : '展开 {name}', { name: node.title })"
         :aria-expanded="open"
         :aria-controls="groupId"

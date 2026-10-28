@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { UiInput, UiSelect, UiButton, UiCheckbox, UiCollapsible } from './ui'
+import { UiInput, UiSelect, UiButton, UiIconButton, UiCheckbox, UiCollapsible } from './ui'
+import USeparator from '@nuxt/ui/components/Separator.vue'
 import { t, locale } from '../i18n'
 
 import { computed, ref, shallowRef, watch } from 'vue'
-import { History, Layers, Pencil, Plus, Repeat2, Search, Trash2 } from '@lucide/vue'
+import { History, Layers, Pause, Pencil, Play, Plus, Repeat2, Search, Trash2 } from '@lucide/vue'
 import {
   cardViews,
   filterStates,
@@ -196,6 +197,7 @@ async function editSelected() {
         :placeholder="t('关键词、tag:英语、is:due、lapses:>=3…')"
     /></label>
     <UiSelect
+      class="library-filter w-auto min-w-0"
       :items="[
         { label: t('全部卡组'), value: '' },
         ...library.decks.map((deck) => ({ label: deck.name, value: deck.id })),
@@ -204,6 +206,7 @@ async function editSelected() {
       :aria-label="t('筛选卡组')"
     ></UiSelect>
     <UiSelect
+      class="library-filter w-auto min-w-0"
       :items="[
         { label: t('全部状态'), value: 'all' },
         ...filterStates
@@ -213,7 +216,12 @@ async function editSelected() {
       v-model="state"
       :aria-label="t('筛选状态')"
     ></UiSelect>
-    <UiButton variant="secondary" type="submit" @click="emit('review')">
+    <UiButton
+      variant="secondary"
+      type="button"
+      class="library-review shrink-0 whitespace-nowrap"
+      @click="emit('review')"
+    >
       <Repeat2 :size="16" />{{ t('复习') }}
     </UiButton>
   </div>
@@ -427,15 +435,18 @@ async function editSelected() {
             />
           </td>
           <td>
-            <UiButton
-              variant="secondary"
-              type="submit"
-              class="card-row-title"
-              @click="emit('edit', card)"
-            >
-              {{ card.front }}
-            </UiButton>
-            <p>{{ card.back }}</p>
+            <div class="card-row-content">
+              <UiButton
+                variant="ghost"
+                type="button"
+                class="card-row-title line-clamp-2 w-full whitespace-normal px-0 text-left"
+                @click="emit('edit', card)"
+              >
+                {{ card.front }}
+              </UiButton>
+              <USeparator />
+              <p class="card-row-answer">{{ card.back }}</p>
+            </div>
             <div class="tag-list">
               <span class="tag">
                 {{
@@ -476,40 +487,35 @@ async function editSelected() {
           </td>
           <td>
             <div class="row-actions">
-              <UiButton
-                v-bind="{ variant: 'ghost', icon: true }"
-                type="submit"
+              <UiIconButton
                 v-if="historyCardIds.has(card.id)"
-                :aria-label="t('查看 {title} 的练习历史', { title: card.front })"
+                :label="t('查看 {title} 的练习历史', { title: card.front })"
                 @click="emit('history', card)"
               >
                 <History :size="16" />
-              </UiButton>
-              <UiButton
-                v-bind="{ variant: 'ghost', icon: true }"
-                type="submit"
-                :aria-label="t('编辑卡片 {p0}', { p0: card.front })"
+              </UiIconButton>
+              <UiIconButton
+                :label="t('编辑卡片 {p0}', { p0: card.front })"
                 @click="emit('edit', card)"
               >
-                <Pencil :size="16" /></UiButton
-              ><UiButton
-                v-bind="{ variant: 'ghost', icon: true }"
-                type="submit"
+                <Pencil :size="16" />
+              </UiIconButton>
+              <UiIconButton
                 class="danger-text"
-                :aria-label="t('删除卡片 {p0}', { p0: card.front })"
+                :label="t('删除卡片 {p0}', { p0: card.front })"
                 @click="emit('delete', [card.noteId])"
               >
                 <Trash2 :size="16" />
-              </UiButton>
+              </UiIconButton>
+              <UiIconButton
+                :label="card.suspended ? t('恢复') : t('暂停')"
+                :disabled="busy"
+                @click="change(card.suspended ? 'resume' : 'suspend', [card.id])"
+              >
+                <Play v-if="card.suspended" :size="16" />
+                <Pause v-else :size="16" />
+              </UiIconButton>
             </div>
-            <UiButton
-              variant="ghost"
-              type="submit"
-              :disabled="busy"
-              @click="change(card.suspended ? 'resume' : 'suspend', [card.id])"
-            >
-              {{ card.suspended ? t('恢复') : t('暂停') }}
-            </UiButton>
           </td>
         </tr>
       </tbody>

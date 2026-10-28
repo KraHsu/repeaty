@@ -348,12 +348,6 @@ provide(branchedMenuKey, {
   border: 0;
   box-shadow: none;
 }
-.branched-menu__toggle > span {
-  transition: transform var(--bm-fold) var(--bm-ease-out);
-}
-.branched-menu__section[data-open] > .branched-menu__row > .branched-menu__toggle > span {
-  transform: rotate(90deg);
-}
 .branched-menu button:focus-visible {
   outline: 2px solid var(--ui-control-focus);
   outline-offset: 2px;
