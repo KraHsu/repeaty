@@ -51,6 +51,7 @@ it('requires renewed trust when executable code, styles or declared capabilities
   for (const changed of [
     { ...original, main: original.main + '\n// new code' },
     { ...original, styles: '.example { color: blue }' },
+    { ...original, readme: '# Documentation\nRead before enabling.' },
     {
       ...original,
       manifest: { ...original.manifest, permissions: { origins: ['https://other.example'] } },
@@ -103,8 +104,26 @@ it('bounds executable and stylesheet UTF-8 bytes consistently with the native pa
     { main: '界'.repeat(Math.floor((4 * 1024 * 1024) / 3) + 1) },
     { styles: 'x'.repeat(1024 * 1024 + 1) },
     { styles: '界'.repeat(Math.floor((1024 * 1024) / 3) + 1) },
+    { readme: 'x'.repeat(256 * 1024 + 1) },
+    { readme: '界'.repeat(Math.floor((256 * 1024) / 3) + 1) },
   ])
     expect(bundleSchema.safeParse({ ...original, ...changed }).success).toBe(false)
+})
+
+it('preserves optional README bytes and binds documentation changes to exact package trust', async () => {
+  const original = bundle()
+  const readme = '# 使用说明\n\n**保留原文** 😀\n<script>not executable</script>\n'
+  const documented = { ...original, readme }
+  expect(bundleSchema.parse(documented).readme).toBe(readme)
+  expect(
+    await readPluginFile(new File([JSON.stringify(documented)], 'with-readme.repeaty-plugin')),
+  ).toEqual(documented)
+  expect(await packageHash(documented)).not.toBe(await packageHash(original))
+  expect(await packageHash({ ...documented, readme: readme + '\nChanged' })).not.toBe(
+    await packageHash(documented),
+  )
+  expect(await packageHash({ ...original, readme: '' })).not.toBe(await packageHash(original))
+  expect(bundleSchema.safeParse({ ...original, readme: 123 }).success).toBe(false)
 })
 
 it('only accepts explicit HTTPS origins instead of URLs with paths or credentials', () => {
@@ -174,5 +193,8 @@ it('matches the native package hash golden fixture for Unicode and absent styles
   })
   expect(await packageHash(value)).toBe(
     'bfe649aa1c524811ec02555538e2b9eba94bd5013b53b7bcd051558a08e1a59c',
+  )
+  expect(await packageHash({ ...value, readme: '# 使用说明 😀\n\n保持原字节。\n' })).toBe(
+    'f9183d1ef163549c51c471907707bb2a3b43105465c75726de0b4d55c889ec15',
   )
 })

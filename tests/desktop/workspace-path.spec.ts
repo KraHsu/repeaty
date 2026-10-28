@@ -45,6 +45,6 @@ test('Windows extended workspace paths have friendly labels while reopening reta
     ),
   ).toBe(original)
 
-  await openSettings(page)
+  await openSettings(page, 'workspace')
   await expect(page.locator('.workspace-setting-path')).toHaveText(display)
 })

@@ -1,21 +1,11 @@
-import type { Component } from 'vue'
-import type { SettingFieldProps, SettingValue } from '../components/ui/types'
+import type { SettingValue } from '../components/ui/types'
+import type { SettingsField, SettingsContribution } from '../settings/types'
+import { validateSettingsCategoryPath } from '../settings/categories'
+export type { SettingsCategory, SettingsField, SettingsContribution } from '../settings/types'
 
-/** The host renders each field through its shared SettingField component. */
-export interface PluginSettingField extends SettingFieldProps {
-  key: string
-  onChange: (value: SettingValue) => void | Promise<void>
-}
-
-/** Getters may read plugin-owned reactive state; the host does not copy preference values. */
-export interface PluginSettingsContribution {
-  id: string
-  title: string
-  description?: string
-  fields?: readonly PluginSettingField[]
-  component?: Component
-  error?: string
-}
+/** Compatibility names for the shared application/plugin contribution model. */
+export type PluginSettingField = SettingsField
+export type PluginSettingsContribution = SettingsContribution
 
 export type RegisterPluginSettings = (contribution: PluginSettingsContribution) => () => void
 
@@ -47,6 +37,7 @@ export function validateSettingsContribution(contribution: PluginSettingsContrib
     !contribution.title.trim()
   )
     throw new Error('插件设置定义无效。')
+  if (contribution.category !== undefined) validateSettingsCategoryPath(contribution.category)
   if ((contribution.fields !== undefined) === (contribution.component !== undefined))
     throw new Error('插件设置必须提供字段或自定义视图。')
   if (

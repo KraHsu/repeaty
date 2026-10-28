@@ -78,11 +78,15 @@ my-plugin/
 
 `flashcard` 和 `unavailable` 是宿主保留标识。安装包中的定义必须与清单的标识、种类及数据版本一致。
 
-构建输出为 `dist/manifest.json`、`dist/main.js`、`dist/styles.css` 和 `<id>.repeaty-plugin`。后者是包含 `manifest`、`main`、可选 `styles` 的 JSON 包，不是可直接执行的系统程序。当前单包读取上限为 8 MiB，入口代码上限 4 MiB，样式上限 1 MiB。
+构建输出为 `dist/manifest.json`、`dist/main.js`、`dist/styles.css` 和 `<id>.repeaty-plugin`。后者是包含 `manifest`、`main`、可选 `styles` / `readme` 的 JSON 包，不是可直接执行的系统程序。当前单包读取上限为 8 MiB，入口代码上限 4 MiB，样式上限 1 MiB。
+
+插件项目根目录的 `README.md` 会作为 UTF-8 文本打入 `readme`，同时输出到 `dist/README.md`；上限为256KiB，监视构建也会响应此文件的修改或移除。已有包可以不带说明。安装到学习库后，原始说明保存为插件目录中的 `README.md`，可在插件管理页的「介绍与使用」中阅读；配置页的「插件说明」操作会定位并展开该区域。
+
+README用于功能简介、使用步骤、配置教程和数据说明，具体设置控件留在统一设置页。说明通过宿主现有的安全 Markdown 渲染，未知或关闭插件也可阅读，不会因此执行插件代码。说明的存在与完整内容参与包摘要，新增、修改或移除说明均须重新确认信任；无说明旧包的摘要保持不变。
 
 ## 独立开发与构建
 
-公开 SDK 位于 [packages/plugin-api](../packages/plugin-api)。它提供类型和独立构建命令 `repeaty-plugin`，运行时实现由 Repeaty 提供。插件作者只需要 SDK、Vue 和自己使用的依赖，不需要复制或导入主程序源码。当前 SDK 与官方预构建包为1.4.0；这是 API v1的加法更新，官方插件的 `apiVersion` / `dataVersion` 仍为1。已有学习库需在「设置 → 插件」主动更新官方插件代码。
+公开 SDK 位于 [packages/plugin-api](../packages/plugin-api)。它提供类型和独立构建命令 `repeaty-plugin`，运行时实现由 Repeaty 提供。插件作者只需要 SDK、Vue 和自己使用的依赖，不需要复制或导入主程序源码。当前 SDK 与官方预构建包为1.5.0；这是 API v1的加法更新，官方插件的 `apiVersion` / `dataVersion` 仍为1。已有学习库需在「设置 → 插件」主动更新官方插件代码。
 
 SDK 当前是本地 workspace 包，尚未发布到 npm。可以在 Repeaty 仓库根目录将它打包，然后在另一个独立插件仓库中安装生成的 tarball：
 
@@ -92,7 +96,7 @@ npm pack --workspace @repeaty/plugin-api
 
 # 独立插件仓库；将路径替换为实际生成的 SDK 包
 npm install vue
-npm install --save-dev /path/to/repeaty-plugin-api-1.4.0.tgz typescript vue-tsc
+npm install --save-dev /path/to/repeaty-plugin-api-1.5.0.tgz typescript vue-tsc
 ```
 
 类型从已安装的 SDK 包解析，不设置指向 Repeaty 仓库的 TypeScript `paths`，也不导入应用源码。插件的 package.json 可配置：
@@ -177,17 +181,21 @@ const count = computed(
 
 ## 设置、存储与清理
 
-「设置 → 插件」只管理安装、更新、启用、卸载、权限和包信息；「插件设置」集中展示已启用插件的配置。插件详情中的「配置插件」操作可直接定位相应分组。
+「设置 → 插件」只管理安装、更新、启用、卸载、权限、包信息和使用说明。已启用插件的配置与软件配置一起进入左侧分类树：答题历史位于「学习 → 复习」，LeetCode 位于「连接 → LeetCode」。插件详情中的「配置插件」可直接定位相应分类和分组；配置分组的「插件说明」可返回详情。
 
 在插件入口求值或激活工厂中调用 `registerSettings(contribution)`，返回函数可主动注销。每项贡献包含插件内唯一的 `id`、`title`、可选 `description` / `error`，以及二选一的 `fields` 或 `component`；`fields` 至少包含一项，每个字段的 `key` 唯一。
 
 ```ts
-import { registerSettings, type PluginSettingsContribution } from '@repeaty/plugin-api'
+import { registerSettings, type SettingsContribution } from '@repeaty/plugin-api'
 import { preferences, setPreference } from './preferences'
 
-const configuration: PluginSettingsContribution = {
+const configuration: SettingsContribution = {
   id: 'display',
   title: 'Review history',
+  category: [
+    { id: 'study', title: 'Study' },
+    { id: 'review', title: 'Review' },
+  ],
   fields: [
     {
       key: 'historyLength',
@@ -209,13 +217,15 @@ registerSettings(configuration)
 
 普通字段复用 `SettingFieldProps`，额外声明唯一 `key` 和 `onChange`；类型、范围、选项、标签、错误与提交时机由宿主控件统一处理。标题、说明和值可使用 getter 跟随语言或插件状态更新。插件仍负责偏好读取、校验与保存，宿主不会将声明写成另一份设置文件。
 
-凭据连接等复杂配置可注册 `component`，用 `SettingSection`、`SettingField` 和共享状态组件组织；组件只在配置页挂载。分区支持 `title`、`description`、`level`（3或4）和 `#actions`。插件名称与总说明由宿主展示一次，字段帮助贴近控件；状态使用 `UiStatus`，错误或操作结果使用 `UiNotice`，长帮助集中到 `details`。
+`category` 是最多4层的路径，每段包含小写字母开头的字母、数字或连字符 `id`，以及非空的 `title`；同一路径内不能重复标识。宿主按完整标识路径合并软件和插件配置，例如 `study.review`，常规分类名称由宿主统一。选择父分类会显示其自身和所有子类内容。缺省归入 `general`，不为插件另建一套分类。SDK 导出共用 `SettingsCategory`、`SettingsContribution`、`SettingsField`，旧 `PluginSettingsContribution`、`PluginSettingField` 仍作为兼容别名。
+
+凭据连接等复杂配置可注册 `component`，用 `SettingSection`、`SettingField` 和共享状态组件组织；组件只在相应设置分类挂载。分区支持 `title`、`description`、`level`（3或4）和 `#actions`。插件名称与总说明由宿主展示一次，字段帮助贴近控件；状态使用 `UiStatus`，错误或操作结果使用 `UiNotice`。长教程写入插件 README，在管理详情中查看。
 
 注册随插件实例撤销：加载失败不发布新入口，更新失败保留原入口；关闭、卸载和切换学习库不会让旧注册进入新作用域，也不会删除保存的偏好。旧包的 `settings` 组件由宿主适配为配置贡献，入口同样只出现在集中设置中；新插件使用注册接口。
 
 `UiStatus`提供中性、成功、警告、危险和忙碌外观，不自带实况播报；`UiNotice`支持信息、成功、警告和错误，可设置标题及操作插槽，默认语义分别为 `note`、`status`、`note` 和 `alert`，也可覆盖 `role`。字体和布局约定见[插件设置的信息结构](DESIGN_SYSTEM.md#插件设置的信息结构)。
 
-复杂编辑器可在原生 `textarea`上使用 `v-ui-control="{ monospace: true }"`，保留原生 `ref`、选区、IME和事件；动作使用 `UiButton`或 `vUiButton`，评分使用 `rating`变体及四档 `tone`。共享控件只负责界面，插件继续负责草稿、校验、提交与资源回收。SDK1.4.0中的接口由配套宿主提供，使用新接口的插件需更新宿主；已有插件不会被自动更新。
+复杂编辑器可在原生 `textarea`上使用 `v-ui-control="{ monospace: true }"`，保留原生 `ref`、选区、IME和事件；动作使用 `UiButton`或 `vUiButton`，评分使用 `rating`变体及四档 `tone`。共享控件只负责界面，插件继续负责草稿、校验、提交与资源回收。SDK1.5.0中的接口由配套宿主提供，使用新接口的插件需更新宿主；已有插件不会被自动更新。
 
 - `readSetting()` / `writeSetting()` 管理当前插件的设置，宿主自动增加插件命名空间。可通过写入失败回调显示未保存状态。
 - `pluginData.get()` / `set()` 按插件和工作目录作用域存储草稿等 JSON 数据；不会混用其他学习库的数据。

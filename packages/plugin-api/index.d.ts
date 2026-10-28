@@ -218,21 +218,29 @@ export interface SettingFieldProps {
   commit?: 'input' | 'change'
   layout?: 'row' | 'stack'
 }
-/** Values and labels may be reactive getters owned by the plugin. */
-export interface PluginSettingField extends SettingFieldProps {
+export interface SettingsCategory {
+  id: string
+  title: string
+}
+/** Values and labels may be reactive getters owned by the contributor. */
+export interface SettingsField extends SettingFieldProps {
   key: string
   onChange: (value: SettingValue) => void | Promise<void>
 }
-export interface PluginSettingsContribution {
+export interface SettingsContribution {
   id: string
   title: string
   description?: string
-  fields?: readonly PluginSettingField[]
+  category?: readonly SettingsCategory[]
+  fields?: readonly SettingsField[]
   component?: Component
   error?: string
 }
+/** Compatibility names retained for plugins built against SDK 1.4. */
+export type PluginSettingField = SettingsField
+export type PluginSettingsContribution = SettingsContribution
 /** Registers with the active plugin instance; unload and scope changes remove the contribution. */
-export declare function registerSettings(contribution: PluginSettingsContribution): () => void
+export declare function registerSettings(contribution: SettingsContribution): () => void
 export declare const SettingField: DefineComponent<
   SettingFieldProps & { 'onUpdate:modelValue'?: (value: SettingValue) => void }
 >

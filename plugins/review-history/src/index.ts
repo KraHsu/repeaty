@@ -11,11 +11,25 @@ export default function activate(): ReviewPanelPlugin {
   initializePreferences()
   registerSettings({
     id: 'display',
+    category: [
+      {
+        id: 'study',
+        get title() {
+          return t('学习')
+        },
+      },
+      {
+        id: 'review',
+        get title() {
+          return t('复习')
+        },
+      },
+    ],
     get title() {
       return t('答题历史')
     },
     get description() {
-      return t('复习时查看当前卡片的评分记录。')
+      return t('调整历史记录的显示方式。')
     },
     get error() {
       return preferenceError.value ? t(preferenceError.value) : undefined

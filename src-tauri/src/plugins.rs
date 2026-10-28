@@ -18,6 +18,7 @@ use std::{
 pub type Result<T> = std::result::Result<T, String>;
 const CODE_LIMIT: usize = 4 * 1024 * 1024;
 const STYLE_LIMIT: usize = 1024 * 1024;
+const README_LIMIT: usize = 256 * 1024;
 const FILE_LIMIT: usize = 2 * 1024 * 1024;
 fn invalid() -> String {
     "invalid-plugin".into()
@@ -236,6 +237,9 @@ impl Package {
             || raw
                 .get("styles")
                 .is_some_and(|v| !v.is_string() || v.as_str().unwrap_or("").len() > STYLE_LIMIT)
+            || raw
+                .get("readme")
+                .is_some_and(|v| !v.is_string() || v.as_str().unwrap_or("").len() > README_LIMIT)
             || manifest.permissions.origins.len() > 32
         {
             return Err(invalid());
@@ -249,7 +253,12 @@ impl Package {
         Ok(Self { raw, manifest })
     }
     fn hash(&self) -> String {
-        repeaty_workspace::files::digest(canonical(&json!({"manifest":self.raw["manifest"],"main":self.raw["main"],"styles":self.raw.get("styles").and_then(Value::as_str).unwrap_or("")})).as_bytes())
+        let mut content = json!({"manifest":self.raw["manifest"],"main":self.raw["main"],"styles":self.raw.get("styles").and_then(Value::as_str).unwrap_or("")});
+        // Preserve existing trust for packages without documentation; presence and bytes are trusted.
+        if let Some(readme) = self.raw.get("readme") {
+            content["readme"] = readme.clone();
+        }
+        repeaty_workspace::files::digest(canonical(&content).as_bytes())
     }
 }
 fn package(root: &Dir, id: &str) -> Result<Package> {
@@ -258,9 +267,13 @@ fn package(root: &Dir, id: &str) -> Result<Package> {
     let manifest = read_text(&dir, "manifest.json", 64 * 1024)?.ok_or_else(invalid)?;
     let main = read_text(&dir, "main.js", CODE_LIMIT)?.ok_or_else(invalid)?;
     let styles = read_text(&dir, "styles.css", STYLE_LIMIT)?;
+    let readme = read_text(&dir, "README.md", README_LIMIT)?;
     let mut raw = json!({"manifest":serde_json::from_str::<Value>(&manifest).map_err(|_|invalid())?,"main":main});
     if let Some(styles) = styles {
         raw["styles"] = Value::String(styles);
+    }
+    if let Some(readme) = readme {
+        raw["readme"] = Value::String(readme);
     }
     Package::parse(raw, id)
 }
@@ -304,6 +317,9 @@ fn install(root: &Dir, id: &str, payload: Value) -> Result<Value> {
         )?;
         if let Some(styles) = value.raw.get("styles").and_then(Value::as_str) {
             write_new(&staging, "styles.css", styles)?;
+        }
+        if let Some(readme) = value.raw.get("readme").and_then(Value::as_str) {
+            write_new(&staging, "README.md", readme)?;
         }
         drop(staging);
         let existing = directory(&packages, id, false)?;

@@ -45,6 +45,7 @@ export async function installPluginHostFixture(
     for (const path of [directory, join(directory, 'manifest.json'), join(directory, 'main.js')])
       if ((await lstat(path)).isSymbolicLink()) throw new Error('invalid-plugin')
     let styles: string | undefined
+    let readme: string | undefined
     try {
       const path = join(directory, 'styles.css')
       if ((await lstat(path)).isSymbolicLink()) throw new Error('invalid-plugin')
@@ -52,10 +53,18 @@ export async function installPluginHostFixture(
     } catch (issue) {
       if ((issue as NodeJS.ErrnoException).code !== 'ENOENT') throw issue
     }
+    try {
+      const path = join(directory, 'README.md')
+      if ((await lstat(path)).isSymbolicLink()) throw new Error('invalid-plugin')
+      readme = await readFile(path, 'utf8')
+    } catch (issue) {
+      if ((issue as NodeJS.ErrnoException).code !== 'ENOENT') throw issue
+    }
     return bundleSchema.parse({
       manifest: JSON.parse(await readFile(join(directory, 'manifest.json'), 'utf8')),
       main: await readFile(join(directory, 'main.js'), 'utf8'),
       ...(styles === undefined ? {} : { styles }),
+      ...(readme === undefined ? {} : { readme }),
     })
   }
   await context.exposeBinding(
@@ -104,6 +113,8 @@ export async function installPluginHostFixture(
         await writeFile(join(target, 'main.js'), value.main)
         if (value.styles === undefined) await rm(join(target, 'styles.css'), { force: true })
         else await writeFile(join(target, 'styles.css'), value.styles)
+        if (value.readme === undefined) await rm(join(target, 'README.md'), { force: true })
+        else await writeFile(join(target, 'README.md'), value.readme)
         return null
       }
       if (args.operation === 'remove') {

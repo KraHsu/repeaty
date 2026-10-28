@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 import { fixture } from '../../src/core/test-fixtures'
 import type { PluginBundle } from '../../src/plugins/package'
-import { openPluginManager, openPluginSettings } from '../fixtures/settings-flow'
+import { openPluginManager, openPluginSettings, openSettings } from '../fixtures/settings-flow'
 
 function standaloneBundle(version = '1.0.0', id = 'external-check'): PluginBundle {
   const color = version === '1.0.0' ? 'rgb(17, 34, 51)' : 'rgb(51, 68, 85)'
@@ -113,7 +113,7 @@ test('installs independent code, reloads versions and retains records and privat
   await openPluginManager(page)
   await install(page, standaloneBundle())
   await expect(panel(page).getByTestId('external-version')).toHaveCount(0)
-  await openPluginSettings(page)
+  await openPluginSettings(page, 'external-check')
   await expect(configuration(page).getByTestId('external-version')).toHaveText('1.0.0')
   await expect(configuration(page).locator('.external-check-view')).toHaveCSS(
     'color',
@@ -133,7 +133,7 @@ test('installs independent code, reloads versions and retains records and privat
     .toBe('saved-1.0.0')
   await openPluginManager(page)
   await panel(page).getByRole('switch', { name: '启用 External Check' }).click()
-  await openPluginSettings(page)
+  await openSettings(page)
   await expect(configuration(page)).toHaveCount(0)
   await expect(page.locator('style[data-repeaty-plugin="external-check"]')).toHaveCount(0)
   await expect
@@ -150,7 +150,7 @@ test('installs independent code, reloads versions and retains records and privat
     .toMatchObject({ disposed: 1, cleaned: 1 })
   await openPluginManager(page)
   await panel(page).getByRole('switch', { name: '启用 External Check' }).click()
-  await openPluginSettings(page)
+  await openPluginSettings(page, 'external-check')
   await expect(configuration(page).getByTestId('external-version')).toHaveText('1.0.0')
   await expect(configuration(page).getByTestId('external-saved')).toHaveText('saved-1.0.0')
 
@@ -166,7 +166,7 @@ test('installs independent code, reloads versions and retains records and privat
   expect(studied.reviews).toHaveLength(1)
   await openPluginManager(page)
   await install(page, standaloneBundle('2.0.0'))
-  await openPluginSettings(page)
+  await openPluginSettings(page, 'external-check')
   await expect(configuration(page).getByTestId('external-version')).toHaveText('2.0.0')
   await expect(configuration(page).locator('.external-check-view')).toHaveCSS(
     'color',
@@ -181,7 +181,7 @@ test('installs independent code, reloads versions and retains records and privat
   await expect(
     page.getByRole('alert').filter({ hasText: 'external-update-rejected' }),
   ).toBeVisible()
-  await openPluginSettings(page)
+  await openPluginSettings(page, 'external-check')
   await expect(configuration(page).getByTestId('external-version')).toHaveText('2.0.0')
   expect(JSON.parse(await readFile(join(packageDirectory, 'manifest.json'), 'utf8')).version).toBe(
     '2.0.0',
@@ -217,7 +217,7 @@ test('installs independent code, reloads versions and retains records and privat
   page.once('dialog', (dialog) => dialog.accept())
   await panel(page).getByRole('button', { name: '卸载插件', exact: true }).click()
   await expect(panel(page)).toHaveCount(0)
-  await openPluginSettings(page)
+  await openSettings(page)
   await expect(configuration(page)).toHaveCount(0)
   await expect(page.locator('style[data-repeaty-plugin="external-check"]')).toHaveCount(0)
   expect(await storedLibrary(page)).toEqual(studied)
@@ -239,14 +239,33 @@ test('discovers copied package files without executing them until their exact co
   const packageDirectory = join(directory, '.repeaty', 'plugins', 'manual-check')
   await mkdir(packageDirectory, { recursive: true })
   const copied = standaloneBundle('1.0.0', 'manual-check')
+  copied.readme =
+    '# Manual plugin documentation\n\nReadable before trusting code.\n\n<script>globalThis.__untrustedReadmeExecuted = true</script>\n<a href="javascript:globalThis.__untrustedReadmeExecuted=true" onclick="globalThis.__untrustedReadmeExecuted=true">Unsafe link</a>\n<img src="missing.png" onerror="globalThis.__untrustedReadmeExecuted=true">'
   await writeFile(join(packageDirectory, 'manifest.json'), JSON.stringify(copied.manifest))
   await writeFile(join(packageDirectory, 'main.js'), copied.main)
   await writeFile(join(packageDirectory, 'styles.css'), copied.styles!)
+  await writeFile(join(packageDirectory, 'README.md'), copied.readme)
   const before = await storedLibrary(page)
   await openPluginManager(page)
   await page.getByRole('button', { name: '重新扫描插件', exact: true }).click()
   await expect(panel(page)).toContainText('此设备尚未信任此插件包')
   await expect(panel(page).getByRole('switch')).not.toBeChecked()
+  const documentation = panel(page).locator('.plugin-readme')
+  await documentation.locator('summary').click()
+  await expect(
+    documentation.getByRole('heading', { name: 'Manual plugin documentation', exact: true }),
+  ).toBeVisible()
+  await expect(documentation).toContainText('Readable before trusting code.')
+  await expect(
+    documentation.locator('script, [onerror], [onclick], a[href^="javascript:"]'),
+  ).toHaveCount(0)
+  expect(
+    await page.evaluate(
+      () =>
+        (globalThis as unknown as { __untrustedReadmeExecuted?: boolean })
+          .__untrustedReadmeExecuted,
+    ),
+  ).toBeUndefined()
   await expect(panel(page).getByTestId('external-version')).toHaveCount(0)
   expect(
     await page.evaluate(
@@ -260,11 +279,12 @@ test('discovers copied package files without executing them until their exact co
   ).toBeUndefined()
   page.once('dialog', (dialog) => dialog.accept())
   await panel(page).getByRole('switch').click()
-  await openPluginSettings(page)
+  await openPluginSettings(page, 'manual-check')
   await expect(configuration(page, 'manual-check').getByTestId('external-version')).toHaveText(
     '1.0.0',
   )
   const replacement = standaloneBundle('2.0.0', 'manual-check')
+  replacement.readme = copied.readme
   await writeFile(join(packageDirectory, 'manifest.json'), JSON.stringify(replacement.manifest))
   await writeFile(join(packageDirectory, 'main.js'), replacement.main)
   await writeFile(join(packageDirectory, 'styles.css'), replacement.styles!)
@@ -284,7 +304,7 @@ test('discovers copied package files without executing them until their exact co
   ).toEqual(['1.0.0'])
   page.once('dialog', (dialog) => dialog.accept())
   await panel(page).getByRole('switch').click()
-  await openPluginSettings(page)
+  await openPluginSettings(page, 'manual-check')
   await expect(configuration(page, 'manual-check').getByTestId('external-version')).toHaveText(
     '2.0.0',
   )

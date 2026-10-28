@@ -1,10 +1,25 @@
 # 答题历史
 
-这是独立的 Repeaty 插件项目。宿主只加载构建后的插件包，不编译这里的源码。
+在复习卡片上方显示当前卡片最近的评分，便于回顾之前的记忆情况。此插件同时适用于桌面版和网页版。
 
-构建插件需要 Node.js 24.15+；在应用中安装和运行预构建包不需要 Node.js、npm 或编译器。当前外置插件机制仍在开发分支中，发布页旧安装包不代表这里的实现或 GUI 验收结果。
+## 使用与配置
 
-在仓库根目录安装开发依赖后，进入本目录运行：
+在插件管理页启用「答题历史」后，复习时会显示历史评分。进入「设置 → 学习 → 复习」可以调整，也可在插件管理页点击「配置插件」直接进入：
+
+- **显示条数**：展示最近 1–50 次已保存评分。
+- **翻面后才显示历史**：开启时，在显示答案后才展示评分记录；关闭时，题面阶段也会显示。
+
+四种颜色分别表示重来、困难、良好和简单，虚线圆表示本次作答。没有历史评分时，只显示本次作答标记。
+
+## 数据与权限
+
+插件只读取当前卡片已有的评分，不修改调度或评分结果，不需要联网、设备凭据或文件权限。显示偏好保存在当前学习库中；关闭或卸载插件会保留评分历史和偏好。
+
+## 开发
+
+本插件是独立项目。运行预构建包不需要 Node.js；修改源码时需要 Node.js 24.15+ 和公开的 `@repeaty/plugin-api` SDK。
+
+在仓库根目录安装依赖后，进入此插件目录运行：
 
 ```sh
 npm test
@@ -13,16 +28,6 @@ npm run build
 npm run dev
 ```
 
-构建产物位于 `dist/`：`manifest.json`、`main.js`、`styles.css` 和 `review-history.repeaty-plugin`。`npm run dev` 持续监视插件源码并重新构建；在 Repeaty 的插件管理页安装生成的包，无需重新编译主程序。
+安装 `dist/review-history.repeaty-plugin` 即可更新，无需重编译 Repeaty。开发输出可指向专用测试学习库的 `.repeaty/plugins/review-history/`，再通过插件管理页重新扫描并确认启用。
 
-桌面开发时先创建专用的临时学习目录，不使用日常学习库。可以直接输出到该测试目录：
-
-```sh
-npm run dev -- --outdir /path/to/test-library/.repeaty/plugins/review-history
-```
-
-Windows 可改为 `D:/tmp/repeaty-plugin-dev/.repeaty/plugins/review-history`。等待构建成功后在应用中点击「重新扫描插件」，再确认启用改变后的代码；监视构建不会自动执行或信任代码。
-
-插件通过已安装的 `@repeaty/plugin-api` 使用公开接口和类型，不导入宿主源码，也不设置指向 Repeaty 仓库的 TypeScript `paths`。运行时共享宿主的 Vue。
-
-SDK 当前是本地 workspace 包，尚未发布到 npm。在 Repeaty 仓库根目录运行 `npm pack --workspace @repeaty/plugin-api`，然后在独立插件仓库安装生成的 tarball、Vue 及插件自身依赖，即可脱离应用源码进行类型检查和构建。详见[独立开发说明](../../docs/PLUGINS.md#独立开发与构建)。
+独立 SDK 的使用见 [插件开发文档](https://github.com/KraHsu/repeaty/blob/main/docs/PLUGINS.md#独立开发与构建)。

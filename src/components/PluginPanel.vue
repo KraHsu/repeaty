@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { t } from '../i18n'
 import { desktopEdition } from '../edition'
 import { workspaceAvailable } from '@repeaty-platform'
@@ -7,6 +7,7 @@ import { usePlugins } from '../plugins'
 import { readPluginFile, pluginIssueMessage, type PluginManifest } from '../plugins/package'
 import { usePluginManager, officialPluginBundles } from '../plugins/manager'
 import { SettingGroup, SettingField, UiButton, UiNotice, UiStatus } from './ui'
+import CardContent from './CardContent.vue'
 const { installedPlugins, pluginEnabled, pluginPreferenceError } = usePlugins()
 const {
   pluginPackages,
@@ -18,9 +19,11 @@ const {
   removePlugin,
   reloadPlugins,
 } = usePluginManager()
-defineProps<{ embedded?: boolean }>()
+const props = defineProps<{ embedded?: boolean; focusPlugin?: string }>()
 const emit = defineEmits<{ configure: [id: string] }>()
 const picker = ref<HTMLInputElement>()
+const panel = ref<HTMLElement>()
+const openReadmes = ref(new Set<string>())
 const error = ref('')
 const locked = computed(
   () => pluginManagerBusy.value || activePluginViews.value > 0 || !workspaceAvailable.value,
@@ -32,6 +35,32 @@ const entries = computed(() =>
     settings: installedPlugins.find(({ plugin }) => plugin.id === entry.id)?.settings ?? [],
   })),
 )
+let alive = true
+watch(
+  [() => props.focusPlugin, () => pluginPackages.length],
+  async () => {
+    if (!props.focusPlugin) return
+    await nextTick()
+    if (!alive) return
+    const target = [...(panel.value?.querySelectorAll<HTMLElement>('[data-plugin-id]') ?? [])].find(
+      (entry) => entry.dataset.pluginId === props.focusPlugin,
+    )
+    const readme = target?.querySelector<HTMLDetailsElement>('.plugin-readme')
+    if (readme) readme.open = true
+    const focus = readme?.querySelector<HTMLElement>('summary') ?? target
+    focus?.focus({ preventScroll: true })
+    target?.scrollIntoView({ block: 'start' })
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => {
+  alive = false
+})
+function toggleReadme(id: string, event: Event) {
+  const open = (event.currentTarget as HTMLDetailsElement).open
+  if (open) openReadmes.value.add(id)
+  else openReadmes.value.delete(id)
+}
 function capabilities(manifest?: PluginManifest) {
   const values: string[] = []
   if (manifest?.permissions?.origins?.length)
@@ -90,7 +119,7 @@ async function installOfficial() {
 }
 </script>
 <template>
-  <div :class="embedded ? 'settings-plugins' : 'page plugins-page'">
+  <div ref="panel" :class="embedded ? 'settings-plugins' : 'page plugins-page'">
     <header v-if="!embedded" class="page-heading">
       <div>
         <h1>{{ t('插件') }}</h1>
@@ -144,6 +173,8 @@ async function installOfficial() {
       v-for="entry in entries"
       :key="entry.id"
       class="plugin-settings"
+      :data-plugin-id="entry.id"
+      tabindex="-1"
       :title="t(entry.plugin?.label ?? entry.bundle?.manifest.name ?? entry.id)"
       :description="
         entry.plugin?.description || entry.bundle?.manifest.description
@@ -209,6 +240,15 @@ async function installOfficial() {
         {{ t('此设备尚未信任此插件包。启用前请确认代码来源。') }}
       </UiNotice>
       <UiNotice v-if="entry.error" tone="error">{{ t(entry.error) }}</UiNotice>
+      <details class="plugin-readme ui-setting-help" @toggle="toggleReadme(entry.id, $event)">
+        <summary>{{ t('介绍与使用') }}</summary>
+        <CardContent
+          v-if="openReadmes.has(entry.id) && entry.bundle?.readme"
+          :text="entry.bundle.readme"
+          format="markdown"
+        />
+        <p v-else-if="!entry.bundle?.readme">{{ t('此插件包尚未提供使用说明。') }}</p>
+      </details>
     </SettingGroup>
     <UiNotice v-if="!entries.length">
       {{ t('当前学习库尚未安装插件。普通卡片可正常使用。') }}
@@ -226,5 +266,16 @@ async function installOfficial() {
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem 1rem;
+}
+.plugin-settings {
+  scroll-margin-top: 4rem;
+}
+.plugin-readme :deep(.card-content) {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-ui);
+}
+.plugin-readme :deep(pre),
+.plugin-readme :deep(table) {
+  font-size: inherit;
 }
 </style>

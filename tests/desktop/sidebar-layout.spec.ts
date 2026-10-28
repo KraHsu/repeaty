@@ -36,7 +36,7 @@ test('a 500px desktop window clamps its vertical rail and restores the preferred
   const settings = page.locator('.main-nav').getByRole('button', { name: '设置', exact: true })
   await expect(settings.locator('.nav-label')).toBeHidden()
   await settings.click()
-  await expect(page.locator('#settings-language')).toBeVisible()
+  await expect(page.getByRole('combobox', { name: '界面语言', exact: true })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: info.outputPath('settings-500x400.png') })
   await page.setViewportSize({ width: 1280, height: 800 })

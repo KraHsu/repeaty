@@ -27,6 +27,7 @@
 }
 .ui-setting-group__header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
@@ -51,6 +52,7 @@
 }
 .ui-setting-group__actions {
   display: flex;
+  max-width: 100%;
   flex-shrink: 0;
   flex-wrap: wrap;
   align-items: center;
@@ -114,6 +116,9 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
+}
+.ui-setting-section__actions {
+  max-width: 100%;
 }
 .ui-setting-section__body > .ui-setting-field:first-child {
   padding-top: 0;

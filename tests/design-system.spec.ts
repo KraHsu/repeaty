@@ -29,15 +29,18 @@ async function typography(page: Page) {
     'font-size',
     '20px',
   )
-  await expect(page.locator('label[for="settings-language"]')).toHaveCSS('font-size', '16px')
-  await expect(page.locator('#settings-language')).toHaveCSS('font-size', '16px')
+  await expect(page.getByText('界面语言', { exact: true })).toHaveCSS('font-size', '16px')
+  await expect(page.getByRole('combobox', { name: '界面语言', exact: true })).toHaveCSS(
+    'font-size',
+    '16px',
+  )
   await expect(page.locator('.ui-setting-group__description')).toHaveCSS('font-size', '14px')
   await expect(page.locator('.ui-setting-field__description').first()).toHaveCSS(
     'font-size',
     '14px',
   )
   const family = await page
-    .locator('#settings-language')
+    .getByRole('combobox', { name: '界面语言', exact: true })
     .evaluate((el) => getComputedStyle(el).fontFamily)
   await expect(page.getByRole('heading', { name: '设置', exact: true })).toHaveCSS(
     'font-family',
@@ -142,10 +145,10 @@ test('shared scrollbars remain usable and settings respect high contrast and lar
   await page.evaluate(() => {
     document.documentElement.style.fontSize = '200%'
   })
-  const select = page.locator('#settings-language')
+  const select = page.getByRole('combobox', { name: '界面语言', exact: true })
   await expect(select).toHaveCSS('font-size', '32px')
   await expect(select.locator('option').first()).toHaveCSS('font-size', '32px')
-  await expect(page.locator('label[for="settings-language"]')).toHaveCSS('font-size', '32px')
+  await expect(page.getByText('界面语言', { exact: true })).toHaveCSS('font-size', '32px')
   await expect(page.locator('.ui-setting-field__description').first()).toHaveCSS(
     'font-size',
     '28px',

@@ -115,7 +115,7 @@ export async function skillSettingsFlow(page: Page, read: () => Promise<Library>
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await page.getByLabel('信息通知', { exact: true }).uncheck()
   await page.getByLabel('警告通知', { exact: true }).uncheck()
-  await page.getByRole('tab', { name: 'AI 制卡', exact: true }).click()
+  await page.locator('.settings-categories [data-category-key="tools.ai"]').click()
   await expect(page.getByLabel('制卡说明（可直接粘贴到 AI 聊天中）')).toHaveValue(
     /name: repeaty-cards/,
   )

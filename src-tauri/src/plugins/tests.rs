@@ -332,6 +332,101 @@ fn canonical_package_hash_matches_sorted_json_and_normalizes_absent_styles() {
         package.hash()
     );
 }
+
+#[test]
+fn readme_round_trips_without_execution_and_changes_require_exact_trust() {
+    let (workspace, _device, host, root) = fixture();
+    let mut documented = bundle("sample");
+    let readme = "# 使用说明\n\n保留原文 😀\n<script>not executable</script>\n";
+    documented["readme"] = json!(readme);
+    call(&host, &root, "sample", "install", documented.clone()).unwrap();
+    let readme_path = workspace.path().join(".repeaty/plugins/sample/README.md");
+    assert_eq!(std::fs::read_to_string(&readme_path).unwrap(), readme);
+    // Metadata and documentation are available before the device trusts executable code.
+    assert_eq!(
+        call(&host, &root, "sample", "read", Value::Null).unwrap(),
+        documented
+    );
+    assert_eq!(
+        call(&host, &root, "", "list", Value::Null).unwrap()[0]["readme"],
+        readme
+    );
+    let hash = package(&root, "sample").unwrap().hash();
+    call(&host, &root, "sample", "trust", json!({"hash":hash})).unwrap();
+    std::fs::write(&readme_path, "# Changed documentation\n").unwrap();
+    assert_ne!(package(&root, "sample").unwrap().hash(), hash);
+    assert_eq!(
+        call(
+            &host,
+            &root,
+            "sample",
+            "files",
+            json!({"action":"read","path":"draft.json"})
+        )
+        .unwrap_err(),
+        "plugin-not-trusted"
+    );
+    assert_eq!(
+        call(&host, &root, "sample", "trust", json!({"hash":hash})).unwrap_err(),
+        "plugin-file-changed"
+    );
+    assert_eq!(
+        call(&host, &root, "sample", "read", Value::Null).unwrap()["readme"],
+        "# Changed documentation\n"
+    );
+    // Replacing with a package that has no README removes the previous optional file.
+    call(&host, &root, "sample", "install", bundle("sample")).unwrap();
+    assert!(!readme_path.exists());
+    assert!(
+        package(&root, "sample")
+            .unwrap()
+            .raw
+            .get("readme")
+            .is_none()
+    );
+}
+
+#[test]
+fn readme_utf8_limits_preserve_the_current_package_when_replacement_is_invalid() {
+    let (_workspace, _device, host, root) = fixture();
+    let mut original = bundle("sample");
+    original["readme"] = json!("# Original");
+    call(&host, &root, "sample", "install", original.clone()).unwrap();
+    for readme in [
+        json!(123),
+        json!("x".repeat(README_LIMIT + 1)),
+        json!("界".repeat(README_LIMIT / 3 + 1)),
+    ] {
+        let mut changed = original.clone();
+        changed["readme"] = readme;
+        assert!(call(&host, &root, "sample", "install", changed).is_err());
+        assert_eq!(
+            call(&host, &root, "sample", "read", Value::Null).unwrap(),
+            original
+        );
+    }
+    let mut largest = original;
+    largest["readme"] = json!("x".repeat(README_LIMIT));
+    assert!(Package::parse(largest, "sample").is_ok());
+}
+
+#[test]
+fn hard_linked_readme_cannot_read_files_outside_the_package() {
+    let (workspace, _device, host, root) = fixture();
+    call(&host, &root, "sample", "install", bundle("sample")).unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let original = outside.path().join("private.md");
+    std::fs::write(&original, "private text").unwrap();
+    std::fs::hard_link(
+        &original,
+        workspace.path().join(".repeaty/plugins/sample/README.md"),
+    )
+    .unwrap();
+    assert_eq!(
+        call(&host, &root, "sample", "read", Value::Null).unwrap_err(),
+        "unsafe-plugin-file"
+    );
+}
 #[test]
 fn package_hash_matches_frontend_unicode_golden_fixture_without_styles() {
     // Shared with src/plugins/package.test.ts; keep the payload and digest in sync.
@@ -354,8 +449,16 @@ fn package_hash_matches_frontend_unicode_golden_fixture_without_styles() {
         "main": "export default { text: \"中文 😀\" }\n"
     });
     assert_eq!(
-        Package::parse(raw, "golden-example").unwrap().hash(),
+        Package::parse(raw.clone(), "golden-example")
+            .unwrap()
+            .hash(),
         "bfe649aa1c524811ec02555538e2b9eba94bd5013b53b7bcd051558a08e1a59c"
+    );
+    let mut documented = raw;
+    documented["readme"] = json!("# 使用说明 😀\n\n保持原字节。\n");
+    assert_eq!(
+        Package::parse(documented, "golden-example").unwrap().hash(),
+        "f9183d1ef163549c51c471907707bb2a3b43105465c75726de0b4d55c889ec15"
     );
 }
 #[test]

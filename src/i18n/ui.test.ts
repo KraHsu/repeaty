@@ -10,6 +10,13 @@ import { initI18n, LOCALE_STORAGE_KEY, setLocale, t } from '.'
 
 let app: VueApp | undefined
 let host: HTMLDivElement
+function languageInput() {
+  return [...host.querySelectorAll<HTMLSelectElement>('select')].find((element) =>
+    [...(element.labels ?? [])].some((label) =>
+      /^(界面语言|Interface language)$/.test(label.textContent?.trim() ?? ''),
+    ),
+  )
+}
 function button(text: string, scope: ParentNode = host): HTMLButtonElement {
   const result = [...scope.querySelectorAll('button')].find(
     (element) => element.textContent?.trim() === text,
@@ -87,8 +94,8 @@ it('switches the mounted app, document metadata, and persists the explicit choic
   expect(host.querySelector('.topbar select')).toBeNull()
   button('Settings').click()
   await vi.dynamicImportSettled()
-  await vi.waitFor(() => expect(host.querySelector('#settings-language')).not.toBeNull())
-  const languageSelect = host.querySelector<HTMLSelectElement>('#settings-language')!
+  await vi.waitFor(() => expect(languageInput()).toBeDefined())
+  const languageSelect = languageInput()!
   expect(languageSelect.labels?.[0]?.textContent).toContain('Interface language')
   languageSelect.value = 'zh-CN'
   languageSelect.dispatchEvent(new Event('change', { bubbles: true }))
@@ -105,7 +112,7 @@ it('switches the mounted app, document metadata, and persists the explicit choic
   expect(host.querySelector('h1')!.textContent).toContain('学习概览')
   button('设置').click()
   await nextTick()
-  expect(host.querySelector<HTMLSelectElement>('#settings-language')!.value).toBe('zh-CN')
+  expect(languageInput()!.value).toBe('zh-CN')
 })
 
 it('keeps drafts and revealed answers while translating authoring, statuses, and review controls', async () => {

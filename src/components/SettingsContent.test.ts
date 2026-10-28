@@ -1,24 +1,19 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { createApp, nextTick, ref, shallowReactive, type App } from 'vue'
+import { afterEach, beforeEach, expect, it } from 'vitest'
+import { createApp, h, nextTick, ref, shallowReactive, type App } from 'vue'
 import type { PluginInstallation } from '../plugins/types'
 import type { PluginSettingField, PluginSettingsContribution } from '../plugins/settings'
-import PluginSettingsPanel from './PluginSettingsPanel.vue'
+import SettingsContent from './SettingsContent.vue'
+import type { SettingsEntry } from '../settings/types'
 import { PluginRuntime } from '../plugins/runtime'
 import { setLocale } from '../i18n'
 
-const boundary = vi.hoisted(() => ({
+const boundary = {
   state: {} as {
     installations: PluginInstallation[]
     scope: { value: string }
   },
-}))
-vi.mock('../plugins', () => ({
-  usePlugins: () => ({ installedPlugins: boundary.state.installations, pluginEnabled: () => true }),
-}))
-vi.mock('../plugins/manager', () => ({
-  usePluginManager: () => ({ pluginScope: boundary.state.scope }),
-}))
+}
 let app: App | undefined
 let host: HTMLDivElement
 beforeEach(() => {
@@ -42,7 +37,32 @@ function install(id: string, contribution: PluginSettingsContribution) {
   return installation
 }
 function mount() {
-  app = createApp(PluginSettingsPanel)
+  const cache = new WeakMap<PluginSettingsContribution, SettingsEntry>()
+  app = createApp({
+    render: () =>
+      h(SettingsContent, {
+        scope: boundary.state.scope.value,
+        entries: boundary.state.installations.flatMap((installation) =>
+          (installation.settings ?? []).map((contribution) => {
+            const previous = cache.get(contribution)
+            if (previous?.scope === boundary.state.scope.value) return previous
+            const scope = boundary.state.scope.value
+            const entry: SettingsEntry = {
+              ownerId: `plugin:${installation.plugin.id}`,
+              pluginId: installation.plugin.id,
+              contribution,
+              scope,
+              isCurrent: () =>
+                scope === boundary.state.scope.value &&
+                boundary.state.installations.includes(installation) &&
+                !!installation.settings?.includes(contribution),
+            }
+            cache.set(contribution, entry)
+            return entry
+          }),
+        ),
+      }),
+  })
   app.mount(host)
 }
 async function change(input: HTMLInputElement, value: string) {

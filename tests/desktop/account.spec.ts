@@ -28,7 +28,7 @@ test('verification distinguishes expired sessions, website checks, network failu
       },
     })
   })
-  await openPluginSettings(page)
+  await openPluginSettings(page, 'leetcode')
   const cn = page.getByRole('region', { name: '中国站 · leetcode.cn', exact: true })
   const com = page.getByRole('region', { name: '国际站 · leetcode.com', exact: true })
   const before = await storedLibrary(page)
@@ -62,7 +62,7 @@ test('verification distinguishes expired sessions, website checks, network failu
   await expect(cn.locator('.connection-account img')).toHaveCount(0)
   expect(await storedLibrary(page)).toEqual(before)
   await setInterfaceLanguage(page, 'en')
-  await openPluginSettings(page)
+  await openPluginSettings(page, 'leetcode')
   const english = page.getByRole('region', { name: 'China · leetcode.cn', exact: true })
   mode = 'verification-required'
   await english.getByRole('button', { name: 'Refresh status' }).click()
@@ -76,7 +76,7 @@ test('clearing credentials while verification is pending discards the late accou
   page,
   context,
 }) => {
-  await openPluginSettings(page)
+  await openPluginSettings(page, 'leetcode')
   const cn = page.getByRole('region', { name: '中国站 · leetcode.cn', exact: true })
   await save(cn)
   await expect(cn.getByRole('status')).toContainText('登录有效')

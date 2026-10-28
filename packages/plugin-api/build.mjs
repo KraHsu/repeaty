@@ -2,7 +2,7 @@
 import { build } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import * as sharedVue from 'vue'
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, rm } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { watch } from 'node:fs'
@@ -39,6 +39,15 @@ export async function buildPlugin(directory, { outdir } = {}) {
   const manifest = JSON.parse(await readFile(join(directory, 'manifest.json'), 'utf8'))
   if (!/^[a-z][a-z0-9-]{0,63}$/.test(manifest.id) || manifest.apiVersion !== 1)
     throw new Error('Invalid plugin manifest')
+  let readme
+  try {
+    const bytes = await readFile(join(directory, 'README.md'))
+    if (bytes.length > 256 * 1024)
+      throw new Error('Plugin README exceeds the 256 KiB host package limit')
+    readme = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+  }
   const sdk = '\0repeaty-public-plugin-sdk'
   const vueRuntime = '\0repeaty-shared-vue'
   const output = await build({
@@ -91,7 +100,7 @@ export async function buildPlugin(directory, { outdir } = {}) {
     .filter((file) => file.type === 'asset' && file.fileName.endsWith('.css'))
     .map((file) => String(file.source))
     .join('\n')
-  const bundle = { manifest, main, styles }
+  const bundle = { manifest, main, styles, ...(readme === undefined ? {} : { readme }) }
   if (Buffer.byteLength(main) > 4 * 1024 * 1024 || Buffer.byteLength(styles) > 1024 * 1024)
     throw new Error('Plugin code or CSS exceeds the host package limit')
   const out = outdir ? resolve(outdir) : join(directory, 'dist')
@@ -101,6 +110,9 @@ export async function buildPlugin(directory, { outdir } = {}) {
     writeFile(join(out, 'styles.css'), styles),
     writeFile(join(out, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n'),
     writeFile(join(out, manifest.id + '.repeaty-plugin'), JSON.stringify(bundle) + '\n'),
+    readme === undefined
+      ? rm(join(out, 'README.md'), { force: true })
+      : writeFile(join(out, 'README.md'), readme),
   ])
   return bundle
 }
@@ -145,7 +157,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     const watchers = [
       watch(join(directory, 'src'), { recursive: true }, schedule),
       watch(directory, (_event, name) => {
-        if (String(name) === 'manifest.json') schedule()
+        if (['manifest.json', 'README.md'].includes(String(name))) schedule()
       }),
     ]
     const stop = () => {

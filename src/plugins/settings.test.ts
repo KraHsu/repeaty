@@ -68,3 +68,21 @@ it('checks field values and ranges before exposing host-rendered controls', () =
     expect(() => validateSettingsContribution(entry)).toThrow()
   }
 })
+
+it('accepts shared category metadata and rejects malformed paths while preserving legacy defaults', () => {
+  const entry = contribution()
+  expect(() => validateSettingsContribution(entry)).not.toThrow()
+  entry.category = [
+    { id: 'review', title: '复习' },
+    { id: 'history', title: '历史' },
+  ]
+  expect(() => validateSettingsContribution(entry)).not.toThrow()
+  for (const invalid of [
+    [],
+    [{ id: 'review.history', title: '历史' }],
+    [{ id: 'review', title: '' }],
+  ]) {
+    entry.category = invalid
+    expect(() => validateSettingsContribution(entry)).toThrow('设置分类路径无效')
+  }
+})

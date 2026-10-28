@@ -5,11 +5,20 @@ import { registerSettings, type QuestionPlugin } from '@repeaty/plugin-api'
 export default function activate(): QuestionPlugin {
   registerSettings({
     id: 'accounts',
+    category: [
+      {
+        id: 'connections',
+        get title() {
+          return t('连接')
+        },
+      },
+      { id: 'leetcode', title: 'LeetCode' },
+    ],
     get title() {
       return t('LeetCode')
     },
     get description() {
-      return t('将 LeetCode 题目加入卡组，编写代码并提交判题，按结果安排复习。')
+      return t('按站点管理登录信息。')
     },
     component: defineAsyncComponent(() => import('./Settings.vue')),
   })

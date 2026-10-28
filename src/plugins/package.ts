@@ -58,6 +58,11 @@ export const bundleSchema = z
       .max(1024 * 1024)
       .refine((value) => new TextEncoder().encode(value).length <= 1024 * 1024)
       .optional(),
+    readme: z
+      .string()
+      .max(256 * 1024)
+      .refine((value) => new TextEncoder().encode(value).length <= 256 * 1024)
+      .optional(),
   })
   .strict()
 export type PluginManifest = z.infer<typeof manifestSchema>
@@ -77,6 +82,7 @@ export async function packageHash(bundle: PluginBundle) {
     manifest: bundle.manifest,
     main: bundle.main,
     styles: bundle.styles ?? '',
+    ...(bundle.readme === undefined ? {} : { readme: bundle.readme }),
   })
   const hash = await crypto.subtle.digest(
     'SHA-256',

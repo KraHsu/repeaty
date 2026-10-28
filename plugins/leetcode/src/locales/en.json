@@ -1,4 +1,6 @@
 {
+  "连接": "Connections",
+  "按站点管理登录信息。": "Manage credentials for each site.",
   "LeetCode 登录": "LeetCode session",
   "LeetCode 登录已过期或需要验证，请更新本机的登录信息。": "Your LeetCode session has expired or needs verification. Update the credentials on this device.",
   "LeetCode 站点": "LeetCode site",

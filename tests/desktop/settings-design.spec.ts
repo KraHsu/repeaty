@@ -43,12 +43,37 @@ test('an independently built plugin uses shared accessible controls, saves prefe
     buffer: Buffer.from(JSON.stringify(bundle)),
   })
   await expect(page.locator('.settings-example')).toHaveCount(0)
-  await openPluginSettings(page)
+  await openPluginSettings(page, 'settings-design-example')
   const panel = page.locator('.plugin-configuration').filter({
     has: page.getByRole('heading', { name: 'Settings design example', exact: true }),
   })
   const demo = panel.locator('.settings-example')
   await expect(demo).toBeVisible()
+  const categories = page.locator('.settings-categories')
+  await expect(categories).toHaveAttribute('aria-orientation', 'vertical')
+  await expect(categories.getByRole('tab', { name: /^(插件设置|Plugin settings)$/ })).toHaveCount(0)
+  const appearanceCategory = categories.locator('[data-category-key="general.appearance"]')
+  const exampleCategory = categories.locator('[data-category-key="general.example"]')
+  await expect(appearanceCategory).toBeVisible()
+  await expect(exampleCategory).toHaveAttribute('aria-selected', 'true')
+  await expect(exampleCategory).toHaveCSS(
+    'padding-left',
+    await appearanceCategory.evaluate((element) => getComputedStyle(element).paddingLeft),
+  )
+  await categories.locator('[data-category-key="general"]').click()
+  const hostLanguage = page.getByRole('combobox', { name: '界面语言', exact: true })
+  await expect(hostLanguage).toBeVisible()
+  await expect(demo).toBeVisible()
+  await expect(hostLanguage).toHaveClass(/\bui-control\b/)
+  await expect(demo.getByRole('textbox', { name: 'Workspace name', exact: true })).toHaveClass(
+    /\bui-control\b/,
+  )
+  await expect(hostLanguage).toHaveCSS('font-size', '16px')
+  await expect(demo.getByRole('textbox', { name: 'Workspace name', exact: true })).toHaveCSS(
+    'font-size',
+    '16px',
+  )
+  await page.screenshot({ path: info.outputPath('settings-application-and-plugin.png') })
   await expect(demo.locator('.ui-setting-group')).toHaveCount(2)
   const name = demo.getByRole('textbox', { name: 'Workspace name', exact: true })
   await name.fill('A shared GUI')
@@ -163,7 +188,7 @@ test('an independently built plugin uses shared accessible controls, saves prefe
   await demo.screenshot({ path: info.outputPath('settings-controls-wide.png') })
 
   await page.reload()
-  await openPluginSettings(page)
+  await openPluginSettings(page, 'settings-design-example')
   await expect(name).toHaveValue('A shared GUI')
   await expect(notes).toHaveValue('Saved independently\nWithout copying host controls.')
   await expect(password).toHaveValue('')

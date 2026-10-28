@@ -44,7 +44,7 @@ Repeaty 是一个开源的记忆卡片工具。把想记住的内容做成卡片
 - **插件**：运行时安装、更新、关闭、移除与重新加载，无需重编译主程序。官方答题历史和桌面 LeetCode 也以独立插件包提供。代码和设置随桌面工作目录保存，登录凭据与代码信任留在设备；复制来的未知代码需主动确认启用。关闭或移除插件保留学习进度与完整历史。
 - **MCP**：桌面版支持连接 Codex、Claude Code 和 Claude Desktop，查询学习库；主动分享摘录后，可接收制卡草稿，保存未完成的编辑，重启后继续确认。[连接说明](docs/MCP.md)。
 
-不使用 MCP 时，可从「设置 → AI 制卡」复制说明或下载 [制卡 skill](public/skills/repeaty-cards/SKILL.md)，将材料交给 AI 生成 CSV，再在 Repeaty 中预览并导入。通用设置也可分别配置各级通知是否弹出。
+不使用 MCP 时，可从「设置 → 工具 → AI 制卡」复制说明或下载 [制卡 skill](public/skills/repeaty-cards/SKILL.md)，将材料交给 AI 生成 CSV，再在 Repeaty 中预览并导入。通用设置也可分别配置各级通知是否弹出。
 
 目前不支持 Anki 进度迁移、自定义字段 / Anki 卡片模板、图片遮挡或个人 FSRS 参数训练。[Anki 导入范围](docs/ANKI.md) · [完整用法](docs/USAGE.md) · [存储与性能](docs/DEVELOPMENT.md#大数据量存储)
 

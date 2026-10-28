@@ -323,31 +323,6 @@ onUnmounted(() => {
         </template>
       </UiNotice>
     </fieldset>
-    <details class="leetcode-connection__help ui-setting-help">
-      <summary>{{ t('在哪里找到这两个值？') }}</summary>
-      <div class="leetcode-connection__help-body">
-        <p>{{ t('打开力扣网站并登录，不会自动连接 Repeaty。请在此保存对应 Cookie。') }}</p>
-        <p>
-          {{
-            t(
-              '在对应的力扣站点登录，打开浏览器开发者工具 → 应用（Application）或存储（Storage）→ Cookie，复制 LEETCODE_SESSION 和 csrftoken 的值，粘贴到上方。登录过期后重新填写。',
-            )
-          }}
-        </p>
-        <p>
-          {{
-            t('登录信息仅保存在本机，由桌面版直接连接力扣，不会发送给上游服务或包含在卡组导出中。')
-          }}
-        </p>
-        <a
-          v-ui-button="'ghost'"
-          href="https://github.com/KraHsu/repeaty/blob/main/docs/LEETCODE.md#配置与启用"
-          target="_blank"
-          rel="noopener noreferrer"
-          >{{ t('完整配置文档') }} ↗</a
-        >
-      </div>
-    </details>
   </SettingSection>
 </template>
 
@@ -411,19 +386,5 @@ onUnmounted(() => {
 }
 .credential-confirmation {
   margin-top: 1rem;
-}
-.leetcode-connection .leetcode-connection__help {
-  margin: 0;
-}
-.leetcode-connection__help-body {
-  display: grid;
-  gap: 0.75rem;
-  padding: 0.75rem 0;
-  color: var(--muted);
-  font-size: var(--font-size-meta);
-  line-height: var(--line-height-ui);
-}
-.leetcode-connection__help-body p {
-  margin: 0;
 }
 </style>

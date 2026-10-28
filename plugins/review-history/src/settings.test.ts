@@ -41,6 +41,7 @@ it('registers declarative settings with existing saved preferences instead of an
   expect(host.registrations).toHaveLength(1)
   const contribution = host.registrations[0]!
   expect(contribution.id).toBe('display')
+  expect(contribution.category?.map(({ id }) => id)).toEqual(['study', 'review'])
   expect(contribution.title).toBe('答题历史')
   expect(contribution.component).toBeUndefined()
   expect(contribution.fields?.map(({ key, modelValue }) => ({ key, modelValue }))).toEqual([
@@ -72,6 +73,7 @@ it('keeps registered labels, values and save errors reactive to the plugin state
   expect(length.label).toBe('显示条数')
   host.locale.value = 'en'
   expect(contribution.title).toBe('Review history')
+  expect(contribution.category?.map(({ title }) => title)).toEqual(['Study', 'Review'])
   expect(length.label).toBe('Number of ratings')
   host.fail = true
   length.onChange(15)

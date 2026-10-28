@@ -81,7 +81,7 @@ test('the no-MCP instructions remain available offline', async ({ page, context 
   await page.reload()
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await context.setOffline(true)
-  await page.getByRole('tab', { name: 'AI 制卡', exact: true }).click()
+  await page.locator('.settings-categories [data-category-key="tools.ai"]').click()
   await expect(page.getByLabel('制卡说明（可直接粘贴到 AI 聊天中）')).toHaveValue(
     /name: repeaty-cards/,
   )

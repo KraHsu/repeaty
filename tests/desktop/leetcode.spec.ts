@@ -800,12 +800,20 @@ test('plugin settings distinguish website login from per-site judge credentials 
     route.fulfill({ contentType: 'text/html', body: '<title>LeetCode website</title>' }),
   )
   await page.goto('./')
-  await openPluginSettings(page)
+  await openPluginManager(page)
+  const details = page.locator('.plugin-settings[data-plugin-id="leetcode"]')
+  await details.locator('.plugin-readme summary').click()
+  await expect(details.locator('.plugin-readme')).toContainText(
+    '打开力扣网站并登录，不会自动连接 Repeaty',
+  )
+  await expect(details.locator('.plugin-readme')).toContainText('LEETCODE_SESSION')
+  await expect(details.locator('.plugin-readme')).toContainText('csrftoken')
+  await openPluginSettings(page, 'leetcode')
   const cn = page.getByRole('region', { name: '中国站 · leetcode.cn', exact: true })
   const com = page.getByRole('region', { name: '国际站 · leetcode.com', exact: true })
   await expect(cn.getByRole('status')).toContainText('未配置登录信息')
   await expect(com.getByRole('status')).toContainText('未配置登录信息')
-  await expect(cn).toContainText('打开力扣网站并登录，不会自动连接 Repeaty')
+  await expect(cn.locator('details')).toHaveCount(0)
   const popup = page.waitForEvent('popup')
   await cn.getByRole('link', { name: '打开力扣网站', exact: false }).click()
   const website = await popup
@@ -816,7 +824,6 @@ test('plugin settings distinguish website login from per-site judge credentials 
   // closing a newly attached Chromium target here can stall until test teardown.
   await page.bringToFront()
   await expect(cn.getByRole('status')).toContainText('未配置登录信息')
-  await cn.getByText('在哪里找到这两个值？', { exact: true }).click()
   await expect(cn.getByLabel('LEETCODE_SESSION', { exact: true })).toBeVisible()
   await expect(cn.getByLabel('csrftoken', { exact: true })).toBeVisible()
   configured = ['leetcode.cn']
@@ -832,7 +839,7 @@ test('plugin settings distinguish website login from per-site judge credentials 
   await cn.getByRole('button', { name: '刷新状态' }).click()
   await expect(cn.getByRole('status')).toContainText('登录有效')
   await setInterfaceLanguage(page, 'en')
-  await openPluginSettings(page)
+  await openPluginSettings(page, 'leetcode')
   await expect(cn.getByRole('status')).toHaveCount(0)
   await expect(
     page.getByRole('region', { name: 'China · leetcode.cn', exact: true }).getByRole('status'),
@@ -843,7 +850,7 @@ test('credentials can be saved, replaced and cleared per site without exposing s
   page,
 }, info) => {
   await page.goto('./')
-  await openPluginSettings(page)
+  await openPluginSettings(page, 'leetcode')
   const cn = page.getByRole('region', { name: '中国站 · leetcode.cn', exact: true })
   const com = page.getByRole('region', { name: '国际站 · leetcode.com', exact: true })
   await expect(cn.getByRole('status')).toContainText('未配置登录信息')
@@ -868,7 +875,7 @@ test('credentials can be saved, replaced and cleared per site without exposing s
   await expect(com.getByRole('status')).toContainText('登录有效')
   await expect(com.getByText('当前账号：tester-com', { exact: true })).toBeVisible()
   await page.reload()
-  await openPluginSettings(page)
+  await openPluginSettings(page, 'leetcode')
   await expect(cn.getByRole('status')).toContainText('登录有效')
   await expect(com.getByRole('status')).toContainText('登录有效')
   await expect(cn.getByLabel('LEETCODE_SESSION', { exact: true })).toHaveValue('')
@@ -889,9 +896,9 @@ test('credentials can be saved, replaced and cleared per site without exposing s
   await cn.getByRole('button', { name: '确认清除', exact: true }).click()
   await expect(cn.getByRole('status')).toContainText('未配置登录信息')
   await expect(com.getByRole('status')).toContainText('登录有效')
-  await page.setViewportSize({ width: 390, height: 844 })
+  await setResponsiveViewport(page, 390, 844)
   await setInterfaceLanguage(page, 'en')
-  await openPluginSettings(page)
+  await openPluginSettings(page, 'leetcode')
   const english = page.getByRole('region', { name: 'China · leetcode.cn', exact: true })
   await expect(english.getByRole('button', { name: 'Save credentials', exact: true })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)

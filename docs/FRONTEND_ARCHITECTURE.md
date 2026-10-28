@@ -54,6 +54,10 @@ main.ts → App.vue → app/createApplication.ts
 
 `src/components/ui/` 提供 `SettingGroup`、`SettingField`、`UiButton`、`UiIconButton`，以及原生控件指令 `vUiControl` / `vUiButton`，本体与公开插件 SDK 复用同一运行时实现；`src/styles/tokens.css` 和 `controls.css` 管理字体、间距、控件状态与滚动条。共用层覆盖设置、编辑、复习、材料及弹窗，官方插件保持独立源码与预构建包边界。
 
+`src/settings/` 定义软件与插件共用的 `SettingsContribution`、字段和分类模型。软件选项由应用设置提供者声明，插件通过 `registerSettings()` 提供相同贡献；`SettingsPage` 按路径合并左侧分类，父分类包含子类内容，`SettingsContent` 统一渲染字段或配置组件。插件管理只保留包详情、权限、README 和管理操作。未声明分类的旧包归入通用，兼容类型别名继续保留；模型不创建新的偏好存储。
+
+设置条目带有所有者、作用域和当前实例检查。字段 DOM 标识由宿主分配；异步保存的错误按注册身份隔离，切库、注销或重新注册后，旧响应不能进入新视图。配置组件随分类视图卸载，插件和应用的资源清理继续由原所有者负责。
+
 复杂编辑器通过指令保留原生DOM、`ref`、选区、IME、表单提交和事件。指令只增减自身的样式类，不接管草稿、阅读位置、评分、提交、关闭或资源生命周期；隐藏文件选择器不加可见控件样式。插件继续声明业务字段与保存逻辑，不复制宿主控件代码，也不改变应用、视图和插件作用域的所有者。详见[界面规范](DESIGN_SYSTEM.md)。
 
 组件外调用 `useLibrary()` 或其他 store 时显式传入所属 Pinia；测试也用 `createPinia()` 创建独立实例。应用卸载时调用 `disposePinia()`，释放该实例的服务。

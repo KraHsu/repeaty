@@ -180,7 +180,7 @@ test('shared excerpts become editable drafts, save all three types with provenan
   await expect(restored.locator('.draft-list li')).toHaveCount(1)
   await expect(restored.getByText('Shared excerpt', { exact: true })).toHaveCount(0)
   await restored.getByRole('button', { name: 'Close dialog' }).click()
-  await openSettings(page)
+  await openSettings(page, 'connections.mcp')
   await expect(page.getByRole('region', { name: 'MCP connection' }).getByRole('status')).toHaveText(
     'Disabled',
   )
