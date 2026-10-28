@@ -20,6 +20,7 @@ import {
   WorkspaceFormatError,
 } from '../workspace/markdown'
 import { workspacePathKey } from '../workspace/changes'
+import { displayFilesystemPath } from './display-path'
 import type { NoteInput } from '../core/model'
 import { prepareSource } from '../core/sources'
 import type { SourceInput } from '../core/source-data'
@@ -533,7 +534,7 @@ onUnmounted(() => {
     <section v-if="status?.active" class="workspace-card workspace-active">
       <div>
         <h2>{{ t('当前学习库') }}</h2>
-        <p class="workspace-path">{{ status.active.path }}</p>
+        <p class="workspace-path">{{ displayFilesystemPath(status.active.path) }}</p>
       </div>
       <div class="workspace-actions">
         <button v-ui-button class="button" :disabled="locked" @click="run(refresh)">
@@ -834,7 +835,7 @@ onUnmounted(() => {
         :disabled="locked"
         @click="run(() => recentWorkspace(entry.path, entry.id))"
       >
-        <FolderOpen :size="18" /><span>{{ entry.path }}</span>
+        <FolderOpen :size="18" /><span>{{ displayFilesystemPath(entry.path) }}</span>
       </button>
     </section>
   </div>
