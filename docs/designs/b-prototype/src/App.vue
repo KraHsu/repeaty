@@ -120,10 +120,12 @@ watch(
           severity="secondary"
           :aria-label="wideNav ? '收起侧栏' : '展开侧栏'"
           :title="wideNav ? '收起侧栏' : '展开侧栏'"
+          :aria-expanded="wideNav"
+          aria-controls="primary-navigation"
           @click="wideNav = !wideNav"
           ><PanelLeft :size="20"
         /></PButton>
-        <nav class="rail-links">
+        <nav id="primary-navigation" class="rail-links">
           <template v-for="(item, i) in nav" :key="item.id">
             <hr v-if="i === 3" class="rail-divider" aria-label="学习与管理" />
             <button
