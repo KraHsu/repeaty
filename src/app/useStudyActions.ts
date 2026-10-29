@@ -26,6 +26,7 @@ export function useStudyActions({
   activeSource,
   mixedController,
   navigate,
+  transition,
   refreshClock,
   notice,
   mixed,
@@ -47,6 +48,7 @@ export function useStudyActions({
   activeSource: ReturnType<typeof useStudyViews>['activeSource']
   mixedController: ReturnType<typeof useStudyViews>['mixedController']
   navigate: ReturnType<typeof useAppNavigation>['navigate']
+  transition: ReturnType<typeof useAppNavigation>['transition']
   refreshClock: ReturnType<typeof useStudyClock>['refreshClock']
   notice: ReturnType<typeof useOperationRunner>['notice']
   mixed: ReturnType<typeof useAppNavigation>['mixed']
@@ -110,19 +112,22 @@ export function useStudyActions({
   )
   function startMixed() {
     if (!Number.isInteger(mixedRatio.value) || mixedRatio.value < 1 || mixedRatio.value > 10) return
-    navigate('overview')
-    refreshClock()
-    notice.value = null
-    modal.value = null
-    mixed.value = { cardsPerReading: mixedRatio.value }
+    return navigate('overview', () => {
+      refreshClock()
+      notice.value = null
+      modal.value = null
+      mixed.value = { cardsPerReading: mixedRatio.value }
+    })
   }
   async function leaveMixedReading() {
     return (await mixedReader.value?.leaveSession()) ?? true
   }
   function startStudy(study: StudySession) {
-    refreshClock()
-    notice.value = null
-    review.value = { study }
+    return transition(() => {
+      refreshClock()
+      notice.value = null
+      review.value = { study }
+    })
   }
   async function undoLastAction() {
     if (shortcutLocked.value || !canUndoAction.value) return
@@ -226,8 +231,11 @@ export function useStudyActions({
       }
     } else if (key === '/' && !event.shiftKey) {
       event.preventDefault()
-      navigate('cards')
-      void nextTick(() => document.querySelector<HTMLInputElement>('.search-field input')?.focus())
+      navigate('cards', () => {
+        void nextTick(() =>
+          document.querySelector<HTMLInputElement>('.search-field input')?.focus(),
+        )
+      })
     } else if (key === 'b' && !review.value && !mixed.value && !event.shiftKey) {
       event.preventDefault()
       navigate('cards')
@@ -284,9 +292,11 @@ export function useStudyActions({
     return saved
   }
   function startReview(deckId?: string) {
-    refreshClock()
-    notice.value = null
-    review.value = { deckId }
+    return transition(() => {
+      refreshClock()
+      notice.value = null
+      review.value = { deckId }
+    })
   }
   async function submitReview(
     id: string,

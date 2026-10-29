@@ -11,7 +11,10 @@ import type {
 import type { MaterialPluginIdentity } from '../plugins/materials'
 import type { LibraryContext } from './library-context'
 import { addSource, prepareSource, prepareSourceExcerpt, sourceExcerpt } from '../core/sources'
-import { sourceAtVersion, type Source } from '../core/source-data'
+import { sourceAtVersion, sourceSchema, type Source } from '../core/source-data'
+import { editSourceContent } from '../core/source-workbench'
+import { operationFor } from '../core/operations'
+import { MAX_OPERATION_HISTORY, operationHistory } from '../core/operation-history'
 import {
   materialLocatorSchema,
   validateMaterialLocator,
@@ -70,6 +73,11 @@ const createNoteSchema = selectionMutationSchema.extend({
 })
 const createExcerptSchema = selectionMutationSchema.extend({
   title: z.string().trim().min(1).max(160),
+})
+const editContentSchema = mutationSchema.extend({
+  sourceId: z.string().min(1),
+  versionId: z.string().min(1),
+  content: z.string().min(1).max(250_000),
 })
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
@@ -188,7 +196,12 @@ export function createMaterialCommands(context: LibraryContext) {
           ) ||
           receipt.result.noteIds.some(
             (id) => !context.library.value.notes.some((note) => note.id === id),
-          )
+          ) ||
+          (receipt.result.versionId &&
+            !receipt.result.sourceIds.some((id) => {
+              const source = context.library.value.sources.find((item) => item.id === id)
+              return source && sourceAtVersion(source, receipt.result.versionId)
+            }))
         )
           throw new Error('此操作已保存，但其结果已撤销或删除；请使用新的操作标识。')
         return receipt
@@ -536,6 +549,76 @@ export function createMaterialCommands(context: LibraryContext) {
           )
           assertCurrent()
           return { sourceId: prepared.source.id, revision: context.revision }
+        },
+        async editContent(request) {
+          request = editContentSchema.parse(request)
+          assertCurrent()
+          const fingerprint = await digest(
+            canonical({
+              sourceId: request.sourceId,
+              versionId: request.versionId,
+              content: request.content,
+            }),
+          )
+          const id = await receiptId(request.operationId)
+          const completed = prior(id, fingerprint, 'edit-content')
+          if (completed)
+            return {
+              sourceId: completed.result.sourceIds[0]!,
+              versionId: completed.result.versionId!,
+              revision: context.revision,
+            }
+          revision(request.expectedRevision)
+          let before = context.library.value
+          const source = locate(request.sourceId)
+          if (source.mediaId !== request.versionId) throw new Error('材料版本已变化，请重新预览。')
+          if (source.properties === undefined && 'readSourceProperties' in context.repository) {
+            const properties = await context.repository.readSourceProperties(source.id)
+            revision(request.expectedRevision)
+            // Capture unmanaged YAML in the undo baseline without an intermediate write.
+            before = {
+              ...context.library.value,
+              sources: context.library.value.sources.map((item) =>
+                item.id === source.id ? sourceSchema.parse({ ...item, properties }) : item,
+              ),
+            }
+          }
+          const prepared = editSourceContent(before, {
+            scope: plugin.scope,
+            sourceId: request.sourceId,
+            mediaId: request.versionId,
+            content: request.content,
+          })
+          const next = withReceipt(prepared.library, id, request, fingerprint, 'edit-content', {
+            sourceIds: [prepared.source.id],
+            noteIds: [],
+            versionId: prepared.source.mediaId,
+          })
+          const entry = operationFor(before, next, plugin.scope, '编辑材料正文')!
+          await context.commit(
+            (current) => {
+              revision(request.expectedRevision)
+              const source = current.sources.find((item) => item.id === request.sourceId)
+              if (source?.mediaId !== request.versionId)
+                throw new Error('材料版本已变化，请重新预览。')
+              return next
+            },
+            {
+              assets: [prepared.asset],
+              reason: '编辑材料正文前',
+              undoLabel: false,
+              operationHistory: operationHistory([
+                ...context.operations.value.slice(-(MAX_OPERATION_HISTORY - 1)),
+                entry,
+              ]),
+            },
+          )
+          assertCurrent()
+          return {
+            sourceId: prepared.source.id,
+            versionId: prepared.source.mediaId,
+            revision: context.revision,
+          }
         },
         async search(query, signal) {
           assertCurrent()

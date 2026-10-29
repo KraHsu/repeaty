@@ -16,7 +16,10 @@ import { useBrowserWorkspaceStore } from '../stores/browser-workspace'
 const browserState = useBrowserWorkspaceStore()
 const { active: browserWorkspace } = storeToRefs(browserState)
 
-const props = defineProps<{ workspace: ReturnType<typeof useLibrary> }>()
+const props = defineProps<{
+  workspace: ReturnType<typeof useLibrary>
+  beforeChange?: () => boolean | Promise<boolean>
+}>()
 const emit = defineEmits<{ changed: [] }>()
 const folderInput = ref<HTMLInputElement>()
 const loading = ref(false),
@@ -100,6 +103,16 @@ function selected(event: Event) {
 }
 async function activate(confirmed = false) {
   if (locked.value || !candidate.value) return
+  const selected = candidate.value,
+    scope = props.workspace.scope.value
+  if (
+    !(await (props.beforeChange?.() ?? true)) ||
+    !alive ||
+    props.workspace.scope.value !== scope ||
+    candidate.value !== selected ||
+    locked.value
+  )
+    return
   if (active.value?.changed && !confirmed) {
     confirm.value = 'replace'
     return
@@ -126,6 +139,16 @@ async function activate(confirmed = false) {
 }
 async function finish(confirmed = false) {
   if (locked.value || !active.value) return
+  const selected = active.value,
+    scope = props.workspace.scope.value
+  if (
+    !(await (props.beforeChange?.() ?? true)) ||
+    !alive ||
+    props.workspace.scope.value !== scope ||
+    active.value !== selected ||
+    locked.value
+  )
+    return
   if (active.value.changed && !confirmed) {
     confirm.value = 'close'
     return

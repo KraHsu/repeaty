@@ -8,6 +8,7 @@ import { parseArchive } from '../../src/core/archive'
 import { restoreNavigation } from './source-navigation-flow'
 import { sourceQuote } from './source-flow'
 import { importReading, moveReading, readingText, saveReading } from './reading-flow'
+import { showSourceFilters } from './source-controls'
 
 export async function openSourceDetails(page: Page) {
   await page.getByRole('button', { name: '编辑材料信息', exact: true }).click()
@@ -35,6 +36,7 @@ export async function sourceDetailsFlow(page: Page, read: () => Promise<Library>
   await expect(dialog).toHaveCount(0)
   expect((await read()).sources).toEqual(before.sources)
 
+  await showSourceFilters(page)
   await page.getByLabel('搜索材料', { exact: true }).fill('导航原文')
   dialog = await openSourceDetails(page)
   await dialog.getByLabel('材料标题', { exact: true }).fill('   ')
@@ -68,6 +70,7 @@ export async function sourceDetailsFlow(page: Page, read: () => Promise<Library>
   await setInterfaceLanguage(page, 'zh-CN')
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await page.locator('.source-list-title').filter({ hasText: data.root.title }).click()
+  await showSourceFilters(page)
   await page.getByLabel('搜索材料', { exact: true }).fill(data.root.title)
   dialog = await openSourceDetails(page)
   await dialog.getByLabel('材料标题', { exact: true }).fill(rootTitle)
@@ -158,6 +161,7 @@ export async function sourceDetailsFlow(page: Page, read: () => Promise<Library>
     [...sources].sort((a, b) => a.id.localeCompare(b.id))
   expect(ordered(backup.library.sources)).toEqual(ordered(after.sources))
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
+  await showSourceFilters(page)
   await page.getByLabel('搜索材料', { exact: true }).fill(rootTitle)
   await changeSourceDetails(page, 'Temporary edit after backup')
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
@@ -168,6 +172,7 @@ export async function sourceDetailsFlow(page: Page, read: () => Promise<Library>
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.reload()
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
+  await showSourceFilters(page)
   await page.getByLabel('搜索材料', { exact: true }).fill(rootTitle)
   await expect(page.getByRole('heading', { name: rootTitle, exact: true })).toBeVisible()
   const restored = await read()

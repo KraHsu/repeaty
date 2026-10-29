@@ -8,7 +8,8 @@
     "plugins/review-history",
     "plugins/leetcode",
     "plugins/typed-answer",
-    "plugins/review-heatmap"
+    "plugins/review-heatmap",
+    "plugins/format-cleanup"
   ],
   "description": "Desktop flashcards and spaced repetition, with your learning library in one folder.",
   "engines": {

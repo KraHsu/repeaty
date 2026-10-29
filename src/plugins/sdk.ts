@@ -132,6 +132,7 @@ export function createPluginApi(
     discardImport: (id) => materialHost().discardImport(id),
     createNote: (request) => materialCall((host) => host.createNote(request)),
     createExcerpt: (request) => materialCall((host) => host.createExcerpt(request)),
+    editContent: (request) => materialCall((host) => host.editContent(request)),
     search: (query, signal) => materialCall((host) => host.search(query, signal)),
   }
   const registration = <K extends keyof MaterialRegistrations>(name: K) => {

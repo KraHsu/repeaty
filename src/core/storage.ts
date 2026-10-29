@@ -23,6 +23,8 @@ import { sourceSchema, type Source } from './source-data'
 import { materialReceiptSchema, validateMaterialChanges } from './material-data'
 import { validateSourceOrigins } from './sources'
 import { cardDraftSchema, MAX_DRAFTS, type CardDraft } from './card-draft-data'
+import { checkSourceDraftVersion, sourceDraftSchema, type SourceDraft } from './source-workbench'
+import { materialFolderSchema } from './material-organization-data'
 import { compileSearch } from './search'
 import { available } from './scheduler'
 import {
@@ -57,6 +59,7 @@ export const recordStores = [
   'attempts',
   'sources',
   'materialReceipts',
+  'materialFolders',
 ] as const
 export type RecordStore = (typeof recordStores)[number]
 type Entity = Library[RecordStore][number]
@@ -106,7 +109,9 @@ interface RepeatyDB extends DBSchema {
   attemptSummaries: RecordTable
   sources: RecordTable
   materialReceipts: RecordTable
+  materialFolders: RecordTable
   cardDrafts: { key: string; value: CardDraft }
+  sourceDrafts: { key: string; value: SourceDraft }
   operationHistory: { key: string; value: OperationHistory }
 }
 const stores = [
@@ -118,6 +123,7 @@ const stores = [
   'history',
   'attemptSummaries',
   'cardDrafts',
+  'sourceDrafts',
   'operationHistory',
   ...recordStores,
 ] as const
@@ -125,6 +131,7 @@ type Transaction = IDBPTransaction<RepeatyDB, typeof stores, 'readwrite'>
 const schemas = {
   sources: sourceSchema,
   materialReceipts: materialReceiptSchema,
+  materialFolders: materialFolderSchema,
   decks: deckSchema,
   notes: noteSchema,
   cards: cardSchema,
@@ -155,7 +162,7 @@ export function createRepository(
 ) {
   // save() shadows `options` with its own parameter, so keep the repository setting here.
   const compactHistory = Boolean(options.compactHistory)
-  const database = openDB<RepeatyDB>(name, 18, {
+  const database = openDB<RepeatyDB>(name, 19, {
     async upgrade(db, _oldVersion, _newVersion, tx) {
       try {
         for (const store of stores)
@@ -306,6 +313,7 @@ export function createRepository(
     const used = new Set(await tx.objectStore('media').getAllKeys())
     for (const id of (await tx.objectStore('operationHistory').get('main'))?.mediaIds ?? [])
       used.add(id)
+    for (const draft of await tx.objectStore('sourceDrafts').getAll()) used.add(draft.mediaId)
     // Only media changes and legacy snapshots can retain deleted blobs, not the entire study history.
     for (const change of await tx.objectStore('history').index('store').getAll('media'))
       if (change.before) used.add(change.id)
@@ -321,6 +329,7 @@ export function createRepository(
       meta.counts.practices ??= 0
       meta.counts.attempts ??= 0
       meta.counts.materialReceipts ??= 0
+      meta.counts.materialFolders ??= 0
       return meta
     }
     const old = await tx.objectStore('workspace').get('main')
@@ -376,6 +385,35 @@ export function createRepository(
     return next
   }
   return {
+    async readSourceDraft(sourceId: string) {
+      const draft = await (await database).get('sourceDrafts', sourceId)
+      return draft ? sourceDraftSchema.parse(draft) : undefined
+    },
+    async writeSourceDraft(input: SourceDraft) {
+      const draft = sourceDraftSchema.parse(input)
+      if (draft.scope !== `local:${name}`) throw changed()
+      const tx = (await database).transaction(['sourceDrafts', 'sources'], 'readwrite')
+      try {
+        checkSourceDraftVersion(
+          (await tx.objectStore('sources').get(draft.sourceId))?.value as
+            Library['sources'][number] | undefined,
+          draft,
+        )
+        const store = tx.objectStore('sourceDrafts')
+        if (!(await store.get(draft.sourceId)) && (await store.count()) >= 50)
+          throw new Error('材料草稿已达到 50 份上限。')
+        await store.put(draft, draft.sourceId)
+        await tx.done
+      } catch (error) {
+        await abort(tx)
+        throw error
+      }
+    },
+    async discardSourceDraft(sourceId: string, id: string) {
+      const tx = (await database).transaction('sourceDrafts', 'readwrite')
+      if ((await tx.store.get(sourceId))?.id === id) await tx.store.delete(sourceId)
+      await tx.done
+    },
     scope: () => `local:${name}`,
     async readCardDrafts() {
       const tx = (await database).transaction('cardDrafts', 'readonly')
@@ -452,6 +490,7 @@ export function createRepository(
         reason?: string
         now?: Date
         consumeCardDraft?: string
+        consumeSourceDraft?: string
         operationHistory?: OperationHistory
       } = {},
     ): Promise<Snapshot> {
@@ -465,9 +504,15 @@ export function createRepository(
       // The frequent grading path validates only changed cards/reviews. Structural edits and
       // external restores still receive complete cross-reference validation at the boundary.
       const progressOnly =
-        ['decks', 'notes', 'media', 'savedSearches', 'sources', 'materialReceipts'].every(
-          (key) => previous[key as RecordStore] === library[key as RecordStore],
-        ) &&
+        [
+          'decks',
+          'notes',
+          'media',
+          'savedSearches',
+          'sources',
+          'materialReceipts',
+          'materialFolders',
+        ].every((key) => previous[key as RecordStore] === library[key as RecordStore]) &&
         library.cards.length === previous.cards.length &&
         library.cards.every((card) => {
           const prior = maps.get('cards')!.get(card.id)?.value as
@@ -610,6 +655,13 @@ export function createRepository(
         if (options.consumeCardDraft) {
           if (!(await tx.objectStore('cardDrafts').get(options.consumeCardDraft))) throw changed()
           await tx.objectStore('cardDrafts').delete(options.consumeCardDraft)
+        }
+        if (options.consumeSourceDraft) {
+          const draft = (await tx.objectStore('sourceDrafts').getAll()).find(
+            (item) => item.id === options.consumeSourceDraft,
+          )
+          if (!draft) throw changed()
+          await tx.objectStore('sourceDrafts').delete(draft.sourceId)
         }
         const expired =
           current.revision > 0 &&

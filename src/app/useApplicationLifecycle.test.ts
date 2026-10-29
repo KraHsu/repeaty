@@ -6,7 +6,9 @@ import type { useLibrary } from '../composables/useLibrary'
 afterEach(() => vi.useRealTimers())
 it('cleans listeners, both timers and late-arriving platform subscriptions after unmount', async () => {
   vi.useFakeTimers()
-  let reader!: (stop: () => void) => void, monitor!: (stop: () => void) => void
+  let reader!: (stop: () => void) => void,
+    monitor!: (stop: () => void) => void,
+    close!: (stop: () => void) => void
   const workspace = {
     init: vi.fn(async () => {}),
     close: vi.fn(async () => {}),
@@ -15,7 +17,10 @@ it('cleans listeners, both timers and late-arriving platform subscriptions after
   const stopReader = vi.fn(),
     stopMonitor = vi.fn(),
     stopPlugins = vi.fn(),
-    stopPreferences = vi.fn()
+    stopPreferences = vi.fn(),
+    stopClose = vi.fn(),
+    stopWorkspaceGuard = vi.fn(),
+    beforeLeave = vi.fn(async () => true)
   const keydown = vi.fn(),
     tick = vi.fn()
   const bindings = {
@@ -29,12 +34,17 @@ it('cleans listeners, both timers and late-arriving platform subscriptions after
       }),
     listenPluginPreferences: () => stopPlugins,
     listenPreferences: () => stopPreferences,
+    connectWindowCloseGuard: () =>
+      new Promise<() => void>((resolve) => {
+        close = resolve
+      }),
+    connectWorkspaceLeaveGuard: vi.fn(() => stopWorkspaceGuard),
   }
   const host = document.createElement('div')
   document.body.append(host)
   const app = createApp({
     setup() {
-      useApplicationLifecycle({ workspace, globalKeydown: keydown, tick }, bindings)
+      useApplicationLifecycle({ workspace, globalKeydown: keydown, tick, beforeLeave }, bindings)
       return () => h('div')
     },
   })
@@ -47,11 +57,15 @@ it('cleans listeners, both timers and late-arriving platform subscriptions after
   app.unmount()
   reader(stopReader)
   monitor(stopMonitor)
+  close(stopClose)
   await Promise.resolve()
   expect(stopReader).toHaveBeenCalledTimes(1)
   expect(stopMonitor).toHaveBeenCalledTimes(1)
   expect(stopPlugins).toHaveBeenCalledTimes(1)
   expect(stopPreferences).toHaveBeenCalledTimes(1)
+  expect(stopClose).toHaveBeenCalledOnce()
+  expect(stopWorkspaceGuard).toHaveBeenCalledOnce()
+  expect(bindings.connectWorkspaceLeaveGuard).toHaveBeenCalledWith(beforeLeave)
   window.dispatchEvent(new KeyboardEvent('keydown', { key: 'b' }))
   await vi.advanceTimersByTimeAsync(60_000)
   expect(keydown).toHaveBeenCalledTimes(1)

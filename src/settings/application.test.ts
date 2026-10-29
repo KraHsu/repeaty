@@ -83,6 +83,8 @@ it('provides individual desktop configuration views without registering plugin m
   expect(entries.map(({ contribution }) => contribution.id)).toEqual([
     'appearance',
     'notifications',
+    'material-search',
+    'material-reading',
     'workspace',
     'mcp',
     'ai',

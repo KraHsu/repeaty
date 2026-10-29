@@ -15,6 +15,7 @@ try {
   for (const [store, name] of Object.entries({
     sources: 'sourceSchema',
     materialReceipts: 'materialReceiptSchema',
+    materialFolders: 'materialFolderSchema',
     decks: 'deckSchema',
     notes: 'noteSchema',
     cards: 'cardSchema',

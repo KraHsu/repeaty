@@ -3,7 +3,12 @@ import { z } from 'zod'
 import { workspaceLibrarySchema, type Library } from '../core/model'
 import { parseOperationHistory, type OperationHistory } from '../core/operation-history'
 import { recordStores } from '../core/storage'
-import { readWorkspaceMarkdown, MAX_WORKSPACE_TEXT_BYTES } from '../workspace/markdown'
+import { sourceDraftSchema, type SourceDraft } from '../core/source-workbench'
+import {
+  readWorkspaceMarkdown,
+  workspaceSourceProperties,
+  MAX_WORKSPACE_TEXT_BYTES,
+} from '../workspace/markdown'
 import {
   attemptSchema,
   sameAttemptSummary,
@@ -34,6 +39,7 @@ const limits = {
   attempts: 500_000,
   sources: 10_000,
   materialReceipts: 100_000,
+  materialFolders: 10_000,
 }
 const assetSchema = z.object({
   id: z.string(),
@@ -51,6 +57,8 @@ export interface BrowserWorkspaceSnapshot {
   revision: number
   library: Library
   operationHistory?: OperationHistory
+  sourceDrafts?: SourceDraft[]
+  sourceProperties?: Record<string, string>
 }
 
 /** SQLite is an immutable in-memory copy. No native open, lock, migration or checkpoint. */
@@ -91,7 +99,7 @@ export class BrowserWorkspaceReader {
       db.run('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF;')
       if (
         scalar(db, 'PRAGMA application_id') !== 0x52505459 ||
-        ![10, 11, 12].includes(scalar(db, 'PRAGMA user_version') as number) ||
+        ![10, 11, 12, 13].includes(scalar(db, 'PRAGMA user_version') as number) ||
         scalar(db, 'SELECT id FROM workspace_identity') !== marker.id
       )
         throw new WorkspaceReadError('incompatible')
@@ -103,7 +111,9 @@ export class BrowserWorkspaceReader {
       if (
         [
           ...recordStores.filter(
-            (store) => store !== 'materialReceipts' || materialReceiptsRequired,
+            (store) =>
+              (store !== 'materialReceipts' || materialReceiptsRequired) &&
+              (store !== 'materialFolders' || databaseVersion >= 13),
           ),
           'workspace',
           'workspace_identity',
@@ -111,6 +121,7 @@ export class BrowserWorkspaceReader {
           'publications',
           'assets',
           ...(databaseVersion >= 12 ? ['operation_history'] : []),
+          ...(databaseVersion >= 13 ? ['source_drafts'] : []),
         ].some((name) => !tables.has(name)) ||
         scalar(db, 'PRAGMA quick_check(1)') !== 'ok'
       )
@@ -129,9 +140,13 @@ export class BrowserWorkspaceReader {
         .safe()
         .parse(scalar(db, 'SELECT revision FROM workspace WHERE id=1'))
       progress(30)
-      const content: Record<string, unknown> = { version: 14 }
+      const content: Record<string, unknown> = { version: 15 }
       for (const [index, store] of recordStores.entries()) {
-        if (store === 'materialReceipts' && !tables.has(store) && !materialReceiptsRequired) {
+        if (
+          !tables.has(store) &&
+          ((store === 'materialReceipts' && !materialReceiptsRequired) ||
+            (store === 'materialFolders' && databaseVersion < 13))
+        ) {
           content[store] = []
           continue
         }
@@ -158,8 +173,23 @@ export class BrowserWorkspaceReader {
         progress(30 + Math.round(((index + 1) / recordStores.length) * 40))
       }
       const library = workspaceLibrarySchema.parse(content)
+      const sourceDrafts: SourceDraft[] = []
+      if (tables.has('source_drafts')) {
+        const count = scalar(db, 'SELECT COUNT(*) FROM source_drafts')
+        if (typeof count !== 'number' || count > 50) throw new WorkspaceReadError('limit')
+        for (const row of rows(db, 'SELECT id,data FROM source_drafts')) {
+          if (typeof row.data !== 'string' || row.data.length > 2 * 1024 * 1024)
+            throw new WorkspaceReadError('limit')
+          const draft = sourceDraftSchema.parse(JSON.parse(row.data))
+          if (draft.sourceId !== row.id) throw new WorkspaceReadError('invalid')
+          // A deleted source can still be restored through the operation journal.
+          // The draft remains inert until its original source/version is present.
+          sourceDrafts.push(draft)
+        }
+      }
       // Use accepted SQLite records, never pending edits in notes/ or sources/.
       const documents = rows(db, 'SELECT kind,id,path,hash FROM documents')
+      const sourceProperties: Record<string, string> = Object.create(null)
       const identities = new Set<string>()
       const notes = new Map(library.notes.map((note) => [note.id, note]))
       let documentBytes = 0
@@ -205,6 +235,8 @@ export class BrowserWorkspaceReader {
             parsed.document.header.deckId !== note.deckId)
         )
           throw new WorkspaceReadError('invalid')
+        if (row.kind === 'source')
+          sourceProperties[row.id] = workspaceSourceProperties(parsed.document)
         identities.add(`${row.kind}:${row.id}`)
       }
       if (
@@ -222,6 +254,7 @@ export class BrowserWorkspaceReader {
       const retainedIds = new Set([
         ...library.media.map((media) => media.id),
         ...(operationHistory?.mediaIds ?? []),
+        ...sourceDrafts.map((draft) => draft.mediaId),
       ])
       for (const row of rows(db, 'SELECT id,mime,path,size FROM assets')) {
         if (!retainedIds.has(row.id as string)) continue
@@ -244,7 +277,15 @@ export class BrowserWorkspaceReader {
       return new BrowserWorkspaceReader(
         db,
         files,
-        { id: marker.id, name: files.name, revision, library, operationHistory },
+        {
+          id: marker.id,
+          name: files.name,
+          revision,
+          library,
+          operationHistory,
+          sourceDrafts,
+          sourceProperties,
+        },
         assets,
       )
     } catch (error) {

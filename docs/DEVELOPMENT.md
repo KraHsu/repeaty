@@ -163,7 +163,7 @@ Anki `.apkg` 在同源 Worker 中通过 sql.js 读取，HTML 用 parse5 作为�
 
 0.13.0 增加受选区授权限制的 `repeaty_selected_excerpt` 与 `repeaty_propose_cards`；0.14.0 将已接收草稿保存到独立 IndexedDB 表，写入成功后才返回回执。`core/draft-proposals.ts` 管理选区、批次重试与容量；`core/card-draft-data.ts` 校验持久记录与附件，`desktop/drafts.ts` 负责恢复与作用域代次检查。`DraftWorkbench` 复用 NoteEditor，明确保存编辑或确认调用 `saveExcerptNote`；确认时生成正式记录与消费草稿使用同一事务。辅助表不参与正式修订、检查点和备份，不持久化授权。[ADR 003](adr/003-mcp-card-drafts.md) · [ADR 004](adr/004-persistent-card-drafts.md)。
 
-当前数据格式为 Library v13、IndexedDB v16、SQLite v10、HTTP API v11、`.repeaty` v10 和 JSON 备份 v13。0.26.0 为阅读自适应状态升级版本门槛，Library v12 不补写反馈与确认次数。0.24.0 为多级出处语义升级版本门槛，旧客户端不能处理新关系；记录表结构不变。Library v11 保留全部既有来源与学习记录。Library v10 保留已有阅读设置与独立摘录，不补写间隔。Library v9 保留已有阅读设置，不补写摘录类型；v8 升级时保留阅读安排，未设置优先级时按普通处理；v7 保留阅读位置，没有安排的材料默认可读；v6 保留材料且不补写位置，更早版本补空材料列表。原 ID、FSRS 状态、记录、检查点与待确认草稿保留；旧客户端拒绝写入新版本数据库。旧 `.repeaty` v1–v9 和 JSON 备份仍可恢复。服务端校验来源、快照和摘录引用，按材料逐份读取正文验证位置，避免批量恢复时同时缓存全部原文。
+当前桌面与浏览器数据格式为 Library v15、IndexedDB v19、SQLite v13、`.repeaty` v12 和 JSON 备份 v15；已退役账号服务的 HTTP API 仍为 v11。材料工作台新增文件夹、版本批注、属性与独立草稿，内部版本门槛见 [工作目录](WORKSPACE_MODE.md)。0.26.0 为阅读自适应状态升级版本门槛，Library v12 不补写反馈与确认次数。0.24.0 为多级出处语义升级版本门槛，旧客户端不能处理新关系；记录表结构不变。Library v11 保留全部既有来源与学习记录。Library v10 保留已有阅读设置与独立摘录，不补写间隔。Library v9 保留已有阅读设置，不补写摘录类型；v8 升级时保留阅读安排，未设置优先级时按普通处理；v7 保留阅读位置，没有安排的材料默认可读；v6 保留材料且不补写位置，更早版本补空材料列表。原 ID、FSRS 状态、记录、检查点与待确认草稿保留；旧客户端拒绝写入新版本数据库。旧 `.repeaty` v1–v9 和 JSON 备份仍可恢复。服务端校验来源、快照和摘录引用，按材料逐份读取正文验证位置，避免批量恢复时同时缓存全部原文。
 
 Anki 集成只规划导入，不计划提供 Repeaty → Anki 导出。尚未实现 Anki 进度迁移、自定义字段 / HTML 模板、所见即所得富文本编辑器、图片遮挡、嵌套挖空、FSRS 参数训练。
 

@@ -2,7 +2,8 @@ import { beforeAll, expect, it, vi } from 'vitest'
 import initSqlJs, { type SqlJsStatic } from 'sql.js'
 import { fixture, input, now } from '../core/test-fixtures'
 import { reviewCard, undoReview } from '../core/scheduler'
-import { saveNote, removeNotes } from '../core/model'
+import { saveNote, removeNotes, type MediaUpload } from '../core/model'
+import { prepareSource, addSource } from '../core/sources'
 import { practiceHistoryFixture } from '../../tests/fixtures/practice-history'
 import { BrowserWorkspaceReader } from './workspace-reader'
 import { createBrowserRepository } from './repository'
@@ -12,8 +13,8 @@ let SQL: SqlJsStatic
 beforeAll(async () => {
   SQL = await initSqlJs()
 })
-async function start(library = fixture()) {
-  const env = await workspaceFixture(SQL, library)
+async function start(library = fixture(), assets: MediaUpload[] = []) {
+  const env = await workspaceFixture(SQL, library, assets)
   const reader = await BrowserWorkspaceReader.open(SQL, { kind: 'files', files: env.files })
   const source = {
     snapshot: reader.snapshot,
@@ -34,6 +35,39 @@ async function start(library = fixture()) {
     },
   }
 }
+it('marks in-memory body drafts as unsaved trial changes while leaving the original directory untouched', async () => {
+  const prepared = prepareSource(
+    { title: 'Material', content: 'Original', url: '', format: 'markdown' },
+    now,
+  )
+  const context = await start(addSource(fixture(), prepared.source, prepared.asset), [
+    prepared.asset,
+  ])
+  const before = await context.repo.load()
+  const draft = {
+    id: crypto.randomUUID(),
+    sourceId: prepared.source.id,
+    mediaId: prepared.source.mediaId,
+    scope: context.repo.scope(),
+    content: 'Only in this page',
+    properties: '',
+    title: 'Material',
+    url: '',
+    updatedAt: now.toISOString(),
+  }
+  await context.repo.writeSourceDraft(draft)
+  expect(context.changed).toHaveBeenCalledOnce()
+  expect(await context.repo.readSourceDraft(prepared.source.id)).toEqual(draft)
+  expect(await context.repo.load()).toEqual(before)
+  expect(context.source.snapshot.sourceDrafts ?? []).toEqual([])
+  await context.repo.discardSourceDraft(prepared.source.id, 'wrong-draft')
+  expect(context.changed).toHaveBeenCalledOnce()
+  await context.repo.discardSourceDraft(prepared.source.id, draft.id)
+  expect(context.changed).toHaveBeenCalledTimes(2)
+  expect(await context.repo.readSourceDraft(prepared.source.id)).toBeUndefined()
+  expect(await context.repo.load()).toEqual(before)
+  await context.close()
+})
 it('grades, undoes and edits a separate copy without re-reading directory bytes or code', async () => {
   const context = await start()
   const before = await context.repo.load()

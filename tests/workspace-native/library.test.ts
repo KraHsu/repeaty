@@ -29,6 +29,12 @@ import { readWorkspaceMarkdown, registerWorkspaceNote } from '../../src/workspac
 import { sha256 } from '../../src/workspace/source-revisions'
 import type { CardDraft } from '../../src/core/card-draft-data'
 import { materialFixture } from '../fixtures/material-model'
+import {
+  editSourceContent,
+  upsertSourceAnnotation,
+  type SourceDraft,
+} from '../../src/core/source-workbench'
+import { parseSourceProperties } from '../../src/core/source-properties'
 let binary: string
 const roots: string[] = []
 const processes: ChildProcessWithoutNullStreams[] = []
@@ -135,6 +141,74 @@ async function docs(env: Awaited<ReturnType<typeof workspace>>) {
   })
 }
 describe('the desktop workspace is the learning store', () => {
+  it('persists source drafts and consumes them with versioned text, YAML properties and exact annotation history', async () => {
+    const env = await workspace()
+    const text = '保留旧版本🙂\n可批注正文'
+    const prepared = prepareSource({ title: '材料', url: '', format: 'markdown', content: text })
+    prepared.source.properties = 'author: Old\nunknown:\n  preserved: true\n'
+    const library = addSource(fixture(), prepared.source, prepared.asset)
+    const first = await env.repo.save(library, 0, { assets: [prepared.asset] })
+    const draft: SourceDraft = {
+      id: crypto.randomUUID(),
+      sourceId: prepared.source.id,
+      mediaId: prepared.source.mediaId,
+      scope: env.repo.scope(),
+      title: '材料',
+      url: '',
+      content: '新正文',
+      properties: 'author: New\nunknown:\n  preserved: true\n',
+      updatedAt: new Date().toISOString(),
+    }
+    await env.repo.writeSourceDraft(draft)
+    expect((await env.repo.load()).revision).toBe(first.revision)
+    await env.runtime.stop()
+    const runtime = host(env.device)
+    const status = statusSchema.parse(await runtime.api('workspace_status'))
+    expect(status.active).not.toBeNull()
+    const repo = createNativeRepository(status.active!, runtime.api)
+    expect(await repo.readSourceDraft(prepared.source.id)).toEqual(draft)
+    const reopened = await repo.load()
+    const edited = editSourceContent(reopened.library, draft)
+    const marked = upsertSourceAnnotation(
+      edited.library,
+      {
+        sourceId: draft.sourceId,
+        mediaId: draft.mediaId,
+        scope: repo.scope(),
+        start: 0,
+        end: 5,
+        quote: '保留旧版本',
+        body: '原始出处',
+      },
+      text,
+    )
+    const entry = operationFor(reopened.library, marked, repo.scope(), '编辑材料正文')!
+    await expect(
+      repo.save(marked, 0, { assets: [edited.asset], consumeSourceDraft: draft.id }),
+    ).rejects.toThrow()
+    expect(await repo.readSourceDraft(prepared.source.id)).toEqual(draft)
+    const saved = await repo.save(marked, reopened.revision, {
+      assets: [edited.asset],
+      consumeSourceDraft: draft.id,
+      operationHistory: operationHistory([entry]),
+    })
+    expect(await repo.readSourceDraft(prepared.source.id)).toBeUndefined()
+    expect(parseSourceProperties(await repo.readSourceProperties(prepared.source.id))).toEqual({
+      author: 'New',
+      unknown: { preserved: true },
+    })
+    await repo.save(revertOperation(saved.library, entry), saved.revision, {
+      operationHistory: operationHistory([], [entry]),
+    })
+    expect(parseSourceProperties(await repo.readSourceProperties(prepared.source.id))).toEqual({
+      author: 'Old',
+      unknown: { preserved: true },
+    })
+    const old = await repo.getMedia(prepared.source.mediaId)
+    expect(await old!.text()).toBe(text)
+    expect((await repo.load()).library.cards).toEqual(first.library.cards)
+    await runtime.stop()
+  })
   it('persists material originals, reading locators and retry receipts through the real workspace and restart', async () => {
     const env = await workspace(),
       material = materialFixture()

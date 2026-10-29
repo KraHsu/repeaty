@@ -9,6 +9,7 @@ import { storedLibrary } from './stored-library'
 import { createSourceDeck, previewSource, saveSource, sourceQuote, sourceText } from './source-flow'
 import { importReading, readingText } from './reading-flow'
 import { startRound } from './reading-round-flow'
+import { showSourceText } from './source-controls'
 
 export async function localLibrary(page: Page) {
   const rows = await storedLibrary(page)
@@ -24,6 +25,7 @@ export async function selectForExcerpt(
   start = sourceText.lastIndexOf(sourceQuote),
   end = start + sourceQuote.length,
 ) {
+  await showSourceText(page)
   await page.locator('.source-text').evaluate(
     (element: HTMLTextAreaElement, { start, end }) => {
       element.focus()
@@ -39,6 +41,7 @@ export async function saveIndependentExcerpt(page: Page, title: string) {
   await page.getByLabel('摘录标题', { exact: true }).fill(title)
   await page.getByRole('button', { name: '保存摘录', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
+  await showSourceText(page)
 }
 async function checkRootHighlight(page: Page) {
   const mark = page.locator('.source-original mark')
@@ -69,6 +72,7 @@ export async function sourceExcerptFlow(page: Page, read: () => Promise<Library>
   await dialog.getByLabel('摘录标题').press('Enter')
   await expect(dialog).toHaveCount(0)
   await expect(page.getByRole('heading', { name: '独立摘录🙂', exact: true })).toBeVisible()
+  await showSourceText(page)
   await expect(page.locator('.source-text')).toHaveValue(sourceQuote)
   await expect(page.getByRole('button', { name: '保存为摘录', exact: true })).toBeDisabled()
   const first = await read()
@@ -104,6 +108,7 @@ export async function sourceExcerptFlow(page: Page, read: () => Promise<Library>
   await page.reload()
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await page.locator('.source-list-title').filter({ hasText: child.title }).click()
+  await showSourceText(page)
   await expect(page.locator('.source-text')).toHaveValue(sourceQuote)
   await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'high')
 
@@ -132,6 +137,7 @@ export async function sourceExcerptFlow(page: Page, read: () => Promise<Library>
   await page.locator('.source-list-title').filter({ hasText: child.title }).click()
   const partial = '记忆状态',
     partialStart = sourceQuote.indexOf(partial)
+  await showSourceText(page)
   await page.locator('.source-text').evaluate((element: HTMLTextAreaElement, start) => {
     element.focus()
     element.setSelectionRange(start, start + 4)
@@ -177,6 +183,7 @@ export async function sourceExcerptFlow(page: Page, read: () => Promise<Library>
   await page.getByRole('button', { name: '删除材料', exact: true }).click()
   await expect(page.getByRole('dialog')).toContainText('由此保存的摘录仍保留')
   await page.getByRole('button', { name: '确认删除', exact: true }).click()
+  await showSourceText(page)
   await expect(page.locator('.source-text')).toHaveValue(sourceQuote)
   await expect(page.getByText('原文已删除，摘录内容仍保留。', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '保存为摘录', exact: true })).toBeDisabled()
@@ -210,6 +217,7 @@ export async function sourceExcerptFlow(page: Page, read: () => Promise<Library>
   expect(restored.reviews).toEqual(cards.reviews)
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await page.locator('.source-list-title').filter({ hasText: child.title }).click()
+  await showSourceText(page)
   await expect(page.locator('.source-text')).toHaveValue(sourceQuote)
   await page.getByRole('button', { name: '查看出处', exact: true }).click()
   await checkRootHighlight(page)

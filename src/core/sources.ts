@@ -165,6 +165,7 @@ export function replaceSourceContent(
     ...(previous.derived ? { derived: previous.derived } : {}),
     ...(previous.inlineMedia ? { inlineMedia: previous.inlineMedia } : {}),
     ...(previous.document ? { document: previous.document } : {}),
+    ...(previous.properties !== undefined ? { properties: previous.properties } : {}),
   }
   const source = sourceSchema.parse({
     ...previous,

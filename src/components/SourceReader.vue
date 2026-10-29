@@ -11,6 +11,7 @@ import { useInlineMedia } from '../composables/useInlineMedia'
 import type { Source, SourceOrigin, ReadingPosition, ReadingUpdate } from '../core/source-data'
 import { sourceExcerpt } from '../core/sources'
 import { renderReadingMarkdown } from '../core/content'
+import { readingSelection } from './reading-selection'
 import {
   TextareaPosition,
   capturePreview,
@@ -24,12 +25,18 @@ const props = defineProps<{
   scope: string
   getMedia?: (id: string) => Promise<Blob | undefined>
   originalName?: string
+  editable?: boolean
+  busy?: boolean
 }>()
 const emit = defineEmits<{
   select: [sourceId: string, start: number, end: number, locator?: MaterialLocator]
   position: [update: ReadingUpdate]
+  changeText: [update: { sourceId: string; mediaId: string; scope: string; content: string }]
+  wiki: [target: string]
+  wikiPreview: [target: string]
 }>()
-const preview = ref(props.source.reading?.view === 'preview' && props.source.format === 'markdown')
+const preview = ref(props.source.format === 'markdown' && props.source.reading?.view !== 'source')
+const selectionError = ref('')
 const plugins = usePluginManager()
 const textOnly = ref(false),
   materialError = ref(''),
@@ -221,12 +228,65 @@ async function runCommand(commandId: string) {
 }
 const reader = ref<{ textareaRef?: HTMLTextAreaElement }>(),
   rendered = ref<HTMLElement>()
-const media = useInlineMedia(() => ({
-  text: props.text,
-  media: preview.value ? props.source.inlineMedia : undefined,
-  read: props.getMedia,
-}))
-const html = computed(() => renderReadingMarkdown(props.text, media.urls.value))
+type ReaderMediaInput = {
+  scope: string
+  sourceId: string
+  versionId: string
+  text: string
+  media?: Source['inlineMedia']
+  read?: (id: string) => Promise<Blob | undefined>
+}
+const mediaInput = computed<ReaderMediaInput>((previous) => {
+  const next = {
+    scope: props.scope,
+    sourceId: props.source.id,
+    versionId: props.source.mediaId,
+    text: props.text,
+    media: preview.value ? props.source.inlineMedia : undefined,
+    read: props.getMedia,
+  }
+  // Position/metadata saves replace Source objects, but not their accepted media.
+  // Keep URLs and preview DOM stable while still isolating every source/session.
+  if (
+    previous &&
+    previous.scope === next.scope &&
+    previous.sourceId === next.sourceId &&
+    previous.versionId === next.versionId &&
+    previous.text === next.text &&
+    previous.read === next.read &&
+    previous.media?.length === next.media?.length &&
+    (next.media ?? []).every((entry, index) => {
+      const before = previous.media![index]!
+      return (
+        before.url === entry.url &&
+        before.mediaId === entry.mediaId &&
+        before.path === entry.path &&
+        before.hash === entry.hash
+      )
+    })
+  )
+    return previous
+  return { ...next, media: next.media?.map((entry) => ({ ...entry })) }
+})
+const media = useInlineMedia(mediaInput)
+const html = computed(() =>
+  renderReadingMarkdown(props.text, media.urls.value, {
+    editableTasks: props.editable,
+  }),
+)
+watch(
+  [rendered, html, () => props.busy],
+  () => {
+    // Saving reading progress must not replace text nodes or a native selection.
+    // Only task controls change availability while the existing preview stays put.
+    const disabled = !props.editable || !!props.busy
+    for (const task of rendered.value?.querySelectorAll<HTMLElement>('[data-reading-task]') ?? []) {
+      task.setAttribute('aria-disabled', String(disabled))
+      task.tabIndex = disabled ? -1 : 0
+    }
+  },
+  { flush: 'post' },
+)
 let mirror: TextareaPosition | undefined, observer: ResizeObserver | undefined
 const restoring = ref(true)
 let alive = true
@@ -254,6 +314,7 @@ function scrolled() {
   if (!restoring.value && alive) emit('position', update())
 }
 function selected() {
+  selectionError.value = ''
   const textarea = reader.value?.textareaRef
   currentSelection.value =
     textarea && textarea.selectionEnd > textarea.selectionStart
@@ -277,6 +338,83 @@ function selected() {
       reader.value?.textareaRef.selectionStart,
       reader.value?.textareaRef.selectionEnd,
     )
+}
+function selectedPreview() {
+  const area = rendered.value,
+    selection = area?.ownerDocument.getSelection()
+  if (!area || !previewCurrent() || !selection?.rangeCount || !area.contains(selection.anchorNode))
+    return
+  selectionError.value = ''
+  const range = selection.getRangeAt(0)
+  const mapped = readingSelection(area, range, props.text)
+  if (!mapped) {
+    currentSelection.value = undefined
+    emit('select', props.source.id, 0, 0)
+    if (!range.collapsed && selection.toString().trim())
+      selectionError.value = t('这段内容无法精确定位，请切换原文后选择。')
+    return
+  }
+  try {
+    const excerpt = sourceExcerpt(props.source, props.text, mapped.start, mapped.end)
+    const locator: MaterialLocator = {
+      schemaVersion: 1,
+      sourceId: props.source.id,
+      versionId: props.source.mediaId,
+      kind: 'text',
+      ...mapped,
+      quote: excerpt.quote,
+    }
+    currentSelection.value = { text: excerpt.quote, locator }
+    emit('select', props.source.id, mapped.start, mapped.end, locator)
+  } catch (issue) {
+    currentSelection.value = undefined
+    emit('select', props.source.id, 0, 0)
+    selectionError.value = t(issue as Error)
+  }
+}
+function previewCurrent() {
+  const data = rendered.value?.dataset
+  return (
+    alive &&
+    data?.sourceId === props.source.id &&
+    data.sourceVersion === props.source.mediaId &&
+    data.sourceScope === props.scope
+  )
+}
+function previewControl(event: MouseEvent | KeyboardEvent) {
+  const target = (event.target as Element | null)?.closest<HTMLElement>(
+    '[data-wiki-target], [data-reading-task]',
+  )
+  if (!target || !previewCurrent() || !rendered.value?.contains(target)) return
+  if (event instanceof KeyboardEvent && !['Enter', ' '].includes(event.key)) return
+  event.preventDefault()
+  event.stopPropagation()
+  if (target.dataset.wikiTarget) {
+    emit('wiki', target.dataset.wikiTarget)
+    return
+  }
+  if (!props.editable || props.busy) return
+  const offset = Number(target.dataset.readingTask)
+  if (
+    !Number.isInteger(offset) ||
+    props.text[offset - 1] !== '[' ||
+    props.text[offset + 1] !== ']' ||
+    !/[ xX]/.test(props.text[offset] ?? '')
+  )
+    return
+  emit('changeText', {
+    sourceId: props.source.id,
+    mediaId: props.source.mediaId,
+    scope: props.scope,
+    content:
+      props.text.slice(0, offset) +
+      (props.text[offset] === ' ' ? 'x' : ' ') +
+      props.text.slice(offset + 1),
+  })
+}
+function previewWiki(event: MouseEvent | FocusEvent) {
+  const link = (event.target as Element | null)?.closest<HTMLElement>('[data-wiki-target]')
+  if (previewCurrent() && link?.dataset.wikiTarget) emit('wikiPreview', link.dataset.wikiTarget)
 }
 async function restore(position: ReadingPosition, focus = false) {
   const sequence = ++restoreSequence
@@ -310,6 +448,7 @@ async function toggle() {
   mirror = undefined
   preview.value = !preview.value
   emit('select', props.source.id, 0, 0)
+  selectionError.value = ''
   await restore(position)
   observeReader()
   if (alive) emit('position', update())
@@ -317,7 +456,7 @@ async function toggle() {
 async function resume() {
   mirror?.dispose()
   mirror = undefined
-  preview.value = props.source.reading?.view === 'preview' && props.source.format === 'markdown'
+  preview.value = props.source.format === 'markdown' && props.source.reading?.view !== 'source'
   emit('select', props.source.id, 0, 0)
   await restore(props.source.reading ?? { offset: 0, fraction: 0, view: 'source' }, true)
   observeReader()
@@ -403,8 +542,8 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
       {{
         t(
           source.kind === 'excerpt'
-            ? '选中原文中的文字，再点击「用摘录制卡」。每次最多 10000 个字符。'
-            : '选中原文中的文字，保存为摘录或直接制卡。每次最多 10000 个字符。',
+            ? '选中文字，再点击「用摘录制卡」。每次最多 10000 个字符。'
+            : '选中文字，保存为摘录或直接制卡。每次最多 10000 个字符。',
         )
       }}
     </p>
@@ -415,10 +554,11 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
       :aria-pressed="preview"
       @click="toggle"
     >
-      {{ t(preview ? '返回原文选取摘录' : '阅读 Markdown 预览') }}
+      {{ t(preview ? '查看 Markdown 原文' : '阅读 Markdown 预览') }}
     </UiButton>
   </div>
   <p v-if="materialError" class="form-note" role="alert">{{ materialError }}</p>
+  <p v-if="selectionError" class="form-note" role="status">{{ selectionError }}</p>
   <p v-if="customReader && originalLoading" role="status">{{ t('正在读取原始文件…') }}</p>
   <MaterialReaderView
     v-else-if="customReader && contributed"
@@ -434,7 +574,17 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
     tabindex="0"
     :aria-label="t('材料阅读预览')"
     :aria-busy="restoring"
+    :data-source-id="source.id"
+    :data-source-version="source.mediaId"
+    :data-source-scope="scope"
     @scroll.passive="scrolled"
+    @mouseup="selectedPreview"
+    @keyup="selectedPreview"
+    @touchend="selectedPreview"
+    @click="previewControl"
+    @keydown="previewControl"
+    @mouseover="previewWiki"
+    @focusin="previewWiki"
     v-html="html"
   />
   <UiTextarea
@@ -500,5 +650,27 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
 }
 .source-markdown-preview :deep(.reading-block) {
   display: flow-root;
+}
+.source-markdown-preview :deep(.reading-wiki-link) {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+.source-markdown-preview :deep(.reading-task-toggle) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5em;
+  cursor: pointer;
+  color: var(--color-primary);
+}
+.source-markdown-preview :deep(.reading-task-toggle[aria-disabled='true']) {
+  cursor: default;
+}
+.source-markdown-preview :deep([tabindex='0']:focus-visible) {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+  border-radius: 3px;
 }
 </style>

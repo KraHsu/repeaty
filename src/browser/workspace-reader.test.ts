@@ -11,8 +11,10 @@ import { createBrowserRepository } from './repository'
 import { practiceHistoryFixture } from '../../tests/fixtures/practice-history'
 import { BrowserWorkspaceReader } from './workspace-reader'
 import { selectedFile, workspaceFixture } from './test-fixtures'
-import { collectWorkspaceFiles } from './workspace-files'
+import { collectWorkspaceFiles, digest } from './workspace-files'
+import { parseSourceProperties } from '../core/source-properties'
 import { materialFixture } from '../../tests/fixtures/material-model'
+import { editSourceContent, type SourceDraft } from '../core/source-workbench'
 
 let SQL: SqlJsStatic
 beforeAll(async () => {
@@ -26,6 +28,76 @@ function rewrite(env: Awaited<ReturnType<typeof workspaceFixture>>) {
   env.files.push(selectedFile('.repeaty/state.sqlite3', env.db.export()))
 }
 describe('browser workspace SQLite snapshots', () => {
+  it('imports DB 13 source drafts into a separate trial scope and never consumes the original draft', async () => {
+    const prepared = prepareSource(
+      { title: 'Draft source', url: '', format: 'markdown', content: 'Original' },
+      now,
+    )
+    const library = addSource(fixture(), prepared.source, prepared.asset)
+    const env = await workspaceFixture(SQL, library, [prepared.asset])
+    const oldHash = String(
+      env.db.exec("SELECT hash FROM documents WHERE kind='source'")[0]!.values[0]![0],
+    )
+    const oldFile = env.files.find((file) =>
+      file.webkitRelativePath.endsWith('/objects/' + oldHash),
+    )!
+    const header = (await oldFile.text()).replace(
+      /^---\n/,
+      '---\nauthor: Imported\nunknown:\n  preserve: true\n',
+    )
+    const headerHash = await digest(new TextEncoder().encode(header))
+    env.files.push(selectedFile('.repeaty/objects/' + headerHash, header))
+    env.db.run("UPDATE documents SET hash=? WHERE kind='source'", [headerHash])
+    const draft: SourceDraft = {
+      id: crypto.randomUUID(),
+      sourceId: prepared.source.id,
+      mediaId: prepared.source.mediaId,
+      scope: `local:workspace:${env.id}`,
+      content: 'Draft text',
+      title: 'Draft source',
+      url: '',
+      properties: 'author: Someone',
+      updatedAt: now.toISOString(),
+    }
+    env.db.run(
+      'PRAGMA user_version=13; CREATE TABLE operation_history(id INTEGER PRIMARY KEY,data TEXT); CREATE TABLE source_drafts(id TEXT PRIMARY KEY,data TEXT);',
+    )
+    env.db.run('INSERT INTO source_drafts VALUES(?,?)', [draft.sourceId, JSON.stringify(draft)])
+    rewrite(env)
+    const originals = await Promise.all(env.files.map((file) => file.arrayBuffer()))
+    const reader = await open(env)
+    const repo = createBrowserRepository({
+      snapshot: reader.snapshot,
+      media: (id) => reader.media(id),
+      attempts: async (ids) => reader.attempts(ids),
+      close: () => reader.close(),
+    })
+    const rebound = await repo.readSourceDraft(draft.sourceId)
+    expect(parseSourceProperties(await repo.readSourceProperties(draft.sourceId))).toEqual({
+      author: 'Imported',
+      unknown: { preserve: true },
+    })
+    expect(rebound).toEqual({ ...draft, scope: repo.scope() })
+    expect(rebound!.scope).not.toBe(draft.scope)
+    await expect(repo.writeSourceDraft(draft)).rejects.toThrow()
+    const initial = await repo.load()
+    const edit = editSourceContent(initial.library, rebound!)
+    await repo.save(edit.library, initial.revision, {
+      assets: [edit.asset],
+      consumeSourceDraft: draft.id,
+    })
+    expect(await repo.readSourceDraft(draft.sourceId)).toBeUndefined()
+    expect(reader.snapshot.sourceDrafts).toEqual([draft])
+    await repo.close()
+    expect(await Promise.all(env.files.map((file) => file.arrayBuffer()))).toEqual(originals)
+    env.db.run("UPDATE source_drafts SET data=json_set(data,'$.sourceId','wrong')")
+    rewrite(env)
+    await expect(open(env)).rejects.toThrow()
+    env.db.run('DROP TABLE source_drafts')
+    rewrite(env)
+    await expect(open(env)).rejects.toThrow()
+    env.db.close()
+  })
   it('reads DB 12 journals and restores retained source originals only in the trial copy', async () => {
     const prepared = prepareSource(
       { title: 'Deleted source', url: '', format: 'plain', content: 'immutable original' },

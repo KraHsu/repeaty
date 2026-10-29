@@ -25,4 +25,6 @@ export {
   workspaceDetectionError,
   WorkspaceBackupTools,
   connectAutomaticBackups,
+  connectWindowCloseGuard,
+  connectWorkspaceLeaveGuard,
 } from './static'

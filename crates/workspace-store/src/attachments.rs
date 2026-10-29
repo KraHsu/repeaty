@@ -232,6 +232,7 @@ fn collect_refs(
         ("retired", "retired_records"),
         ("retired", "retired_media"),
         ("drafts", "card_drafts"),
+        ("drafts", "source_drafts"),
         ("undo", "operation_history"),
         ("plugins", "values_store"),
     ] {

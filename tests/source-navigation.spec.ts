@@ -2,6 +2,7 @@ import { test, expect } from './fixtures/empty-workspace'
 import { navigationFlow, restoreNavigation } from './fixtures/source-navigation-flow'
 import { localLibrary } from './fixtures/source-excerpt-flow'
 import { saveReading } from './fixtures/reading-flow'
+import { showSourceText } from './fixtures/source-controls'
 test('source excerpt navigation counts cards, locates repeated text and preserves learning through rounds, deletion and backup', async ({
   page,
 }, info) => {
@@ -60,6 +61,7 @@ test('an unreadable parent still lists saved excerpts and can open their indepen
   ).toBeDisabled()
   await page.getByRole('button', { name: '打开摘录「开头摘录🙂」', exact: true }).click()
   await expect(page.locator('.source-reader h2')).toHaveText('开头摘录🙂')
+  await showSourceText(page)
   await expect(page.locator('.source-text')).toHaveValue('间隔复习会根据记忆状态安排下一次学习。🙂')
   const after = await localLibrary(page)
   expect(after.sources.find((source) => source.id === parent.id)).toEqual(parent)

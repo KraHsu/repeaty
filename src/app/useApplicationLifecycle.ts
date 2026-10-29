@@ -4,6 +4,8 @@ import {
   connectLearningReader,
   connectWorkspaceMonitor,
   connectAutomaticBackups,
+  connectWindowCloseGuard,
+  connectWorkspaceLeaveGuard,
 } from '@repeaty-platform'
 import { listenPluginPreferences } from '../plugins'
 import { listenPreferences } from '../preferences'
@@ -14,6 +16,8 @@ const defaults = {
   connectLearningReader,
   connectWorkspaceMonitor,
   connectAutomaticBackups,
+  connectWindowCloseGuard,
+  connectWorkspaceLeaveGuard,
   listenPluginPreferences,
   listenPreferences,
 }
@@ -23,14 +27,24 @@ export function useApplicationLifecycle(
     globalKeydown,
     tick,
     plugins,
+    beforeLeave,
   }: {
     workspace: ReturnType<typeof useLibrary>
     globalKeydown: (event: KeyboardEvent) => void
     tick: () => void
     plugins?: PluginManager
+    beforeLeave?: () => boolean | Promise<boolean>
   },
-  bindings: Omit<typeof defaults, 'connectAutomaticBackups'> &
-    Partial<Pick<typeof defaults, 'connectAutomaticBackups'>> = defaults,
+  bindings: Omit<
+    typeof defaults,
+    'connectAutomaticBackups' | 'connectWindowCloseGuard' | 'connectWorkspaceLeaveGuard'
+  > &
+    Partial<
+      Pick<
+        typeof defaults,
+        'connectAutomaticBackups' | 'connectWindowCloseGuard' | 'connectWorkspaceLeaveGuard'
+      >
+    > = defaults,
 ) {
   let alive = true
   const stops: (() => void)[] = []
@@ -51,6 +65,10 @@ export function useApplicationLifecycle(
     own(useEventListener(window, 'keydown', globalKeydown))
     own(plugins ? plugins.listenPluginPreferences() : bindings.listenPluginPreferences())
     own(bindings.listenPreferences())
+    if (beforeLeave) {
+      if (bindings.connectWorkspaceLeaveGuard) own(bindings.connectWorkspaceLeaveGuard(beforeLeave))
+      void bindings.connectWindowCloseGuard?.(async () => alive && (await beforeLeave())).then(own)
+    }
     void bindings.connectLearningReader(workspace).then(own)
     void bindings.connectWorkspaceMonitor(workspace).then(own)
     void bindings.connectAutomaticBackups?.(workspace).then(own)

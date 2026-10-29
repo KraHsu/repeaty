@@ -4,6 +4,7 @@ import { exportArchive } from '../../src/core/archive'
 import type { MediaUpload } from '../../src/core/model'
 import { readBrowserLibrary } from './adaptive-mixed-flow'
 import { setResponsiveViewport } from './viewport-flow'
+import { showSourceFilters } from './source-controls'
 import { selectUiValue } from './settings-flow'
 
 async function dismissNotices(page: Page) {
@@ -155,6 +156,7 @@ export async function fullUiFlow(page: Page, info: TestInfo) {
   await expect(reader).toHaveCSS('font-size', '18px')
   await expect(reader).toHaveJSProperty('readOnly', true)
   await expect(reader).toHaveValue(content)
+  await showSourceFilters(page)
   for (const label of ['搜索材料', '材料类型', '优先级筛选'])
     await expect(page.getByLabel(label, { exact: true })).toHaveAttribute('data-slot', 'base')
   const pagination = page.getByRole('navigation', { name: '材料列表分页', exact: true })

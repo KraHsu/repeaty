@@ -1,6 +1,7 @@
 import { msg, LocalizedError } from '../i18n'
 import { inlineMediaSchema } from './inline-media-data'
 import { z } from 'zod'
+import { materialFolderSchema, validateMaterialFolders } from './material-organization-data'
 import { createEmptyCard, type Card as FsrsCard } from 'ts-fsrs'
 import { scheduleSchema, librarySchema as legacySchema } from './legacy'
 import { pluginDataSchema, assessmentSchema } from '../plugins/data'
@@ -11,6 +12,7 @@ import { practiceSchema, attemptSchema, attemptSummarySchema } from './practice-
 
 export { scheduleSchema } from './legacy'
 export { materialReceiptSchema } from './material-data'
+export { materialFolderSchema } from './material-organization-data'
 const date = z.iso.datetime()
 const id = z.string().min(1).max(150)
 const tags = z.array(z.string().trim().min(1).max(40)).max(20)
@@ -264,7 +266,8 @@ export function variants(note: Pick<Note, 'type' | 'front'>): string[] {
 }
 
 const libraryContents = z.object({
-  version: z.literal(14),
+  version: z.literal(15),
+  materialFolders: z.array(materialFolderSchema).max(10_000).default([]),
   materialReceipts: z.array(materialReceiptSchema).max(100_000).default([]),
   sources: z.array(sourceSchema).max(10_000),
   practices: z.array(practiceSchema).max(100_000),
@@ -293,6 +296,7 @@ export function validateLibraryReferences(
     'attempts',
     'sources',
     'materialReceipts',
+    'materialFolders',
   ] as const) {
     if (new Set(library[key].map((entry) => entry.id)).size !== library[key].length)
       problem(`${key} 中存在重复 ID`)
@@ -353,6 +357,7 @@ export function validateLibraryReferences(
       if (!mediaTypes.includes(media.get(ref.mediaId)?.type as (typeof mediaTypes)[number]))
         problem('笔记引用的媒体不存在')
   validateSourceHierarchy(library.sources, problem)
+  validateMaterialFolders(library.materialFolders, library.sources, problem)
   const cardVariants = new Map<string, string[]>()
   for (const card of library.cards) {
     if (!notes.has(card.noteId)) problem('卡片所属笔记不存在')
@@ -419,6 +424,7 @@ export const workspaceLibrarySchema = libraryContents
   )
 export type Library = z.infer<typeof workspaceLibrarySchema>
 export const recordSchemas = {
+  materialFolders: materialFolderSchema,
   sources: sourceSchema,
   materialReceipts: materialReceiptSchema,
   decks: deckSchema,
@@ -432,7 +438,8 @@ export const recordSchemas = {
 }
 export function emptyLibrary(): Library {
   return {
-    version: 14,
+    version: 15,
+    materialFolders: [],
     materialReceipts: [],
     sources: [],
     decks: [],
@@ -630,10 +637,11 @@ export function migrateLibrary(value: unknown): Library {
       value.version === 11 ||
       value.version === 12 ||
       value.version === 13 ||
-      value.version === 14)
+      value.version === 14 ||
+      value.version === 15)
   )
     return librarySchema.parse(
-      value.version === 14
+      value.version === 15
         ? value
         : value.version === 6 ||
             value.version === 7 ||
@@ -642,22 +650,23 @@ export function migrateLibrary(value: unknown): Library {
             value.version === 10 ||
             value.version === 11 ||
             value.version === 12 ||
-            value.version === 13
-          ? { ...value, version: 14 }
+            value.version === 13 ||
+            value.version === 14
+          ? { ...value, version: 15 }
           : value.version === 5
-            ? { sources: [], ...value, version: 14 }
+            ? { sources: [], ...value, version: 15 }
             : {
                 sources: [],
                 practices: [],
                 attempts: [],
                 ...value,
-                version: 14,
+                version: 15,
               },
     )
   const old = legacySchema.parse(value)
   const seen = new Set<string>()
   return librarySchema.parse({
-    version: 14,
+    version: 15,
     sources: [],
     practices: [],
     attempts: [],

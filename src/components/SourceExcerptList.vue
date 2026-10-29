@@ -65,7 +65,7 @@ defineExpose({ showMatches })
           <UiButton
             variant="secondary"
             type="button"
-            :disabled="busy || !canLocate"
+            :disabled="!canLocate"
             :aria-label="t('定位「{title}」的原文', { title: entry.source.title })"
             @click="emit('locate', entry.source.id)"
           >

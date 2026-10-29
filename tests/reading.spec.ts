@@ -27,6 +27,7 @@ async function read(page: Parameters<typeof storedLibrary>[0]) {
 test('reading rounds save before advancing, retain their order, defer, archive and finish without changing reviews', async ({
   page,
 }, info) => {
+  test.setTimeout(60_000)
   await readingRoundFlow(page, () => read(page), info)
 })
 

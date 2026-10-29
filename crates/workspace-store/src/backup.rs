@@ -411,9 +411,19 @@ fn counts(db: &Connection) -> Result<BTreeMap<String, u64>> {
         "retired_cards",
         "retired_records",
         "card_drafts",
+        "source_drafts",
         "values_store",
         "assets",
     ]) {
+        if ["source_drafts", "materialFolders"].contains(&table)
+            && !db.query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
+                [table],
+                |r| r.get::<_, bool>(0),
+            )?
+        {
+            continue;
+        }
         result.insert(
             table.into(),
             db.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| {
@@ -641,7 +651,7 @@ fn validate_database_at(root: &Path, database_path: &Path, manifest: &Manifest) 
     db.pragma_update(None, "trusted_schema", "OFF")?;
     let app: i64 = db.pragma_query_value(None, "application_id", |r| r.get(0))?;
     let version: u32 = db.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    if app != 0x52505459 || ![10, 11, 12].contains(&version) {
+    if app != 0x52505459 || ![10, 11, 12, 13].contains(&version) {
         return Err(Error("backup-incompatible"));
     }
     let identity: String = db.query_row("SELECT id FROM workspace_identity", [], |r| r.get(0))?;
@@ -1262,6 +1272,20 @@ mod tests {
     #[test]
     fn complete_snapshot_preserves_sqlite_rows_files_versions_drafts_plugins_and_retirement() {
         let (parent, library) = fixture();
+        let draft = json!({"id":Uuid::new_v4().to_string(),"sourceId":"source","mediaId":"old-original","scope":format!("local:workspace:{}",library.id),"content":"unfinished source draft","properties":"unknown: retained","title":"Draft","url":"","updatedAt":"2026-10-30T00:00:00Z"});
+        library
+            .db
+            .connection
+            .execute(
+                "INSERT INTO source_drafts VALUES('source',?1)",
+                [draft.to_string()],
+            )
+            .unwrap();
+        library
+            .db
+            .connection
+            .pragma_update(None, "user_version", 13)
+            .unwrap();
         let (archive, info) = saved(&library, parent.path());
         assert_eq!(inspect(&archive).unwrap().sha256, info.sha256);
         let target = parent.path().join("restored");
@@ -1276,6 +1300,7 @@ mod tests {
             "retired_documents",
             "history",
             "card_drafts",
+            "source_drafts",
             "values_store",
             "operation_history",
         ]) {
@@ -1315,6 +1340,15 @@ mod tests {
         assert!(target.join(".repeaty/staging").is_dir());
         assert_eq!(info.counts["retired_records"], 1);
         assert_eq!(info.counts["card_drafts"], 1);
+        assert_eq!(info.counts["source_drafts"], 1);
+        assert_eq!(
+            restored
+                .db
+                .connection
+                .pragma_query_value(None, "user_version", |row| row.get::<_, u32>(0))
+                .unwrap(),
+            13
+        );
     }
     #[test]
     fn corrupted_payload_changed_confirmation_cancel_and_existing_destination_never_publish() {

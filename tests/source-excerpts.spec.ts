@@ -7,6 +7,7 @@ import {
 } from './fixtures/source-excerpt-flow'
 import { previewSource, saveSource, sourceQuote } from './fixtures/source-flow'
 import { saveReading } from './fixtures/reading-flow'
+import { showSourceText } from './fixtures/source-controls'
 
 test('independent excerpts preserve exact provenance, cards and progress through deletion, restart and backup', async ({
   page,
@@ -51,6 +52,7 @@ test('a quota failure preserves the excerpt form and leaves no partial snapshot 
   )
   await page.getByRole('button', { name: '保存摘录', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
+  await showSourceText(page)
   await expect(page.locator('.source-text')).toHaveValue(sourceQuote)
   expect((await localLibrary(page)).sources).toHaveLength(2)
 })

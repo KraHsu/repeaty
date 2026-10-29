@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useApplication } from '../context'
 import { SourcePanel } from '../view-components'
+const emit = defineEmits<{ settings: [category: string] }>()
 const {
   workspace,
   autoStartReading,
@@ -31,5 +32,6 @@ function bindActiveSource(instance: unknown) {
     @share="mcpSelection = $event"
     @edit="(id) => editCard(cards.find((card) => card.noteId === id))"
     @clear-notice="notice = null"
+    @settings="emit('settings', $event)"
   />
 </template>

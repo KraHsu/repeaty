@@ -13,6 +13,7 @@ import type { useLibrary } from '../composables/useLibrary'
 import type { useReadingProgress } from '../composables/useReadingProgress'
 import type { useStudyClock } from './useStudyClock'
 import type { useOperationRunner } from './useOperationRunner'
+import type { MaterialWorkbenchActions } from '../components/material-workbench-actions'
 export function useSourceActions({
   library,
   busy,
@@ -30,26 +31,44 @@ export function useSourceActions({
   notice: ReturnType<typeof useOperationRunner>['notice']
   run: ReturnType<typeof useOperationRunner>['run']
 }) {
-  const sourceBindings = computed(() => ({
-    library: library.value,
-    busy: busy.value,
-    scope: workspace.scope.value,
-    reading: readingProgress,
-    now: now.value,
-    canShare: desktopEdition && !remoteWorkspace.value,
-    read: workspace.getSource,
-    save: saveSource,
-    updateDetails: editSourceDetails,
-    saveExcerpt: saveSourceExcerpt,
-    remove: deleteSource,
-    arrange: arrangeSource,
-    arrangeBatch: arrangeSources,
-    undoReading,
-    canUndoReading: workspace.canUndoReading.value,
-    readingUndoId: workspace.readingUndo.value?.id,
-    saveReading,
-    actionError: notice.value?.error ? t(notice.value.text) : undefined,
-  }))
+  const sourceBindings = computed(() => {
+    const ownerScope = workspace.scope.value
+    return {
+      library: library.value,
+      busy: busy.value,
+      scope: workspace.scope.value,
+      reading: readingProgress,
+      now: now.value,
+      canShare: desktopEdition && !remoteWorkspace.value,
+      read: workspace.getSource,
+      save: saveSource,
+      updateDetails: editSourceDetails,
+      saveExcerpt: saveSourceExcerpt,
+      remove: deleteSource,
+      arrange: arrangeSource,
+      arrangeBatch: arrangeSources,
+      undoReading,
+      canUndoReading: workspace.canUndoReading.value,
+      readingUndoId: workspace.readingUndo.value?.id,
+      saveReading,
+      actionError: notice.value?.error ? t(notice.value.text) : undefined,
+      readProperties: (id: string) => workspace.readSourceProperties(id, ownerScope),
+      workbench: {
+        prepareEditor: workspace.prepareSourceEditor,
+        writeDraft: workspace.writeSourceDraft,
+        discardDraft: workspace.discardSourceDraft,
+        editContent: (update) => run(() => workspace.editSourceContent(update), '材料已保存'),
+        annotate: (update) => run(() => workspace.upsertSourceAnnotation(update), '批注已保存'),
+        removeAnnotation: (id, annotationId, scope) =>
+          run(() => workspace.removeSourceAnnotation(id, annotationId, scope), '批注已删除'),
+        createFolder: (name, parentId) =>
+          run(() => workspace.createMaterialFolder(ownerScope, name, parentId)),
+        renameFolder: (id, name) => run(() => workspace.renameMaterialFolder(ownerScope, id, name)),
+        removeFolder: (id) => run(() => workspace.removeMaterialFolder(ownerScope, id)),
+        move: (move) => run(() => workspace.moveMaterial(ownerScope, move)),
+      } satisfies MaterialWorkbenchActions,
+    }
+  })
   async function saveSource(input: SourceInput, scope: string) {
     return run(() => workspace.saveSource(input, scope), '材料已保存')
   }

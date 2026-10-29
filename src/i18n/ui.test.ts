@@ -236,7 +236,10 @@ it('keeps persisted filter values and typed search terms unchanged across UI lan
     (button) => button.textContent?.trim().startsWith('All cards'),
   )!
   cardsNav.click()
-  await nextTick()
+  await vi.dynamicImportSettled()
+  await vi.waitFor(() =>
+    expect(host.querySelector('[role="combobox"][aria-label="Filter by status"]')).not.toBeNull(),
+  )
   const state = host.querySelector<HTMLElement>('[role="combobox"][aria-label="Filter by status"]')!
   await chooseOption(state, 'New')
   await input('.search-field input', 'type:basic')

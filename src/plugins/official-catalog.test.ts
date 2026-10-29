@@ -69,6 +69,20 @@ it.each([false, true])(
       path: 'plugins/review-heatmap.repeaty-plugin',
       installByDefault: false,
     })
+    expect(catalog.find(({ id }) => id === 'format-cleanup')).toMatchObject({
+      path: 'plugins/format-cleanup.repeaty-plugin',
+      installByDefault: false,
+    })
+    const cleanup = bundleSchema.parse(
+      JSON.parse(files.get('plugins/format-cleanup.repeaty-plugin')!),
+    )
+    expect(cleanup.manifest).toMatchObject({
+      id: 'format-cleanup',
+      version: '1.0.0',
+      kind: 'frontend',
+    })
+    expect(cleanup.manifest.permissions).toBeUndefined()
+    expect(cleanup.readme).toContain('材料版本')
     expect(catalog.filter(({ installByDefault }) => installByDefault).map(({ id }) => id)).toEqual(
       desktop ? ['review-history', 'leetcode'] : ['review-history'],
     )
