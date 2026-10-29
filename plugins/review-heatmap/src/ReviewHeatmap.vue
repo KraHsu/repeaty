@@ -134,6 +134,8 @@ onUnmounted(() => stopClock?.())
     gap: 0.25rem;
   }
   .review-heatmap-grid li {
+    flex-direction: column;
+    align-items: flex-start;
     padding: 0.375rem 0.25rem;
   }
 }

@@ -314,6 +314,41 @@
   gap: 0.75rem;
   margin-top: 1.5rem;
 }
+.official-plugin-list {
+  display: grid;
+  margin-top: 1rem;
+}
+.official-plugin-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+.official-plugin-copy {
+  flex: 1 1 16rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.official-plugin-copy h3,
+.official-plugin-copy p {
+  margin: 0;
+}
+.official-plugin-copy h3 {
+  font-size: var(--font-size-control);
+}
+.official-plugin-copy h3 span {
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+  font-weight: normal;
+}
+.official-plugin-copy p {
+  margin-top: 0.375rem;
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+}
 @container (max-width: 50rem) {
   .plugin-workbench + .plugin-manager {
     margin-left: 0;

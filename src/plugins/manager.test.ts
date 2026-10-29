@@ -355,6 +355,58 @@ it('does not reseed after a manually supplied first package is removed', async (
   expect(official).not.toHaveBeenCalled()
   expect(manager.pluginPackages).toHaveLength(0)
 })
+it('requests only default packages for a fresh library and preserves an empty uninstalled library', async () => {
+  const records = new Map<string, PluginBundle>()
+  const settings = new Map<string, string>()
+  const optional = { ...bundle(), manifest: { ...bundle().manifest, id: 'review-heatmap' } }
+  const official = vi.fn(async (options?: { defaultsOnly?: boolean }) =>
+    options?.defaultsOnly ? [bundle()] : [bundle(), optional],
+  )
+  const manager = createPluginManager({
+    seedOfficial: true,
+    officialBundles: official,
+    storage: {
+      async scope() {
+        return 'local:optional-plugins'
+      },
+      async list() {
+        return [...records.values()].map((value) => ({
+          id: value.manifest.id,
+          bundle: value,
+          trusted: true,
+        }))
+      },
+      async save(value) {
+        records.set(value.manifest.id, value)
+      },
+      async remove(id) {
+        records.delete(id)
+      },
+    },
+    readSetting: (key) => settings.get(key) ?? null,
+    writeSetting: (key, value) => {
+      settings.set(key, value)
+    },
+    evaluate: async () => ({
+      default: {
+        id: 'sample',
+        kind: 'frontend',
+        label: 'Default',
+        version: 1,
+        reviewPanel: { render: () => null },
+      },
+    }),
+  })
+  managers.push(manager)
+  await manager.initializePlugins()
+  expect(official).toHaveBeenCalledExactlyOnceWith({ defaultsOnly: true })
+  expect([...records.keys()]).toEqual(['sample'])
+  await manager.removePlugin('sample')
+  await manager.reloadPlugins()
+  expect(official).toHaveBeenCalledTimes(1)
+  expect(records.size).toBe(0)
+  expect(manager.pluginPackages).toHaveLength(0)
+})
 it('unmount cancels a late package scan and never initializes the closed learning library', async () => {
   let resolve!: (entries: PackageEntry[]) => void,
     started = false

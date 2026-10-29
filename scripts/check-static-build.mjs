@@ -2,6 +2,8 @@ import { readFile, access, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 const manifest = JSON.parse(await readFile('dist/.vite/manifest.json', 'utf8'))
 for (const key of Object.keys(manifest)) {
+  if (key.startsWith('plugins/') || key.startsWith('docs/examples/'))
+    throw new Error(`Plugin source leaked into the application build: ${key}`)
   if (
     key.includes('plugins/leetcode') ||
     key.includes('backend/') ||

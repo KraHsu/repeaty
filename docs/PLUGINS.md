@@ -6,7 +6,7 @@
 
 本页描述当前开发分支的外置插件机制，尚未随新安装包发布。发布页既有的 0.27.0 安装包不代表本分支的实现，也不能作为这套插件机制的安装或 GUI 验收产物。
 
-Repeaty 在运行时加载外置插件。官方答题历史、LeetCode 和第三方插件使用同一包格式与公开 SDK；安装、更新或移除插件不需要重新编译主程序。普通卡片渲染和缺失插件提示保留为核心能力。
+Repeaty 在运行时加载外置插件。官方答题历史、LeetCode、复习热力图和第三方插件使用同一包格式与公开 SDK；安装、更新或移除插件不需要重新编译主程序。普通卡片渲染和缺失插件提示保留为核心能力。
 
 插件的 JavaScript 在应用 WebView 中运行，共用宿主提供的 Vue。运行环境不是 Node.js，不提供 Node 文件系统、`require()` 或任意原生模块；桌面能力通过公开 SDK 调用。开发者可以使用 TypeScript 和 Vue 单文件组件，单独构建成可安装的 JavaScript 包。
 
@@ -20,9 +20,13 @@ SDK 1.7.0 支持通过 `registerPage()` 注册独立页面及对应主侧栏入�
 
 ## 安装与管理
 
+侧栏「插件」中的「安装或更新官方插件」展示软件随附的独立插件包，逐个选择「安装并启用」或「更新并启用」，只修改所选插件；同版本或已安装更新版本时不会覆盖。此入口不查询远程商店，也不自动更新插件。
+
 1. 获取可信来源的 `.repeaty-plugin` 文件。
 2. 在侧栏「插件」页面选择插件包，核对标识、版本及所需能力后安装。同一标识的新包用于更新已有插件。
 3. 可以关闭、重新启用、移除或重新加载插件。正在复习或编辑时，先结束当前操作，避免替换仍在使用的组件。
+
+官方「复习热力图」1.0.0 是可选插件，新旧学习库均需主动安装。安装后在学习概览的卡组区域下方显示最近28个本地日期的正式评分次数；包含正式调度的专项练习，不包含纯练习、阅读或未提交作答。同一卡片多次评分分别计数，撤销评分会更新热力图。关闭后隐藏，重新启用恢复显示；卸载、刷新及重开不会自动安装回来，重新安装使用已有评分记录。它不注册额外侧栏页面、不请求原生权限，也不改变 FSRS 或另外保存统计副本。详见[官方插件说明](../plugins/review-heatmap/README.md)。
 
 关闭题目插件后，相应题目暂停参与复习；关闭显示插件后隐藏其界面。移除插件代码保留卡片、调度、评分、练习、完整提交、草稿与插件数据；重新安装兼容的数据版本后可继续使用。通过安装包更新失败时显示具体错误，并保留此前的有效版本。手工替换目录文件后重新扫描，如新文件损坏或未获信任，则须修复、重新安装或确认启用，不能假定旧磁盘文件仍可恢复。
 
@@ -92,7 +96,7 @@ README用于功能简介、使用步骤、配置教程和数据说明，具体�
 
 ## 独立开发与构建
 
-公开 SDK 位于 [packages/plugin-api](../packages/plugin-api)。它提供类型和独立构建命令 `repeaty-plugin`，运行时实现由 Repeaty 提供。插件作者只需要 SDK、Vue 和自己使用的依赖，不需要复制或导入主程序源码。当前 SDK 为1.7.0，LeetCode 与 typed-answer 为1.6.0，答题历史为1.6.1；官方插件的 `apiVersion` / `dataVersion` 仍为1。新增页面和概览组件接口需要配套宿主，SDK 版本不会隐式更新已安装的软件。已有学习库需在侧栏「插件」主动更新官方插件代码。
+公开 SDK 位于 [packages/plugin-api](../packages/plugin-api)。它提供类型和独立构建命令 `repeaty-plugin`，运行时实现由 Repeaty 提供。插件作者只需要 SDK、Vue 和自己使用的依赖，不需要复制或导入主程序源码。当前 SDK 为1.7.0，LeetCode 与 typed-answer 为1.6.0，答题历史为1.6.1，复习热力图为1.0.0；官方插件的 `apiVersion` / `dataVersion` 仍为1。新增页面和概览组件接口需要配套宿主，SDK 版本不会隐式更新已安装的软件。已有学习库需在侧栏「插件」主动更新官方插件代码。
 
 软件与插件共用浅色、深色主题，默认跟随系统，在「设置 → 通用 → 界面 → 颜色模式」修改。SDK 控件自动跟随宿主；插件自定义绘图使用 `--ui-text`、`--ui-bg`、`--ui-border` 及语义色变量，避免固定白底或深色文字。答题历史1.6.1将评分圆点和圆环改为主题变量，已有库需更新该插件包；题目、调度、历史与设置不变。
 
@@ -140,7 +144,7 @@ npm run dev -- --outdir /path/to/test-library/.repeaty/plugins/review-history
 
 Windows 可使用 `D:/tmp/repeaty-plugin-dev/.repeaty/plugins/review-history` 这样的绝对路径。等待构建成功后，在应用中点击「重新扫描插件」，再确认启用已变化的代码。监视构建不会自动执行或信任代码；复习或编辑期间先结束当前操作。整个流程不需要重新编译主程序。
 
-仓库中的 [plugins/review-history](../plugins/review-history)、[plugins/leetcode](../plugins/leetcode) 和 [plugins/typed-answer](../plugins/typed-answer) 是独立项目；测试使用自己的宿主适配器，不导入主程序内部模块。
+仓库中的 [plugins/review-history](../plugins/review-history)、[plugins/leetcode](../plugins/leetcode)、[plugins/typed-answer](../plugins/typed-answer) 和 [plugins/review-heatmap](../plugins/review-heatmap) 是独立项目；测试使用自己的宿主适配器，不导入主程序内部模块。
 
 官方预构建包固定在 `plugins/packages/*.repeaty-plugin`。更新官方插件时，先独立构建、测试并更新对应包。`npm run build`、桌面构建和开发服务器只复制或提供这些已有产物，不编译插件源码，也不会在用户安装时调用 npm 或 Rust 编译器。
 

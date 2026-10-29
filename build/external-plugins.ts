@@ -5,7 +5,9 @@ import type { Plugin } from 'vite'
 /** Copies independently built packages; never compiles plugin source into the application. */
 export function externalPlugins(desktop: boolean): Plugin {
   function resources() {
-    const ids = desktop ? ['review-history', 'leetcode'] : ['review-history']
+    const ids = desktop
+      ? ['review-history', 'leetcode', 'review-heatmap']
+      : ['review-history', 'review-heatmap']
     const files = new Map<string, string>()
     const catalog = ids.map((id) => {
       const bundle = JSON.parse(
@@ -16,7 +18,7 @@ export function externalPlugins(desktop: boolean): Plugin {
       )
       const path = `plugins/${id}.repeaty-plugin`
       files.set(path, JSON.stringify(bundle))
-      return { ...bundle.manifest, path }
+      return { ...bundle.manifest, path, installByDefault: id !== 'review-heatmap' }
     })
     files.set('plugins/catalog.json', JSON.stringify(catalog))
     return files

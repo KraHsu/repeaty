@@ -37,7 +37,7 @@ export interface PluginManagerEnvironment {
   preferences?: ReturnType<typeof createPluginPreferences>
   readSetting?: typeof readSetting
   writeSetting?: typeof writeSetting
-  officialBundles?: () => Promise<PluginBundle[]>
+  officialBundles?: typeof officialPluginBundles
   evaluate?: (code: string, api: ReturnType<typeof createPluginApi>) => Promise<PluginModule>
   seedOfficial?: boolean
 }
@@ -54,19 +54,21 @@ async function database() {
     },
   })
 }
-export async function officialPluginBundles() {
+export async function officialPluginBundles(options: { defaultsOnly?: boolean } = {}) {
   const base = import.meta.env.BASE_URL
   const response = await fetch(base + 'plugins/catalog.json')
   if (!response.ok) throw new Error('无法读取官方插件包。')
-  const entries = (await response.json()) as { path: string }[]
+  const entries = (await response.json()) as { path: string; installByDefault?: boolean }[]
   return Promise.all(
-    entries.map(async ({ path }) => {
-      if (!/^plugins\/[a-z][a-z0-9-]{0,63}\.repeaty-plugin$/.test(path))
-        throw new Error('插件目录清单无效。')
-      const response = await fetch(base + path)
-      if (!response.ok) throw new Error('无法读取官方插件包。')
-      return bundleSchema.parse(await response.json())
-    }),
+    entries
+      .filter((entry) => !options.defaultsOnly || entry.installByDefault !== false)
+      .map(async ({ path }) => {
+        if (!/^plugins\/[a-z][a-z0-9-]{0,63}\.repeaty-plugin$/.test(path))
+          throw new Error('插件目录清单无效。')
+        const response = await fetch(base + path)
+        if (!response.ok) throw new Error('无法读取官方插件包。')
+        return bundleSchema.parse(await response.json())
+      }),
   )
 }
 export function createPluginManager(options: PluginManagerEnvironment = {}) {
@@ -315,7 +317,9 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
       }
       if (!seeded) {
         if (entries.length === 0) {
-          const bundles = await (environment.officialBundles ?? officialPluginBundles)()
+          const bundles = await (environment.officialBundles ?? officialPluginBundles)({
+            defaultsOnly: true,
+          })
           check(generation)
           for (const bundle of bundles) {
             if (requireMutable) mutable()

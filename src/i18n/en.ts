@@ -214,6 +214,9 @@ export const en = {
   '关闭题目插件会暂停相关题目，关闭显示插件会隐藏其界面。内容和进度保留，开关仅影响当前浏览器。':
     'Disabling a question plugin pauses its questions; disabling a display plugin hides its interface. Content and progress stay intact. Switches apply to this browser.',
   答题历史: 'Review history',
+  复习热力图: 'Review heatmap',
+  '在学习概览中展示最近 28 天的正式评分次数。':
+    'Show formal review counts from the last 28 days on the learning overview.',
   '在当前卡片上方显示最近的评分，虚线圆表示本次作答。':
     'Show recent ratings above the current card. A dashed circle marks this attempt.',
   当前卡片的答题历史: 'Review history for this card',
@@ -1721,4 +1724,10 @@ export const en = {
     'Ratings apply only to this session. Review dates, daily usage and statistics stay unchanged.',
   '1–500 张，每张练习一次': '1–500 cards, once each',
   '本轮 {count} 张': '{count} cards this session',
+  安装并启用: 'Install and enable',
+  更新并启用: 'Update and enable',
+  已安装较新版本: 'Newer version installed',
+  '选择要安装的官方插件，仅修改所选插件。安装后会自动启用。':
+    'Choose an official plugin. Only that plugin will be installed or updated, then enabled.',
+  '暂无可安装的官方插件。': 'No official plugins are available.',
 } as const

@@ -5,7 +5,12 @@ import { t } from '../i18n'
 import { desktopEdition } from '../edition'
 import { workspaceAvailable } from '@repeaty-platform'
 import { usePlugins } from '../plugins'
-import { readPluginFile, pluginIssueMessage, type PluginManifest } from '../plugins/package'
+import {
+  readPluginFile,
+  pluginIssueMessage,
+  type PluginManifest,
+  type PluginBundle,
+} from '../plugins/package'
 import { usePluginManager, officialPluginBundles, type PackageEntry } from '../plugins/manager'
 import { SettingField, UiButton, UiCollapsible, UiNotice } from './ui'
 import CardContent from './CardContent.vue'
@@ -34,6 +39,11 @@ const openReadmes = ref(new Set<string>())
 const selectedPlugin = ref<string>()
 const error = ref('')
 const pending = ref(false)
+const officialOpen = ref(false)
+const officialLoading = ref(false)
+const officialError = ref('')
+const officialBundles = shallowRef<PluginBundle[]>([])
+let officialRequest = 0
 type Confirmation = {
   id: number
   title: () => string
@@ -98,6 +108,7 @@ watch(
 )
 onBeforeUnmount(() => {
   alive = false
+  closeOfficial()
   answerConfirmation(false)
 })
 function toggleReadme(id: string, open: boolean) {
@@ -120,6 +131,7 @@ watch(
     generation++
     operation++
     pending.value = false
+    closeOfficial()
     answerConfirmation(false)
     error.value = ''
     openReadmes.value = new Set()
@@ -228,11 +240,91 @@ function uninstall(id: string) {
       await removePlugin(id)
   }, entry)
 }
-async function installOfficial() {
+function closeOfficial() {
+  officialRequest++
+  officialOpen.value = false
+  officialLoading.value = false
+  officialError.value = ''
+  officialBundles.value = []
+}
+async function browseOfficial() {
+  if (locked.value) return
+  const request = ++officialRequest
+  const isCurrent = currentOperation()
+  officialOpen.value = true
+  officialLoading.value = true
+  officialError.value = ''
+  officialBundles.value = []
+  const ownsRequest = () => request === officialRequest && officialOpen.value && isCurrent()
+  try {
+    const bundles = await officialPluginBundles()
+    if (ownsRequest()) officialBundles.value = bundles
+  } catch (issue) {
+    if (ownsRequest()) officialError.value = pluginIssueMessage(issue)
+  } finally {
+    if (request === officialRequest) officialLoading.value = false
+  }
+}
+// Compare validated manifest versions, including prerelease precedence, without
+// converting arbitrarily large numeric identifiers into lossy JS numbers.
+function compareVersions(left: string, right: string): number {
+  const [leftCore = '', leftPre] = left.split(/-(.*)/s)
+  const [rightCore = '', rightPre] = right.split(/-(.*)/s)
+  const a = leftCore.split('.'),
+    b = rightCore.split('.')
+  for (let i = 0; i < 3; i++) {
+    const difference = BigInt(a[i]!) - BigInt(b[i]!)
+    if (difference) return difference > 0n ? 1 : -1
+  }
+  if (leftPre === rightPre) return 0
+  if (leftPre === undefined) return 1
+  if (rightPre === undefined) return -1
+  const ap = leftPre.split('.'),
+    bp = rightPre.split('.')
+  for (let i = 0; i < Math.max(ap.length, bp.length); i++) {
+    const x = ap[i],
+      y = bp[i]
+    if (x === y) continue
+    if (x === undefined) return -1
+    if (y === undefined) return 1
+    const xn = /^\d+$/.test(x),
+      yn = /^\d+$/.test(y)
+    if (xn && yn) {
+      const difference = BigInt(x) - BigInt(y)
+      if (difference) return difference > 0n ? 1 : -1
+    } else if (xn !== yn) return xn ? -1 : 1
+    else return x > y ? 1 : -1
+  }
+  return 0
+}
+function officialAction(bundle: PluginBundle) {
+  const installed = pluginPackages.find((entry) => entry.id === bundle.manifest.id)?.bundle
+  if (!installed) return '安装并启用'
+  const order = compareVersions(installed.manifest.version, bundle.manifest.version)
+  return order > 0 ? '已安装较新版本' : order === 0 ? '已安装' : '更新并启用'
+}
+function canInstallOfficial(bundle: PluginBundle) {
+  const action = officialAction(bundle)
+  return (
+    (action === '安装并启用' || action === '更新并启用') &&
+    (bundle.manifest.kind !== 'local' || desktopEdition)
+  )
+}
+async function installOfficial(bundle: PluginBundle) {
+  if (!officialOpen.value || !officialBundles.value.includes(bundle) || !canInstallOfficial(bundle))
+    return
+  const request = officialRequest
   await run(async (isCurrent) => {
-    for (const bundle of await officialPluginBundles()) {
-      if (!isCurrent()) return
+    officialError.value = ''
+    try {
+      if (!isCurrent() || request !== officialRequest) return
       await installPlugin(bundle)
+      if (!isCurrent() || request !== officialRequest) return
+      closeOfficial()
+      selectPlugin(bundle.manifest.id)
+    } catch (issue) {
+      if (isCurrent() && request === officialRequest)
+        officialError.value = pluginIssueMessage(issue)
     }
   })
 }
@@ -417,7 +509,7 @@ async function installOfficial() {
         <UiButton v-if="embedded" variant="primary" :disabled="locked" @click="picker?.click()">{{
           t('安装插件包')
         }}</UiButton>
-        <UiButton :disabled="locked" @click="installOfficial">{{
+        <UiButton :disabled="locked" @click="browseOfficial">{{
           t('安装或更新官方插件')
         }}</UiButton>
         <UiButton variant="ghost" :disabled="locked" @click="run(reloadPlugins)"
@@ -440,6 +532,53 @@ async function installOfficial() {
         </UiCollapsible>
       </div>
     </section>
+    <AppModal
+      v-if="officialOpen"
+      :title="t('安装或更新官方插件')"
+      :busy="pending"
+      @close="closeOfficial"
+    >
+      <p class="form-note">{{ t('选择要安装的官方插件，仅修改所选插件。安装后会自动启用。') }}</p>
+      <UiNotice v-if="officialLoading" role="status">{{ t('正在加载…') }}</UiNotice>
+      <UiNotice v-if="officialError" tone="error">{{ t(officialError) }}</UiNotice>
+      <UiNotice v-if="!officialLoading && !officialError && !officialBundles.length">{{
+        t('暂无可安装的官方插件。')
+      }}</UiNotice>
+      <div class="official-plugin-list">
+        <article
+          v-for="bundle in officialBundles"
+          :key="bundle.manifest.id"
+          class="official-plugin-row"
+          :data-official-plugin="bundle.manifest.id"
+        >
+          <div class="official-plugin-copy">
+            <h3>
+              {{ t(bundle.manifest.name) }} <span>v{{ bundle.manifest.version }}</span>
+            </h3>
+            <p v-if="bundle.manifest.description">{{ t(bundle.manifest.description) }}</p>
+            <p class="form-note">{{ capabilities(bundle.manifest) }}</p>
+            <p v-if="bundle.manifest.kind === 'local' && !desktopEdition" class="form-note">
+              {{ t('此插件仅在桌面版可用。') }}
+            </p>
+          </div>
+          <UiButton
+            variant="secondary"
+            :disabled="locked || !canInstallOfficial(bundle)"
+            @click="installOfficial(bundle)"
+            >{{ t(officialAction(bundle)) }}</UiButton
+          >
+        </article>
+      </div>
+      <div class="plugin-confirm-actions">
+        <UiButton
+          v-if="officialError && !officialBundles.length"
+          :disabled="locked"
+          @click="browseOfficial"
+          >{{ t('重试') }}</UiButton
+        >
+        <UiButton :disabled="pending" @click="closeOfficial">{{ t('关闭') }}</UiButton>
+      </div>
+    </AppModal>
     <AppModal
       v-for="request in confirmation ? [confirmation] : []"
       :key="request.id"
