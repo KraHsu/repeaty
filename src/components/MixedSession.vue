@@ -51,6 +51,8 @@ const active = ref(false),
 const locked = computed(() => props.busy || active.value || switching.value)
 const grades = shallowRef<{ id: string; cardId: string }[]>([])
 const readingCheckpoints = shallowRef<{ id: string; index: number; after: number }[]>([])
+const undoneGrades = new Map<string, { entry: (typeof grades.value)[number]; cursor: number }>()
+const undoneReadings = new Map<string, (typeof readingCheckpoints.value)[number]>()
 let key = 0,
   alive = true
 onUnmounted(() => {
@@ -131,6 +133,8 @@ async function undoCard() {
     )
       return
     if (!(await props.undoCard()) || !alive || scope !== props.scope) return
+    undoneGrades.set(latest.id, { entry: latest, cursor: round.value.cursor })
+    if (undoneGrades.size > 20) undoneGrades.delete(undoneGrades.keys().next().value!)
     grades.value = grades.value.slice(0, -1)
     round.value = {
       ...round.value,
@@ -166,6 +170,8 @@ async function undoReading() {
       return
     if (!(await props.undoReading()) || !alive || scope !== props.scope) return
     if (checkpoint && checkpoint.id === undoId && checkpoint.after === round.value.cursor) {
+      undoneReadings.set(checkpoint.id, checkpoint)
+      if (undoneReadings.size > 20) undoneReadings.delete(undoneReadings.keys().next().value!)
       round.value = {
         ...round.value,
         cursor: checkpoint.index,
@@ -205,7 +211,38 @@ async function reconcileUndo(operation: Operation) {
   )
     choose({ kind: 'card', id: operation.cardId })
 }
-defineExpose({ undoCard, undoReading, canUndoCard, locked, leave, reconcileUndo })
+async function reconcileRedo(operation: Operation) {
+  if (!alive) return
+  let reconciled = false
+  if (operation.reviewId) {
+    const saved = undoneGrades.get(operation.reviewId)
+    if (saved && props.library.reviews.some((review) => review.id === operation.reviewId)) {
+      undoneGrades.delete(operation.reviewId)
+      if (!grades.value.some((entry) => entry.id === operation.reviewId)) {
+        grades.value = [...grades.value, saved.entry]
+        round.value = {
+          ...round.value,
+          completedCards: round.value.completedCards + 1,
+          cardsSinceReading:
+            round.value.cardsSinceReading + (round.value.cursor === saved.cursor ? 1 : 0),
+        }
+        reconciled = true
+      }
+    }
+  } else if (operation.kind === 'reading') {
+    const checkpoint = undoneReadings.get(operation.id)
+    if (checkpoint) {
+      undoneReadings.delete(operation.id)
+      if (round.value.cursor === checkpoint.index) {
+        round.value = finishMixedReading(round.value, checkpoint.index)
+        readingCheckpoints.value = [...readingCheckpoints.value.slice(-19), checkpoint]
+        reconciled = true
+      }
+    }
+  }
+  if (reconciled || !current.value || !currentValid.value) choose()
+}
+defineExpose({ undoCard, undoReading, canUndoCard, locked, leave, reconcileUndo, reconcileRedo })
 </script>
 
 <template>

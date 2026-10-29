@@ -1,4 +1,5 @@
 import { msg, LocalizedError } from '../i18n'
+import { parseOperationHistory, type OperationHistory } from './operation-history'
 import { openDB, type DBSchema, type IDBPTransaction } from 'idb'
 import {
   emptyLibrary,
@@ -35,6 +36,7 @@ import {
 export interface Snapshot {
   revision: number
   library: Library
+  operationHistory?: OperationHistory
 }
 export interface AutoBackup {
   id: string
@@ -105,6 +107,7 @@ interface RepeatyDB extends DBSchema {
   sources: RecordTable
   materialReceipts: RecordTable
   cardDrafts: { key: string; value: CardDraft }
+  operationHistory: { key: string; value: OperationHistory }
 }
 const stores = [
   'workspace',
@@ -115,6 +118,7 @@ const stores = [
   'history',
   'attemptSummaries',
   'cardDrafts',
+  'operationHistory',
   ...recordStores,
 ] as const
 type Transaction = IDBPTransaction<RepeatyDB, typeof stores, 'readwrite'>
@@ -151,7 +155,7 @@ export function createRepository(
 ) {
   // save() shadows `options` with its own parameter, so keep the repository setting here.
   const compactHistory = Boolean(options.compactHistory)
-  const database = openDB<RepeatyDB>(name, 17, {
+  const database = openDB<RepeatyDB>(name, 18, {
     async upgrade(db, _oldVersion, _newVersion, tx) {
       try {
         for (const store of stores)
@@ -300,6 +304,8 @@ export function createRepository(
   }
   async function collectUnusedAssets(tx: Transaction) {
     const used = new Set(await tx.objectStore('media').getAllKeys())
+    for (const id of (await tx.objectStore('operationHistory').get('main'))?.mediaIds ?? [])
+      used.add(id)
     // Only media changes and legacy snapshots can retain deleted blobs, not the entire study history.
     for (const change of await tx.objectStore('history').index('store').getAll('media'))
       if (change.before) used.add(change.id)
@@ -428,9 +434,11 @@ export function createRepository(
       try {
         const meta = await migrate(tx)
         const library = await readLibrary(tx)
+        const history = await tx.objectStore('operationHistory').get('main')
+        const operationHistory = history === undefined ? undefined : parseOperationHistory(history)
         await checkpoint(tx, meta, '自动备份', new Date(), false)
         await tx.done
-        return remember({ revision: meta.revision, library })
+        return remember({ revision: meta.revision, library, operationHistory })
       } catch (error) {
         await abort(tx)
         throw error
@@ -444,9 +452,14 @@ export function createRepository(
         reason?: string
         now?: Date
         consumeCardDraft?: string
+        operationHistory?: OperationHistory
       } = {},
     ): Promise<Snapshot> {
       if (!cached) await this.load()
+      const operationHistory =
+        options.operationHistory === undefined
+          ? cached!.operationHistory
+          : parseOperationHistory(options.operationHistory)
       const previous = cached!.library
       validateMaterialChanges(previous, library)
       // The frequent grading path validates only changed cards/reviews. Structural edits and
@@ -680,10 +693,12 @@ export function createRepository(
           )
         }
         await tx.objectStore('meta').put({ revision, counts: counts(next) }, 'main')
+        if (operationHistory !== undefined)
+          await tx.objectStore('operationHistory').put(operationHistory, 'main')
         if (expired || patches.some((patch) => patch.store === 'media'))
           await collectUnusedAssets(tx)
         await tx.done
-        return remember({ revision, library: next }, patches)
+        return remember({ revision, library: next, operationHistory }, patches)
       } catch (error) {
         await abort(tx)
         throw error

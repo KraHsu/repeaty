@@ -178,6 +178,7 @@ mod tests {
             expected_revision: revision,
             patches,
             reason: None,
+            operation_history: None,
         }
     }
     fn source(id: &str, media: &str) -> Value {
@@ -268,7 +269,7 @@ mod tests {
         );
         assert_eq!(db.load().unwrap()["revision"], 2);
         db.connection
-            .pragma_update(None, "user_version", 12)
+            .pragma_update(None, "user_version", 13)
             .unwrap();
         drop(db);
         assert!(Database::open(&path, assets).is_err());

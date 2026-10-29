@@ -88,6 +88,8 @@ const suggestedName = computed(
 )
 const practice = computed(() => Boolean(props.study && !props.study.reschedule))
 const studied = ref<{ id: string; grade: Grade; reviewId?: string; operationId?: string }[]>([])
+const undoneRatings = new Map<string, (typeof studied.value)[number]>()
+const replayedOutsideSession = ref<{ reviewId: string; cardId: string }[]>([])
 const readViews = createCardViewReader()
 const views = computed(() => readViews(props.library))
 const queue = computed(() =>
@@ -95,7 +97,10 @@ const queue = computed(() =>
     ? studyCards(
         props.library,
         props.study.ids,
-        studied.value.map((entry) => entry.id),
+        [
+          ...studied.value.map((entry) => entry.id),
+          ...replayedOutsideSession.value.map((entry) => entry.cardId),
+        ],
         clock.value,
       ).filter(canReviewCard)
     : dueCards(props.library, clock.value, props.deckId, canReviewCard, views.value).filter(
@@ -255,17 +260,54 @@ function restart(id: string, noteId: string) {
   revision.value++
 }
 function reconcileUndo(operation: Operation) {
+  if (operation.reviewId) rememberRatingUndo(operation.reviewId)
   if (current.value && operation.noteIds.includes(current.value.noteId))
     return restart(current.value.id, current.value.noteId)
   const restored = views.value.find((card) => card.id === operation.cardId)
   if (restored) restart(restored.id, restored.noteId)
   else if (!current.value) selectNext()
 }
+function rememberRatingUndo(reviewId: string) {
+  replayedOutsideSession.value = replayedOutsideSession.value.filter(
+    (entry) => entry.reviewId !== reviewId,
+  )
+  const entry = studied.value.find((entry) => entry.reviewId === reviewId)
+  if (!entry) return
+  studied.value = studied.value.filter((item) => item !== entry)
+  undoneRatings.set(reviewId, entry)
+  if (undoneRatings.size > 20) undoneRatings.delete(undoneRatings.keys().next().value!)
+  completed.value = Math.max(0, completed.value - 1)
+}
+function reconcileRedo(operation: Operation) {
+  if (operation.kind !== 'review') return reconcileUndo(operation)
+  const review = props.library.reviews.find((review) => review.id === operation.reviewId)
+  if (!review) return
+  const entry = undoneRatings.get(review.id)
+  // Only ratings made in this mounted session contribute to its counter.
+  // Replaying persisted history from another session must not invent progress.
+  if (entry) {
+    undoneRatings.delete(review.id)
+    if (!studied.value.some((item) => item.reviewId === review.id)) {
+      studied.value.push(entry)
+      completed.value++
+    }
+  } else if (
+    props.study &&
+    !practice.value &&
+    props.study.ids.includes(review.cardId) &&
+    !studied.value.some((item) => item.reviewId === review.id) &&
+    !replayedOutsideSession.value.some((item) => item.reviewId === review.id)
+  ) {
+    replayedOutsideSession.value.push({ reviewId: review.id, cardId: review.cardId })
+  }
+  if (entry || current.value?.id === review.cardId || !current.value) selectNext()
+}
 defineExpose({
   restart,
   undoLast,
   canUndo,
   reconcileUndo,
+  reconcileRedo,
   addCurrent,
   current,
   canUndoPractice,
@@ -323,13 +365,12 @@ async function grade(value: Grade) {
         )
       if (effects?.markedLeech)
         notify('这张卡已标记为顽固卡，可在卡片列表中筛选并改写问题。', 'warning', context)
-      if (props.study)
-        studied.value.push({
-          id,
-          grade: value,
-          reviewId: practice.value ? undefined : props.library.reviews.at(-1)?.id,
-          operationId: props.lastOperationId,
-        })
+      studied.value.push({
+        id,
+        grade: value,
+        reviewId: practice.value ? undefined : props.library.reviews.at(-1)?.id,
+        operationId: props.lastOperationId,
+      })
       completed.value++
       if (props.mixedCardId) emit('step', true)
       selectNext()
@@ -341,9 +382,12 @@ async function grade(value: Grade) {
 async function undoLast() {
   if (!canUndo.value || props.busy || props.editing || questionState.busy || grading.value) return
   const id = practice.value ? studied.value.at(-1)?.id : props.library.reviews.at(-1)?.cardId
+  const reviewId = props.library.reviews.at(-1)?.id
   if (practice.value || (await props.undo())) {
-    if (props.study) studied.value.pop()
-    completed.value = Math.max(0, completed.value - 1)
+    if (practice.value) {
+      studied.value.pop()
+      completed.value = Math.max(0, completed.value - 1)
+    } else if (reviewId) rememberRatingUndo(reviewId)
     selectNext()
     if (queue.value.some((card) => card.id === id)) currentId.value = id
   }

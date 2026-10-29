@@ -2,6 +2,8 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 pub mod atomic;
+pub mod attachments;
+pub mod backup;
 pub mod files;
 pub mod preview;
 pub mod prototype;
@@ -11,6 +13,7 @@ pub mod records;
 
 pub mod library;
 
+pub mod recovery_catalog;
 pub mod sessions;
 pub mod watch;
 

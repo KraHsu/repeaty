@@ -16,9 +16,35 @@ export const test = base.extend<{ native: void; emptyWorkspace: void }>({
       await runtime.call('workspace_choose', { epoch: status.epoch, mode: 'create', path })
       await installPluginHostFixture(context, runtime, root)
       let choices = 0
+      let lastArchive: string | undefined
       await context.exposeBinding(
         '__repeatyWorkspace',
         async (_, command: string, args: Record<string, unknown> = {}) => {
+          if (command === 'workspace_backups') {
+            const request = { ...(args.request as Record<string, unknown>) }
+            if (request.type === 'target' && !request.clear) {
+              request.path = join(root, `backups-${request.slot}`)
+              await mkdir(request.path as string, { recursive: true })
+            } else if (request.type === 'restore') {
+              request.path = root
+            } else if (request.type === 'inspect' && !request.key) {
+              const found = lastArchive
+                ? { entries: [{ summary: { archivePath: lastArchive } }] }
+                : await runtime.call<{ entries: { summary: { archivePath: string } }[] }>(
+                    'workspace_backups',
+                    { ...args, request: { type: 'list' } },
+                  )
+              if (!found.entries.length) return null
+              request.path = found.entries[0]!.summary.archivePath
+            }
+            const result = await runtime.call<{ entries?: { summary: { archivePath: string } }[] }>(
+              command,
+              { ...args, request },
+            )
+            if (request.type === 'list' && result.entries?.length)
+              lastArchive = result.entries[0]!.summary.archivePath
+            return result
+          }
           if (command === 'workspace_choose') {
             const path = join(root, 'chosen-' + ++choices)
             await mkdir(path)

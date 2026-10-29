@@ -1,6 +1,10 @@
 import { onMounted, onUnmounted } from 'vue'
 import { useEventListener, useIntervalFn } from '@vueuse/core'
-import { connectLearningReader, connectWorkspaceMonitor } from '@repeaty-platform'
+import {
+  connectLearningReader,
+  connectWorkspaceMonitor,
+  connectAutomaticBackups,
+} from '@repeaty-platform'
 import { listenPluginPreferences } from '../plugins'
 import { listenPreferences } from '../preferences'
 import type { PluginManager } from '../plugins/manager'
@@ -9,6 +13,7 @@ import type { useLibrary } from '../composables/useLibrary'
 const defaults = {
   connectLearningReader,
   connectWorkspaceMonitor,
+  connectAutomaticBackups,
   listenPluginPreferences,
   listenPreferences,
 }
@@ -24,7 +29,8 @@ export function useApplicationLifecycle(
     tick: () => void
     plugins?: PluginManager
   },
-  bindings = defaults,
+  bindings: Omit<typeof defaults, 'connectAutomaticBackups'> &
+    Partial<Pick<typeof defaults, 'connectAutomaticBackups'>> = defaults,
 ) {
   let alive = true
   const stops: (() => void)[] = []
@@ -47,6 +53,7 @@ export function useApplicationLifecycle(
     own(bindings.listenPreferences())
     void bindings.connectLearningReader(workspace).then(own)
     void bindings.connectWorkspaceMonitor(workspace).then(own)
+    void bindings.connectAutomaticBackups?.(workspace).then(own)
     void (plugins?.initializePlugins() ?? Promise.resolve())
       .catch(() => {})
       .then(() => {

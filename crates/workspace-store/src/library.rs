@@ -49,6 +49,8 @@ pub struct Save {
     pub patches: Vec<crate::records::Patch>,
     pub documents: Vec<Document>,
     pub reason: Option<String>,
+    #[serde(default)]
+    pub operation_history: Option<Value>,
     pub consume_card_draft: Option<String>,
     #[serde(default)]
     pub scan_hash: Option<String>,
@@ -186,7 +188,7 @@ impl Library {
         let identity: String = check
             .query_row("SELECT id FROM workspace_identity", [], |r| r.get(0))
             .map_err(|_| fail("workspace-incompatible"))?;
-        if app != APP_ID || ![10, 11].contains(&version) || identity != marker.id {
+        if app != APP_ID || ![10, 11, 12].contains(&version) || identity != marker.id {
             return Err(fail("workspace-incompatible"));
         }
         drop(check);
@@ -224,6 +226,7 @@ impl Library {
             _lock: lock,
         };
         library.recover()?;
+        crate::attachments::recover(&library.db.connection, &library.anchor)?;
         Ok(library)
     }
     pub fn path(&self) -> &Path {
@@ -572,7 +575,7 @@ impl Library {
         let anchor = &self.anchor;
         let observations = &request.asset_observations;
         let reactivate = &metadata;
-        let revision=self.db.commit_callbacks(Commit {expected_revision:request.expected_revision,patches,reason:request.reason},|tx| { working_media::verify(anchor, observations)?; retirement::capture(tx,capture) },|tx| {
+        let revision=self.db.commit_callbacks(Commit {expected_revision:request.expected_revision,patches,reason:request.reason,operation_history:request.operation_history},|tx| { working_media::verify(anchor, observations)?; retirement::capture(tx,capture) },|tx| {
             working_media::verify(anchor, observations)?;
             retirement::reactivate(tx,reactivate)?;
             if let Some(id)=consume && tx.execute("DELETE FROM card_drafts WHERE id=?1",[id])?!=1 { return Err(Error::conflict()); }
@@ -707,6 +710,9 @@ impl Library {
     }
     pub fn read(&mut self, request: Value) -> Result<Value> {
         match request["type"].as_str().unwrap_or("") {
+            "attachment-inventory" => {
+                crate::attachments::inventory(&self.db.connection, &self.anchor)
+            }
             "load" => self.db.load_summary(),
             "documents" => self.documents(
                 request
@@ -915,6 +921,18 @@ impl Library {
     }
     pub fn write(&mut self, request: Value) -> Result<Value> {
         match request["type"].as_str().unwrap_or("") {
+            "attachment-mutate" => {
+                let mut input = request.clone();
+                input
+                    .as_object_mut()
+                    .ok_or_else(Error::invalid)?
+                    .remove("type");
+                crate::attachments::mutate(
+                    &mut self.db.connection,
+                    &self.anchor,
+                    serde_json::from_value(input)?,
+                )
+            }
             "commit" => self.save(serde_json::from_value(request["input"].clone())?),
             "media" => {
                 use base64::Engine;

@@ -33,6 +33,8 @@
     "allow-workspace-read",
     "allow-workspace-write",
     "allow-workspace-watch",
-    "allow-workspace-unwatch"
+    "allow-workspace-unwatch",
+    "allow-workspace-backups",
+    "allow-workspace-backup-cancel"
   ]
 }

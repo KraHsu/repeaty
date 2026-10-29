@@ -6,6 +6,10 @@ export const AccountControls: Component | undefined = undefined
 export const PlatformSettings: Component | undefined = undefined
 export const DraftWorkbench: Component | undefined = undefined
 export const DesktopTitlebar: Component | undefined = undefined
+export const WorkspaceBackupTools: Component | undefined = undefined
+export async function connectAutomaticBackups(_reader: LearningReader): Promise<() => void> {
+  return () => {}
+}
 export const WorkspaceBrowser = defineAsyncComponent(
   () => import('../browser/WorkspaceBrowser.vue'),
 )

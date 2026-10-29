@@ -4,7 +4,10 @@ import { fixture, now, input } from '../core/test-fixtures'
 import { saveNote } from '../core/model'
 import { reviewCard } from '../core/scheduler'
 import { prepareMedia } from '../core/media'
-import { prepareSource, addSource } from '../core/sources'
+import { prepareSource, addSource, removeSource } from '../core/sources'
+import { operationFor, revertOperation } from '../core/operations'
+import { operationHistory } from '../core/operation-history'
+import { createBrowserRepository } from './repository'
 import { practiceHistoryFixture } from '../../tests/fixtures/practice-history'
 import { BrowserWorkspaceReader } from './workspace-reader'
 import { selectedFile, workspaceFixture } from './test-fixtures'
@@ -23,6 +26,44 @@ function rewrite(env: Awaited<ReturnType<typeof workspaceFixture>>) {
   env.files.push(selectedFile('.repeaty/state.sqlite3', env.db.export()))
 }
 describe('browser workspace SQLite snapshots', () => {
+  it('reads DB 12 journals and restores retained source originals only in the trial copy', async () => {
+    const prepared = prepareSource(
+      { title: 'Deleted source', url: '', format: 'plain', content: 'immutable original' },
+      now,
+    )
+    const before = addSource(fixture(), prepared.source, prepared.asset)
+    const after = removeSource(before, prepared.source.id)
+    const entry = operationFor(before, after, 'local:workspace:original', '删除材料')!
+    const history = operationHistory([entry])
+    const env = await workspaceFixture(SQL, after, [prepared.asset])
+    env.db.run(
+      'PRAGMA user_version=12; CREATE TABLE operation_history(id INTEGER PRIMARY KEY,data TEXT);',
+    )
+    env.db.run('INSERT INTO operation_history VALUES(1,?)', [JSON.stringify(history)])
+    rewrite(env)
+    const originalFiles = await Promise.all(env.files.map((file) => file.arrayBuffer()))
+    const reader = await open(env)
+    expect(reader.snapshot.operationHistory).toEqual(history)
+    const trial = createBrowserRepository({
+      snapshot: reader.snapshot,
+      media: (id) => reader.media(id),
+      attempts: async (ids) => reader.attempts(ids),
+      close: () => reader.close(),
+    })
+    const current = await trial.load()
+    const restored = await trial.save(revertOperation(current.library, entry), current.revision, {
+      operationHistory: operationHistory([], [entry]),
+    })
+    expect(restored.library.sources).toEqual(before.sources)
+    expect(await (await trial.getMedia(prepared.source.mediaId))!.text()).toBe('immutable original')
+    expect(restored.operationHistory!.redo[0]!.id).toBe(entry.id)
+    await trial.close()
+    expect(await Promise.all(env.files.map((file) => file.arrayBuffer()))).toEqual(originalFiles)
+    env.db.run('DROP TABLE operation_history')
+    rewrite(env)
+    await expect(open(env)).rejects.toThrow()
+    env.db.close()
+  })
   it('reads DB 10 without a material store and DB 11 originals without changing either directory', async () => {
     const old = await workspaceFixture(SQL)
     old.db.run('DROP TABLE materialReceipts')

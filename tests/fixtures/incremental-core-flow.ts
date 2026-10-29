@@ -151,7 +151,21 @@ export async function batchReadingFlow(page: Page, read: () => Promise<Library>,
   expect((await read()).sources.map(sourceArrangement)).toEqual(
     persisted.sources.map(sourceArrangement),
   )
-  await expect(page.getByRole('button', { name: '撤销阅读安排', exact: true })).toHaveCount(0)
+  // Reading arrangements share the durable operation journal and survive reopening.
+  const undoReading = page.getByRole('button', { name: '撤销阅读安排', exact: true })
+  await expect(undoReading).toBeVisible()
+  await undoReading.click()
+  await expect(undoReading).toHaveCount(0)
+  const reopenedUndo = await read()
+  expect(reopenedUndo.sources.map(sourceArrangement)).toEqual(undone.sources.map(sourceArrangement))
+  expect(reopenedUndo.cards).toEqual(persisted.cards)
+  expect(reopenedUndo.reviews).toEqual(persisted.reviews)
+  await page.getByRole('button', { name: '重做', exact: true }).click()
+  await expect(undoReading).toBeVisible()
+  const replayed = await read()
+  expect(replayed.sources.map(sourceArrangement)).toEqual(persisted.sources.map(sourceArrangement))
+  expect(replayed.cards).toEqual(persisted.cards)
+  expect(replayed.reviews).toEqual(persisted.reviews)
 }
 
 export async function nestedDailyFlow(page: Page, read: () => Promise<Library>, info: TestInfo) {

@@ -10,6 +10,8 @@ import { statusSchema, type NativeApi } from '../../src/desktop/workspaces'
 import { fixture, input, now } from '../../src/core/test-fixtures'
 import { initializeWorkspace } from '../../src/core/onboarding'
 import { reviewCard, undoReview } from '../../src/core/scheduler'
+import { operationFor, revertOperation, replayOperation } from '../../src/core/operations'
+import { operationHistory } from '../../src/core/operation-history'
 import { saveNote, removeNotes } from '../../src/core/model'
 import { noteLifecycle } from '../../src/desktop/retirement'
 import {
@@ -96,7 +98,10 @@ function host(device: string) {
   const api: NativeApi = <T>(command: string, args: Record<string, unknown> = {}) =>
     new Promise<T>((resolve, reject) => {
       const id = ++next
-      waiting.set(id, { resolve: resolve as (value: unknown) => void, reject })
+      waiting.set(id, {
+        resolve: resolve as (value: unknown) => void,
+        reject: (error) => reject(new Error(`${command}: ${error.message}`)),
+      })
       child.stdin.write(JSON.stringify({ id, command, args }) + '\n')
     })
   return {
@@ -483,6 +488,52 @@ describe('the desktop workspace is the learning store', () => {
     const undone = await repo.save(undoReview(reopened.library), reopened.revision)
     expect(undone.library).toEqual(first.library)
     expect(await readFile(join(env.path, document.path), 'utf8')).toBe(before)
+  })
+  it('persists undo and redo journals atomically across native process restarts', async () => {
+    const env = await workspace()
+    const first = await env.repo.save(fixture({ format: 'markdown', type: 'reversed' }), 0)
+    const next = reviewCard(first.library, first.library.cards[0]!.id, 3, now)
+    const entry = operationFor(first.library, next, env.repo.scope(), '评分', 'review')!
+    const rated = await env.repo.save(next, first.revision, {
+      operationHistory: operationHistory([entry]),
+    })
+    const documents = await docs(env)
+    await env.runtime.stop()
+    const runtime = host(env.device)
+    const status = statusSchema.parse(await runtime.api('workspace_status'))
+    const repo = createNativeRepository(status.active!, runtime.api)
+    const reopened = await repo.load()
+    expect(reopened).toEqual(rated)
+    const undone = await repo.save(revertOperation(reopened.library, entry), reopened.revision, {
+      operationHistory: operationHistory([], [entry]),
+    })
+    expect(undone.library).toEqual(first.library)
+    const other = createNativeRepository(status.active!, runtime.api)
+    const reread = await other.load()
+    expect(reread.operationHistory!.redo[0]).toEqual(entry)
+    const document = documents[0]!
+    const path = join(env.path, document.path)
+    await writeFile(path, document.raw + '\nExternal edit must survive')
+    const conflicting = saveNote(
+      reread.library,
+      { ...input, type: 'reversed', front: 'Conflicting edit' },
+      reread.library.notes[0]!.id,
+    )
+    await expect(
+      other.save(conflicting, reread.revision, { operationHistory: operationHistory() }),
+    ).rejects.toThrow()
+    expect((await other.load()).operationHistory).toEqual(reread.operationHistory)
+    expect((await other.load()).revision).toBe(reread.revision)
+    const redone = await other.save(replayOperation(reread.library, entry), reread.revision, {
+      operationHistory: operationHistory([entry]),
+    })
+    expect(redone.library).toEqual(rated.library)
+    expect(await readFile(path, 'utf8')).toContain('External edit must survive')
+    await runtime.stop()
+    const restarted = host(env.device)
+    const restoredStatus = statusSchema.parse(await restarted.api('workspace_status'))
+    const final = await createNativeRepository(restoredStatus.active!, restarted.api).load()
+    expect(final).toEqual(redone)
   })
   it('keeps external edits and ratings separate, accepts a renamed Markdown file, and preserves card identity and comments', async () => {
     const env = await workspace()

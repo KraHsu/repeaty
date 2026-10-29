@@ -23,6 +23,7 @@ import { scanSchema, type WorkspaceScan } from './workspace-scan'
 import { z } from 'zod'
 import AppModal from '../components/AppModal.vue'
 import AppPage from '../components/AppPage.vue'
+import WorkspaceRecovery from './WorkspaceRecovery.vue'
 import { noteLifecycle, retiredSummarySchema, type RetiredNote } from './retirement'
 import {
   readWorkspaceMarkdown,
@@ -567,6 +568,7 @@ onUnmounted(() => {
         <p>{{ t('首次使用请选择空文件夹创建学习库，入门卡组会自动添加。') }}</p>
         <p>{{ t('已有学习库请选择包含 workspace.json 的文件夹。') }}</p>
       </section>
+      <WorkspaceRecovery v-if="status && !status.active && !workspaceLoading" standalone />
       <p v-if="workspaceAttention.length" class="import-warning" role="status">
         {{ t('部分正文文件需要检查。已保存的学习进度仍保留在当前目录。') }}
       </p>

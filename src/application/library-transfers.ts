@@ -107,13 +107,16 @@ export function createTransfersCommands(context: LibraryContext) {
         assets: next.assets,
         reason: '恢复备份前',
         undoLabel: false,
+        undoBarrier: true,
       })
-      context.undoBarrier()
       context.readingUndo.value = undefined
     },
     async restoreSnapshot(data: Library) {
-      await context.commit(() => data, { reason: '恢复快照前', undoLabel: false })
-      context.undoBarrier()
+      await context.commit(() => data, {
+        reason: '恢复快照前',
+        undoLabel: false,
+        undoBarrier: true,
+      })
       context.readingUndo.value = undefined
     },
   }

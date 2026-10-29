@@ -50,6 +50,21 @@ async function hydrateSettings() {
 export function nativeError(issue: unknown) {
   const code = typeof issue === 'string' ? issue : issue instanceof Error ? issue.message : ''
   const messages: Record<string, MessageKey> = {
+    'backup-ambiguous-resource': '备份中的路径对应多个版本，请重新搜索并选择具体内容。',
+    'backup-resource-path-conflict': '所选内容使用了相同文件路径，请分开恢复。',
+    'backup-resource-asset-conflict': '所选内容引用了同路径的不同附件版本，请分开恢复。',
+    'backup-cancelled': '备份已取消，原有备份与当前库保持不变。',
+    'backup-corrupt': '备份损坏或校验不一致，未恢复任何内容。',
+    'backup-incompatible': '不支持这个完整备份格式。',
+    'backup-files-changed': '备份过程中有外部文件变化，请重试。',
+    'backup-confirmation-required': '备份过程中有外部文件变化，请重试。',
+    'backup-target-overlap': '备份目标不能与工作目录重叠。',
+    'backup-target-in-workspace': '备份目标不能与工作目录重叠。',
+    'backup-target-exists': '目标已存在，文件不会被覆盖。',
+    'unsafe-backup-file': '备份含有链接或不安全的路径，已停止操作。',
+    'backup-limit': '备份超过支持的大小或文件数量。',
+    'backup-busy': '已有备份任务正在执行。',
+    'workspace-publication-pending': '工作目录仍有待完成的文件写入，请完成后重试备份。',
     'workspace-not-open': '请先创建或打开工作目录。',
     'workspace-not-empty': '请选择空文件夹。已有文件不会被覆盖。',
     'workspace-incompatible': '不支持这个工作目录格式。',
