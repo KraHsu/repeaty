@@ -9,23 +9,6 @@
     gap: 0;
     flex: 1;
   }
-  .b-deck-overview .b-overview-heading {
-    gap: 1.5rem;
-    margin-bottom: 2rem;
-    align-items: center;
-  }
-  .b-heading-copy,
-  .b-overview-actions {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 1.25rem;
-  }
-  .b-heading-copy {
-    align-items: baseline;
-  }
-  .b-meta,
-  .b-global-counts,
   .b-focus-total,
   .b-focus-label,
   .b-focus-state,
@@ -558,13 +541,6 @@
     }
   }
   @media (max-width: 760px) {
-    .b-deck-overview .b-overview-heading {
-      align-items: flex-start;
-    }
-    .b-heading-copy {
-      flex-direction: column;
-      gap: 0.35rem;
-    }
     .b-focus-stage {
       margin: 1.125rem auto 2.375rem;
     }

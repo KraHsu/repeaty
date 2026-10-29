@@ -3,7 +3,7 @@ import { openSettings } from '../fixtures/settings-flow'
 
 test('Windows extended workspace paths have friendly labels while reopening retains the original path', async ({
   page,
-}) => {
+}, info) => {
   const original = String.raw`\\?\D:\tmp\repeaty-test`
   const display = String.raw`D:\tmp\repeaty-test`
   await page.evaluate((original) => {
@@ -38,6 +38,7 @@ test('Windows extended workspace paths have friendly labels while reopening reta
   await expect(page.locator('.workspace-active .workspace-path')).toHaveText(display)
   const recent = page.locator('.workspace-recent-entry')
   await expect(recent).toHaveText(display)
+  await page.locator('.workspace-recent').screenshot({ path: info.outputPath('recent-list.png') })
   await recent.click()
   expect(
     await page.evaluate(

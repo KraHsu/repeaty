@@ -5,6 +5,7 @@ import { t } from '../../i18n'
 import { ArrowUpFromLine, Pencil, Plus, Trash2 } from '@lucide/vue'
 import CollectionPanel from '../../components/CollectionPanel.vue'
 import DeckStatus from '../../components/DeckStatus.vue'
+import AppPageHeader from '../../components/AppPageHeader.vue'
 import { useApplication } from '../context'
 const {
   workspace,
@@ -32,12 +33,11 @@ const {
 </script>
 <template>
   <div class="page cards-page">
-    <header class="page-heading">
-      <div>
-        <h1>{{ currentDeck?.name ?? t('全部卡片') }}</h1>
-        <p>{{ currentDeck?.description || t('搜索、编辑卡片，或批量调整卡组和标签。') }}</p>
-      </div>
-      <div class="heading-actions">
+    <AppPageHeader
+      :title="currentDeck?.name ?? t('全部卡片')"
+      :description="currentDeck?.description || t('搜索、编辑卡片，或批量调整卡组和标签。')"
+    >
+      <template #actions>
         <UiButton
           v-bind="{ variant: 'ghost', icon: true }"
           type="submit"
@@ -62,8 +62,8 @@ const {
         <UiButton variant="primary" type="submit" @click="editCard()">
           <Plus :size="17" />{{ t('添加卡片') }}
         </UiButton>
-      </div>
-    </header>
+      </template>
+    </AppPageHeader>
     <DeckStatus v-if="currentDeck" :status="deckStates.get(currentDeck.id)!" />
     <CollectionPanel
       :query-cards="workspace.queryCards"

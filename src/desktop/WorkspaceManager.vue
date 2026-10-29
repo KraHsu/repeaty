@@ -955,41 +955,25 @@ onUnmounted(() => {
         </UiButton>
       </div>
     </AppModal>
-    <UiCollapsible
-      v-if="status?.recent.length"
-      class="workspace-card workspace-management"
-      :default-open="true"
-      :unmount-on-hide="false"
-    >
-      <template #default="{ open }">
-        <UiButton variant="ghost" class="workspace-management-toggle">
-          <History :size="20" aria-hidden="true" />
-          <span>{{ t('最近打开') }}</span>
-          <span class="workspace-count">{{ status.recent.length }}</span>
-          <ChevronDown
-            :size="18"
-            class="workspace-disclosure"
-            :class="{ 'is-open': open }"
-            aria-hidden="true"
-          />
-        </UiButton>
-      </template>
-      <template #content>
-        <div class="workspace-management-content">
+    <section v-if="status?.recent.length" class="workspace-recent">
+      <h2 class="workspace-recent-heading">
+        <History :size="20" aria-hidden="true" />
+        <span>{{ t('最近打开') }}</span>
+        <span class="workspace-count">{{ status.recent.length }}</span>
+      </h2>
+      <ul class="workspace-recent-list">
+        <li v-for="entry in status.recent" :key="entry.path">
           <UiButton
-            variant="secondary"
-            type="submit"
-            v-for="entry in status.recent"
-            :key="entry.path"
-            class="workspace-recent-entry"
+            variant="ghost"
+            class="workspace-recent-entry rounded-none"
             :disabled="locked"
             @click="run(() => recentWorkspace(entry.path, entry.id))"
           >
             <FolderOpen :size="18" /><span>{{ displayFilesystemPath(entry.path) }}</span>
           </UiButton>
-        </div>
-      </template>
-    </UiCollapsible>
+        </li>
+      </ul>
+    </section>
   </div>
 </template>
 <style scoped src="../styles/workspace.css"></style>

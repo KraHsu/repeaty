@@ -49,6 +49,7 @@ import {
 } from '../core/reading-round'
 import { createExportFile } from '@repeaty-platform'
 import AppModal from './AppModal.vue'
+import AppPageHeader from './AppPageHeader.vue'
 import SourceReader from './SourceReader.vue'
 import SourceContext from './SourceContext.vue'
 import SourceExcerptList from './SourceExcerptList.vue'
@@ -926,12 +927,12 @@ async function download() {
 
 <template>
   <div class="page sources-page">
-    <header v-if="!session" class="page-heading">
-      <div>
-        <h1>{{ t('学习材料') }}</h1>
-        <p>{{ t('保存原文，选取摘录制作卡片。') }}</p>
-      </div>
-      <div class="source-actions">
+    <AppPageHeader
+      v-if="!session"
+      :title="t('学习材料')"
+      :description="t('保存原文，选取摘录制作卡片。')"
+    >
+      <template #actions>
         <UiButton
           variant="secondary"
           type="submit"
@@ -959,8 +960,8 @@ async function download() {
         >
           <Plus :size="18" />{{ t('导入材料') }}
         </UiButton>
-      </div>
-    </header>
+      </template>
+    </AppPageHeader>
     <div v-if="!library.sources.length && !inRound" class="empty-state">
       <FileText :size="36" />
       <h2>{{ t('还没有学习材料') }}</h2>

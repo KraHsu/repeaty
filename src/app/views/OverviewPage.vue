@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { UiButton, UiCollapsible } from '../../components/ui'
+import AppPageHeader from '../../components/AppPageHeader.vue'
 import { t } from '../../i18n'
 import { ArrowRight, BookOpen, Check, ChevronDown, Ellipsis, Layers, Plus } from '@lucide/vue'
 import { useApplication } from '../context'
@@ -73,17 +74,12 @@ function addToFocused() {
 
 <template>
   <div class="page dashboard b-deck-overview">
-    <header class="page-heading b-overview-heading">
-      <div class="b-heading-copy">
-        <h1>{{ t('学习概览') }}</h1>
-        <span class="b-meta">{{
-          t('{p0} 个卡组 · {p1} 张卡片', { p0: library.decks.length, p1: library.cards.length })
-        }}</span>
-      </div>
-      <div class="b-overview-actions">
-        <span class="b-global-counts">{{
-          t('{p0} 张到期卡片 · {p1} 张新卡片', { p0: due.length - newCount, p1: newCount })
-        }}</span>
+    <AppPageHeader :title="t('学习概览')">
+      <template #description>
+        {{ t('{p0} 个卡组 · {p1} 张卡片', { p0: library.decks.length, p1: library.cards.length }) }}
+        · {{ t('{p0} 张到期卡片 · {p1} 张新卡片', { p0: due.length - newCount, p1: newCount }) }}
+      </template>
+      <template #actions>
         <UiButton
           v-if="library.decks.length && focusedState?.total !== 0"
           variant="secondary"
@@ -92,8 +88,8 @@ function addToFocused() {
         >
           <Plus :size="17" />{{ t('添加卡片') }}
         </UiButton>
-      </div>
-    </header>
+      </template>
+    </AppPageHeader>
 
     <section
       v-if="focusedDeck && focusedState"
