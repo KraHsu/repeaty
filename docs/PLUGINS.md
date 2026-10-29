@@ -98,7 +98,7 @@ README用于功能简介、使用步骤、配置教程和数据说明，具体�
 
 ## 独立开发与构建
 
-公开 SDK 位于 [packages/plugin-api](../packages/plugin-api)。它提供类型和独立构建命令 `repeaty-plugin`，运行时实现由 Repeaty 提供。插件作者只需要 SDK、Vue 和自己使用的依赖，不需要复制或导入主程序源码。当前 SDK 为1.8.0，LeetCode 与 typed-answer 为1.6.0，答题历史为1.6.1，复习热力图为1.1.0；官方插件的 `apiVersion` / `dataVersion` 仍为1。新增接口需要配套宿主，SDK 版本不会隐式更新已安装的软件。已有学习库需在侧栏「插件」主动更新官方插件代码。
+公开 SDK 位于 [packages/plugin-api](../packages/plugin-api)。它提供类型和独立构建命令 `repeaty-plugin`，运行时实现由 Repeaty 提供。插件作者只需要 SDK、Vue 和自己使用的依赖，不需要复制或导入主程序源码。当前 SDK 为1.9.0，LeetCode 与 typed-answer 为1.6.0，答题历史为1.6.1，复习热力图为1.1.0，格式清理为1.0.0；官方插件的 `apiVersion` / `dataVersion` 仍为1。新增接口需要配套宿主，SDK 版本不会隐式更新已安装的软件。已有学习库需在侧栏「插件」主动更新官方插件代码。
 
 软件与插件共用浅色、深色主题，默认跟随系统，在「设置 → 通用 → 界面 → 颜色模式」修改。SDK 控件自动跟随宿主；插件自定义绘图使用 `--ui-text`、`--ui-bg`、`--ui-border` 及语义色变量，避免固定白底或深色文字。答题历史1.6.1将评分圆点和圆环改为主题变量，已有库需更新该插件包；题目、调度、历史与设置不变。
 
@@ -149,6 +149,8 @@ Windows 可使用 `D:/tmp/repeaty-plugin-dev/.repeaty/plugins/review-history` �
 仓库中的 [plugins/review-history](../plugins/review-history)、[plugins/leetcode](../plugins/leetcode)、[plugins/typed-answer](../plugins/typed-answer) 和 [plugins/review-heatmap](../plugins/review-heatmap) 是独立项目；测试使用自己的宿主适配器，不导入主程序内部模块。
 
 官方预构建包固定在 `plugins/packages/*.repeaty-plugin`。更新官方插件时，先独立构建、测试并更新对应包。`npm run build`、桌面构建和开发服务器只复制或提供这些已有产物，不编译插件源码，也不会在用户安装时调用 npm 或 Rust 编译器。
+
+官方「格式清理」1.0.0 同样为可选插件。安装后提供独立的「格式清理」页面，使用统一 AppPage 和宿主控件选择材料、对比清理前后正文，并明确确认应用；规则配置进入「设置 → 工具 → 格式清理」。文字/正则替换始终保护代码和链接地址，运行于可取消且有超时的宿主 Worker。保存使用 SDK 1.9 的版本事务，支持全局撤销；停用、卸载或切换学习库不会删除正文、历史版本、卡片或调度。详见[格式清理说明](../plugins/format-cleanup/README.md)。
 
 ## 前端接口
 

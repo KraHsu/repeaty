@@ -174,6 +174,12 @@ export interface MaterialCreateExcerptRequest extends MaterialMutationContext {
   selection: MaterialSelection
   title: string
 }
+/** The current immutable version must still match; editing creates a new version and is undoable. */
+export interface MaterialEditContentRequest extends MaterialMutationContext {
+  sourceId: string
+  versionId: string
+  content: string
+}
 export interface MaterialCommandRequest extends MaterialMutationContext {
   sourceId?: string
   selection?: MaterialSelection
@@ -206,6 +212,9 @@ export interface MaterialHostApi {
   createExcerpt(
     request: MaterialCreateExcerptRequest,
   ): Promise<{ sourceId: string; revision: number }>
+  editContent(
+    request: MaterialEditContentRequest,
+  ): Promise<{ sourceId: string; versionId: string; revision: number }>
   search(query: MaterialSearchQuery, signal?: AbortSignal): Promise<MaterialSearchPage>
 }
 /** Host-owned transactions. Every call stays bound to this plugin instance and learning library. */

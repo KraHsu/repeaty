@@ -132,6 +132,136 @@ function select(sourceId: string, versionId: string): MaterialSelection {
 }
 
 describe('library-owned material transactions', () => {
+  it('edits one immutable body through a receipt-backed undoable transaction', async () => {
+    const test = await setup()
+    await test.importDocument()
+    const before = test.state.library.value,
+      source = before.sources[0]!
+    const request = {
+      sourceId: source.id,
+      versionId: source.mediaId,
+      content: '清理后的正文🙂',
+      expectedRevision: test.api.snapshot().revision,
+      operationId: 'cleanup-first',
+    }
+    const result = await test.api.editContent(request)
+    expect(result.versionId).not.toBe(source.mediaId)
+    expect((await test.api.get(source.id, source.mediaId)).text).toBe(repeated)
+    expect((await test.api.get(source.id)).text).toBe(request.content)
+    expect(test.state.library.value.cards).toEqual(before.cards)
+    expect(await test.api.editContent(request)).toEqual(result)
+    await expect(test.api.editContent({ ...request, content: 'different' })).rejects.toThrow(
+      '操作标识',
+    )
+    await test.service.commands.undoLastOperation()
+    expect((await test.api.get(source.id)).text).toBe(repeated)
+    await expect(test.api.editContent(request)).rejects.toThrow('已撤销或删除')
+    await test.service.commands.redoLastOperation()
+    expect((await test.api.get(source.id)).text).toBe(request.content)
+    expect((await test.api.editContent(request)).versionId).toBe(result.versionId)
+  })
+  it('preserves unmanaged properties through plugin edits and rejects stale previews and lifetimes', async () => {
+    const test = await setup()
+    await test.importDocument()
+    const source = test.state.library.value.sources[0]!
+    Object.assign(test.repo, { readSourceProperties: async () => 'unknown:\n  flag: true\n' })
+    const request = {
+      sourceId: source.id,
+      versionId: source.mediaId,
+      content: '清理结果',
+      expectedRevision: test.api.snapshot().revision,
+      operationId: 'cleanup-yaml',
+    }
+    await test.api.editContent(request)
+    expect(test.state.library.value.sources[0]!.properties).toContain('flag: true')
+    await test.service.commands.undoLastOperation()
+    expect(test.state.library.value.sources[0]!.properties).toContain('flag: true')
+    await expect(test.api.editContent({ ...request, operationId: 'stale' })).rejects.toThrow(
+      '已变化',
+    )
+    test.controller.abort()
+    await expect(
+      test.api.editContent({ ...request, operationId: 'unloaded', expectedRevision: 999 }),
+    ).rejects.toThrow()
+  })
+  it('atomically saves the first property baseline, body, receipt and undo journal and permits a failed request to retry', async () => {
+    const test = await setup()
+    await test.importDocument()
+    const before = test.state.library.value,
+      history = test.state.operations.value,
+      source = before.sources[0]!,
+      properties = 'unknown:\n  flag: true\nlabels: [reading, practice]\n'
+    Object.assign(test.repo, { readSourceProperties: vi.fn(async () => properties) })
+    const save = vi.spyOn(test.repo, 'save').mockRejectedValueOnce(new Error('disk write failed'))
+    const request = {
+      sourceId: source.id,
+      versionId: source.mediaId,
+      content: '保存并保留原始属性',
+      expectedRevision: test.api.snapshot().revision,
+      operationId: 'cleanup-retry',
+    }
+    await expect(test.api.editContent(request)).rejects.toThrow('disk write failed')
+    expect(save).toHaveBeenCalledOnce()
+    expect(test.api.snapshot().revision).toBe(request.expectedRevision)
+    expect(test.state.library.value).toBe(before)
+    expect(test.state.operations.value).toBe(history)
+    const failed = await test.repo.load()
+    expect(failed.library).toEqual(before)
+    expect(failed.operationHistory?.undo).toEqual(history)
+
+    const result = await test.api.editContent(request)
+    expect(result.revision).toBe(request.expectedRevision + 1)
+    expect(save).toHaveBeenCalledTimes(2)
+    const persisted = await test.repo.load()
+    expect(persisted.revision).toBe(result.revision)
+    expect(persisted.library.materialReceipts).toHaveLength(before.materialReceipts.length + 1)
+    expect(persisted.library.sources[0]!.properties).toBe(properties)
+    expect(persisted.library.sources[0]!.versions?.[0]?.properties).toBe(properties)
+    expect(persisted.operationHistory?.undo).toHaveLength(history.length + 1)
+    const change = persisted.operationHistory?.undo
+      .at(-1)
+      ?.changes.find((entry) => entry.store === 'sources' && entry.id === source.id)
+    expect(change?.before).toMatchObject({ mediaId: source.mediaId, properties })
+    expect(change?.after).toMatchObject({ mediaId: result.versionId, properties })
+    expect(await test.api.editContent(request)).toEqual(result)
+    expect(save).toHaveBeenCalledTimes(2)
+
+    await test.service.commands.undoLastOperation()
+    expect((await test.api.get(source.id)).text).toBe(repeated)
+    expect(test.state.library.value.sources[0]!.properties).toBe(properties)
+    expect(test.state.library.value.materialReceipts).toEqual(persisted.library.materialReceipts)
+    await test.service.commands.redoLastOperation()
+    expect((await test.api.get(source.id)).text).toBe(request.content)
+    expect(test.state.library.value.sources[0]!.properties).toBe(properties)
+  })
+  it('does not commit a property baseline when the preview changes during its read', async () => {
+    const test = await setup()
+    await test.importDocument()
+    const source = test.state.library.value.sources[0]!,
+      pending = deferred<string>(),
+      read = vi.fn(() => pending.promise)
+    Object.assign(test.repo, { readSourceProperties: read })
+    const request = {
+      sourceId: source.id,
+      versionId: source.mediaId,
+      content: 'Stale preview',
+      expectedRevision: test.api.snapshot().revision,
+      operationId: 'cleanup-stale-baseline',
+    }
+    const editing = test.api.editContent(request)
+    const rejected = expect(editing).rejects.toThrow('已变化')
+    await vi.waitFor(() => expect(read).toHaveBeenCalledOnce())
+    await test.importDocument('concurrent-import')
+    const current = test.state.library.value,
+      revision = test.api.snapshot().revision,
+      save = vi.spyOn(test.repo, 'save')
+    pending.resolve('unknown: true\n')
+    await rejected
+    expect(save).not.toHaveBeenCalled()
+    expect(test.state.library.value).toBe(current)
+    expect(test.api.snapshot().revision).toBe(revision)
+    expect(test.state.library.value.sources[0]!.properties).toBeUndefined()
+  })
   it('rejects originals larger than the shared native media limit before invoking a parser', async () => {
     const test = await setup(),
       parse = vi.spyOn(test.importer, 'parse')
