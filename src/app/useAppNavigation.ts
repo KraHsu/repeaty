@@ -5,6 +5,7 @@ export function useAppNavigation(pinia?: Pinia) {
   return {
     ...storeToRefs(store),
     navigate: store.navigate,
+    openPluginPage: store.openPluginPage,
     startReading: store.startReading,
     openHistory: store.openHistory,
     openDeck: store.openDeck,

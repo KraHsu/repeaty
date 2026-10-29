@@ -8,6 +8,39 @@ async function navigate(page: Page, name: string, heading = name) {
   await expect(page.locator('.main-content .page')).toHaveCount(1)
 }
 
+async function pageEntrance(page: Page, reduced: boolean) {
+  const motion = await page.locator('.app-page').evaluate(async (element, reduced) => {
+    const animation = element
+      .getAnimations()
+      .find((animation) => (animation as CSSAnimation).animationName === 'app-page-enter')
+    if (!animation || reduced) return { animated: !!animation, samples: [] }
+    animation.pause()
+    const samples = []
+    for (const time of [0, 110, 220]) {
+      animation.currentTime = time
+      await new Promise(requestAnimationFrame)
+      const title = element.querySelector('h1')!.getBoundingClientRect()
+      samples.push({
+        opacity: Number(getComputedStyle(element).opacity),
+        top: title.top,
+        left: title.left,
+      })
+    }
+    animation.finish()
+    return { animated: true, samples }
+  }, reduced)
+  expect(motion.animated).toBe(!reduced)
+  if (!reduced) {
+    expect(motion.samples[0]!.opacity).toBeLessThan(motion.samples[1]!.opacity)
+    expect(motion.samples[1]!.opacity).toBeLessThan(motion.samples[2]!.opacity)
+    expect(motion.samples[2]!.opacity).toBe(1)
+    for (const sample of motion.samples.slice(1)) {
+      expect(Math.abs(sample.top - motion.samples[0]!.top)).toBeLessThanOrEqual(1)
+      expect(Math.abs(sample.left - motion.samples[0]!.left)).toBeLessThanOrEqual(1)
+    }
+  }
+}
+
 export async function pageHeaderFlow(
   page: Page,
   info: TestInfo,
@@ -43,7 +76,11 @@ export async function pageHeaderFlow(
     [narrowWidth, 1, 'dark'],
     [1440, 2, 'dark'],
   ] as const) {
-    await page.emulateMedia({ colorScheme: theme })
+    const reduced = width !== 1440 || scale !== 1
+    await page.emulateMedia({
+      colorScheme: theme,
+      reducedMotion: reduced ? 'reduce' : 'no-preference',
+    })
     await page.setViewportSize({ width, height: 1000 })
     await page.evaluate(async (scale) => {
       document.documentElement.style.fontSize = `${scale * 100}%`
@@ -65,6 +102,7 @@ export async function pageHeaderFlow(
       )
       const header = page.locator('.app-page-header')
       await expect(header.locator('.app-page-header__description')).toBeVisible()
+      await pageEntrance(page, reduced)
       const metrics = await header.evaluate((element) => {
         const header = element.getBoundingClientRect()
         const page = element.closest('.page')!

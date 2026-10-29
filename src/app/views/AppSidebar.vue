@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, onUpdated, ref } from 'vue'
 import { UiButton } from '../../components/ui'
+import PluginNavigationIcon from '../../components/PluginNavigationIcon.vue'
 import { version } from '../../../package.json'
 import { t } from '../../i18n'
 import {
@@ -23,6 +24,7 @@ import { useApplication } from '../context'
 defineProps<{ collapsed: boolean; canToggle: boolean }>()
 defineEmits<{ toggle: [] }>()
 const { library, tab, review, mixed, modal, navigate, openHistory } = useApplication()
+const { pluginPages, activePluginPage, openPluginPage } = useApplication()
 const learning = [
   { page: 'overview', label: '学习概览', icon: Layers },
   { page: 'cards', label: '全部卡片', icon: Files },
@@ -195,6 +197,30 @@ onBeforeUnmount(() => {
           @click="navigate('data')"
           ><Database :size="22" /><span class="nav-label">{{ t('数据与备份') }}</span></UiButton
         >
+        <UiButton
+          v-for="entry in pluginPages"
+          :key="entry.key"
+          variant="ghost"
+          class="nav-link plugin-nav-link text-(--muted) hover:bg-(--app-nav-hover)"
+          :class="{
+            active: active('plugin-page') && activePluginPage?.key === entry.key,
+            'bg-transparent text-(--app-nav-ink) hover:bg-transparent':
+              active('plugin-page') && activePluginPage?.key === entry.key,
+          }"
+          :aria-current="
+            active('plugin-page') && activePluginPage?.key === entry.key ? 'page' : undefined
+          "
+          :aria-label="t(entry.contribution.title)"
+          :aria-description="t(entry.contribution.description ?? '') || undefined"
+          :title="t(entry.contribution.title)"
+          :data-plugin-page="`${entry.pluginId}/${entry.contribution.id}`"
+          @click="openPluginPage(entry.pluginId, entry.contribution.id)"
+        >
+          <span class="plugin-nav-icon" aria-hidden="true"
+            ><PluginNavigationIcon :component="entry.contribution.icon"
+          /></span>
+          <span class="nav-label plugin-nav-label">{{ t(entry.contribution.title) }}</span>
+        </UiButton>
         <UiButton
           v-for="(item, index) in utilities"
           :key="item.page"

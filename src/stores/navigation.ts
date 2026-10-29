@@ -5,8 +5,17 @@ import { type CardView, type Deck, type SearchFilter, type StudySession } from '
 
 export const useNavigationStore = defineStore('navigation', () => {
   const tab = ref<
-    'overview' | 'cards' | 'history' | 'plugins' | 'data' | 'sources' | 'settings' | 'workspace'
+    | 'overview'
+    | 'cards'
+    | 'history'
+    | 'plugins'
+    | 'data'
+    | 'sources'
+    | 'settings'
+    | 'workspace'
+    | 'plugin-page'
   >('overview')
+  const pluginPage = ref<{ pluginId: string; pageId: string }>()
   const historyCardId = ref('')
   const autoStartReading = ref(false)
   const mcpSelection = ref<SourceExcerpt>()
@@ -27,6 +36,7 @@ export const useNavigationStore = defineStore('navigation', () => {
     | null
   >(null)
   function navigate(next: typeof tab.value) {
+    pluginPage.value = undefined
     tab.value = next
     review.value = null
     mixed.value = null
@@ -35,6 +45,10 @@ export const useNavigationStore = defineStore('navigation', () => {
     filterState.value = 'all'
     historyCardId.value = ''
     autoStartReading.value = false
+  }
+  function openPluginPage(pluginId: string, pageId: string) {
+    navigate('plugin-page')
+    pluginPage.value = { pluginId, pageId }
   }
   function startReading() {
     navigate('sources')
@@ -49,6 +63,8 @@ export const useNavigationStore = defineStore('navigation', () => {
     selectedDeck.value = deck.id
   }
   function resetLibrary() {
+    if (tab.value === 'plugin-page') tab.value = 'overview'
+    pluginPage.value = undefined
     selectedDeck.value = ''
     searchQuery.value = ''
     filterState.value = 'all'
@@ -62,6 +78,8 @@ export const useNavigationStore = defineStore('navigation', () => {
 
   return {
     tab,
+    pluginPage,
+    openPluginPage,
     historyCardId,
     autoStartReading,
     mcpSelection,

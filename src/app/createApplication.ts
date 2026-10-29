@@ -1,4 +1,5 @@
-import { watch } from 'vue'
+import { computed, watch } from 'vue'
+import { t } from '../i18n'
 import { useLibrary } from '../composables/useLibrary'
 import { useReadingProgress } from '../composables/useReadingProgress'
 import { useOffline } from '../composables/useOffline'
@@ -14,6 +15,8 @@ import { useStudyActions } from './useStudyActions'
 import { useBackupActions } from './useBackupActions'
 import { useApplicationLifecycle } from './useApplicationLifecycle'
 import { providePluginManager, usePluginManager } from '../plugins/manager'
+import { usePluginViews } from './usePluginViews'
+import { createPluginReviewReader } from '../plugins/activity'
 
 /** One composition root owns UI controllers and connects the selected storage adapter. */
 export function createApplication() {
@@ -38,6 +41,9 @@ export function createApplication() {
   }
   const clock = useStudyClock()
   const navigation = useAppNavigation()
+  const extensions = usePluginViews(navigation, workspace.scope, plugins)
+  const readPluginReviews = createPluginReviewReader()
+  const pluginReviews = computed(() => readPluginReviews(library.value.reviews))
   const queries = useLibraryQueries({ ...base, ...clock, ...navigation })
   const runner = useOperationRunner({ ...base, ...clock })
   const views = useStudyViews()
@@ -75,5 +81,12 @@ export function createApplication() {
     ...sources,
     ...study,
     ...transfers,
+    ...extensions,
+    pluginReviews,
+    pageTitle: computed(() =>
+      extensions.activePluginPage.value
+        ? t(extensions.activePluginPage.value.contribution.title)
+        : queries.pageTitle.value,
+    ),
   }
 }

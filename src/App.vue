@@ -15,6 +15,7 @@ import StudyDialogs from './app/views/StudyDialogs.vue'
 import { t, locale } from './i18n'
 import { Database, Repeat2 } from '@lucide/vue'
 import NotificationCenter from './components/NotificationCenter.vue'
+import PluginViewBoundary from './components/PluginViewBoundary.vue'
 import { remoteWorkspace } from './edition'
 import {
   ServerConnection,
@@ -41,6 +42,7 @@ const {
   loadError,
   refreshClock,
   tab,
+  activePluginPage,
   historyCardId,
   review,
   mixed,
@@ -157,6 +159,18 @@ watch(workspace.scope, () => {
           <p>{{ t('正在加载…') }}</p>
         </section>
         <StudyView v-else-if="mixed || review" />
+        <div
+          v-else-if="tab === 'plugin-page' && activePluginPage"
+          :key="activePluginPage.key"
+          class="plugin-page-host"
+        >
+          <PluginViewBoundary
+            kind="page"
+            :title="t(activePluginPage.contribution.title)"
+            :component="activePluginPage.contribution.component"
+            :scope="activePluginPage.scope"
+          />
+        </div>
         <OverviewPage v-else-if="tab === 'overview'" />
         <CardsPage v-else-if="tab === 'cards'" />
         <PracticeHistoryPanel

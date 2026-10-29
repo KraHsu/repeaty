@@ -428,24 +428,6 @@
   justify-content: flex-end;
   margin-top: 1.5rem;
 }
-@keyframes workspace-appear {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-@media (prefers-reduced-motion: no-preference) {
-  .workspace-active {
-    animation: workspace-appear 180ms ease-out both;
-  }
-  .workspace-review {
-    animation: workspace-appear 220ms 30ms ease-out both;
-  }
-}
 @media (max-width: 1000px) {
   .workspace-inspector {
     grid-template-columns: 1fr;

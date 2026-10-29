@@ -54,6 +54,7 @@ export function useLibraryQueries({
         history: t('练习历史'),
         sources: t('学习材料'),
         workspace: t('工作目录'),
+        'plugin-page': t('插件页面'),
       })[tab.value],
   )
   function deckDue(id: string) {

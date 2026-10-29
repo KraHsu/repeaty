@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { UiButton, UiCollapsible } from '../../components/ui'
 import AppPage from '../../components/AppPage.vue'
+import PluginWidgetSlot from '../../components/PluginWidgetSlot.vue'
 import { t } from '../../i18n'
 import { ArrowRight, BookOpen, Check, ChevronDown, Ellipsis, Layers, Plus } from '@lucide/vue'
 import { useApplication } from '../context'
@@ -217,6 +218,7 @@ function addToFocused() {
       </div>
     </section>
 
+    <PluginWidgetSlot placement="overview.after-decks" />
     <section
       v-if="library.sources.length"
       class="daily-reading b-reading-band"
@@ -289,5 +291,6 @@ function addToFocused() {
         </template>
       </UiCollapsible>
     </footer>
+    <PluginWidgetSlot placement="overview.bottom" />
   </AppPage>
 </template>
