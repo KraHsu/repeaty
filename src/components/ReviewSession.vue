@@ -526,7 +526,7 @@ onUnmounted(() => {
     </div>
     <template v-if="current && plugin">
       <div class="review-context">
-        <span v-if="!deckId" class="pill">{{ deck?.name }}</span
+        <span v-if="!deckId" class="pill" :title="deck?.name">{{ deck?.name }}</span
         ><span>{{ current.schedule.state === 0 ? t('新卡片') : t('复习卡片') }}</span>
         <span v-if="current.leech" class="status-chip leech">{{ t('顽固卡 · 多次遗忘') }}</span>
       </div>
