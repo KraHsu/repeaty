@@ -29,6 +29,8 @@ export async function importReading(
   await page.getByLabel('粘贴正文').fill(text)
   await page.getByRole('button', { name: '保存材料', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
+  if (format === 'markdown')
+    await page.getByRole('button', { name: '查看 Markdown 原文', exact: true }).click()
   await expect(page.locator('.source-text')).toHaveValue(text)
   await expect(page.locator('.source-text')).toHaveAttribute('aria-busy', 'false')
 }

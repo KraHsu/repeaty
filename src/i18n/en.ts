@@ -1,7 +1,15 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 import { recoveryMessages } from './recovery'
 import { attachmentMessages } from './attachments'
+import { organizationMessages } from './organization'
+import { workbenchMessages } from './workbench'
+import { materialSearchMessages } from './material-search'
+import { readingWorkbenchMessages } from './reading-workbench'
 export const en = {
+  ...readingWorkbenchMessages,
+  ...materialSearchMessages,
+  ...organizationMessages,
+  ...workbenchMessages,
   ...recoveryMessages,
   ...attachmentMessages,
   插件导入: 'Import with plugin',

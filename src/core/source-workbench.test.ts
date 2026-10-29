@@ -64,6 +64,15 @@ it('keeps annotations on their exact snapshot while text editing retains identit
   expect(sourceAtVersion(edited.source, source.mediaId)!.properties).toBe(source.properties)
   expect(edited.library.cards).toBe(library.cards)
   expect(edited.library.reviews).toBe(library.reviews)
+  expect(() =>
+    editSourceContent(
+      {
+        ...library,
+        sources: library.sources.map((item) => ({ ...item, title: 'Renamed while editing' })),
+      },
+      { ...update, before: { title: source.title, url: source.url } },
+    ),
+  ).toThrow('材料已变化')
   const rekeyed = rekeyBackup({ library: edited.library, assets: [] })
   const restored = rekeyed.library.sources[0]!
   expect(restored.annotations![0]!.mediaId).toBe(restored.versions![0]!.mediaId)

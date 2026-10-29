@@ -12,6 +12,7 @@ import { changeSourceDetails } from './source-details-flow'
 import { createSourceDeck } from './source-flow'
 import { importReading } from './reading-flow'
 import { saveIndependentExcerpt, selectForExcerpt } from './source-excerpt-flow'
+import { showSourceFilters, showSourceSelection, showSourceText } from './source-controls'
 
 async function openBatch(page: Page, operation: 'priority' | 'defer' | 'archive' | 'restore') {
   await page.getByRole('button', { name: /^(批量安排|Arrange selected sources)$/ }).click()
@@ -21,9 +22,11 @@ async function openBatch(page: Page, operation: 'priority' | 'defer' | 'archive'
 }
 async function selectTopicBatch(page: Page) {
   await page.getByRole('button', { name: /^(学习材料|Sources)$/ }).click()
+  await showSourceFilters(page)
   await selectUiValue(page.getByLabel(/^(材料类型|Source type)$/), 'excerpt')
   await selectUiValue(page.getByLabel(/^(优先级筛选|Filter by priority)$/), 'high')
   await page.getByLabel(/^(搜索材料|Search sources)$/).fill('Topic')
+  await showSourceSelection(page)
   await page.getByRole('button', { name: /^(选择本页|Select this page)$/ }).click()
   await page
     .locator('.source-list-pages')
@@ -44,6 +47,7 @@ export async function batchReadingFlow(page: Page, read: () => Promise<Library>,
   await selectUiValue(page.getByLabel('材料类型', { exact: true }), 'excerpt')
   await selectUiValue(page.getByLabel('优先级筛选', { exact: true }), 'high')
   await page.getByLabel('搜索材料', { exact: true }).fill('Topic')
+  await showSourceSelection(page)
   await page.getByRole('button', { name: '选择本页', exact: true }).click()
   await expect(page.locator('.source-selection-toolbar')).toContainText('已选 20 篇材料')
   await page
@@ -111,10 +115,12 @@ export async function batchReadingFlow(page: Page, read: () => Promise<Library>,
   expect(undone.reviews).toEqual(rated.reviews)
 
   await queueView(page, '全部材料')
+  await showSourceFilters(page)
   await selectUiValue(page.getByLabel('材料类型', { exact: true }), 'excerpt')
   const count = undone.sources.filter((source) => source.kind === 'excerpt').length
   const all = page.getByRole('button', { name: `选择全部筛选结果（${count}）`, exact: true })
   for (const operation of ['archive', 'defer', 'restore'] as const) {
+    await showSourceSelection(page)
     await all.click()
     dialog = await openBatch(page, operation)
     await expect(dialog).toContainText(`所选的 ${count} 篇材料`)
@@ -142,6 +148,7 @@ export async function batchReadingFlow(page: Page, read: () => Promise<Library>,
       undone.sources.map(sourceArrangement),
     )
   }
+  await showSourceSelection(page)
   await all.click()
   await openBatch(page, 'archive')
   await confirmBatch(page)
@@ -210,6 +217,7 @@ export async function nestedDailyFlow(page: Page, read: () => Promise<Library>, 
   await page.getByRole('button', { name: '开始今日阅读', exact: true }).click()
   await expect(page.locator('.reading-round strong')).toHaveText('第 1 篇，共 3 篇')
   await expect(page.getByRole('heading', { name: root.title, exact: true })).toBeVisible()
+  await showSourceText(page)
   await expect(page.locator('.source-text')).toHaveAttribute('aria-busy', 'false')
   await page.getByRole('button', { name: '归档材料', exact: true }).click()
   await expect(page.getByRole('heading', { name: child.title, exact: true })).toBeVisible()
@@ -272,6 +280,7 @@ export async function nestedDailyFlow(page: Page, read: () => Promise<Library>, 
   await page.getByRole('button', { name: '删除材料', exact: true }).click()
   await page.getByRole('button', { name: '确认删除', exact: true }).click()
   await page.locator('.source-list-title').filter({ hasText: leaf.title }).click()
+  await showSourceText(page)
   await expect(page.locator('.source-text')).toHaveValue('变量🙂')
   await expect(page.getByText('原文已删除，摘录内容仍保留。', { exact: true })).toBeVisible()
   const detached = await read()
@@ -298,6 +307,7 @@ export async function batchRetryFlow(
 ) {
   await importReading(page, 'Batch A', 'plain', 'First context\n'.repeat(100))
   await importReading(page, 'Batch B', 'plain', 'Second context\n'.repeat(100))
+  await showSourceSelection(page)
   await page.getByRole('button', { name: '选择本页', exact: true }).click()
   const before = await read()
   const dialog = await openBatch(page, 'archive')
@@ -312,6 +322,11 @@ export async function batchRetryFlow(
   await confirmBatch(page)
   const after = await read()
   expect(after.sources.every((source) => source.queue?.state === 'archived')).toBe(true)
+  // Errors stay visible until acknowledged; close the first failure before retrying the header action.
+  await page
+    .locator('.notification.error')
+    .getByRole('button', { name: '关闭提示', exact: true })
+    .click()
   await reject(true)
   await page.getByRole('button', { name: '撤销阅读安排', exact: true }).click()
   await expect(page.locator('.notification.error').last()).toBeVisible()
@@ -319,6 +334,10 @@ export async function batchRetryFlow(
     after.sources.map(sourceArrangement),
   )
   await expect(page.getByRole('button', { name: '撤销阅读安排', exact: true })).toBeEnabled()
+  await page
+    .locator('.notification.error')
+    .getByRole('button', { name: '关闭提示', exact: true })
+    .click()
   await reject(false)
   await page.getByRole('button', { name: '撤销阅读安排', exact: true }).click()
   await expect(page.getByRole('button', { name: '撤销阅读安排', exact: true })).toHaveCount(0)

@@ -17,6 +17,7 @@ import { reviewCard } from '../../src/core/scheduler'
 import { sourceQuote, sourceText } from './source-flow'
 import { selectForExcerpt } from './source-excerpt-flow'
 import { saveReading } from './reading-flow'
+import { showSourceText } from './source-controls'
 
 export function navigationFixture() {
   const root = prepareSource(
@@ -111,6 +112,7 @@ export async function restoreNavigation(page: Page) {
   await page.reload()
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await page.locator('.source-list-title').filter({ hasText: '导航原文' }).click()
+  await showSourceText(page)
   await expect(page.locator('.source-text')).toHaveAttribute('aria-busy', 'false')
   return data
 }
@@ -193,6 +195,7 @@ export async function navigationFlow(page: Page, read: () => Promise<Library>, i
     .getByRole('button', { name: '打开摘录「末尾摘录🙂」', exact: true })
     .click()
   await expect(page.getByRole('heading', { name: '末尾摘录🙂', exact: true })).toBeVisible()
+  await showSourceText(page)
   await expect(reader).toHaveValue(sourceQuote)
   await expect(
     page

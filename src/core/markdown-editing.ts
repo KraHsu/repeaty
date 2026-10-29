@@ -8,12 +8,25 @@ export interface MarkdownEdit {
 }
 const list = /^([ \t]*(?:>[ \t]*)*)([-+*]|\d+[.)])([ \t]+)(?:\[([ xX])\]([ \t]+))?/
 function inFence(text: string, end: number) {
-  let open = ''
+  let open: { marker: string; quotes: number; indent: number } | undefined
   for (const line of text.slice(0, end).split('\n')) {
-    const fence = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1]
-    if (!fence) continue
-    if (!open) open = fence
-    else if (fence[0] === open[0] && fence.length >= open.length) open = ''
+    const prefix = /^(?: {0,3}> ?)*/.exec(line)![0]
+    const quoted = line.slice(prefix.length),
+      quotes = (prefix.match(/>/g) ?? []).length
+    if (open) {
+      const closing = new RegExp(`^ {0,${open.indent}}(\x60{3,}|~{3,})\\s*$`).exec(quoted)?.[1]
+      if (
+        closing &&
+        quotes === open.quotes &&
+        closing[0] === open.marker[0] &&
+        closing.length >= open.marker.length
+      )
+        open = undefined
+    } else {
+      const listPrefix = /^ {0,3}(?:[-+*]|\d+[.)])[ \t]+/.exec(quoted)?.[0] ?? ''
+      const marker = /^ {0,3}(`{3,}|~{3,})/.exec(quoted.slice(listPrefix.length))?.[1]
+      if (marker) open = { marker, quotes, indent: Math.min(12, listPrefix.length + 3) }
+    }
   }
   return !!open
 }
@@ -54,12 +67,11 @@ export function applyMarkdownEdit(
   }
   if (action === 'code' || action === 'math') {
     const selected = text.slice(start, end)
-    const marker =
-      action === 'code'
-        ? '`'.repeat(
-            Math.max(3, ...[...selected.matchAll(/`+/g)].map((entry) => entry[0].length + 1)),
-          )
-        : '$$'
+    let fenceLength = 3
+    if (action === 'code')
+      for (const entry of selected.matchAll(/`+/g))
+        fenceLength = Math.max(fenceLength, entry[0].length + 1)
+    const marker = action === 'code' ? '`'.repeat(fenceLength) : '$$'
     const prefix = (start > 0 && text[start - 1] !== '\n' ? '\n' : '') + marker + '\n'
     const suffix = '\n' + marker + (end < text.length && text[end] !== '\n' ? '\n' : '')
     return replace(

@@ -108,8 +108,9 @@ export function useEditorActions({
     if (await run(() => workspace.saveDeck({ ...deckForm }, editingId.value), '卡组已保存')) {
       modal.value = null
       if (isNew) {
-        navigate('cards')
-        selectedDeck.value = library.value.decks.at(-1)?.id ?? ''
+        navigate('cards', () => {
+          selectedDeck.value = library.value.decks.at(-1)?.id ?? ''
+        })
       }
     }
   }
@@ -140,10 +141,13 @@ export function useEditorActions({
     }
     return saved
   }
-  function createFromExcerpt(excerpt: SourceExcerpt, format: 'plain' | 'markdown') {
+  function createFromExcerpt(excerpt: SourceExcerpt, format: 'plain' | 'markdown', type?: 'cloze') {
     notice.value = null
     editingId.value = undefined
-    sourceDraft.value = { excerpt, back: excerpt.quote, format }
+    sourceDraft.value =
+      type === 'cloze'
+        ? { excerpt, front: `{{c1::${excerpt.quote}}}`, back: '', format, type: 'cloze' }
+        : { excerpt, back: excerpt.quote, format }
     modal.value = 'card'
   }
   function addReviewCard(card: CardView) {

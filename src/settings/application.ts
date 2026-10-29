@@ -4,6 +4,12 @@ import { preferences, setPreference, preferenceError } from '../preferences'
 import type { SettingsCategory, SettingsContribution, SettingsEntry, SettingsField } from './types'
 
 const AiCardSkill = defineAsyncComponent(() => import('../components/AiCardSkill.vue'))
+const SearchSynonymSettings = defineAsyncComponent(
+  () => import('../components/SearchSynonymSettings.vue'),
+)
+const SourceMetadataSettings = defineAsyncComponent(
+  () => import('../components/SourceMetadataSettings.vue'),
+)
 
 export interface ApplicationSettingsOptions {
   scope: () => string
@@ -129,6 +135,32 @@ export function createApplicationSettings(options: ApplicationSettingsOptions): 
       }),
     }),
   ]
+  for (const [id, title, categoryId, categoryTitle, component] of [
+    ['material-search', '材料搜索', 'search', '搜索', SearchSynonymSettings],
+    ['material-reading', '材料属性', 'reading', '阅读', SourceMetadataSettings],
+  ] as const) {
+    entries.push(
+      entry(
+        {
+          id,
+          get title() {
+            return t(title)
+          },
+          category: [category('general', '通用'), category(categoryId, categoryTitle)],
+          component: markRaw(
+            defineComponent({
+              name:
+                id === 'material-search'
+                  ? 'MaterialSearchSettingsEntry'
+                  : 'MaterialReadingSettingsEntry',
+              setup: () => () => (isCurrent() ? h(component, { isCurrent }) : null),
+            }),
+          ),
+        },
+        true,
+      ),
+    )
+  }
   if (options.platformSettings) {
     const PlatformSettings = options.platformSettings
     for (const section of ['workspace', 'mcp'] as const) {

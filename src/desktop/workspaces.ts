@@ -19,18 +19,28 @@ export const workspaceAttention = shallowRef<{ path: string; status: string }[]>
 let boot: Promise<void> | undefined
 let pending: Promise<unknown> = Promise.resolve()
 let frozen = false
+let changing = false
+let leaveGuard: (() => boolean | Promise<boolean>) | undefined
+export function connectWorkspaceLeaveGuard(beforeLeave: () => boolean | Promise<boolean>) {
+  leaveGuard = beforeLeave
+  return () => {
+    if (leaveGuard === beforeLeave) leaveGuard = undefined
+  }
+}
 const settings = new Map<string, string>()
 export function installWorkspaceStores() {
   // Never read browser storage, including while native startup is still pending.
   useSettingsStore({
     getItem: (key) => settings.get(key) ?? null,
     setItem: async (key, value) => {
+      const owner = workspaceStatus.value?.active?.token
       const active = await currentWorkspace()
+      if (!owner || active.token !== owner) throw nativeError('stale-workspace-session')
       await workspaceApi('workspace_write', {
         token: active.token,
         request: { type: 'value', namespace: 'settings', id: key, value },
       })
-      settings.set(key, value)
+      if (workspaceStatus.value?.active?.token === owner) settings.set(key, value)
     },
   })
 }
@@ -122,8 +132,15 @@ export const workspaceApi: NativeApi = async <T>(
   return execute()
 }
 export async function changeWorkspace(action: () => Promise<unknown>) {
-  frozen = true
+  if (changing || frozen) return
+  changing = true
+  const guard = leaveGuard,
+    epoch = workspaceStatus.value?.epoch
   try {
+    // Draft writes must finish while the current repository still accepts them.
+    if (guard && (!(await guard()) || leaveGuard !== guard)) return
+    if (workspaceStatus.value?.epoch !== epoch) return
+    frozen = true
     await pending
     const result = await action()
     if (result === null) {
@@ -134,6 +151,8 @@ export async function changeWorkspace(action: () => Promise<unknown>) {
   } catch (issue) {
     frozen = false
     throw nativeError(issue)
+  } finally {
+    changing = false
   }
 }
 export const chooseWorkspace = (mode: 'create' | 'open') =>

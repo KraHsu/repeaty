@@ -65,21 +65,33 @@ const {
   resetWidth,
 } = useSidebarLayout({ desktop: !!DesktopTitlebar, scope: workspace.scope, ready })
 const settingsTarget = ref<string>()
+const settingsCategory = ref<string>()
 const detailsTarget = ref<string>()
 function configurePlugin(id: string) {
-  settingsTarget.value = id
-  navigate('settings')
+  navigate('settings', () => {
+    settingsCategory.value = undefined
+    settingsTarget.value = id
+  })
+}
+function configureSettings(category: string) {
+  navigate('settings', () => {
+    settingsTarget.value = undefined
+    settingsCategory.value = category
+  })
 }
 function showPluginDetails(id: string) {
-  detailsTarget.value = id
-  navigate('plugins')
+  navigate('plugins', () => {
+    detailsTarget.value = id
+  })
 }
 watch(tab, (page) => {
   if (page !== 'settings') settingsTarget.value = undefined
+  if (page !== 'settings') settingsCategory.value = undefined
   if (page !== 'plugins') detailsTarget.value = undefined
 })
 watch(workspace.scope, () => {
   settingsTarget.value = undefined
+  settingsCategory.value = undefined
   detailsTarget.value = undefined
 })
 </script>
@@ -133,6 +145,7 @@ watch(workspace.scope, () => {
               (!workspaceAvailable && tab !== 'settings' && tab !== 'plugins'))
           "
           :workspace="workspace"
+          :before-change="application.beforeLeave"
           @changed="refreshClock"
         />
         <SettingsPage
@@ -140,6 +153,7 @@ watch(workspace.scope, () => {
           :key="workspace.scope.value"
           :platform-settings="PlatformSettings"
           :focus-plugin="settingsTarget"
+          :focus-category="settingsCategory"
           @plugin-details="showPluginDetails"
         />
         <PluginPanel
@@ -181,7 +195,7 @@ watch(workspace.scope, () => {
           :get-attempt="workspace.getAttempt"
           @reveal="(id) => run(() => workspace.revealPracticeHistory(id, workspace.scope.value))"
         />
-        <SourceView v-else-if="tab === 'sources'" />
+        <SourceView v-else-if="tab === 'sources'" @settings="configureSettings" />
         <BackupPage v-else />
       </main>
       <EditorDialogs /><BackupDialogs /><StudyDialogs />

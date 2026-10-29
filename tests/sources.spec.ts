@@ -15,6 +15,7 @@ import { parseArchive } from '../src/core/archive'
 import type { Source } from '../src/core/source-data'
 import type { Library } from '../src/core/model'
 import { readFile } from 'node:fs/promises'
+import { showSourceText } from './fixtures/source-controls'
 
 test('imports a lazy source, anchors an excerpt, reviews offline and preserves source bytes through backup and deletion', async ({
   page,
@@ -41,7 +42,7 @@ test('imports a lazy source, anchors an excerpt, reviews offline and preserves s
   expect(
     await page.evaluate(() => (window as Window & { sourceExecuted?: boolean }).sourceExecuted),
   ).toBeUndefined()
-  await page.getByRole('button', { name: '返回原文选取摘录', exact: true }).click()
+  await showSourceText(page)
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: '导出原文', exact: true }).click()
   expect(await readFile((await (await download).path())!, 'utf8')).toBe(sourceText)

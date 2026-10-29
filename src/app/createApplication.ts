@@ -17,6 +17,7 @@ import { useApplicationLifecycle } from './useApplicationLifecycle'
 import { providePluginManager, usePluginManager } from '../plugins/manager'
 import { usePluginViews } from './usePluginViews'
 import { createPluginReviewReader } from '../plugins/activity'
+import { useReadingLeaveGuard } from './useReadingLeaveGuard'
 
 /** One composition root owns UI controllers and connects the selected storage adapter. */
 export function createApplication() {
@@ -48,13 +49,19 @@ export function createApplication() {
     backupError,
   }
   const clock = useStudyClock()
-  const navigation = useAppNavigation()
+  const views = useStudyViews()
+  const beforeLeave = useReadingLeaveGuard({
+    scope: workspace.scope,
+    busy,
+    ...views,
+    reading: readingProgress,
+  })
+  const navigation = useAppNavigation(undefined, () => beforeLeave(true))
   const extensions = usePluginViews(navigation, workspace.scope, plugins)
   const readPluginReviews = createPluginReviewReader()
   const pluginReviews = computed(() => readPluginReviews(library.value.reviews))
   const queries = useLibraryQueries({ ...base, ...clock, ...navigation })
   const runner = useOperationRunner({ ...base, ...clock })
-  const views = useStudyViews()
   const editor = useEditorActions({ ...base, ...navigation, ...queries, ...runner, ...views })
   const sources = useSourceActions({ ...base, ...clock, ...runner })
   const study = useStudyActions({
@@ -77,6 +84,7 @@ export function createApplication() {
     plugins,
     globalKeydown: study.globalKeydown,
     tick: clock.tick,
+    beforeLeave,
   })
   return {
     ...base,
@@ -90,6 +98,7 @@ export function createApplication() {
     ...study,
     ...transfers,
     ...extensions,
+    beforeLeave,
     pluginReviews,
     pageTitle: computed(() =>
       extensions.activePluginPage.value

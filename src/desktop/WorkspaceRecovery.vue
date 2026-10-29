@@ -211,6 +211,8 @@ const countLabels: Record<string, string> = {
   sources: '学习材料',
   attempts: '练习记录',
   card_drafts: '制卡草稿',
+  source_drafts: '材料草稿',
+  materialFolders: '材料文件夹',
   retired_notes: '退役笔记',
   retired_cards: '退役卡片',
   retired_records: '退役记录',

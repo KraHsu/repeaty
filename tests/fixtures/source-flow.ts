@@ -44,6 +44,7 @@ export async function previewSource(page: Page) {
 export async function saveSource(page: Page) {
   await page.getByRole('button', { name: '保存材料', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
+  await page.getByRole('button', { name: '查看 Markdown 原文', exact: true }).click()
   await expect(page.getByRole('textbox', { name: '材料正文', exact: true })).toHaveValue(sourceText)
 }
 export async function selectSourceExcerpt(page: Page) {

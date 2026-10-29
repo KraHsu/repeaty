@@ -346,10 +346,14 @@ export function createBrowserRepository(
       if (!drafts.has(draft.sourceId) && drafts.size >= 50)
         throw new Error('材料草稿已达到 50 份上限。')
       drafts.set(draft.sourceId, draft)
+      onChange()
     },
     async discardSourceDraft(sourceId: string, id: string) {
       check()
-      if (drafts.get(sourceId)?.id === id) drafts.delete(sourceId)
+      if (drafts.get(sourceId)?.id === id) {
+        drafts.delete(sourceId)
+        onChange()
+      }
     },
     async close() {
       if (closed) return

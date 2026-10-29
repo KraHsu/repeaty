@@ -15,6 +15,7 @@ import { reviewCard } from '../../src/core/scheduler'
 import { queueView } from './reading-queue-flow'
 import { importReading, moveReading, readingText, saveReading } from './reading-flow'
 import { saveIndependentExcerpt, selectForExcerpt } from './source-excerpt-flow'
+import { showSourceFilters } from './source-controls'
 
 export async function restoreFilters(page: Page) {
   const content = 'Reading sentence 中文🙂\n'.repeat(300)
@@ -61,6 +62,7 @@ export async function restoreFilters(page: Page) {
   await page.getByRole('button', { name: '替换并恢复', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
+  await showSourceFilters(page)
 }
 
 export async function readingFilterFlow(page: Page, read: () => Promise<Library>, info: TestInfo) {
@@ -137,6 +139,7 @@ export async function readingFilterFlow(page: Page, read: () => Promise<Library>
   await setResponsiveViewport(page, 390, 844)
   await setInterfaceLanguage(page, 'en')
   await page.getByRole('button', { name: 'Sources', exact: true }).click()
+  await showSourceFilters(page)
   const englishKind = page.getByLabel('Source type', { exact: true })
   const englishPriority = page.getByLabel('Filter by priority', { exact: true })
   await selectUiValue(englishKind, 'excerpt')
@@ -165,6 +168,7 @@ export async function readingFilterFlow(page: Page, read: () => Promise<Library>
   await page.screenshot({ path: info.outputPath('reading-filters-en.png'), fullPage: true })
   await setInterfaceLanguage(page, 'zh-CN')
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
+  await showSourceFilters(page)
   await selectUiValue(kind, 'excerpt')
   await selectUiValue(priority, 'high')
   await query.fill('topic')
@@ -243,6 +247,7 @@ export async function readingFilterFlow(page: Page, read: () => Promise<Library>
   await query.fill('Topic 01')
   await page.reload()
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
+  await showSourceFilters(page)
   await expect(kind).toHaveAttribute('value', 'all')
   await expect(priority).toHaveAttribute('value', 'all')
   await expect(query).toHaveValue('')
@@ -267,6 +272,7 @@ export async function filteredRoundRetry(
   await selectUiValue(page.getByLabel('阅读优先级', { exact: true }), 'high')
   await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'high')
   await importReading(page, 'Retry B', 'plain', readingText)
+  await showSourceFilters(page)
   await selectUiValue(page.getByLabel('材料类型', { exact: true }), 'original')
   await selectUiValue(page.getByLabel('优先级筛选', { exact: true }), 'high')
   await page.getByLabel('搜索材料', { exact: true }).fill('Retry A')

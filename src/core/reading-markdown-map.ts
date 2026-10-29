@@ -168,7 +168,10 @@ function linePoints(line: { text: string; start: number }, content: string): Poi
       ])
     : []
 }
-function tableCells(line: { text: string; start: number }): { text: string; points: Point[] }[] {
+function tableCells(
+  line: { text: string; start: number },
+  firstContent?: string,
+): { text: string; points: Point[] }[] {
   const result: { text: string; points: Point[] }[] = []
   let cell = { text: '', points: [] as Point[] }
   // The GFM table parser removes one backslash immediately preceding a pipe.
@@ -189,22 +192,37 @@ function tableCells(line: { text: string; start: number }): { text: string; poin
   result.push(cell)
   if (!result[0]!.text.trim()) result.shift()
   if (result.length && !result.at(-1)!.text.trim()) result.pop()
-  return result.map(({ text, points }) => {
+  const cells = result.map(({ text, points }) => {
     const start = text.length - text.trimStart().length
     return { text: text.trim(), points: points.slice(start, text.trimEnd().length) }
   })
+  if (firstContent !== undefined && cells[0]?.text !== firstContent) {
+    const prefix =
+      /^(?:[ \t]*>[ \t]*)+(?:[ \t]*(?:[-+*]|\d+[.)])[ \t]+)?/.exec(line.text)?.[0] ??
+      /^[ \t]*(?:[-+*]|\d+[.)])[ \t]+/.exec(line.text)?.[0]
+    if (prefix) {
+      const candidate = tableCells({
+        text: line.text.slice(prefix.length),
+        start: line.start + prefix.length,
+      })
+      if (candidate[0]?.text === firstContent) return candidate
+    }
+  }
+  return cells
 }
 
 export function attachReadingOrigins(tokens: Token[], text: string) {
   const lines = sourceLines(text)
   let cells: ReturnType<typeof tableCells> | undefined,
+    rowLine: { text: string; start: number } | undefined,
     cellIndex = 0,
     firstListParagraph = false
   for (const token of tokens) {
     if (token.type === 'list_item_open') firstListParagraph = true
     else if (token.type === 'list_item_close') firstListParagraph = false
     if (token.type === 'tr_open' && token.map) {
-      cells = tableCells(lines[token.map[0]]!)
+      rowLine = lines[token.map[0]]!
+      cells = tableCells(rowLine)
       cellIndex = 0
     } else if (token.type === 'tr_close') cells = undefined
     if (['fence', 'code_block'].includes(token.type) && token.map) {
@@ -218,7 +236,7 @@ export function attachReadingOrigins(tokens: Token[], text: string) {
           positions.length = 0
           break
         }
-        positions.push(...mapped)
+        for (const point of mapped) positions.push(point)
         if (index < content.length - 1)
           positions.push(
             line.end > line.start + line.text.length
@@ -240,11 +258,12 @@ export function attachReadingOrigins(tokens: Token[], text: string) {
           positions = []
           break
         }
-        positions.push(...mapped)
+        for (const point of mapped) positions.push(point)
         if (index < contentLines.length - 1)
           positions.push([line.start + line.text.length, line.end])
       }
     } else if (cells) {
+      if (!cellIndex && rowLine) cells = tableCells(rowLine, token.content)
       const cell = cells[cellIndex++]
       if (cell?.text === token.content) positions = cell.points
     }
@@ -347,7 +366,12 @@ export function readingCodeHtml(
     const children = parseFragment(mapped).childNodes
     const parent = node.parentNode!
     for (const child of children) child.parentNode = parent
-    parent.childNodes.splice(parent.childNodes.indexOf(node), 1, ...children)
+    const index = parent.childNodes.indexOf(node)
+    parent.childNodes = [
+      ...parent.childNodes.slice(0, index),
+      ...children,
+      ...parent.childNodes.slice(index + 1),
+    ]
   }
   return serialize(fragment)
 }

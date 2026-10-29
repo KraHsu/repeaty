@@ -19,6 +19,7 @@ export interface SourceContentUpdate {
   title?: string
   url?: string
   draftId?: string
+  before?: { title: string; url: string }
 }
 export const sourceDraftSchema = z.object({
   id: z.uuid(),
@@ -29,6 +30,8 @@ export const sourceDraftSchema = z.object({
   properties: z.string().max(65_536),
   title: z.string().max(160),
   url: z.string().max(2048),
+  baseTitle: z.string().max(160).optional(),
+  baseUrl: z.string().max(2048).optional(),
   updatedAt: z.iso.datetime(),
 })
 export type SourceDraft = z.infer<typeof sourceDraftSchema>
@@ -42,6 +45,8 @@ export function checkSourceDraftVersion(
 export function editSourceContent(library: Library, update: SourceContentUpdate, now = new Date()) {
   const source = library.sources.find((item) => item.id === update.sourceId)
   if (!source || source.mediaId !== update.mediaId) throw sourceChanged()
+  if (update.before && (source.title !== update.before.title || source.url !== update.before.url))
+    throw sourceChanged()
   const result = replaceSourceContent(
     library,
     source.id,

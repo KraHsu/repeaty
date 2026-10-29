@@ -70,10 +70,23 @@ function plugin(path: string[]) {
     ]),
   })
 }
-function mount() {
-  app = createApp(SettingsPage)
+function mount(props: { focusCategory?: string } = {}) {
+  app = createApp(SettingsPage, props)
   app.mount(host)
 }
+it('opens a requested settings category without trapping later user navigation', async () => {
+  mount({ focusCategory: 'general.appearance' })
+  expect(category('general.appearance').getAttribute('aria-selected')).toBe('true')
+  category('general').click()
+  await nextTick()
+  expect(category('general').getAttribute('aria-selected')).toBe('true')
+  boundary.state.installations.push({
+    plugin: { id: 'other', label: 'Other', version: 1, kind: 'frontend' },
+    settings: [],
+  } as unknown as PluginInstallation)
+  await nextTick()
+  expect(category('general').getAttribute('aria-selected')).toBe('true')
+})
 function category(key: string) {
   return host.querySelector<HTMLButtonElement>(`[data-category-key="${key}"]`)!
 }

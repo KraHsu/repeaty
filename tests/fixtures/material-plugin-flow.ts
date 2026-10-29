@@ -6,6 +6,7 @@ import { fixture } from '../../src/core/test-fixtures'
 import type { PluginBundle } from '../../src/plugins/package'
 import { confirmPluginAction, openPluginManager, selectPlugin } from './settings-flow'
 import { localLibrary } from './source-excerpt-flow'
+import { selectUiValue } from './ui-flow'
 
 const id = 'structured-study-example'
 const title = '材料插件：重复文本定位'
@@ -114,12 +115,18 @@ export async function materialPluginFlow(page: Page, info: TestInfo) {
   expect(source.document?.providerId).toBe(id)
   expect(source.document?.readerId).toBe('chapter')
 
-  await page.getByRole('button', { name: '插件材料搜索', exact: true }).click()
-  await page.getByRole('textbox', { name: '插件材料搜索词', exact: true }).fill('中间的上下文')
+  await selectUiValue(
+    page.getByRole('combobox', { name: '材料搜索提供方', exact: true }),
+    `${id}:chapters`,
+  )
+  await page.getByRole('textbox', { name: '材料全文搜索', exact: true }).fill('中间的上下文')
   await page.getByRole('button', { name: '搜索', exact: true }).click()
   const results = page.getByRole('list', { name: '材料搜索结果', exact: true })
   await expect(results).toContainText('中间的上下文')
-  await results.getByRole('button', { name: title, exact: true }).click()
+  await results
+    .getByRole('button')
+    .filter({ has: page.locator('span').filter({ hasText: title }) })
+    .click()
   const projection = page.getByRole('textbox', { name: '材料正文', exact: true })
   await expect
     .poll(() =>

@@ -12,7 +12,11 @@ import BranchedMenu from './ui/BranchedMenu.vue'
 import { UiSelect } from './ui'
 import '../styles/settings-plugins.css'
 
-const props = defineProps<{ focusPlugin?: string; platformSettings?: Component }>()
+const props = defineProps<{
+  focusPlugin?: string
+  focusCategory?: string
+  platformSettings?: Component
+}>()
 const emit = defineEmits<{ pluginDetails: [id: string] }>()
 const { installedPlugins, pluginEnabled } = usePlugins()
 const { pluginScope } = usePluginManager()
@@ -129,6 +133,21 @@ function selectCategory(key: string) {
   focusOwner.value = undefined
 }
 let handledTarget: string | undefined
+let handledCategory: string | undefined
+watch(
+  [() => props.focusCategory, navigation],
+  ([key]) => {
+    if (!key) {
+      handledCategory = undefined
+      return
+    }
+    if (key !== handledCategory && navigation.value.some(({ node }) => node.key === key)) {
+      selectCategory(key)
+      handledCategory = key
+    }
+  },
+  { immediate: true },
+)
 watch(
   [() => props.focusPlugin, entries],
   ([id]) => {

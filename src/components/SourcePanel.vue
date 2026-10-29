@@ -51,8 +51,16 @@ import { createExportFile } from '@repeaty-platform'
 import AppModal from './AppModal.vue'
 import AppPage from './AppPage.vue'
 import SourceReader from './SourceReader.vue'
+import SourceContentEditor from './SourceContentEditor.vue'
+import SourceMetadata from './SourceMetadata.vue'
+import MaterialTree from './MaterialTree.vue'
+import SourceAnnotations from './SourceAnnotations.vue'
+import type { MaterialWorkbenchActions } from './material-workbench-actions'
+import { useReadingPanels } from '../composables/useReadingPanels'
 import MaterialImport from './MaterialImport.vue'
 import MaterialSearch from './MaterialSearch.vue'
+import SourceLinks from './SourceLinks.vue'
+import { createMaterialKnowledge } from '../composables/material-knowledge'
 import type { MaterialSearchHit } from '@repeaty/plugin-api'
 import type { MaterialLocator } from '../core/material-data'
 import SourceContext from './SourceContext.vue'
@@ -81,9 +89,11 @@ const props = defineProps<{
   remove: (id: string, scope: string) => Promise<boolean>
   arrange: (update: SourceQueueUpdate) => Promise<boolean>
   saveReading: (update: ReadingUpdate) => Promise<boolean>
+  workbench?: MaterialWorkbenchActions
+  readProperties?: (id: string) => Promise<string>
 }>()
 const emit = defineEmits<{
-  create: [excerpt: SourceExcerpt, format: 'plain' | 'markdown']
+  create: [excerpt: SourceExcerpt, format: 'plain' | 'markdown', type?: 'cloze']
   edit: [noteId: string]
   share: [excerpt: SourceExcerpt]
   clearNotice: []
@@ -91,8 +101,70 @@ const emit = defineEmits<{
   startHandled: []
   sessionDone: [arranged: boolean]
   activity: [busy: boolean]
+  settings: [category: string]
 }>()
+const newKnowledge = () =>
+  createMaterialKnowledge({
+    sources: () => props.library.sources,
+    scope: () => props.scope,
+    read: (id, signal, mediaId) => props.read(id, signal, mediaId),
+  })
+const knowledge = shallowRef(newKnowledge())
+const wikiTarget = ref<string>()
+watch(
+  () => props.scope,
+  () => {
+    knowledge.value.dispose()
+    knowledge.value = newKnowledge()
+    wikiTarget.value = undefined
+  },
+  { flush: 'sync' },
+)
+onUnmounted(() => knowledge.value.dispose())
 const today = computed(() => localDay(props.now))
+const editingContent = ref(false)
+const contentEditor = ref<InstanceType<typeof SourceContentEditor>>()
+const annotations = ref<InstanceType<typeof SourceAnnotations>>()
+const organizationView = ref<'list' | 'tree'>('list')
+const filtersOpen = ref(false),
+  bulkOpen = ref(false),
+  contextOpen = ref(true)
+const panels = useReadingPanels(computed(() => props.scope))
+function toggleBulk() {
+  bulkOpen.value = !(bulkOpen.value || selection.value.size)
+  if (!bulkOpen.value) selection.value = new Map()
+}
+function clearBulk() {
+  selection.value = new Map()
+  bulkOpen.value = false
+}
+function openWiki(target: string) {
+  contextOpen.value = true
+  wikiTarget.value = target
+}
+function addAnnotation() {
+  contextOpen.value = true
+  if (excerpt.value) annotations.value?.add(excerpt.value)
+}
+async function beginEdit() {
+  if (!props.workbench || !editableText.value || props.busy || loading.value || error.value) return
+  const current = source.value,
+    scope = props.scope
+  if (!((await annotations.value?.flush()) ?? true)) return
+  if (reader.value?.ready && !(await savePosition())) return
+  if (
+    !alive ||
+    props.scope !== scope ||
+    source.value?.id !== current?.id ||
+    source.value?.mediaId !== current?.mediaId
+  )
+    return
+  editingContent.value = true
+}
+async function flushEditor() {
+  if (!((await annotations.value?.flush()) ?? true)) return false
+  return !editingContent.value || !!(await contentEditor.value?.flush())
+}
 const round = shallowRef<ReadingRound>()
 const inRound = computed(() => !!round.value || !!props.session)
 const roundFilter = shallowRef<SourceFilter>()
@@ -172,6 +244,23 @@ const source = computed(() =>
       entry.id === selectedId.value && (!props.session || entry.mediaId === props.session.mediaId),
   ),
 )
+const editableText = computed(
+  () =>
+    !!source.value &&
+    (!source.value.document ||
+      ['markdown', 'md', 'plain', 'text', 'txt'].includes(source.value.document.format)),
+)
+watch(
+  () => source.value?.id,
+  () => {
+    wikiTarget.value = undefined
+  },
+)
+async function searchSettings() {
+  if (!(await flushEditor())) return
+  if (reader.value?.ready && !(await savePosition())) return
+  emit('settings', 'general.search')
+}
 const linked = computed(() =>
   props.library.notes.filter((note) => note.excerpt?.sourceId === selectedId.value),
 )
@@ -228,6 +317,7 @@ const filteredSources = computed(() =>
   queuedSources(props.library.sources, view.value, today.value, filters.value),
 )
 const pages = computed(() => Math.max(1, Math.ceil(filteredSources.value.length / pageSize)))
+const filteredSourceIds = computed(() => new Set(filteredSources.value.map((item) => item.id)))
 const visibleSources = computed(() =>
   filteredSources.value.slice(page.value * pageSize, (page.value + 1) * pageSize),
 )
@@ -326,12 +416,23 @@ let controller: AbortController | undefined,
   alive = true
 let readingLoad: Promise<void> = Promise.resolve()
 watch(filteredSources, (sources) => {
+  if (editingContent.value || annotations.value?.dirty || organizationView.value === 'tree') return
   if (!inRound.value && !sources.some((entry) => entry.id === selectedId.value)) {
     selectedId.value = sources[page.value * pageSize]?.id ?? sources[0]?.id ?? ''
   }
   page.value = Math.min(page.value, pages.value - 1)
 })
-watch([() => source.value?.id, () => source.value?.mediaId], load, { immediate: true })
+watch([() => source.value?.id, () => source.value?.mediaId, () => props.scope], load, {
+  immediate: true,
+})
+watch(
+  () => props.scope,
+  () => {
+    editingContent.value = false
+    navigationGeneration++
+  },
+  { flush: 'sync' },
+)
 onUnmounted(() => {
   alive = false
   controller?.abort()
@@ -357,8 +458,20 @@ async function readSelected() {
     return
   }
   loading.value = true
+  const id = source.value.id,
+    mediaId = source.value.mediaId,
+    scope = props.scope
   try {
-    text.value = await props.read(source.value.id, current.signal)
+    const result = await props.read(id, current.signal, mediaId)
+    if (
+      alive &&
+      controller === current &&
+      !current.signal.aborted &&
+      props.scope === scope &&
+      source.value?.id === id &&
+      source.value.mediaId === mediaId
+    )
+      text.value = result
   } catch (issue) {
     if (!current.signal.aborted) error.value = issue as Error
   } finally {
@@ -419,13 +532,26 @@ function createFromWholeExcerpt() {
 }
 async function resume(id: string) {
   const scope = props.scope
-  openSource(id)
+  if (!(await openSource(id))) return
   await nextTick()
   await readingLoad
   await nextTick()
   if (scope === props.scope && source.value?.id === id) await reader.value?.resume()
 }
-function openSource(id: string) {
+let navigationGeneration = 0
+async function openSource(id: string) {
+  if (id === selectedId.value) return true
+  const generation = ++navigationGeneration,
+    scope = props.scope
+  if (!(await flushEditor())) return false
+  if (
+    !alive ||
+    generation !== navigationGeneration ||
+    props.scope !== scope ||
+    !props.library.sources.some((item) => item.id === id)
+  )
+    return false
+  editingContent.value = false
   selectedId.value = id
   const entry = props.library.sources.find((source) => source.id === id)
   if (entry?.reading)
@@ -433,6 +559,7 @@ function openSource(id: string) {
       { sourceId: id, mediaId: entry.mediaId, scope: props.scope, position: entry.reading },
       true,
     )
+  return true
 }
 async function openSearchResult(hit: MaterialSearchHit) {
   const entry = props.library.sources.find(
@@ -446,7 +573,7 @@ async function openSearchResult(hit: MaterialSearchHit) {
     0,
     Math.floor(filteredSources.value.findIndex((item) => item.id === hit.sourceId) / pageSize),
   )
-  openSource(entry.id)
+  if (!(await openSource(entry.id))) return
   await nextTick()
   await readingLoad
   await nextTick()
@@ -497,6 +624,7 @@ watch(
     schedulingRead.value ||
     resettingInterval.value ||
     moving.value ||
+    editingContent.value ||
     arranging.value ||
     !!detailsDraft.value ||
     !!excerptDraft.value ||
@@ -540,7 +668,7 @@ const canMove = computed(
     !moving.value &&
     !loading.value &&
     !error.value &&
-    !!reader.value?.ready,
+    (!!reader.value?.ready || editingContent.value),
 )
 watch(
   () =>
@@ -565,6 +693,7 @@ async function leaveSession() {
   if (props.busy || moving.value || arranging.value || loading.value) return false
   moving.value = true
   try {
+    if (!(await flushEditor())) return false
     return !source.value || !!error.value || (await savePosition())
   } finally {
     moving.value = false
@@ -598,17 +727,28 @@ defineExpose({
   ),
 })
 function showRound(next: ReadingRound) {
+  editingContent.value = false
   round.value = next
   selectedId.value = next.entries[next.cursor]?.sourceId ?? ''
   const index = filteredSources.value.findIndex((entry) => entry.id === selectedId.value)
   if (index >= 0) page.value = Math.floor(index / pageSize)
 }
 watch([() => props.library.sources, today, () => props.busy, moving, arranging], () => {
-  if (!round.value || props.busy || moving.value || arranging.value) return
+  if (
+    !round.value ||
+    props.busy ||
+    moving.value ||
+    arranging.value ||
+    editingContent.value ||
+    annotations.value?.dirty
+  )
+    return
   const next = reconcileReadingRound(round.value, props.library.sources, today.value)
   if (next !== round.value) showRound(next)
 })
 async function savePosition() {
+  if (editingContent.value) return flushEditor()
+  if (!((await annotations.value?.flush()) ?? true)) return false
   const current = source.value
   if (!current || !reader.value?.ready || loading.value || error.value) return false
   const scope = props.scope,
@@ -725,6 +865,13 @@ async function arrange(action: SourceQueueAction) {
   emit('clearNotice')
   try {
     if (
+      !(await flushEditor()) ||
+      !alive ||
+      props.scope !== scope ||
+      source.value?.id !== current.id
+    )
+      return
+    if (
       await props.arrange({
         sourceId: current.id,
         mediaId: current.mediaId,
@@ -831,7 +978,10 @@ function readingDate(date: string) {
   value.setHours(12, 0, 0, 0)
   return value.toLocaleDateString(locale.value)
 }
-function openImport() {
+async function openImport() {
+  const scope = props.scope
+  if (!(await flushEditor()) || !alive || props.scope !== scope) return
+  editingContent.value = false
   emit('clearNotice')
   fileGeneration++
   readingFile.value = false
@@ -841,7 +991,15 @@ function openImport() {
 }
 function openDetails() {
   const current = source.value
-  if (!current || props.busy || moving.value || arranging.value || savingDetails.value) return
+  if (
+    !current ||
+    props.busy ||
+    moving.value ||
+    arranging.value ||
+    savingDetails.value ||
+    editingContent.value
+  )
+    return
   emit('clearNotice')
   detailsDraft.value = {
     sourceId: current.id,
@@ -924,7 +1082,14 @@ async function fileChanged(event: Event) {
 }
 async function save() {
   if (props.busy || readingFile.value) return
-  if (await props.save({ ...form }, props.scope)) {
+  const scope = props.scope,
+    generation = fileGeneration
+  if (
+    (await props.save({ ...form }, scope)) &&
+    alive &&
+    props.scope === scope &&
+    fileGeneration === generation
+  ) {
     importing.value = false
     resetFilters()
     view.value = 'ready'
@@ -933,7 +1098,14 @@ async function save() {
   }
 }
 async function remove() {
-  if (source.value && (await props.remove(source.value.id, props.scope))) deleting.value = false
+  const current = source.value,
+    scope = props.scope
+  if (!(await flushEditor()) || !alive || props.scope !== scope || current?.id !== source.value?.id)
+    return
+  if (current && (await props.remove(current.id, scope)) && alive && props.scope === scope) {
+    deleting.value = false
+    editingContent.value = false
+  }
 }
 async function download() {
   if (!source.value || loading.value || exporting.value || error.value) return
@@ -977,7 +1149,7 @@ async function download() {
       <MaterialImport
         v-if="!session"
         :scope="scope"
-        :busy="busy || moving || inRound"
+        :busy="busy || moving || inRound || editingContent || !!annotations?.dirty"
         @imported="
           (ids) => {
             resetFilters()
@@ -1015,7 +1187,7 @@ async function download() {
         <Plus :size="18" />{{ t('导入材料') }}
       </UiButton>
     </template>
-    <div v-if="!library.sources.length && !inRound" class="empty-state">
+    <div v-if="!library.sources.length && !workbench && !inRound" class="empty-state">
       <FileText :size="36" />
       <h2>{{ t('还没有学习材料') }}</h2>
       <p>{{ t('导入文本或 Markdown，也可以直接粘贴。原文会保存在当前学习库中。') }}</p>
@@ -1062,20 +1234,56 @@ async function download() {
           </UiButton>
         </div>
       </section>
-      <nav v-if="!inRound" class="source-queue-filters" :aria-label="t('阅读队列')">
-        <UiButton
-          variant="secondary"
-          v-for="value in queueViews"
-          :key="value"
-          type="button"
-          :aria-pressed="view === value"
-          :disabled="busy || moving || arranging || inRound"
-          @click="view = value"
-        >
-          {{ t(queueLabels[value]) }} <span>{{ counts[value] }}</span>
-        </UiButton>
-      </nav>
-      <section v-if="!inRound" class="source-filters" :aria-label="t('材料筛选')">
+      <MaterialSearch
+        v-if="!inRound"
+        :scope="scope"
+        :busy="busy"
+        :knowledge="knowledge"
+        @open="openSearchResult"
+        @settings="searchSettings"
+      />
+      <div v-if="!inRound" class="source-toolbar">
+        <nav class="source-queue-filters" :aria-label="t('阅读队列')">
+          <UiButton
+            variant="secondary"
+            v-for="value in queueViews"
+            :key="value"
+            type="button"
+            :aria-pressed="view === value"
+            :disabled="busy || moving || arranging || inRound"
+            @click="view = value"
+          >
+            {{ t(queueLabels[value]) }} <span>{{ counts[value] }}</span>
+          </UiButton>
+        </nav>
+        <div class="source-tools">
+          <UiButton
+            variant="ghost"
+            :aria-expanded="filtersOpen"
+            :aria-pressed="hasFilters"
+            @click="filtersOpen = !filtersOpen"
+            >{{ t('筛选材料') }}</UiButton
+          >
+          <UiButton
+            variant="ghost"
+            :aria-expanded="bulkOpen || !!selection.size"
+            @click="toggleBulk"
+            >{{ t('批量选择') }}</UiButton
+          >
+          <UiButton
+            variant="ghost"
+            :aria-expanded="contextOpen"
+            @click="contextOpen = !contextOpen"
+            >{{ t('上下文') }}</UiButton
+          >
+        </div>
+      </div>
+      <section
+        v-if="!inRound"
+        v-show="filtersOpen"
+        class="source-filters"
+        :aria-label="t('材料筛选')"
+      >
         <div class="source-filter-fields">
           <div class="source-filter-field source-search">
             <label for="source-search">{{ t('搜索材料') }}</label>
@@ -1150,9 +1358,8 @@ async function download() {
           </p>
         </div>
       </section>
-      <MaterialSearch v-if="!inRound" :scope="scope" :busy="busy" @open="openSearchResult" />
       <section
-        v-if="!inRound && filteredSources.length"
+        v-if="!inRound && filteredSources.length && (bulkOpen || selection.size)"
         class="source-selection-toolbar"
         :aria-label="t('批量选择材料')"
       >
@@ -1179,7 +1386,7 @@ async function download() {
             type="submit"
             v-if="selection.size"
             :disabled="busy || moving || arranging"
-            @click="selection = new Map()"
+            @click="clearBulk"
           >
             {{ t('取消选择') }}
           </UiButton>
@@ -1193,76 +1400,128 @@ async function download() {
           </UiButton>
         </div>
       </section>
-      <div class="sources-layout" :class="{ 'round-layout': inRound }">
+      <div
+        class="sources-layout"
+        :class="{ 'round-layout': inRound, 'has-context': contextOpen && source && !roundEnded }"
+        :style="panels.style.value"
+      >
         <aside v-if="!inRound" class="source-list">
-          <p v-if="!visibleSources.length" class="form-note">{{ t('没有找到材料。') }}</p>
-          <div
-            v-for="entry in visibleSources"
-            :key="entry.id"
-            class="source-list-item"
-            :class="{ selected: entry.id === selectedId }"
-          >
-            <label class="source-selection">
-              <UiCheckbox
-                :model-value="selection.has(entry.id)"
-                :disabled="busy || moving || arranging"
-                :aria-label="t('选择材料「{title}」', { title: entry.title })"
-                @update:model-value="toggleSelection(entry)"
-              />
-              <span>{{ t('选择') }}</span>
-            </label>
+          <div v-if="workbench" class="source-list-switch" :aria-label="t('材料浏览方式')">
             <UiButton
               variant="ghost"
-              class="source-list-title"
-              :aria-pressed="entry.id === selectedId"
-              :disabled="busy || moving || inRound"
-              @click="openSource(entry.id)"
+              :aria-pressed="organizationView === 'list'"
+              @click="organizationView = 'list'"
+              >{{ t('列表') }}</UiButton
             >
-              <strong>{{ entry.title }}</strong></UiButton
-            ><span
-              >{{ entry.format === 'markdown' ? 'Markdown' : t('纯文本') }} ·
-              {{ new Date(entry.createdAt).toLocaleDateString(locale) }}</span
+            <UiButton
+              variant="ghost"
+              :aria-pressed="organizationView === 'tree'"
+              @click="organizationView = 'tree'"
+              >{{ t('目录') }}</UiButton
             >
-            <span v-if="entry.kind === 'excerpt'" class="source-kind-badge">{{ t('摘录') }}</span>
-            <span class="source-queue-state">{{
-              sourceQueueState(entry, today) === 'archived'
-                ? t('已归档')
-                : entry.queue
-                  ? t('安排于 {date}', { date: readingDate(entry.queue.availableOn) })
-                  : t('待阅读')
-            }}</span>
-            <span
-              v-if="entry.priority && entry.priority !== 'normal'"
-              class="source-priority-badge"
+          </div>
+          <MaterialTree
+            v-if="organizationView === 'tree' && workbench"
+            :visible-source-ids="filteredSourceIds"
+            :scope="scope"
+            :library="library"
+            :selected-id="selectedId"
+            :busy="busy || moving"
+            :actions="workbench"
+            @open="openSource"
+          />
+          <template v-else>
+            <p v-if="!visibleSources.length" class="form-note">{{ t('没有找到材料。') }}</p>
+            <div
+              v-for="entry in visibleSources"
+              :key="entry.id"
+              class="source-list-item"
+              :class="{ selected: entry.id === selectedId }"
             >
-              {{ t(priorityBadges[entry.priority]) }}
-            </span>
-            <template v-if="entry.reading">
-              <span>{{
-                t('上次阅读 {date}', {
-                  date: new Date(entry.reading.updatedAt).toLocaleString(locale),
-                })
-              }}</span>
+              <label class="source-selection">
+                <UiCheckbox
+                  :model-value="selection.has(entry.id)"
+                  :disabled="busy || moving || arranging"
+                  :aria-label="t('选择材料「{title}」', { title: entry.title })"
+                  @update:model-value="toggleSelection(entry)"
+                />
+                <span>{{ t('选择') }}</span>
+              </label>
               <UiButton
                 variant="ghost"
-                type="submit"
-                class="source-continue"
+                class="source-list-title"
+                :aria-pressed="entry.id === selectedId"
                 :disabled="busy || moving || inRound"
-                @click="resume(entry.id)"
+                @click="openSource(entry.id)"
               >
-                {{ t('继续阅读') }}
+                <strong>{{ entry.title }}</strong></UiButton
+              ><span
+                >{{ entry.format === 'markdown' ? 'Markdown' : t('纯文本') }} ·
+                {{ new Date(entry.createdAt).toLocaleDateString(locale) }}</span
+              >
+              <span v-if="entry.kind === 'excerpt'" class="source-kind-badge">{{ t('摘录') }}</span>
+              <span class="source-queue-state">{{
+                sourceQueueState(entry, today) === 'archived'
+                  ? t('已归档')
+                  : entry.queue
+                    ? t('安排于 {date}', { date: readingDate(entry.queue.availableOn) })
+                    : t('待阅读')
+              }}</span>
+              <span
+                v-if="entry.priority && entry.priority !== 'normal'"
+                class="source-priority-badge"
+              >
+                {{ t(priorityBadges[entry.priority]) }}
+              </span>
+              <template v-if="entry.reading">
+                <span>{{
+                  t('上次阅读 {date}', {
+                    date: new Date(entry.reading.updatedAt).toLocaleString(locale),
+                  })
+                }}</span>
+                <UiButton
+                  variant="ghost"
+                  type="submit"
+                  class="source-continue"
+                  :disabled="busy || moving || inRound"
+                  @click="resume(entry.id)"
+                >
+                  {{ t('继续阅读') }}
+                </UiButton>
+              </template>
+            </div>
+            <nav v-if="pages > 1" class="source-list-pages" :aria-label="t('材料列表分页')">
+              <UiButton variant="ghost" type="button" :disabled="page === 0" @click="page--">
+                {{ t('上一页') }}</UiButton
+              ><span>{{ page + 1 }} / {{ pages }}</span
+              ><UiButton
+                variant="ghost"
+                type="button"
+                :disabled="page + 1 >= pages"
+                @click="page++"
+              >
+                {{ t('下一页') }}
               </UiButton>
-            </template>
-          </div>
-          <nav v-if="pages > 1" class="source-list-pages" :aria-label="t('材料列表分页')">
-            <UiButton variant="ghost" type="button" :disabled="page === 0" @click="page--">
-              {{ t('上一页') }}</UiButton
-            ><span>{{ page + 1 }} / {{ pages }}</span
-            ><UiButton variant="ghost" type="button" :disabled="page + 1 >= pages" @click="page++">
-              {{ t('下一页') }}
-            </UiButton>
-          </nav>
+            </nav>
+          </template>
         </aside>
+        <div
+          v-if="!inRound"
+          class="reading-splitter reading-splitter-left"
+          role="separator"
+          tabindex="0"
+          aria-orientation="vertical"
+          :aria-label="t('调整材料列表宽度')"
+          :aria-valuenow="panels.left.value"
+          aria-valuemin="180"
+          aria-valuemax="320"
+          @pointerdown="panels.start($event, 'left')"
+          @pointermove="panels.move"
+          @pointerup="panels.end"
+          @pointercancel="panels.cancel"
+          @lostpointercapture="panels.cancel"
+          @keydown="panels.keyboard($event, 'left')"
+        />
         <section
           v-if="roundEnded"
           class="empty-state source-queue-empty reading-round-complete"
@@ -1333,9 +1592,25 @@ async function download() {
             </div>
             <div class="source-actions">
               <UiButton
+                v-if="inRound"
+                variant="ghost"
+                :aria-expanded="contextOpen"
+                @click="contextOpen = !contextOpen"
+                >{{ t('上下文') }}</UiButton
+              >
+              <UiButton
+                v-if="workbench && !session && !editingContent && editableText"
+                variant="primary"
+                :disabled="busy || moving || loading || !!error"
+                @click="beginEdit"
+                >{{ t('编辑正文') }}</UiButton
+              >
+              <UiButton
                 variant="secondary"
                 type="submit"
-                :disabled="busy || moving || arranging || exporting || savingDetails"
+                :disabled="
+                  busy || moving || arranging || exporting || savingDetails || editingContent
+                "
                 @click="openDetails"
               >
                 {{ t('编辑材料信息') }}
@@ -1455,7 +1730,21 @@ async function download() {
               {{ t('重置间隔') }}
             </UiButton>
           </div>
-          <p v-if="loading" role="status">{{ t('正在读取原文…') }}</p>
+          <SourceContentEditor
+            v-if="editingContent && workbench"
+            ref="contentEditor"
+            :source="source"
+            :text="text"
+            :scope="scope"
+            :busy="busy"
+            :prepare="workbench.prepareEditor"
+            :write-draft="workbench.writeDraft"
+            :discard-draft="workbench.discardDraft"
+            :save="workbench.editContent"
+            @close="editingContent = false"
+            @saved="editingContent = false"
+          />
+          <p v-else-if="loading" role="status">{{ t('正在读取原文…') }}</p>
           <template v-else-if="error"
             ><p class="import-warning" role="alert">{{ t(error) }}</p>
             <UiButton variant="secondary" type="submit" @click="load">
@@ -1516,6 +1805,9 @@ async function download() {
               </div>
             </div>
             <SourceReader
+              :editable="!!workbench && !session"
+              :busy="busy"
+              @change-text="workbench?.editContent($event)"
               :get-media="getMedia"
               :key="source.id + ':' + source.mediaId"
               ref="reader"
@@ -1527,6 +1819,8 @@ async function download() {
               "
               @select="select"
               @position="reading.record($event)"
+              @wiki="openWiki"
+              @wiki-preview="openWiki"
             />
             <div v-if="source.kind === 'excerpt'" class="source-excerpt-tools">
               <p v-if="!original" class="form-note">{{ t('原文已删除，摘录内容仍保留。') }}</p>
@@ -1592,27 +1886,114 @@ async function download() {
               >
                 {{ t('通过 MCP 制卡') }}
               </UiButton>
+              <UiButton
+                v-if="workbench"
+                variant="secondary"
+                :disabled="busy || !excerpt || !library.decks.length"
+                @click="excerpt && emit('create', excerpt, source.format, 'cloze')"
+                >{{ t('制作挖空卡') }}</UiButton
+              >
+              <UiButton
+                v-if="workbench"
+                variant="ghost"
+                :disabled="busy || !excerpt"
+                @click="addAnnotation"
+                >{{ t('添加批注') }}</UiButton
+              >
             </div>
             <p v-if="!library.decks.length" class="form-note">
               {{ t('请先新建一个卡组，再用摘录制卡。') }}
             </p>
-            <UiCollapsible :unmount-on-hide="false" v-if="linked.length" class="source-linked">
-              <template #default="{ open }"
-                ><UiButton type="button" variant="ghost" :aria-expanded="open">
-                  {{ t('关联笔记（{count}）', { count: linked.length }) }}
-                </UiButton></template
-              ><template #content>
-                <ul>
-                  <li v-for="note in linked" :key="note.id">
-                    <UiButton variant="ghost" type="submit" @click="emit('edit', note.id)">
-                      {{ note.front.slice(0, 120) }}
-                    </UiButton>
-                  </li>
-                </ul>
-              </template></UiCollapsible
-            >
           </template>
           <p v-if="navigationError" class="import-warning" role="alert">{{ t(navigationError) }}</p>
+        </section>
+        <section v-else class="empty-state source-queue-empty">
+          <FileText :size="32" />
+          <h2>
+            {{
+              t(
+                !library.sources.length
+                  ? '还没有学习材料'
+                  : hasFilters
+                    ? '没有匹配的材料'
+                    : view === 'ready'
+                      ? '暂无待阅读材料'
+                      : '选择一篇材料开始阅读',
+              )
+            }}
+          </h2>
+          <p>
+            {{
+              t(
+                !library.sources.length
+                  ? '导入文本或 Markdown，也可以直接粘贴。原文会保存在当前学习库中。'
+                  : hasFilters
+                    ? '更换关键词或调整筛选条件。'
+                    : view === 'ready'
+                      ? '切换到稍后阅读或已归档查看材料。'
+                      : '当前列表为空。',
+              )
+            }}
+          </p>
+        </section>
+        <div
+          v-if="source && !roundEnded"
+          class="reading-splitter reading-splitter-right"
+          v-show="contextOpen"
+          role="separator"
+          tabindex="0"
+          aria-orientation="vertical"
+          :aria-label="t('调整上下文宽度')"
+          :aria-valuenow="panels.right.value"
+          aria-valuemin="180"
+          aria-valuemax="380"
+          @pointerdown="panels.start($event, 'right')"
+          @pointermove="panels.move"
+          @pointerup="panels.end"
+          @pointercancel="panels.cancel"
+          @lostpointercapture="panels.cancel"
+          @keydown="panels.keyboard($event, 'right')"
+        />
+        <aside
+          v-if="source && !roundEnded"
+          class="source-context-panel"
+          v-show="contextOpen"
+          :aria-label="t('材料上下文')"
+        >
+          <SourceLinks
+            :source="source"
+            :knowledge="knowledge"
+            :target="wikiTarget"
+            :busy="busy || inRound"
+            @open="openSearchResult"
+            @close-preview="wikiTarget = undefined"
+          />
+          <SourceMetadata :source="source" :scope="scope" :read-properties="readProperties" />
+          <SourceAnnotations
+            v-if="workbench"
+            ref="annotations"
+            :source="source"
+            :scope="scope"
+            :busy="busy"
+            :actions="workbench"
+            :read="read"
+            :get-media="getMedia"
+          />
+          <UiCollapsible :unmount-on-hide="false" v-if="linked.length" class="source-linked">
+            <template #default="{ open }"
+              ><UiButton type="button" variant="ghost" :aria-expanded="open">
+                {{ t('关联笔记（{count}）', { count: linked.length }) }}
+              </UiButton></template
+            ><template #content>
+              <ul>
+                <li v-for="note in linked" :key="note.id">
+                  <UiButton variant="ghost" type="submit" @click="emit('edit', note.id)">
+                    {{ note.front.slice(0, 120) }}
+                  </UiButton>
+                </li>
+              </ul>
+            </template>
+          </UiCollapsible>
           <SourceExcerptList
             v-if="savedExcerpts.length"
             :key="source.id + ':' + source.mediaId"
@@ -1626,32 +2007,7 @@ async function download() {
             @locate="locateExcerpt"
             @open="openExcerptSource"
           />
-        </section>
-        <section v-else class="empty-state source-queue-empty">
-          <FileText :size="32" />
-          <h2>
-            {{
-              t(
-                hasFilters
-                  ? '没有匹配的材料'
-                  : view === 'ready'
-                    ? '暂无待阅读材料'
-                    : '选择一篇材料开始阅读',
-              )
-            }}
-          </h2>
-          <p>
-            {{
-              t(
-                hasFilters
-                  ? '更换关键词或调整筛选条件。'
-                  : view === 'ready'
-                    ? '切换到稍后阅读或已归档查看材料。'
-                    : '当前列表为空。',
-              )
-            }}
-          </p>
-        </section>
+        </aside>
       </div>
     </template>
     <SourceBatchDialog
@@ -2214,11 +2570,21 @@ async function download() {
 .source-filter-footer p {
   margin: 0;
 }
+.source-toolbar,
+.source-tools,
 .source-queue-filters {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+  align-items: center;
+}
+.source-toolbar {
+  justify-content: space-between;
   margin-bottom: 1.25rem;
+}
+.source-toolbar [aria-pressed='true'] {
+  background: var(--sage);
+  border-color: var(--green);
 }
 .source-queue-filters span {
   color: var(--muted);
@@ -2323,12 +2689,62 @@ async function download() {
 }
 .sources-layout {
   display: grid;
-  grid-template-columns: minmax(13rem, 17.5rem) minmax(0, 1fr);
-  gap: 1.75rem;
+  grid-template-columns: var(--reading-list-width) 12px minmax(0, 1fr);
+  gap: 0;
   align-items: start;
+}
+.sources-layout.has-context {
+  grid-template-columns: var(--reading-list-width) 12px minmax(0, 1fr) 12px var(
+      --reading-context-width
+    );
 }
 .sources-layout.round-layout {
   grid-template-columns: minmax(0, 1fr);
+}
+.sources-layout.round-layout.has-context {
+  grid-template-columns: minmax(0, 1fr) 12px var(--reading-context-width);
+}
+.source-context-panel {
+  display: grid;
+  gap: 1.5rem;
+  min-width: 0;
+  padding: 0.75rem;
+  max-height: 80vh;
+  overflow: auto;
+  position: sticky;
+  top: 1rem;
+}
+.source-list-switch {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.5rem;
+}
+.source-list-switch [aria-pressed='true'] {
+  background: var(--sage);
+}
+.reading-splitter {
+  align-self: stretch;
+  min-height: 10rem;
+  position: relative;
+  touch-action: none;
+  cursor: col-resize;
+}
+.reading-splitter::after {
+  content: '';
+  position: absolute;
+  inset: 0 5px;
+  background: transparent;
+  border-radius: 2px;
+  transition: background-color 150ms;
+}
+.reading-splitter:hover::after,
+.reading-splitter:focus-visible::after {
+  background: var(--green);
+}
+.reading-splitter:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: -2px;
 }
 .source-list {
   display: grid;
@@ -2474,8 +2890,19 @@ async function download() {
   line-height: var(--line-height-ui);
 }
 @media (max-width: 1100px) {
-  .sources-layout {
+  .sources-layout,
+  .sources-layout.has-context,
+  .sources-layout.round-layout.has-context {
     grid-template-columns: minmax(0, 1fr);
+    gap: 1.25rem;
+  }
+  .reading-splitter {
+    display: none;
+  }
+  .source-context-panel {
+    position: static;
+    max-height: none;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   }
   .source-list {
     max-height: min(22rem, 45vh);
@@ -2485,6 +2912,11 @@ async function download() {
   }
   .source-text {
     min-height: 20rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reading-splitter::after {
+    transition: none;
   }
 }
 @media (max-width: 720px) {

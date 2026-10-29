@@ -18,6 +18,16 @@ export async function initializePlatform() {}
 export async function connectLearningReader(_reader: LearningReader): Promise<() => void> {
   return () => {}
 }
+export async function connectWindowCloseGuard(
+  _beforeClose: () => boolean | Promise<boolean>,
+): Promise<() => void> {
+  return () => {}
+}
+export function connectWorkspaceLeaveGuard(
+  _beforeLeave: () => boolean | Promise<boolean>,
+): () => void {
+  return () => {}
+}
 export const ServerConnection: Component | undefined = undefined
 export async function createWorkspaceRepository(onBlocked: () => void) {
   return createRepository('repeaty', onBlocked, { compactHistory: true })
