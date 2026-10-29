@@ -9,6 +9,7 @@ import { practiceHistoryFixture } from '../../tests/fixtures/practice-history'
 import { BrowserWorkspaceReader } from './workspace-reader'
 import { selectedFile, workspaceFixture } from './test-fixtures'
 import { collectWorkspaceFiles } from './workspace-files'
+import { materialFixture } from '../../tests/fixtures/material-model'
 
 let SQL: SqlJsStatic
 beforeAll(async () => {
@@ -22,6 +23,29 @@ function rewrite(env: Awaited<ReturnType<typeof workspaceFixture>>) {
   env.files.push(selectedFile('.repeaty/state.sqlite3', env.db.export()))
 }
 describe('browser workspace SQLite snapshots', () => {
+  it('reads DB 10 without a material store and DB 11 originals without changing either directory', async () => {
+    const old = await workspaceFixture(SQL)
+    old.db.run('DROP TABLE materialReceipts')
+    rewrite(old)
+    const oldReader = await open(old)
+    expect(oldReader.snapshot.library.materialReceipts).toEqual([])
+    oldReader.close()
+    old.db.close()
+    const material = materialFixture()
+    const env = await workspaceFixture(SQL, material.library, material.assets)
+    env.db.run('PRAGMA user_version=11')
+    rewrite(env)
+    const reader = await open(env)
+    expect(reader.snapshot.library).toEqual(material.library)
+    expect(await (await reader.media(material.original.meta.id))!.text()).toBe(
+      await material.original.blob.text(),
+    )
+    reader.close()
+    env.db.run('DROP TABLE materialReceipts')
+    rewrite(env)
+    await expect(open(env)).rejects.toThrow()
+    env.db.close()
+  })
   it('reads accepted records, grading and Unicode filenames while ignoring pending Markdown', async () => {
     let library = fixture({ front: '**已接受：** 内容' })
     library = reviewCard(library, library.cards[0]!.id, 3, now)

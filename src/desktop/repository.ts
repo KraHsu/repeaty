@@ -126,9 +126,9 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
       if (!cached) await repository.load()
       if (cached!.revision !== expectedRevision) throw changed()
       const previous = cached!.library
-      const structural = !(['decks', 'notes', 'media', 'savedSearches', 'sources'] as const).every(
-        (key) => previous[key] === library[key],
-      )
+      const structural = !(
+        ['decks', 'notes', 'media', 'savedSearches', 'sources', 'materialReceipts'] as const
+      ).every((key) => previous[key] === library[key])
       if (structural) workspaceLibrarySchema.parse(library)
       else
         validateLibraryReferences(library, () => {
@@ -189,7 +189,7 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
         return (
           !before ||
           !after ||
-          !['title', 'url', 'mediaId', 'format', 'kind', 'origin'].every(
+          !['title', 'url', 'mediaId', 'format', 'kind', 'origin', 'document'].every(
             (key) =>
               JSON.stringify(before[key as keyof typeof before]) ===
               JSON.stringify(after[key as keyof typeof after]),

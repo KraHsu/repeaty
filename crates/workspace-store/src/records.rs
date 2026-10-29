@@ -12,7 +12,7 @@ use std::{
 };
 use std::{io::Write, sync::Arc};
 
-pub const STORES: [&str; 9] = [
+pub const STORES: [&str; 10] = [
     "decks",
     "notes",
     "cards",
@@ -22,6 +22,7 @@ pub const STORES: [&str; 9] = [
     "practices",
     "attempts",
     "sources",
+    "materialReceipts",
 ];
 pub const MAX_MEDIA: usize = 10 * 1024 * 1024;
 
@@ -74,7 +75,7 @@ impl Database {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         let version: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 10 {
+        if version > 11 {
             return Err(Error::invalid());
         }
         let tx = connection.transaction()?;
@@ -108,7 +109,8 @@ impl Database {
             };
             tx.execute_batch(&format!("CREATE TABLE IF NOT EXISTS {store} (id TEXT PRIMARY KEY, position INTEGER NOT NULL CHECK(position>=0), data TEXT NOT NULL CHECK(json_valid(data)){relation}); CREATE INDEX IF NOT EXISTS {store}_position ON {store}(position);"))?;
         }
-        tx.execute_batch("CREATE INDEX IF NOT EXISTS notes_deck ON notes(deck_id); CREATE INDEX IF NOT EXISTS cards_note ON cards(note_id); CREATE INDEX IF NOT EXISTS reviews_card ON reviews(card_id); CREATE INDEX IF NOT EXISTS practices_card ON practices(card_id); CREATE INDEX IF NOT EXISTS attempts_practice ON attempts(practice_id); PRAGMA user_version=10;")?;
+        tx.execute_batch("CREATE INDEX IF NOT EXISTS notes_deck ON notes(deck_id); CREATE INDEX IF NOT EXISTS cards_note ON cards(note_id); CREATE INDEX IF NOT EXISTS reviews_card ON reviews(card_id); CREATE INDEX IF NOT EXISTS practices_card ON practices(card_id); CREATE INDEX IF NOT EXISTS attempts_practice ON attempts(practice_id);")?;
+        tx.pragma_update(None, "user_version", version.max(10))?;
         tx.commit()?;
         let asset_reader = assets.clone();
         connection.create_scalar_function(
@@ -154,7 +156,7 @@ impl Database {
         Ok(json!({"revision":current,"library":library}))
     }
     fn library_history(db: &Connection, summary: bool) -> Result<Value> {
-        let mut library = json!({"version":13});
+        let mut library = json!({"version":14});
         for store in STORES {
             let data = if store == "attempts" && summary {
                 "json_remove(data,'$.code','$.result.detail')"
@@ -395,6 +397,7 @@ impl Database {
                 "attempts" => 500000,
                 "savedSearches" => 100,
                 "sources" => 10000,
+                "materialReceipts" => 100000,
                 _ => 1600000,
             };
             if count > limit || distinct != count || (count > 0 && max != Some(count - 1)) {
@@ -407,6 +410,26 @@ impl Database {
             }
         }
         finish(&tx)?;
+        // This reader gate commits with the new records: a failed import cannot upgrade
+        // the library, and an old application cannot strip unknown material metadata.
+        if commit.patches.iter().any(|patch| {
+            patch.value.as_ref().is_some_and(|value| {
+                patch.store == "materialReceipts"
+                    || !value["document"].is_null()
+                    || !value["parentSourceId"].is_null()
+                    || !value["excerpt"]["locator"].is_null()
+                    || !value["origin"]["locator"].is_null()
+                    || !value["reading"]["locator"].is_null()
+                    || value["versions"].as_array().is_some_and(|versions| {
+                        versions.iter().any(|version| {
+                            !version["document"].is_null()
+                                || !version["reading"]["locator"].is_null()
+                        })
+                    })
+            })
+        }) {
+            tx.pragma_update(None, "user_version", 11)?;
+        }
         tx.execute("UPDATE workspace SET revision=?1 WHERE id=1", [current + 1])?;
         Self::collect_assets(&tx)?;
         tx.commit()?;
@@ -428,6 +451,21 @@ impl Database {
             }
             "media" => Self::validate_media(tx, patch),
             "reviews" | "practices" | "attempts" => Self::validate_history(tx, patch),
+            "materialReceipts" => {
+                if let Some(value) = &patch.value {
+                    let duplicate: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM materialReceipts WHERE id<>?1 AND json_extract(data,'$.pluginId')=?2 AND json_extract(data,'$.kind')=?3 AND json_extract(data,'$.operationId')=?4)", params![patch.id, value["pluginId"].as_str().unwrap_or(""), value["kind"].as_str().unwrap_or(""), value["operationId"].as_str().unwrap_or("")], |row| row.get(0))?;
+                    if duplicate {
+                        return Err(Error::invalid());
+                    }
+                }
+                if previous
+                    .zip(patch.value.as_ref())
+                    .is_some_and(|(before, next)| before != next)
+                {
+                    return Err(Error::invalid());
+                }
+                Ok(())
+            }
             _ => Ok(()),
         }
     }
@@ -451,7 +489,7 @@ impl Database {
             std::iter::once(value).chain(value["versions"].as_array().into_iter().flatten())
         {
             for reference in snapshot["inlineMedia"].as_array().into_iter().flatten() {
-                let valid: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM assets a JOIN media m ON m.id=a.id WHERE a.id=?1 AND substr(a.path,1,64)=?2 AND a.mime NOT LIKE 'text/%')", params![reference["mediaId"].as_str().unwrap_or(""), reference["hash"].as_str().unwrap_or("")], |row| row.get(0))?;
+                let valid: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM assets a JOIN media m ON m.id=a.id WHERE a.id=?1 AND substr(a.path,1,64)=?2 AND (a.mime LIKE 'image/%' OR a.mime LIKE 'audio/%'))", params![reference["mediaId"].as_str().unwrap_or(""), reference["hash"].as_str().unwrap_or("")], |row| row.get(0))?;
                 if !valid {
                     return Err(Error::invalid());
                 }
@@ -463,7 +501,7 @@ impl Database {
         let Some(value) = patch.value.as_ref() else {
             // Deleting an asset that a note still attaches would leave a dangling reference.
             let referenced: bool = tx.query_row(
-                "SELECT EXISTS(SELECT 1 FROM notes n, json_each(json_extract(n.data,'$.frontMedia')) m WHERE m.value=?1) OR EXISTS(SELECT 1 FROM notes n, json_each(json_extract(n.data,'$.backMedia')) m WHERE m.value=?1) OR EXISTS(SELECT 1 FROM sources s, json_each(json_extract(s.data,'$.versions')) v WHERE json_extract(v.value,'$.mediaId')=?1) OR EXISTS(SELECT 1 FROM (SELECT data FROM notes UNION ALL SELECT data FROM sources) r,json_each(json_extract(r.data,'$.inlineMedia')) m WHERE json_extract(m.value,'$.mediaId')=?1) OR EXISTS(SELECT 1 FROM sources s,json_each(json_extract(s.data,'$.versions')) v,json_each(json_extract(v.value,'$.inlineMedia')) m WHERE json_extract(m.value,'$.mediaId')=?1)",
+                "SELECT EXISTS(SELECT 1 FROM notes n, json_each(json_extract(n.data,'$.frontMedia')) m WHERE m.value=?1) OR EXISTS(SELECT 1 FROM notes n, json_each(json_extract(n.data,'$.backMedia')) m WHERE m.value=?1) OR EXISTS(SELECT 1 FROM sources s, json_each(json_extract(s.data,'$.versions')) v WHERE json_extract(v.value,'$.mediaId')=?1) OR EXISTS(SELECT 1 FROM (SELECT data FROM notes UNION ALL SELECT data FROM sources) r,json_each(json_extract(r.data,'$.inlineMedia')) m WHERE json_extract(m.value,'$.mediaId')=?1) OR EXISTS(SELECT 1 FROM sources s,json_each(json_extract(s.data,'$.versions')) v,json_each(json_extract(v.value,'$.inlineMedia')) m WHERE json_extract(m.value,'$.mediaId')=?1) OR EXISTS(SELECT 1 FROM sources WHERE json_extract(data,'$.document.originalMediaId')=?1) OR EXISTS(SELECT 1 FROM sources s,json_each(json_extract(s.data,'$.versions')) v WHERE json_extract(v.value,'$.document.originalMediaId')=?1)",
                 [&patch.id],
                 |row| row.get(0),
             )?;
@@ -602,7 +640,7 @@ impl Database {
     ) -> Result<()> {
         let Some(value) = patch.value.as_ref() else {
             let referenced: bool = tx.query_row(
-                "SELECT EXISTS(SELECT 1 FROM sources WHERE json_extract(data,'$.origin.sourceId')=?1) OR EXISTS(SELECT 1 FROM notes WHERE json_extract(data,'$.excerpt.sourceId')=?1)",
+                "SELECT EXISTS(SELECT 1 FROM sources WHERE json_extract(data,'$.origin.sourceId')=?1 OR json_extract(data,'$.parentSourceId')=?1) OR EXISTS(SELECT 1 FROM notes WHERE json_extract(data,'$.excerpt.sourceId')=?1)",
                 [&patch.id], |row| row.get(0),
             )?;
             return if referenced {
@@ -612,8 +650,15 @@ impl Database {
             };
         };
         let versions = value["versions"].as_array().cloned().unwrap_or_default();
+        if previous.is_none_or(|before| {
+            before["parentSourceId"] != value["parentSourceId"]
+                || before["origin"] != value["origin"]
+        }) {
+            crate::materials::hierarchy(tx, value)?;
+        }
         let mut seen = HashSet::new();
         for snapshot in std::iter::once(value).chain(versions.iter()) {
+            crate::materials::reading(snapshot, &patch.id)?;
             if !seen.insert(snapshot["mediaId"].as_str().unwrap_or("")) {
                 return Err(Error::invalid());
             }
@@ -639,6 +684,7 @@ impl Database {
                 "versions",
                 "derived",
                 "inlineMedia",
+                "document",
             ]
             .iter()
             .any(|key| before[key] != value[key])
@@ -653,7 +699,7 @@ impl Database {
                 if let Ok(old) =
                     Self::source_snapshot(before, &json!({"mediaId":snapshot["mediaId"]}))
                 {
-                    for key in ["format", "characters", "inlineMedia", "derived"] {
+                    for key in ["format", "characters", "inlineMedia", "derived", "document"] {
                         let same = if key == "inlineMedia" {
                             old[key].as_array().cloned().unwrap_or_default()
                                 == snapshot[key].as_array().cloned().unwrap_or_default()
@@ -704,6 +750,7 @@ impl Database {
             None
         };
         for snapshot in std::iter::once(value).chain(versions.iter()) {
+            crate::materials::document(tx, snapshot)?;
             let mime = if snapshot["format"].as_str() == Some("markdown") {
                 "text/markdown"
             } else {
@@ -720,6 +767,7 @@ impl Database {
                 let end = origin["end"].as_u64().unwrap_or(0) as usize;
                 let derived = snapshot["derived"].as_bool() == Some(true);
                 let original = Self::source_body(tx, parent)?;
+                crate::materials::reference(parent, origin, &original)?;
                 if end <= start
                     || end - start > 10_000
                     || end > original.len()
@@ -747,6 +795,7 @@ impl Database {
             }];
             let parent = Self::source_snapshot(value, reference)?;
             let text = Self::source_body(tx, &parent)?;
+            crate::materials::reference(&parent, reference, &text)?;
             let start = reference["start"].as_u64().unwrap_or(0) as usize;
             let end = reference["end"].as_u64().unwrap_or(0) as usize;
             if kind == "note" {
@@ -788,7 +837,11 @@ impl Database {
                         .optional()?;
                     match kind {
                         None => return Err(Error::invalid()),
-                        Some(kind) if kind.starts_with("text/") => return Err(Error::invalid()),
+                        Some(kind)
+                            if !kind.starts_with("image/") && !kind.starts_with("audio/") =>
+                        {
+                            return Err(Error::invalid());
+                        }
                         _ => {}
                     }
                 }
@@ -818,6 +871,7 @@ impl Database {
                 return Err(Error::invalid());
             }
             let text = Self::source_body(tx, &source)?;
+            crate::materials::reference(&source, excerpt, &text)?;
             if text.get(start..end) != Some(utf16.as_slice()) {
                 return Err(Error::invalid());
             }
@@ -889,7 +943,7 @@ impl Database {
             })
             .optional()?
             .ok_or_else(Error::missing)?;
-        let mut library = json!({"version":13});
+        let mut library = json!({"version":14});
         for store in STORES {
             let mut rows = BTreeMap::<String, (i64, Value)>::new();
             let mut stmt = self
@@ -942,6 +996,11 @@ impl Database {
             "audio/aac",
             "text/plain",
             "text/markdown",
+            "text/html",
+            "application/pdf",
+            "application/epub+zip",
+            "application/json",
+            "application/octet-stream",
         ];
         if !valid_id(id) || bytes.is_empty() || bytes.len() > MAX_MEDIA || !allowed.contains(&mime)
         {
@@ -975,6 +1034,11 @@ impl Database {
             "image/gif" => "gif",
             "text/markdown" => "md",
             "text/plain" => "txt",
+            "text/html" => "html",
+            "application/pdf" => "pdf",
+            "application/epub+zip" => "epub",
+            "application/json" => "json",
+            "application/octet-stream" => "bin",
             "audio/mpeg" => "mp3",
             "audio/ogg" => "ogg",
             "audio/mp4" => "m4a",

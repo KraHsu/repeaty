@@ -65,6 +65,8 @@ export function operationFor(
     return { ...operation, cardId: review.cardId, reviewId: review.id }
   }
   for (const store of Object.keys(recordSchemas) as Store[]) {
+    // A committed command receipt survives undo, so a delayed retry cannot recreate deleted data.
+    if (store === 'materialReceipts') continue
     if (before[store] === after[store]) continue
     const next = new Map(after[store].map((value) => [value.id, value]))
     const old = new Set(before[store].map((value) => value.id))

@@ -77,6 +77,7 @@ export function prepareSourceExcerpt(
     mediaId: parent.mediaId,
     start: selection.start,
     end: selection.end,
+    ...(excerpt.locator ? { locator: excerpt.locator } : {}),
   })
 }
 export async function readSource(
@@ -163,6 +164,7 @@ export function replaceSourceContent(
     ...(previous.reading ? { reading: previous.reading } : {}),
     ...(previous.derived ? { derived: previous.derived } : {}),
     ...(previous.inlineMedia ? { inlineMedia: previous.inlineMedia } : {}),
+    ...(previous.document ? { document: previous.document } : {}),
   }
   const source = sourceSchema.parse({
     ...previous,
@@ -175,6 +177,7 @@ export function replaceSourceContent(
     versions: [...(previous.versions ?? []), version],
     acceptedAt: now.toISOString(),
     reading: undefined,
+    document: undefined,
   })
   // Scheduling belongs to the source identity, never to a body version.
   Object.assign(source, {
@@ -225,7 +228,13 @@ export function removeSource(library: Library, id: string): Library {
     sources: library.sources
       .filter((source) => source.id !== id)
       .map((source) =>
-        source.origin?.sourceId === id ? { ...source, origin: undefined } : source,
+        source.origin?.sourceId !== id && source.parentSourceId !== id
+          ? source
+          : {
+              ...source,
+              ...(source.origin?.sourceId === id ? { origin: undefined } : {}),
+              ...(source.parentSourceId === id ? { parentSourceId: undefined } : {}),
+            },
       ),
     notes: library.notes.map((note) =>
       note.excerpt?.sourceId === id ? { ...note, excerpt: undefined } : note,
@@ -257,6 +266,11 @@ export async function validateSourceOrigins(
       const snapshot = referencedSource(parent, origin)
       if (!snapshot) throw invalid()
       const original = await readSource(snapshot, library, getMedia)
+      if (
+        origin.locator?.kind === 'text' &&
+        original.slice(origin.start, origin.end) !== origin.locator.quote
+      )
+        throw invalid()
       if (!child.derived) {
         const text = await readSource(child, library, getMedia)
         if (text !== sourceExcerpt(snapshot, original, origin.start, origin.end).quote)
@@ -267,7 +281,12 @@ export async function validateSourceOrigins(
 }
 
 export function sameReadingPosition(a: ReadingPosition | undefined, b: ReadingPosition) {
-  return a?.offset === b.offset && a.view === b.view && a.fraction === b.fraction
+  return (
+    a?.offset === b.offset &&
+    a.view === b.view &&
+    a.fraction === b.fraction &&
+    JSON.stringify(a.locator) === JSON.stringify(b.locator)
+  )
 }
 export function saveReadingPosition(
   library: Library,

@@ -1,5 +1,11 @@
 import { z } from 'zod'
 import { inlineMediaSchema } from './inline-media-data'
+import {
+  materialDocumentSchema,
+  materialLocatorSchema,
+  locatorMatchesReference,
+  materialLocatorMatches,
+} from './material-data'
 
 export const MAX_SOURCE_BYTES = 1024 * 1024
 export const MAX_SOURCE_CHARACTERS = 250_000
@@ -20,6 +26,7 @@ export const readingPositionSchema = z
     offset: z.number().int().nonnegative().max(MAX_SOURCE_CHARACTERS),
     fraction: z.number().finite().min(0).max(1),
     view: z.enum(['source', 'preview']),
+    locator: materialLocatorSchema.optional(),
   })
   .refine((position) => position.view === 'preview' || position.fraction === 0)
 export const sourceReadingSchema = readingPositionSchema.extend({ updatedAt: z.iso.datetime() })
@@ -95,9 +102,13 @@ export const sourceOriginSchema = z
     mediaId: id.optional(),
     start: z.number().int().min(0).max(MAX_SOURCE_CHARACTERS),
     end: z.number().int().positive().max(MAX_SOURCE_CHARACTERS),
+    locator: materialLocatorSchema.optional(),
   })
   .refine(
-    (origin) => origin.end > origin.start && origin.end - origin.start <= MAX_EXCERPT_CHARACTERS,
+    (origin) =>
+      origin.end > origin.start &&
+      origin.end - origin.start <= MAX_EXCERPT_CHARACTERS &&
+      (!origin.locator || locatorMatchesReference(origin, origin.locator)),
   )
 export type SourceOrigin = z.infer<typeof sourceOriginSchema>
 export const sourceDetailsSchema = z.strictObject({
@@ -119,6 +130,7 @@ export const sourceVersionSchema = z.object({
   inlineMedia: inlineMediaSchema.optional(),
   reading: sourceReadingSchema.optional(),
   derived: z.literal(true).optional(),
+  document: materialDocumentSchema.optional(),
 })
 export type SourceVersion = z.infer<typeof sourceVersionSchema>
 export interface SourceDetailsUpdate {
@@ -132,6 +144,7 @@ export interface SourceDetailsUpdate {
 export const sourceSchema = z
   .object({
     id,
+    parentSourceId: id.optional(),
     ...sourceDetailsSchema.shape,
     format: z.enum(['plain', 'markdown']),
     mediaId: id,
@@ -146,10 +159,19 @@ export const sourceSchema = z
     versions: z.array(sourceVersionSchema).max(1000).optional(),
     acceptedAt: z.iso.datetime().optional(),
     derived: z.literal(true).optional(),
+    document: materialDocumentSchema.optional(),
     kind: z.literal('excerpt').optional(),
     origin: sourceOriginSchema.optional(),
   })
   .superRefine((source, context) => {
+    for (const snapshot of [source, ...(source.versions ?? [])])
+      if (
+        snapshot.reading?.locator &&
+        !materialLocatorMatches({ ...snapshot, id: source.id }, snapshot.reading.locator)
+      )
+        context.addIssue({ code: 'custom', message: '阅读定位与材料版本不匹配。' })
+    if (source.parentSourceId === source.id)
+      context.addIssue({ code: 'custom', message: '材料不能作为自己的父级。' })
     if (
       source.reading &&
       (source.reading.offset > source.characters ||
@@ -190,12 +212,14 @@ export const excerptSchema = z
     start: z.number().int().min(0).max(MAX_SOURCE_CHARACTERS),
     end: z.number().int().positive().max(MAX_SOURCE_CHARACTERS),
     quote: z.string().min(1).max(MAX_EXCERPT_CHARACTERS),
+    locator: materialLocatorSchema.optional(),
   })
   .refine(
     (excerpt) =>
       excerpt.end - excerpt.start === excerpt.quote.length &&
       excerpt.quote.length <= MAX_EXCERPT_CHARACTERS &&
-      !!excerpt.quote.trim(),
+      !!excerpt.quote.trim() &&
+      (!excerpt.locator || locatorMatchesReference(excerpt, excerpt.locator)),
   )
 export type Source = z.infer<typeof sourceSchema>
 /** Unversioned references address the first snapshot, including retired notes and drafts. */
@@ -218,6 +242,7 @@ export function sourceAtVersion(source: Source, mediaId = source.mediaId): Sourc
         reading: version.reading,
         inlineMedia: version.inlineMedia,
         derived: version.derived,
+        document: version.document,
         versions: undefined,
       }
     : undefined

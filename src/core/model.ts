@@ -6,9 +6,11 @@ import { scheduleSchema, librarySchema as legacySchema } from './legacy'
 import { pluginDataSchema, assessmentSchema } from '../plugins/data'
 import { sourceSchema, excerptSchema, MAX_SOURCE_BYTES, referencedSource } from './source-data'
 import { validateSourceHierarchy } from './source-tree'
+import { materialLocatorMatches, materialReceiptSchema } from './material-data'
 import { practiceSchema, attemptSchema, attemptSummarySchema } from './practice-data'
 
 export { scheduleSchema } from './legacy'
+export { materialReceiptSchema } from './material-data'
 const date = z.iso.datetime()
 const id = z.string().min(1).max(150)
 const tags = z.array(z.string().trim().min(1).max(40)).max(20)
@@ -170,7 +172,16 @@ export const cardSchema = z.object({
 export const mediaSchema = z.object({
   id,
   name: z.string().min(1).max(255),
-  type: z.enum([...mediaTypes, 'text/plain', 'text/markdown']),
+  type: z.enum([
+    ...mediaTypes,
+    'text/plain',
+    'text/markdown',
+    'text/html',
+    'application/pdf',
+    'application/epub+zip',
+    'application/json',
+    'application/octet-stream',
+  ]),
   size: z.number().int().positive().max(MAX_MEDIA_BYTES),
   createdAt: date,
 })
@@ -253,7 +264,8 @@ export function variants(note: Pick<Note, 'type' | 'front'>): string[] {
 }
 
 const libraryContents = z.object({
-  version: z.literal(13),
+  version: z.literal(14),
+  materialReceipts: z.array(materialReceiptSchema).max(100_000).default([]),
   sources: z.array(sourceSchema).max(10_000),
   practices: z.array(practiceSchema).max(100_000),
   attempts: z.array(attemptSchema).max(500_000),
@@ -280,6 +292,7 @@ export function validateLibraryReferences(
     'practices',
     'attempts',
     'sources',
+    'materialReceipts',
   ] as const) {
     if (new Set(library[key].map((entry) => entry.id)).size !== library[key].length)
       problem(`${key} 中存在重复 ID`)
@@ -289,6 +302,12 @@ export function validateLibraryReferences(
   const cards = new Set(library.cards.map((card) => card.id))
   const media = new Map(library.media.map((item) => [item.id, item]))
   const sources = new Map(library.sources.map((source) => [source.id, source]))
+  const receiptKeys = new Set<string>()
+  for (const receipt of library.materialReceipts) {
+    const key = JSON.stringify([receipt.pluginId, receipt.kind, receipt.operationId])
+    if (receiptKeys.has(key)) problem('材料操作身份重复')
+    receiptKeys.add(key)
+  }
   for (const source of library.sources) {
     for (const snapshot of [source, ...(source.versions ?? [])]) {
       const asset = media.get(snapshot.mediaId)
@@ -298,6 +317,21 @@ export function validateLibraryReferences(
         asset.size > MAX_SOURCE_BYTES
       )
         problem('来源正文缺失或格式不正确')
+      if (snapshot.document) {
+        const original = media.get(snapshot.document.originalMediaId)
+        const expected = (
+          { pdf: 'application/pdf', epub: 'application/epub+zip', html: 'text/html' } as Record<
+            string,
+            string
+          >
+        )[snapshot.document.format]
+        if (
+          !original ||
+          (expected && original.type !== expected) ||
+          (snapshot.document.format === 'image' && !original.type.startsWith('image/'))
+        )
+          problem('来源原件缺失或格式不正确')
+      }
     }
     if (source.origin) {
       const parent = sources.get(source.origin.sourceId)
@@ -305,7 +339,8 @@ export function validateLibraryReferences(
       if (
         !snapshot ||
         (!source.derived && source.format !== snapshot.format) ||
-        source.origin.end > snapshot.characters
+        source.origin.end > snapshot.characters ||
+        (source.origin.locator && !materialLocatorMatches(snapshot, source.origin.locator))
       )
         problem('摘录与来源不匹配')
     }
@@ -315,7 +350,7 @@ export function validateLibraryReferences(
     ...library.sources.flatMap((source) => [source, ...(source.versions ?? [])]),
   ])
     for (const ref of entry.inlineMedia ?? [])
-      if (!media.has(ref.mediaId) || media.get(ref.mediaId)!.type.startsWith('text/'))
+      if (!mediaTypes.includes(media.get(ref.mediaId)?.type as (typeof mediaTypes)[number]))
         problem('笔记引用的媒体不存在')
   validateSourceHierarchy(library.sources, problem)
   const cardVariants = new Map<string, string[]>()
@@ -328,7 +363,9 @@ export function validateLibraryReferences(
     if ([...note.frontMedia, ...note.backMedia].some((mediaId) => !media.has(mediaId)))
       problem('笔记引用的媒体不存在')
     if (
-      [...note.frontMedia, ...note.backMedia].some((id) => media.get(id)?.type.startsWith('text/'))
+      [...note.frontMedia, ...note.backMedia].some(
+        (id) => !mediaTypes.includes(media.get(id)?.type as (typeof mediaTypes)[number]),
+      )
     )
       problem('正文快照不能用作图片或音频')
     if (note.excerpt) {
@@ -337,7 +374,8 @@ export function validateLibraryReferences(
       if (
         !source ||
         note.excerpt.end > source.characters ||
-        note.excerpt.end - note.excerpt.start !== note.excerpt.quote.length
+        note.excerpt.end - note.excerpt.start !== note.excerpt.quote.length ||
+        (note.excerpt.locator && !materialLocatorMatches(source, note.excerpt.locator))
       )
         problem('摘录与来源不匹配')
     }
@@ -382,6 +420,7 @@ export const workspaceLibrarySchema = libraryContents
 export type Library = z.infer<typeof workspaceLibrarySchema>
 export const recordSchemas = {
   sources: sourceSchema,
+  materialReceipts: materialReceiptSchema,
   decks: deckSchema,
   notes: noteSchema,
   cards: cardSchema,
@@ -393,7 +432,8 @@ export const recordSchemas = {
 }
 export function emptyLibrary(): Library {
   return {
-    version: 13,
+    version: 14,
+    materialReceipts: [],
     sources: [],
     decks: [],
     notes: [],
@@ -505,8 +545,10 @@ export function pruneMedia(library: Library): Library {
   ])
   for (const note of library.notes) for (const ref of note.inlineMedia ?? []) used.add(ref.mediaId)
   for (const source of library.sources)
-    for (const version of [source, ...(source.versions ?? [])])
+    for (const version of [source, ...(source.versions ?? [])]) {
+      if (version.document) used.add(version.document.originalMediaId)
       for (const ref of version.inlineMedia ?? []) used.add(ref.mediaId)
+    }
   return { ...library, media: library.media.filter((item) => used.has(item.id)) }
 }
 export function saveNote(
@@ -587,10 +629,11 @@ export function migrateLibrary(value: unknown): Library {
       value.version === 10 ||
       value.version === 11 ||
       value.version === 12 ||
-      value.version === 13)
+      value.version === 13 ||
+      value.version === 14)
   )
     return librarySchema.parse(
-      value.version === 13
+      value.version === 14
         ? value
         : value.version === 6 ||
             value.version === 7 ||
@@ -598,22 +641,23 @@ export function migrateLibrary(value: unknown): Library {
             value.version === 9 ||
             value.version === 10 ||
             value.version === 11 ||
-            value.version === 12
-          ? { ...value, version: 13 }
+            value.version === 12 ||
+            value.version === 13
+          ? { ...value, version: 14 }
           : value.version === 5
-            ? { sources: [], ...value, version: 13 }
+            ? { sources: [], ...value, version: 14 }
             : {
                 sources: [],
                 practices: [],
                 attempts: [],
                 ...value,
-                version: 13,
+                version: 14,
               },
     )
   const old = legacySchema.parse(value)
   const seen = new Set<string>()
   return librarySchema.parse({
-    version: 13,
+    version: 14,
     sources: [],
     practices: [],
     attempts: [],
