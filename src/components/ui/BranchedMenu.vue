@@ -33,6 +33,7 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const nav = ref<HTMLElement>()
 const marker = ref<HTMLElement>()
+const selection = ref<HTMLElement>()
 const rows = computed(() => flattenBranchedMenu(props.items))
 const roots = computed(() => rows.value.filter((row) => row.depth === 1).map((row) => row.node))
 const expanded = ref(
@@ -78,6 +79,28 @@ function registerGroup(key: string, value: unknown) {
     observer?.observe(element)
   } else groupElements.delete(key)
 }
+function measureSelection() {
+  if (!nav.value || !selection.value) return
+  const row = rowElements.get(props.modelValue)?.parentElement
+  const bounds = row?.getBoundingClientRect()
+  const shown =
+    !!bounds?.width &&
+    !!bounds.height &&
+    visible.value.some((entry) => entry.node.key === props.modelValue)
+  if (shown && bounds) {
+    const menu = nav.value.getBoundingClientRect()
+    const firstFrame = !selection.value.hasAttribute('data-on')
+    if (firstFrame) selection.value.style.transition = 'none'
+    selection.value.style.transform = `translate(${bounds.left - menu.left + nav.value.scrollLeft}px, ${bounds.top - menu.top + nav.value.scrollTop}px)`
+    selection.value.style.width = `${bounds.width}px`
+    selection.value.style.height = `${bounds.height}px`
+    selection.value.setAttribute('data-on', '')
+    if (firstFrame) {
+      void selection.value.offsetHeight
+      selection.value.style.transition = ''
+    }
+  } else selection.value.removeAttribute('data-on')
+}
 function measure(glide = false) {
   if (!alive || !nav.value) return
   const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
@@ -103,6 +126,9 @@ function measure(glide = false) {
     )
   }
   geometry.value = next
+  // Keep following row geometry while folders unfold. CSS retargets an in-flight
+  // selection from its current position, without delaying the settings change.
+  measureSelection()
   const active = rows.value.find((row) => row.node.key === props.modelValue)
   const head = active && rowElements.get(active.root)
   const shown = !!head && visible.value.some((row) => row.node.key === props.modelValue)
@@ -244,6 +270,7 @@ provide(branchedMenuKey, {
 
 <template>
   <nav ref="nav" class="branched-menu" :aria-label="label">
+    <span ref="selection" class="branched-menu__selection" aria-hidden="true" />
     <span ref="marker" class="branched-menu__marker" aria-hidden="true" />
     <div role="tree" :aria-label="label" @keydown="keydown">
       <BranchedMenuNode v-for="node in roots" :key="node.key" :node="node" />
@@ -296,6 +323,37 @@ provide(branchedMenuKey, {
 }
 .branched-menu__marker[data-on] {
   opacity: 1;
+}
+.branched-menu__selection {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 0.5rem;
+  background: var(--app-selected);
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    transform 220ms var(--bm-ease-out),
+    width 220ms var(--bm-ease-out),
+    height 220ms var(--bm-ease-out),
+    opacity 150ms ease;
+}
+.branched-menu__selection[data-on] {
+  opacity: 1;
+}
+.branched-menu > [role='tree'] {
+  position: relative;
+}
+.branched-menu > [role='tree'] > .branched-menu__section > .branched-menu__row {
+  /* Inset the root label within its background without shifting branch geometry. */
+  margin-left: -0.5rem;
+}
+.branched-menu
+  > [role='tree']
+  > .branched-menu__section
+  > .branched-menu__row
+  > .branched-menu__select {
+  padding-left: 0.5rem;
 }
 .branched-menu__section,
 .branched-menu__folder {

@@ -22,8 +22,19 @@ export async function settingsAlignmentFlow(page: Page, info: TestInfo, narrowWi
     [1440, 2],
   ] as const) {
     await page.setViewportSize({ width, height: 1000 })
-    await page.evaluate((value) => {
+    await page.evaluate(async (value) => {
       document.documentElement.style.fontSize = `${value * 100}%`
+      // The sidebar's responsive margin transition can cross a container-query
+      // breakpoint after the viewport has changed. Choose a layout only once it
+      // settles, then allow container queries and ResizeObserver measurements to paint.
+      await Promise.allSettled(
+        document
+          .querySelector('.main-content')!
+          .getAnimations()
+          .map((animation) => animation.finished),
+      )
+      await new Promise(requestAnimationFrame)
+      await new Promise(requestAnimationFrame)
     }, scale)
     const compactCategory = page.locator('.settings-mobile-category').getByRole('combobox')
     if (await compactCategory.isVisible()) {
@@ -57,6 +68,9 @@ export async function settingsAlignmentFlow(page: Page, info: TestInfo, narrowWi
           const root = element
             .querySelector<HTMLElement>('[data-category-key="general"] .branched-menu__label')!
             .getBoundingClientRect()
+          const rootRow = element
+            .querySelector<HTMLElement>('[data-category-key="general"]')!
+            .parentElement!.getBoundingClientRect()
           const group = element.querySelector<HTMLElement>('[id$="branch-general"]')!
           const labels = ['general.appearance', 'general.notifications'].map((key) =>
             element
@@ -76,7 +90,11 @@ export async function settingsAlignmentFlow(page: Page, info: TestInfo, narrowWi
               Math.abs(label.x - root.x - 2.5 * rem),
             )
           })
-          return Math.max(Math.abs(root.x - nav.x - 0.875 * rem), ...differences)
+          return Math.max(
+            Math.abs(root.x - nav.x - 0.875 * rem),
+            Math.abs(root.x - rootRow.x - 0.5 * rem),
+            ...differences,
+          )
         }),
       )
       .toBeLessThanOrEqual(1)

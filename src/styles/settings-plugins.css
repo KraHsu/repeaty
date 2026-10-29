@@ -73,10 +73,6 @@
 .settings-categories > [role='tree'] > .branched-menu__section + .branched-menu__section {
   margin-top: 0.75rem;
 }
-.settings-categories .branched-menu__row:has(> [data-active]) {
-  background: var(--app-selected);
-  border-radius: 0.5rem;
-}
 .settings-mobile-category label {
   color: var(--muted);
   font-size: var(--font-size-meta);
