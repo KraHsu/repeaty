@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { UiButton } from './ui'
 import { computed, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { t } from '../i18n'
 import { type Library, localDay } from '../core/model'
 import { dueCards } from '../core/scheduler'
 import { sourceQueueState } from '../core/source-queue'
-import { canReviewCard } from '../plugins'
+import { usePlugins } from '../plugins'
+const { canReviewCard } = usePlugins()
 import type { Operation } from '../core/operations'
 import {
   startMixedRound,
@@ -224,15 +226,26 @@ defineExpose({ undoCard, undoReading, canUndoCard, locked, leave, reconcileUndo 
         </p>
       </div>
       <div class="mixed-actions">
-        <button class="text-button" :disabled="locked || !canUndoCard" @click="undoCard">
+        <UiButton
+          variant="ghost"
+          type="submit"
+          :disabled="locked || !canUndoCard"
+          @click="undoCard"
+        >
           {{ t('撤销上次评分') }}
-        </button>
-        <button v-if="canUndoReading" class="text-button" :disabled="locked" @click="undoReading">
+        </UiButton>
+        <UiButton
+          variant="ghost"
+          type="submit"
+          v-if="canUndoReading"
+          :disabled="locked"
+          @click="undoReading"
+        >
           {{ t('撤销阅读安排') }}
-        </button>
-        <button class="button secondary" :disabled="locked" @click="close">
+        </UiButton>
+        <UiButton variant="secondary" type="submit" :disabled="locked" @click="close">
           {{ t('结束混合学习') }}
-        </button>
+        </UiButton>
       </div>
     </header>
     <slot
@@ -252,9 +265,9 @@ defineExpose({ undoCard, undoReading, canUndoCard, locked, leave, reconcileUndo 
     <div v-else class="empty-state">
       <h2>{{ t('本轮混合学习结束') }}</h2>
       <p>{{ t('本轮材料已处理完，当前没有可复习卡片。') }}</p>
-      <button class="button primary" :disabled="locked" @click="close">
+      <UiButton variant="primary" type="submit" :disabled="locked" @click="close">
         {{ t('返回学习概览') }}
-      </button>
+      </UiButton>
     </div>
   </section>
 </template>
@@ -270,7 +283,7 @@ defineExpose({ undoCard, undoReading, canUndoCard, locked, leave, reconcileUndo 
   border-bottom: 1px solid var(--line);
 }
 h1 {
-  font-size: 1.5rem;
+  font-size: var(--font-size-page);
   margin: 0 0 0.5rem;
 }
 p {

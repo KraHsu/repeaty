@@ -4,6 +4,23 @@ import { readFile } from 'node:fs/promises'
 import { practiceHistoryFixture } from '../fixtures/practice-history'
 import { importReading, readingText } from '../fixtures/reading-flow'
 import { startMixed } from '../fixtures/adaptive-mixed-flow'
+import {
+  openPluginManager,
+  openPluginSettings,
+  selectPlugin,
+  setInterfaceLanguage,
+  selectUiOption,
+  selectUiValue,
+  uiOption,
+} from '../fixtures/settings-flow'
+import { setResponsiveViewport } from '../fixtures/viewport-flow'
+
+async function automaticAvailability(page: Page, enabled: boolean) {
+  await page.getByLabel('复习评分').click()
+  if (enabled) await expect(uiOption(page, 'automatic')).toBeEnabled()
+  else await expect(uiOption(page, 'automatic')).toBeDisabled()
+  await page.keyboard.press('Escape')
+}
 
 const question = {
   questionId: '1',
@@ -93,23 +110,30 @@ async function connect(
     },
   }
 }
-async function create(page: Page, site = 'leetcode.cn') {
+async function create(page: Page, site = 'leetcode.cn', language: 'zh-CN' | 'en' = 'zh-CN') {
   await page.goto('./')
   await page.getByRole('button', { name: '创建卡组', exact: true }).last().click()
   await page.getByLabel('卡组名称').fill('Algorithms')
   await page.getByRole('button', { name: '保存卡组', exact: true }).click()
   await page.getByRole('button', { name: '添加卡片', exact: true }).first().click()
-  await page.getByLabel('笔记类型').selectOption('plugin')
-  await expect(page.getByLabel('LeetCode 站点')).toHaveValue('leetcode.cn')
-  await page.getByLabel('LeetCode 站点').selectOption(site)
+  await selectUiValue(page, page.getByLabel('笔记类型'), 'plugin')
+  await expect(page.getByLabel('LeetCode 站点')).toHaveAttribute('value', 'leetcode.cn')
+  await selectUiValue(page, page.getByLabel('LeetCode 站点'), site)
   await page.getByLabel('题目链接或英文标识').fill('test-problem')
   await page.getByRole('button', { name: '读取题目', exact: true }).click()
   await expect(page.getByText(/已读取：1\./)).toBeVisible()
   await page.getByLabel('解题笔记').fill('Return the value unchanged.')
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  await page.getByRole('button', { name: '复习', exact: true }).click()
-  await expect(page.getByLabel('代码', { exact: true })).toBeEnabled()
+  if (language === 'en') {
+    // Settings navigation ends review sessions, so select the language before entering one.
+    await setInterfaceLanguage(page, language)
+    await page.getByRole('button', { name: 'All cards', exact: true }).click()
+  }
+  await page
+    .getByRole('button', { name: language === 'en' ? 'Review' : '复习', exact: true })
+    .click()
+  await expect(page.getByLabel(language === 'en' ? 'Code' : '代码', { exact: true })).toBeEnabled()
 }
 
 test('local transport loads, judges, restores drafts, and saves an automatic rating', async ({
@@ -133,7 +157,7 @@ test('local transport loads, judges, restores drafts, and saves an automatic rat
   await page.getByLabel('代码', { exact: true }).fill('def solve(value):\n    return value')
   await page.getByRole('button', { name: '提交到 LeetCode' }).click()
   await expect(page.locator('.judge-result')).toContainText('通过')
-  await page.getByLabel('复习评分').selectOption('automatic')
+  await selectUiValue(page, page.getByLabel('复习评分'), 'automatic')
   await page.getByRole('button', { name: '结束作答并查看答案' }).click()
   await expect(page.getByText('Return the value unchanged.', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '保存评分：良好' })).toBeEnabled()
@@ -197,10 +221,9 @@ test('international site, English, manual rating, and pending judge recovery do 
 }) => {
   const remote = await connect(context, { site: 'leetcode.com', checkFails: true })
   const page = await context.newPage()
-  await create(page, 'leetcode.com')
-  await page.getByLabel('界面语言').selectOption('en')
+  await create(page, 'leetcode.com', 'en')
   await expect(page.getByRole('heading', { name: '1. Test problem' })).toBeVisible()
-  await page.getByLabel('Programming language').selectOption('javascript')
+  await selectUiValue(page, page.getByLabel('Programming language'), 'javascript')
   await page.getByLabel('Code', { exact: true }).fill('function solve(value) { return value; }')
   await page.getByRole('button', { name: 'Submit to LeetCode' }).click()
   await expect(page.locator('.leetcode-question > [role="alert"]')).toContainText(
@@ -217,9 +240,26 @@ test('international site, English, manual rating, and pending judge recovery do 
   await page.getByRole('button', { name: /^Hard/ }).click()
   await expect(page.getByRole('heading', { name: 'Review session finished' })).toBeVisible()
   expect(remote.submissions()).toBe(1)
-  expect(await page.evaluate(() => localStorage.getItem('repeaty.leetcode.site'))).toBe(
-    'leetcode.com',
-  )
+  expect(
+    await page.evaluate(async () => {
+      const invoke = (
+        window as unknown as {
+          __TAURI_INTERNALS__: {
+            invoke(command: string, args?: Record<string, unknown>): Promise<unknown>
+          }
+        }
+      ).__TAURI_INTERNALS__.invoke
+      const { active } = (await invoke('workspace_status')) as { active: { token: string } }
+      return invoke('workspace_read', {
+        token: active.token,
+        request: {
+          type: 'value',
+          namespace: 'settings',
+          id: 'plugin:leetcode:repeaty.leetcode.site',
+        },
+      })
+    }),
+  ).toBe('leetcode.com')
 })
 
 test('an expired session during judging retains code and the official submission for credential renewal', async ({
@@ -271,7 +311,7 @@ test('an unavailable judge service is reported without creating a placeholder qu
   await page.getByLabel('卡组名称').fill('Algorithms')
   await page.getByRole('button', { name: '保存卡组', exact: true }).click()
   await page.getByRole('button', { name: '添加卡片', exact: true }).first().click()
-  await page.getByLabel('笔记类型').selectOption('plugin')
+  await selectUiValue(page, page.getByLabel('笔记类型'), 'plugin')
   await page.getByLabel('题目链接或英文标识').fill('test-problem')
   await page.getByRole('button', { name: '读取题目', exact: true }).click()
   await expect(page.getByRole('alert').filter({ hasText: '无法连接 LeetCode' })).toBeVisible()
@@ -308,7 +348,7 @@ test('viewing the answer before acceptance prevents a passing review rating', as
   await page.getByRole('button', { name: '提交到 LeetCode' }).click()
   await expect(page.locator('.judge-result')).toContainText('通过')
   await expect(page.getByRole('button', { name: /^良好/ })).toBeDisabled()
-  await page.getByLabel('复习评分').selectOption('automatic')
+  await selectUiValue(page, page.getByLabel('复习评分'), 'automatic')
   await expect(page.getByRole('button', { name: '保存评分：重来' })).toBeEnabled()
 })
 
@@ -326,7 +366,7 @@ test('a lost submission response disables automatic ratings and survives reload'
   await page.reload()
   await page.getByRole('button', { name: '开始复习', exact: true }).click()
   await expect(page.getByText(/有一次提交未取得编号/)).toBeVisible()
-  await expect(page.locator('#leetcode-rating option[value="automatic"]')).toBeDisabled()
+  await automaticAvailability(page, false)
   expect(remote.submissions()).toBe(1)
   expect((await storedLibrary(page)).attempts).toMatchObject([
     { value: { status: 'unknown', code: 'def solve(value): return value' } },
@@ -353,7 +393,7 @@ test('an unknown submission recovers the original code once and re-enables autom
   await expect(page.getByRole('heading', { name: '恢复未确认的提交' })).toHaveCount(0)
   await expect(page.getByText(/有一次提交未取得编号/)).toHaveCount(0)
   await expect(page.getByText(/尝试 1 次/)).toBeVisible()
-  await expect(page.locator('#leetcode-rating option[value="automatic"]')).toBeEnabled()
+  await automaticAvailability(page, true)
   expect(remote.submissions()).toBe(1)
   expect(remote.recovered).toMatchObject([
     { code: original, lang: 'python3', questionId: '1', submissionId: '1001' },
@@ -365,7 +405,7 @@ test('an unknown submission recovers the original code once and re-enables autom
   ])
   expect(after.cards).toEqual(before.cards)
   expect(after.reviews).toEqual(before.reviews)
-  await page.getByLabel('复习评分').selectOption('automatic')
+  await selectUiValue(page, page.getByLabel('复习评分'), 'automatic')
   await page.getByRole('button', { name: '结束作答并查看答案' }).click()
   await expect(page.getByRole('button', { name: '保存评分：简单' })).toBeEnabled()
 })
@@ -393,7 +433,7 @@ test('recovery rejects wrong sites and mismatched remote submissions without alt
   )
   expect((await storedLibrary(page)).attempts).toEqual(before.attempts)
   expect(remote.submissions()).toBe(1)
-  await expect(page.locator('#leetcode-rating option[value="automatic"]')).toBeDisabled()
+  await automaticAvailability(page, false)
 })
 
 test('a recovered international submission survives another disconnect and resumes without resubmitting', async ({
@@ -405,10 +445,9 @@ test('a recovered international submission survives another disconnect and resum
     submitFails: true,
     checkFails: true,
   })
-  await create(page, 'leetcode.com')
-  await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
-  await page.getByRole('button', { name: '提交到 LeetCode' }).click()
-  await page.getByLabel('界面语言').selectOption('en')
+  await create(page, 'leetcode.com', 'en')
+  await page.getByLabel('Code', { exact: true }).fill('def solve(value): return value')
+  await page.getByRole('button', { name: 'Submit to LeetCode' }).click()
   await page.getByLabel('Submission ID or detail link').fill('1001')
   await page.getByRole('button', { name: 'Link and check' }).click()
   await expect(page.locator('.leetcode-question > [role="alert"]')).toContainText(
@@ -446,7 +485,7 @@ test('recovering an earlier unknown attempt preserves a newer accepted attempt',
   await expect(page.getByLabel('代码', { exact: true })).toHaveValue(latest)
   await expect(page.getByText(/尝试 2 次/)).toBeVisible()
   await expect(page.locator('.judge-result a')).toHaveAttribute('href', /1002/)
-  await expect(page.locator('#leetcode-rating option[value="automatic"]')).toBeEnabled()
+  await automaticAvailability(page, true)
   expect(remote.submissions()).toBe(2)
   const attempts = (await storedLibrary(page)).attempts as { value: { submissionId: string } }[]
   expect(attempts).toHaveLength(2)
@@ -476,27 +515,39 @@ test('independent history filters, paginates, opens from cards, and stays readab
   await page.getByRole('button', { name: '练习历史', exact: true }).click()
   await expect(page.getByRole('heading', { name: '练习历史' })).toBeVisible()
   await expect(page.locator('.practice-history')).toHaveCount(20)
-  await page.getByLabel('筛选卡组').selectOption(library.decks[0]!.id)
+  await selectUiOption(
+    page,
+    page.getByRole('combobox', { name: '筛选卡组' }),
+    library.decks[0]!.name,
+  )
   await expect(page.locator('.practice-history')).toHaveCount(20)
-  await page.getByLabel('筛选卡组').selectOption('')
+  await selectUiOption(page, page.getByRole('combobox', { name: '筛选卡组' }), '全部卡组')
   await page.getByRole('button', { name: '下一页' }).click()
   await expect(page.locator('.practice-history')).toHaveCount(5)
-  await page.getByLabel('判题结果', { exact: true }).selectOption('accepted')
+  await selectUiOption(page, page.getByRole('combobox', { name: '判题结果', exact: true }), '通过')
   await expect(page.locator('.practice-history')).toHaveCount(9)
-  await page.getByLabel('判题结果', { exact: true }).selectOption('unconfirmed')
+  await selectUiOption(
+    page,
+    page.getByRole('combobox', { name: '判题结果', exact: true }),
+    '尚未确认',
+  )
   await expect(page.locator('.practice-history')).toHaveCount(8)
-  await page.getByLabel('判题结果', { exact: true }).selectOption('all')
+  await selectUiOption(
+    page,
+    page.getByRole('combobox', { name: '判题结果', exact: true }),
+    '全部结果',
+  )
   await page.getByLabel('搜索练习历史').fill('Second problem')
   await expect(page.locator('.practice-history')).toHaveCount(12)
   await page.getByLabel('搜索练习历史').fill('no matches')
   await expect(page.getByText('没有符合筛选条件的练习。')).toBeVisible()
   await page.getByRole('button', { name: '全部卡片' }).click()
   await page.getByRole('button', { name: '查看 First problem 的练习历史' }).click()
-  await expect(page.getByLabel('筛选题目')).toHaveValue(library.cards[0]!.id)
+  await expect(page.getByRole('combobox', { name: '筛选题目' })).toContainText('First problem')
   await expect(page.locator('.practice-history')).toHaveCount(13)
   await page.getByText('当时的题目', { exact: true }).first().click()
   await expect(page.locator('.leetcode-statement')).toContainText('原始题面。')
-  await page.locator('.attempt-history > summary').first().click()
+  await page.locator('.attempt-history-trigger').first().click()
   await expect(page.locator('.attempt-code code').first()).toContainText(
     '<script>stored text</script>',
   )
@@ -506,15 +557,17 @@ test('independent history filters, paginates, opens from cards, and stays readab
   await page.screenshot({ path: 'test-results/independent-history-mobile.png', fullPage: true })
   await page.screenshot({ path: 'test-results/independent-history-viewport-zh.png' })
   expect(await storedLibrary(page)).toEqual(before)
-  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await openPluginManager(page)
+  await selectPlugin(page, 'leetcode')
   await page.getByRole('switch', { name: '启用 LeetCode' }).click()
   await page.getByRole('button', { name: '练习历史', exact: true }).click()
   await expect(page.locator('.practice-history')).toHaveCount(20)
   await expect(page.locator('.leetcode-history')).toHaveCount(0)
-  await page.locator('.attempt-history > summary').first().click()
+  await page.locator('.attempt-history-trigger').first().click()
   await expect(page.locator('.attempt-code code').first()).toBeVisible()
   expect(remote.submissions()).toBe(0)
-  await page.getByLabel('界面语言').selectOption('en')
+  await setInterfaceLanguage(page, 'en')
+  await page.getByRole('button', { name: 'Practice history', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Practice history' })).toBeVisible()
   await expect(page.getByLabel('Judge result')).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -539,11 +592,11 @@ test('undoing a rating preserves submission history and reviewing old code revea
   expect(saved.reviews).toHaveLength(0)
   expect(saved.attempts).toHaveLength(1)
   expect(saved.practices).toMatchObject([{ value: { ratingUndoneAt: expect.any(String) } }])
-  await page.locator('.leetcode-history > summary').click()
+  await page.locator('.leetcode-history .practice-history-trigger').click()
   await expect(page.getByText('评分已撤销', { exact: true })).toBeVisible()
-  await page.locator('.attempt-history > summary').click()
+  await page.locator('.attempt-history-trigger').click()
   await expect(page.locator('.attempt-code code')).toHaveText('def solve(value): return value')
-  await page.setViewportSize({ width: 390, height: 844 })
+  await setResponsiveViewport(page, 390, 844)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: 'test-results/leetcode-history-mobile.png', fullPage: true })
   await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
@@ -562,7 +615,7 @@ test('practice-only sessions keep code without changing review progress', async 
   await page.getByRole('button', { name: '结束复习' }).click()
   await page.getByRole('button', { name: '全部卡片' }).click()
   const before = await storedLibrary(page)
-  await page.getByText('高级搜索、常用筛选与专项练习', { exact: true }).click()
+  await page.getByRole('button', { name: '专项练习', exact: true }).click()
   await page.getByRole('button', { name: '开始专项练习' }).click()
   await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
   await page.getByRole('button', { name: '提交到 LeetCode' }).click()
@@ -598,7 +651,7 @@ test('viewing past code on the history page marks a pending practice as having s
   )
   await page.getByRole('button', { name: '练习历史', exact: true }).click()
   await expect(page.locator('.practice-history')).toHaveCount(2)
-  await page.locator('.attempt-history > summary').last().click()
+  await page.locator('.attempt-history-trigger').last().click()
   await expect
     .poll(async () => {
       const stored = await storedLibrary(page)
@@ -630,7 +683,7 @@ test('failed history storage prevents submitting code and keeps the editor intac
   await expect(other.getByRole('dialog')).toHaveCount(0)
   await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
   await page.getByRole('button', { name: '提交到 LeetCode' }).click()
-  await expect(page.getByRole('alert')).toContainText('数据已在另一个标签页更新')
+  await expect(page.getByRole('alert')).toContainText('学习库内容已变化')
   expect(remote.submissions()).toBe(0)
   expect((await storedLibrary(page)).attempts).toHaveLength(0)
   await expect(page.getByLabel('代码', { exact: true })).toHaveValue(
@@ -649,14 +702,25 @@ test('pending official submissions recover from library records when the tempora
   await expect(page.locator('.leetcode-question > [role="alert"]')).toContainText(
     '无法连接 LeetCode',
   )
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve, reject) => {
-        const request = indexedDB.deleteDatabase('repeaty-leetcode-drafts')
-        request.onsuccess = () => resolve()
-        request.onerror = () => reject(request.error)
-      }),
-  )
+  await page.evaluate(async () => {
+    const invoke = (
+      window as unknown as {
+        __TAURI_INTERNALS__: {
+          invoke(command: string, args?: Record<string, unknown>): Promise<unknown>
+        }
+      }
+    ).__TAURI_INTERNALS__.invoke
+    const { active } = (await invoke('workspace_status')) as { active: { token: string } }
+    const { library } = (await invoke('workspace_read', {
+      token: active.token,
+      request: { type: 'load' },
+    })) as { library: { cards: { id: string }[] } }
+    for (const card of library.cards)
+      await invoke('workspace_write', {
+        token: active.token,
+        request: { type: 'value', namespace: 'plugin:leetcode', id: card.id, value: null },
+      })
+  })
   remote.allowChecks()
   await page.reload()
   await page.getByRole('button', { name: '开始复习', exact: true }).click()
@@ -687,14 +751,25 @@ test('revealing an answer remains recorded when the temporary draft is lost', as
           .answerSeen,
     )
     .toBe(true)
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve, reject) => {
-        const request = indexedDB.deleteDatabase('repeaty-leetcode-drafts')
-        request.onsuccess = () => resolve()
-        request.onerror = () => reject(request.error)
-      }),
-  )
+  await page.evaluate(async () => {
+    const invoke = (
+      window as unknown as {
+        __TAURI_INTERNALS__: {
+          invoke(command: string, args?: Record<string, unknown>): Promise<unknown>
+        }
+      }
+    ).__TAURI_INTERNALS__.invoke
+    const { active } = (await invoke('workspace_status')) as { active: { token: string } }
+    const { library } = (await invoke('workspace_read', {
+      token: active.token,
+      request: { type: 'load' },
+    })) as { library: { cards: { id: string }[] } }
+    for (const card of library.cards)
+      await invoke('workspace_write', {
+        token: active.token,
+        request: { type: 'value', namespace: 'plugin:leetcode', id: card.id, value: null },
+      })
+  })
   remote.allowChecks()
   await page.reload()
   await page.getByRole('button', { name: '开始复习', exact: true }).click()
@@ -704,28 +779,27 @@ test('revealing an answer remains recorded when the temporary draft is lost', as
   expect(remote.submissions()).toBe(1)
 })
 
-test('plugin switches persist across tabs without changing questions or progress', async ({
+test('plugin switches persist in the workspace without changing questions or progress', async ({
   page,
   context,
 }) => {
   await connect(context)
   await create(page)
   const before = await storedLibrary(page)
-  await page.getByRole('button', { name: '插件', exact: true }).click()
-  const other = await context.newPage()
-  await other.goto('./')
-  await other.getByRole('button', { name: '插件', exact: true }).click()
-  await expect(other.getByRole('switch', { name: '启用 LeetCode' })).toBeChecked()
+  await openPluginManager(page)
+  await selectPlugin(page, 'leetcode')
+  await expect(page.getByRole('switch', { name: '启用 LeetCode' })).toBeChecked()
   await page.getByRole('switch', { name: '启用 LeetCode' }).click()
-  await expect(other.getByRole('switch', { name: '启用 LeetCode' })).not.toBeChecked()
   await page.reload()
-  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await openPluginManager(page)
+  await selectPlugin(page, 'leetcode')
   await expect(page.getByRole('switch', { name: '启用 LeetCode' })).not.toBeChecked()
   await page.getByRole('button', { name: '全部卡片' }).click()
   await page.getByRole('button', { name: '复习', exact: true }).click()
   await expect(page.getByLabel('代码', { exact: true })).toHaveCount(0)
   expect(await storedLibrary(page)).toEqual(before)
-  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await openPluginManager(page)
+  await selectPlugin(page, 'leetcode')
   await page.getByRole('switch', { name: '启用 LeetCode' }).click()
   await page.getByRole('button', { name: '全部卡片' }).click()
   await page.getByRole('button', { name: '复习', exact: true }).click()
@@ -753,17 +827,31 @@ test('plugin settings distinguish website login from per-site judge credentials 
     route.fulfill({ contentType: 'text/html', body: '<title>LeetCode website</title>' }),
   )
   await page.goto('./')
-  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await openPluginManager(page)
+  await selectPlugin(page, 'leetcode')
+  const details = page.locator('.plugin-settings[data-plugin-id="leetcode"]')
+  await expect(details.locator('.plugin-readme-trigger')).toHaveAttribute('aria-expanded', 'true')
+  await expect(details.locator('.plugin-readme')).toContainText(
+    '打开力扣网站并登录，不会自动连接 Repeaty',
+  )
+  await expect(details.locator('.plugin-readme')).toContainText('LEETCODE_SESSION')
+  await expect(details.locator('.plugin-readme')).toContainText('csrftoken')
+  await openPluginSettings(page, 'leetcode')
   const cn = page.getByRole('region', { name: '中国站 · leetcode.cn', exact: true })
   const com = page.getByRole('region', { name: '国际站 · leetcode.com', exact: true })
   await expect(cn.getByRole('status')).toContainText('未配置登录信息')
   await expect(com.getByRole('status')).toContainText('未配置登录信息')
-  await expect(cn).toContainText('打开力扣网站并登录，不会自动连接 Repeaty')
+  await expect(cn.locator('details')).toHaveCount(0)
   const popup = page.waitForEvent('popup')
   await cn.getByRole('link', { name: '打开力扣网站', exact: false }).click()
-  await (await popup).close()
+  const website = await popup
+  await website.waitForLoadState('load')
+  await expect(website).toHaveURL('https://leetcode.cn/')
+  await expect(website).toHaveTitle('LeetCode website')
+  // Return to Repeaty after the popup has committed. The context owns cleanup;
+  // closing a newly attached Chromium target here can stall until test teardown.
+  await page.bringToFront()
   await expect(cn.getByRole('status')).toContainText('未配置登录信息')
-  await cn.getByText('在哪里找到这两个值？', { exact: true }).click()
   await expect(cn.getByLabel('LEETCODE_SESSION', { exact: true })).toBeVisible()
   await expect(cn.getByLabel('csrftoken', { exact: true })).toBeVisible()
   configured = ['leetcode.cn']
@@ -778,7 +866,8 @@ test('plugin settings distinguish website login from per-site judge credentials 
   fail = false
   await cn.getByRole('button', { name: '刷新状态' }).click()
   await expect(cn.getByRole('status')).toContainText('登录有效')
-  await page.getByLabel('界面语言').selectOption('en')
+  await setInterfaceLanguage(page, 'en')
+  await openPluginSettings(page, 'leetcode')
   await expect(cn.getByRole('status')).toHaveCount(0)
   await expect(
     page.getByRole('region', { name: 'China · leetcode.cn', exact: true }).getByRole('status'),
@@ -787,9 +876,9 @@ test('plugin settings distinguish website login from per-site judge credentials 
 
 test('credentials can be saved, replaced and cleared per site without exposing stored values', async ({
   page,
-}) => {
+}, info) => {
   await page.goto('./')
-  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await openPluginSettings(page, 'leetcode')
   const cn = page.getByRole('region', { name: '中国站 · leetcode.cn', exact: true })
   const com = page.getByRole('region', { name: '国际站 · leetcode.com', exact: true })
   await expect(cn.getByRole('status')).toContainText('未配置登录信息')
@@ -814,7 +903,7 @@ test('credentials can be saved, replaced and cleared per site without exposing s
   await expect(com.getByRole('status')).toContainText('登录有效')
   await expect(com.getByText('当前账号：tester-com', { exact: true })).toBeVisible()
   await page.reload()
-  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await openPluginSettings(page, 'leetcode')
   await expect(cn.getByRole('status')).toContainText('登录有效')
   await expect(com.getByRole('status')).toContainText('登录有效')
   await expect(cn.getByLabel('LEETCODE_SESSION', { exact: true })).toHaveValue('')
@@ -835,12 +924,34 @@ test('credentials can be saved, replaced and cleared per site without exposing s
   await cn.getByRole('button', { name: '确认清除', exact: true }).click()
   await expect(cn.getByRole('status')).toContainText('未配置登录信息')
   await expect(com.getByRole('status')).toContainText('登录有效')
-  await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByLabel('界面语言').selectOption('en')
+  await setResponsiveViewport(page, 390, 844)
+  await setInterfaceLanguage(page, 'en')
+  await openPluginSettings(page, 'leetcode')
   const english = page.getByRole('region', { name: 'China · leetcode.cn', exact: true })
   await expect(english.getByRole('button', { name: 'Save credentials', exact: true })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: 'test-results/credentials-mobile-en.png', fullPage: true })
+  const international = page.getByRole('region', {
+    name: 'International · leetcode.com',
+    exact: true,
+  })
+  await international.getByRole('button', { name: 'Clear credentials', exact: true }).click()
+  const confirmation = international.locator('.credential-confirmation')
+  await expect(confirmation).toBeVisible()
+  const text = (await confirmation.locator('[data-slot="description"]').boundingBox())!
+  const actions = (await confirmation.locator('[data-slot="actions"]').boundingBox())!
+  expect(actions.y).toBeGreaterThanOrEqual(text.y + text.height)
+  expect(await confirmation.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+    true,
+  )
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await confirmation.screenshot({
+    path: info.outputPath('credentials-confirmation-390-en.png'),
+    style: '.desktop-titlebar { visibility: hidden !important; }',
+  })
+  await international.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(confirmation).toHaveCount(0)
+  await expect(international.getByRole('status')).toContainText('Signed in')
 })
 
 test('credential errors preserve drafts and changing the editor site clears sensitive inputs', async ({
@@ -851,7 +962,7 @@ test('credential errors preserve drafts and changing the editor site clears sens
   await page.getByLabel('卡组名称').fill('Credentials test')
   await page.getByRole('button', { name: '保存卡组', exact: true }).click()
   await page.getByRole('button', { name: '添加卡片', exact: true }).first().click()
-  await page.getByLabel('笔记类型').selectOption('plugin')
+  await selectUiValue(page, page.getByLabel('笔记类型'), 'plugin')
   const cn = page.getByRole('region', { name: '中国站 · leetcode.cn', exact: true })
   await cn.getByLabel('LEETCODE_SESSION', { exact: true }).fill('invalid;value')
   await cn.getByLabel('csrftoken', { exact: true }).fill('test-csrf')
@@ -871,7 +982,7 @@ test('credential errors preserve drafts and changing the editor site clears sens
   await expect(cn.getByRole('status')).toContainText('登录有效')
   await expect(page.getByRole('dialog')).toBeVisible()
   await cn.getByLabel('LEETCODE_SESSION', { exact: true }).fill('unsaved-private-value')
-  await page.getByLabel('LeetCode 站点').selectOption('leetcode.com')
+  await selectUiValue(page, page.getByLabel('LeetCode 站点'), 'leetcode.com')
   const com = page.getByRole('region', { name: '国际站 · leetcode.com', exact: true })
   await expect(com.getByRole('status')).toContainText('未配置登录信息')
   await expect(com.getByLabel('LEETCODE_SESSION', { exact: true })).toHaveValue('')
@@ -894,7 +1005,7 @@ test('mixed study judges LeetCode locally and preserves attempts when a reading-
   await page.getByLabel('代码', { exact: true }).fill('def solve(value):\n    return value')
   await page.getByRole('button', { name: '提交到 LeetCode' }).click()
   await expect(page.locator('.judge-result')).toContainText('通过')
-  await page.getByLabel('复习评分').selectOption('automatic')
+  await selectUiValue(page, page.getByLabel('复习评分'), 'automatic')
   await page.getByRole('button', { name: '结束作答并查看答案' }).click()
   await page.getByRole('button', { name: '保存评分：良好' }).click()
   await expect(

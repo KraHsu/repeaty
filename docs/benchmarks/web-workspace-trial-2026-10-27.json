@@ -1,0 +1,12 @@
+{
+  "date": "2026-10-27",
+  "commit": "4712061",
+  "command": "VITE_BASE_PATH=/repeaty/ npx playwright test --workers=2 --output=/tmp/repeaty-web-static-results",
+  "test": "a thousand-card workspace stays usable through consecutive ratings",
+  "method": "Playwright click on Good until the next question text changes; no CPU throttling; full static and desktop suites running concurrently",
+  "cards": 1002,
+  "ordinaryCards": 1000,
+  "pluginCards": 2,
+  "ratingsMs": [88, 84, 78],
+  "maxFrameGapMs": 42
+}

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { UiSelect, UiButton, UiInput } from './ui'
 import { computed, ref } from 'vue'
 import { t, locale } from '../i18n'
 import type { SourceBatchAction, SourcePriority } from '../core/source-data'
@@ -46,36 +47,46 @@ function submit() {
         {{ t('以及另外 {count} 篇。', { count: titles.length - 5 }) }}
       </p>
       <label for="source-batch-action">{{ t('批量操作') }}</label>
-      <select id="source-batch-action" v-model="operation" :disabled="busy">
-        <option value="priority">{{ t('设置优先级') }}</option>
-        <option value="defer">{{ t('稍后阅读') }}</option>
-        <option value="archive">{{ t('归档材料') }}</option>
-        <option value="restore">{{ t('加入待阅读') }}</option>
-      </select>
+      <UiSelect
+        :items="[
+          { label: t('设置优先级'), value: 'priority' },
+          { label: t('稍后阅读'), value: 'defer' },
+          { label: t('归档材料'), value: 'archive' },
+          { label: t('加入待阅读'), value: 'restore' },
+        ]"
+        id="source-batch-action"
+        v-model="operation"
+        :disabled="busy"
+      ></UiSelect>
       <template v-if="operation === 'priority'">
         <label for="source-batch-priority">{{ t('阅读优先级') }}</label>
-        <select id="source-batch-priority" v-model="priority" :disabled="busy">
-          <option value="high">{{ t('高') }}</option>
-          <option value="normal">{{ t('普通') }}</option>
-          <option value="low">{{ t('低') }}</option>
-        </select>
+        <UiSelect
+          :items="[
+            { label: t('高'), value: 'high' },
+            { label: t('普通'), value: 'normal' },
+            { label: t('低'), value: 'low' },
+          ]"
+          id="source-batch-priority"
+          v-model="priority"
+          :disabled="busy"
+        ></UiSelect>
       </template>
       <template v-if="operation === 'defer'">
         <div class="source-batch-dates" :aria-label="t('快捷安排')">
-          <button
+          <UiButton
+            variant="secondary"
             v-for="option in options"
             :key="option.days"
             type="button"
-            class="button secondary"
             :disabled="busy"
             :aria-pressed="date === nextReadingDay(now, option.days)"
             @click="date = nextReadingDay(now, option.days)"
           >
             {{ t(option.label) }}
-          </button>
+          </UiButton>
         </div>
         <label for="source-batch-date">{{ t('下次阅读日期') }}</label>
-        <input
+        <UiInput
           id="source-batch-date"
           v-model="date"
           type="date"
@@ -88,10 +99,12 @@ function submit() {
       </template>
       <p class="form-note">{{ t('整批保存后可撤销。卡片和复习进度保持不变。') }}</p>
       <div class="form-actions">
-        <button type="button" class="button secondary" :disabled="busy" @click="emit('close')">
+        <UiButton variant="secondary" type="button" :disabled="busy" @click="emit('close')">
           {{ t('取消') }}
-        </button>
-        <button class="button primary" :disabled="busy">{{ t('确认批量安排') }}</button>
+        </UiButton>
+        <UiButton variant="primary" type="submit" :disabled="busy">
+          {{ t('确认批量安排') }}
+        </UiButton>
       </div>
     </form>
   </AppModal>
@@ -108,34 +121,18 @@ function submit() {
   margin: 0;
 }
 .source-batch-summary {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .source-batch-titles {
   margin: 0;
   padding-left: 1.25rem;
   overflow-wrap: anywhere;
-  line-height: 1.7;
-}
-.source-batch-form select,
-.source-batch-form input {
-  width: 100%;
-  min-width: 0;
-  min-height: 44px;
-  padding: 0.65rem 0.75rem;
-  border: 1px solid #d4decd;
-  border-radius: 8px;
-  background: #fafbf8;
-  color: inherit;
-  font: inherit;
+  line-height: var(--line-height-ui);
 }
 .source-batch-dates {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-}
-.source-batch-dates [aria-pressed='true'] {
-  border-color: #67886d;
-  background: #e7eee3;
 }
 @media (max-width: 720px) {
   .source-batch-form {

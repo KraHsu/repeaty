@@ -28,7 +28,7 @@ const bundle = await build({
   plugins: values.history || values.review ? [vue()] : [],
   resolve: {
     alias: {
-      '@repeaty-plugins': resolve('repeaty.plugins.static.ts'),
+      '@repeaty-plugin-host': resolve('src/plugins/platform-browser.ts'),
       '@repeaty-platform': resolve('src/platform/static.ts'),
     },
   },

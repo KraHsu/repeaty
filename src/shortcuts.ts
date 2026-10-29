@@ -20,7 +20,16 @@ export function shortcutBlocked(event: KeyboardEvent) {
     event.repeat ||
     event.isComposing ||
     event.keyCode === 229 ||
-    Boolean(document.querySelector('dialog[open]')) ||
+    Boolean(document.querySelector('dialog[open], [data-app-modal-content]')) ||
+    Boolean(
+      event
+        .composedPath()
+        .some(
+          (target) =>
+            target instanceof HTMLElement &&
+            target.matches('[role="combobox"], [role="listbox"], [role="menu"], [role="slider"]'),
+        ),
+    ) ||
     isTextEditing(event)
   )
 }

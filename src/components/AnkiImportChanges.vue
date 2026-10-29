@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { UiSelect, UiButton, UiCheckbox } from './ui'
 import { computed, ref, watch } from 'vue'
 import { t, type MessageKey } from '../i18n'
 import type { AnkiImportPlan, AnkiChange, AnkiDifference } from '../core/anki/changes'
@@ -111,18 +112,24 @@ function variant(key: string) {
   <div class="anki-changes">
     <div class="anki-change-tools">
       <label for="anki-change-filter">{{ t('筛选笔记') }}</label>
-      <select id="anki-change-filter" v-model="filter" :disabled="disabled">
-        <option value="all">{{ t('所有笔记') }}</option>
-        <option v-for="(label, status) in statusLabels" :key="status" :value="status">
-          {{ t(label) }}
-        </option>
-      </select>
-      <button type="button" class="text-button" :disabled="disabled" @click="chooseChanged">
+      <UiSelect
+        :items="[
+          { label: t('所有笔记'), value: 'all' },
+          ...Object.entries(statusLabels).map(([status, label]) => ({
+            label: t(label),
+            value: status,
+          })),
+        ]"
+        id="anki-change-filter"
+        v-model="filter"
+        :disabled="disabled"
+      ></UiSelect>
+      <UiButton variant="ghost" type="button" :disabled="disabled" @click="chooseChanged">
         {{ t('选择所有内容不同的笔记') }}
-      </button>
-      <button type="button" class="text-button" :disabled="disabled" @click="keepExisting">
+      </UiButton>
+      <UiButton variant="ghost" type="button" :disabled="disabled" @click="keepExisting">
         {{ t('保留所有已有笔记') }}
-      </button>
+      </UiButton>
     </div>
     <p v-if="!filtered.length" class="form-note">{{ t('没有符合筛选条件的笔记。') }}</p>
     <ol class="anki-change-list">
@@ -137,11 +144,10 @@ function variant(key: string) {
             t(statusLabels[change.status])
           }}</span>
           <label v-if="change.status === 'new' || change.status === 'changed'" class="check-line">
-            <input
-              type="checkbox"
-              :checked="selectedSet.has(change.incoming.id)"
+            <UiCheckbox
+              :model-value="selectedSet.has(change.incoming.id)"
               :disabled="disabled"
-              @change="choose(change.incoming.id, ($event.target as HTMLInputElement).checked)"
+              @update:model-value="choose(change.incoming.id, $event === true)"
             />
             {{ t(change.status === 'new' ? '添加此笔记' : '采用文件内容') }}
           </label>
@@ -173,14 +179,15 @@ function variant(key: string) {
         <p v-if="change.status === 'unavailable'" class="import-warning">
           {{ t('无法读取已有附件，此笔记不能更新。请检查附件后重新比较。') }}
         </p>
-        <button
+        <UiButton
+          variant="ghost"
           type="button"
-          class="text-button anki-detail-toggle"
+          class="anki-detail-toggle"
           :aria-expanded="open === change.incoming.id"
           @click="open = open === change.incoming.id ? '' : change.incoming.id"
         >
           {{ t(open === change.incoming.id ? '收起比较' : '查看内容比较') }}
-        </button>
+        </UiButton>
         <div v-if="open === change.incoming.id" class="anki-compare">
           <section v-for="side in sides(change)" :key="side.key" class="anki-compare-side">
             <h4>{{ side.label }}</h4>
@@ -214,13 +221,13 @@ function variant(key: string) {
       </li>
     </ol>
     <nav v-if="pages > 1" class="anki-change-pages" :aria-label="t('笔记比较分页')">
-      <button type="button" class="button secondary" :disabled="page === 0" @click="page--">
+      <UiButton variant="secondary" type="button" :disabled="page === 0" @click="page--">
         {{ t('上一页') }}
-      </button>
+      </UiButton>
       <span>{{ t('第 {page} / {pages} 页', { page: page + 1, pages }) }}</span>
-      <button type="button" class="button secondary" :disabled="page + 1 >= pages" @click="page++">
+      <UiButton variant="secondary" type="button" :disabled="page + 1 >= pages" @click="page++">
         {{ t('下一页') }}
-      </button>
+      </UiButton>
     </nav>
   </div>
 </template>
@@ -267,18 +274,18 @@ function variant(key: string) {
   justify-content: space-between;
 }
 .anki-change-status {
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: var(--font-size-meta);
+  font-weight: var(--font-weight-semibold);
   color: var(--muted);
 }
 .anki-change-status.changed {
-  color: #836327;
+  color: var(--ui-warning);
 }
 .anki-change-status.new {
-  color: #35694e;
+  color: var(--ui-success);
 }
 .anki-change-status.unavailable {
-  color: #99513b;
+  color: var(--ui-error);
 }
 .anki-change-title {
   white-space: pre-wrap;
@@ -296,14 +303,14 @@ function variant(key: string) {
   max-height: 38rem;
   overflow: auto;
   padding: 1rem;
-  background: #f6f8f4;
+  background: var(--ui-bg-muted);
   border-radius: 8px;
 }
 .anki-compare-side h4 {
   margin: 0 0 0.8rem;
 }
 .anki-compare-side :deep(.card-content) {
-  font-size: 1rem;
+  font-size: var(--font-size-body);
 }
 .anki-compare-side :deep(audio) {
   max-width: 100%;
@@ -312,7 +319,7 @@ function variant(key: string) {
   margin-block: 1rem;
 }
 .anki-face-label {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   margin-top: 1rem !important;
 }
 .anki-change-pages {

@@ -1,29 +1,29 @@
 # 开发文档
 
-[返回首页](../README.md) · [使用指南](USAGE.md) · [后端部署](SELF_HOSTING.md) · [插件接口](PLUGINS.md)
+[返回首页](../README.md) · [使用指南](USAGE.md) · [桌面客户端](DESKTOP.md) · [插件接口](PLUGINS.md)
 
 ## 开发与验证
 
-需要 Node.js 24.15+（24.x）。运行后端及对应测试还需 Rust，CI 固定使用 1.97.1。
+需要 Node.js 24.15+（24.x）、Rust 与 Tauri 系统依赖，CI 固定使用 Rust 1.97.1。桌面是当前主要开发入口。
 
 ```bash
 npm ci
-npm run dev
+npm run desktop:dev
 ```
 
-默认开发地址为 `http://127.0.0.1:5173`。首次使用自动添加入门卡组，删除后不会自动补回。
+首次启动选择空目录创建学习库，入门卡组会自动添加；删除后不会自动补回。网页体验可用 `npm run dev` 单独运行。
 
 ```bash
 npm run format:check # 格式检查；npm run format 自动整理
 npm run typecheck    # Vue / TypeScript 类型检查
 npm test             # 核心逻辑、离线缓存、语言偏好与 DOM 交互测试
-npm run build        # 纯前端构建到 dist/，检查不包含后端 / LeetCode 模块
+npm run build        # 纯前端构建到 dist/，复制已构建插件包并检查宿主模块隔离
 npm run build:server # 后端版网页到 dist-server/，不生成离线缓存
 npm run preview      # 本地预览生产构建
 npm run test:e2e     # 构建后执行 Playwright，使用生产站点而非开发服务器
 npm run check        # 格式检查 + 单元测试 + 静态构建 + 浏览器测试
 npm run check:server # Schema 一致性、插件测试、Rust fmt/clippy/test、后端浏览器测试
-npm run schema:server # 修改实体模型后重新生成 Rust 使用的 JSON Schema
+npm run schema:workspace # 修改实体模型后重新生成 Rust 使用的 JSON Schema
 ```
 
 首次运行浏览器测试先执行 `npx playwright install chromium`。静态版测试也可设置 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome` 使用已有 Chrome。浏览器测试启动 `127.0.0.1:4175`，覆盖制卡、复习、撤销、额度、批量管理、媒体恢复、快捷制卡、常用筛选、两种专项练习、自动暂缓、双语切换与偏好持久化、移动端布局和断网重载。另有合计 128 MiB 的原始音频与图片、接近 10000 字长文本的归档恢复／离线复习／再次导出测试，对所有媒体比较 SHA-256。
@@ -36,7 +36,24 @@ VITE_BASE_PATH=/repeaty/ npm run check
 
 CI 使用两个 Chromium worker，禁止提交 `test.only`，失败时保留浏览器 trace 和 HTML 报告。测试在独立浏览器上下文中运行，不读写日常浏览器的学习库。
 
+### 浏览器工作目录
+
+`src/browser/` 提供无后端的目录读取与试用。`workspace-files.ts` 只暴露读接口；`workspace-reader.ts` 在 Worker 中通过已有 `sql.js` WASM 读取 SQLite 副本，校验身份、引用和接受版本。`repository.ts` 适配共享学习接口，修改仅保存在页面内存中；原有 IndexedDB 学习库独立保留。
+
+浏览器回归使用 Rust 运行时创建并关闭真实目录，所以执行 `test:e2e` 需要 Rust；基本单元测试和静态构建无需编译原生程序。目录选择回退、真实目录句柄传入 Worker、取消、失败保护、评分撤销、媒体、旧材料、代码、完整导出、千张卡和离线打开位于 `tests/browser-workspace.spec.ts`，Rust / WASM 联测位于 `tests/workspace-native/browser.test.ts`。
+
+```bash
+npm test -- src/browser
+npm run test:workspace:native
+VITE_BASE_PATH=/repeaty/ npm run build
+VITE_BASE_PATH=/repeaty/ npx playwright test --config config/playwright.config.ts tests/browser-workspace.spec.ts --workers=2
+```
+
+Playwright 的静态、桌面与服务器套件默认分别输出到 `test-results/web/`、`test-results/desktop/` 和 `test-results/server/`。每次运行会清理所属输出目录；同一套件并行或分批保留结果时，使用不同的 `--output=test-results/<本次运行名称>`。本地日志和独立截图放在 `test-results/local-logs/`、`test-results/qa/` 等套件目录之外。千张卡的浏览器回归会在该测试输出目录保存 `rating-responsiveness.json`，记录操作耗时和帧间隔，测量口径见[性能记录](PERFORMANCE.md#浏览器工作目录试用)。
+
 ## 界面文案
+
+设置、卡片编辑、复习、学习材料、弹窗及插件交互使用[共用控件与排版规范](DESIGN_SYSTEM.md)，从本体组件或公开 SDK 引入同一组 Nuxt UI 控件。普通设置用 `SettingField`；复杂表单用 `UiInput`、`UiTextarea`、`UiSelect` 等公开组件，通过 `inputRef` / `textareaRef` 保留原生选区与代码编辑行为。旧样式指令仅保留 SDK 导出兼容，不用于新界面。业务保存、评分和关闭规则继续由原组件管理。组件配置位于 `config/ui.ts`，主题和字号映射位于 `src/styles/nuxt-ui.css`，应用排版变量位于 `tokens.css`；不要在页面内另建开关、控件边线或零散字号。新增 UI 依赖的版本与许可见[第三方归属](third-party/nuxt-ui.md)。
 
 标题使用功能名或当前状态，按钮写明操作。提示说明操作结果、限制和下一步，不添加励志口号、装饰性英文或无关说明。中英文一起维护，修改时保留计数参数与用户内容；已存储的筛选状态和快照原因不能随文案改名。
 
@@ -58,7 +75,7 @@ CI 使用两个 Chromium worker，禁止提交 `test.only`，失败时保留浏�
 
 评分热路径按变更记录保存，验证不变的历史前缀后只校验追加评分；其他导入、删除和历史修改继续完整校验。`createCardViewReader` 仅供使用不可变快照的界面复用未变化的卡片，普通 `cardViews` 仍是无缓存的纯函数。每日额度不再为统计生成整库题面，也不在每条历史上重复计算日期。评分和撤销等到事务成功才切题，快照列表在后台更新；响应检查库作用域和请求顺序。
 
-「设置」页独立于学习库加载状态，上游断连或未登录时仍可修改桌面 endpoint。界面偏好和插件开关使用当前来源的本地存储，不进入学习数据或备份。通知按级别控制顶部弹出 / 页内显示，信息自动关闭，警告和错误保留关闭按钮；开始新操作时清除上一条信息提示，避免把旧成功提示误认为本次已保存。
+「设置」页独立于学习库加载状态，桌面不再提供上游 endpoint。桌面的界面偏好和插件开关随工作目录保存，网页偏好保存在当前浏览器；凭据不进入学习目录。通知按级别控制顶部弹出 / 页内显示，信息自动关闭，警告和错误保留关闭按钮；开始新操作时清除上一条信息提示，避免把旧成功提示误认为本次已保存。切换学习库后，旧备份和操作的迟到响应不能改写新库的状态提示。
 
 Markdown 使用 [highlight.js 的显式语言接口](https://highlightjs.readthedocs.io/en/latest/api.html)，未识别语言和超过 100,000 字符的代码块保持转义文本，不做自动语言检测。中文闭合加粗通过行内 token 修正，只在渲染结果中补空格，不更改原文、代码或阅读定位。AI 制卡 skill 位于 `public/skills/repeaty-cards`，通过现有 CSV 导入；两个文件加入静态离线缓存。
 
@@ -66,7 +83,7 @@ Markdown 使用 [highlight.js 的显式语言接口](https://highlightjs.readthe
 
 带后端版使用 SQLite：九个实体表按记录保存 JSON 字段，附件放入独立 BLOB 表，引用使用外键与索引。请求只发送变更记录；服务在一个事务中检查修订号、记录格式和引用，写入增量历史与新记录。SQLite 数据库版本使用 `PRAGMA user_version`，当前为 10，学习数据版本为 13，后端 API 为 v11。实体 JSON Schema 从前端 Zod 模型生成并由 CI 检查一致性，Rust 另行检查跨记录引用和附件大小。它不是把整个学习库保存成一份 JSON 文件。
 
-媒体先上传，之后与学习记录的引用一起提交；同一 ID 的内容不可改写，防止破坏旧快照。上传失败不提交学习记录，未引用上传保留一天再清理。客户端失去写入响应时不会自动重试覆盖，修订冲突要求刷新。支持 `historyVersion: 1` 的 API v11 服务提供 `/library/summary` 与 `/library/attempts`，代码单独按编号或批次读取；请求绑定账户与修订号。没有摘要能力的 API v11 服务读取完整库；API v10 及更早服务需先升级。搜索仍使用内存中的题面和摘要；单次结构化提交上限 64 MiB，媒体独立上传。详情见[后端部署](SELF_HOSTING.md)。
+媒体先上传，之后与学习记录的引用一起提交；同一 ID 的内容不可改写，防止破坏旧快照。上传失败不提交学习记录，未引用上传保留一天再清理。客户端失去写入响应时不会自动重试覆盖，修订冲突要求刷新。支持 `historyVersion: 1` 的 API v11 服务提供 `/library/summary` 与 `/library/attempts`，代码单独按编号或批次读取；请求绑定账户与修订号。没有摘要能力的 API v11 服务读取完整库；API v10 及更早服务需先升级。搜索仍使用内存中的题面和摘要；单次结构化提交上限 64 MiB，媒体独立上传。详情见[桌面客户端](DESKTOP.md)。
 
 `.repeaty` 导出按修订号分批读取完整提交，批次之间检查版本与记录顺序，库发生变化时中止导出。JSON 导出与快照恢复按需载入完整记录。当前学习数据为 v13、`.repeaty` 容器为 v10，摘要不属于备份格式，不会替代已保存的代码。
 
@@ -92,12 +109,9 @@ VITE_BASE_PATH=/repeaty/ npm run preview
 
 ## CI 与 GitHub Pages
 
-[CI 工作流](../.github/workflows/ci.yml)在提交到 `main`、向 `main` 提交 PR，以及手动运行时执行：
+[单元工作流](../.github/workflows/unit.yml)在功能分支与 PR 运行 `npm test` 和发布脚本单元测试，不构建安装包或运行浏览器。完整 [CI](../.github/workflows/ci.yml) 与 [Desktop](../.github/workflows/desktop.yml) 只在 main 运行，手动触发也受相同分支约束。
 
-1. 按 `.nvmrc` 安装 Node.js，使用 `npm ci` 安装锁定依赖，另行安装 Playwright Chromium 及系统依赖。
-2. 运行格式检查、单元 / DOM 测试、类型检查、纯前端生产构建和浏览器测试，使用 `/repeaty/` 子路径。
-3. 安装 Rust 1.97.1，检查生成 Schema、插件开关、Rust 格式、Clippy 与测试，再构建后端版、启动临时 SQLite 服务执行浏览器测试。后端测试使用根路径和独立临时数据库，覆盖账户隔离、登录会话、写入冲突、128 MiB 媒体 / 长文本与静态版备份互通。
-4. 仅在 `main` 的检查通过后上传已经测试的 `dist/`，通过 `github-pages` 环境部署到 [GitHub Pages](https://krahsu.github.io/repeaty/)。`dist-server/` 与 Rust 二进制不上传 Pages；PR 只检查，不部署。
+main 检查网页构建与回归、原生目录事务和跨语言测试，并构建三平台安装包。桌面浏览器测试连接真实 Rust 目录存储；Linux 原生测试另外使用真实 WebKit、IPC 与系统选择器，产物和截图按实际运行保存。账户服务不再是桌面构建依赖。
 
 工作流使用固定提交版本的官方 GitHub Actions。检查任务仅授予仓库读取权限；部署任务单独授予 `pages: write` 和 `id-token: write`，不需要配置个人访问令牌。失败报告保留 7 天。
 
@@ -105,7 +119,7 @@ VITE_BASE_PATH=/repeaty/ npm run preview
 
 分支保护配置在 GitHub 的 `Settings → Branches`，`main` 的规则为：
 
-- 必须通过 PR 合并，`Quality checks` 必须通过，且分支需与最新 `main` 保持同步。
+- 必须通过 PR 合并，`Unit tests` 必须通过，且分支需与最新 `main` 保持同步。
 - 所有审阅对话必须解决；禁止强制推送和删除分支，管理员也遵守这些规则。
 - 额外批准人数为 0，个人维护者可以在检查通过后合并自己的 PR。
 
@@ -115,7 +129,9 @@ Fork 后需在自己的仓库启用 Pages 的 GitHub Actions 发布源，并单�
 
 ## 技术边界与结构
 
-纯前端版独立运行于浏览器；带后端版使用 Rust + Axum + SQLite，由同一服务托管网页与 API。带后端版提供基本账户；范围不包含订阅、支付、商业云同步或团队协作。
+桌面直接使用工作目录，是当前主要产品入口；在线版独立运行于浏览器。既有服务端适配器使用 Rust + Axum + SQLite，保留基本账户，但桌面不再连接上游服务。本轮不包含订阅、支付、商业云同步或团队协作。
+
+根组件只组合视图，由 `src/app/createApplication.ts` 连接控制器。共享学习库、导航、通知与在线试用状态分别由 Pinia store 管理；应用服务拆到 `src/application/`，不依赖 Vue 或 Pinia。VueUse 仅用于重复的界面定时器、事件和通知尺寸观察。状态归属、异步隔离与验证入口见[前端结构](FRONTEND_ARCHITECTURE.md)。
 
 Anki `.apkg` 在同源 Worker 中通过 sql.js 读取，HTML 用 parse5 作为纯数据转换，单独打包的 SQLite Wasm 随应用离线缓存。新版压缩使用有大小检查的 fzstd 解码。Anki 的 `unicase` 排序规则仅在临时内存副本的模型表定义中替换为 BINARY，查询只按数值身份与序号读取，不按名称比较；原包不改写。解析不访问学习库；随后按 GUID 比较当前库，附件逐个计算 SHA-256 并复用相同文件的已有引用，比较结果绑定工作空间与修订。确认后批量更新笔记，按变体保留原卡片，只在明确确认时移除变体及关联历史；沿用现有存储事务和操作前快照，GUID 编码为稳定笔记 ID，无需改变学习数据、SQLite 或备份版本。[格式、边界与实际 Anki 样例](ANKI.md)。
 
@@ -151,7 +167,17 @@ Anki `.apkg` 在同源 Worker 中通过 sql.js 读取，HTML 用 parse5 作为�
 
 Anki 集成只规划导入，不计划提供 Repeaty → Anki 导出。尚未实现 Anki 进度迁移、自定义字段 / HTML 模板、所见即所得富文本编辑器、图片遮挡、嵌套挖空、FSRS 参数训练。
 
+仓库根目录也是 Vite 的前端项目根，`index.html` 保留为页面入口；Rust 服务与桌面宿主分别在自己的子目录中。Vite、Playwright 和原生联测配置集中在 `config/`。插件源码是 `plugins/` 中的独立项目，公开 SDK 与构建命令位于 `packages/plugin-api/`，宿主构建只复制 `plugins/packages/` 中固定的预构建包。npm 脚本显式指定配置路径；直接调用工具时也需传入对应的 `--config`。`tsconfig.json` 和编辑、格式工具配置保留在根目录，供工具自动发现。
+
 ```text
+index.html          # Vite 页面入口
+config/             # Vite、Playwright 与原生联测配置
+packages/plugin-api/ # 公开 SDK 类型与独立 repeaty-plugin 构建命令
+plugins/
+  review-history/   # 独立答题历史插件项目
+  leetcode/         # 独立 LeetCode 界面与协议实现
+  typed-answer/     # 独立输入答案示例项目
+  packages/         # 固定的预构建 .repeaty-plugin 分发包
 src/core/
   model.ts           # v13 笔记 / 卡片 / 媒体 / 练习模型与卡片生成
   practice-data.ts   # 练习、代码提交与结果 Schema
@@ -175,17 +201,20 @@ src/core/
   archive.ts         # 流式 ZIP / NDJSON 备份与原始媒体
   backups.ts         # 旧版 JSON 备份兼容
   media.ts           # 附件校验
-src/plugins/        # 题目 / 答案接口、应用插件开关、LeetCode 题型
+src/plugins/        # 外部包校验、运行时、SDK 桥与核心卡片适配
 src/backend/        # HTTP 客户端、SQLite 服务的增量存储适配
-src/platform/       # 构建时选择 IndexedDB 或后端适配器
+src/platform/       # 构建时选择桌面、浏览器或既有服务端适配器
+src/browser/        # 只读目录、SQLite WASM Worker 与页面内试用副本
 src/desktop/        # 原生连接、MCP 桥接、持久草稿与确认界面
-repeaty.plugins.*.ts # 静态 / 后端版部署插件清单
-examples/plugins/   # 可安装的纯前端插件示例
 server/             # Rust 账户服务、每账户 SQLite、Schema 与测试
-src-tauri/          # Tauri 桌面入口、上游客户端与本地插件接口
-crates/leetcode-local/ # 本机 LeetCode 请求和凭据存储
+src-tauri/          # Tauri 桌面入口、工作目录 IPC、MCP 与通用插件能力
+crates/workspace-store/ # Markdown、SQLite、文件检测与事务存储
 src/i18n/           # 双语词典、语言偏好、格式化与 DOM 回归测试
-src/composables/     # 工作空间状态与离线更新状态
+src/App.vue         # 页面与弹窗组合入口
+src/app/            # 应用组装、类型上下文、视图与交互控制器
+src/application/    # 框架无关的学习库服务、命令与作用域检查
+src/stores/         # 按应用实例隔离的 Pinia 共享状态
+src/composables/     # 学习库 ref 接口、阅读进度与离线更新状态
 src/components/      # 笔记编辑、卡片列表、导入、复习和媒体展示
 build/              # 构建时生成预缓存清单与 Service Worker
 public/             # PWA 元数据、图标及 CSV 示例
@@ -197,11 +226,11 @@ docs/               # 使用指南、开发文档与 README 插图
 
 ## 题目插件
 
-插件按部署安装，前端接口统一为 `showQuestion` / `showAnswer`，可选编辑器和设置页。`kind: 'frontend'` 可在所有版本使用，`kind: 'local'` 只在桌面版使用。服务端不加载插件。纯前端清单的类型仅接受前端插件；Vite 通过构建别名隔离模块，而不是在运行时隐藏菜单。
+插件在运行时安装和加载，官方插件也不进入宿主编译图。题目接口为 `showQuestion` / `showAnswer`，可选编辑器、设置和历史页；显示插件提供 `reviewPanel`。`kind: 'frontend'` 可在所有版本使用，`kind: 'local'` 依赖桌面通用原生能力。插件 JavaScript 运行于 WebView，不是 Node.js；账户服务不执行插件代码。
 
-接口、完整示例、本地注册方式及版本兼容规则见[插件开发](PLUGINS.md)。内置 LeetCode 的登录配置、判题规则和限制见[LeetCode 插件](LEETCODE.md)。
+独立开发时运行对应项目的类型检查和测试，使用 `npm run build --prefix plugins/review-history` 单次构建，或 `npm run dev --prefix plugins/review-history` 监视插件源码。可用 `--outdir` 输出到专门的临时学习目录，构建成功后在应用中重新扫描并确认启用，不使用日常学习库。SDK 当前通过 `npm pack --workspace @repeaty/plugin-api` 交付本地 tarball，尚未发布到 npm；独立插件仓库只安装 SDK 与自身依赖，无需应用源码。更新官方分发产物时单独更新 `plugins/packages/`；主程序构建和安装插件都不编译插件源码。接口、开发示例、存储与信任边界见[插件开发](PLUGINS.md)。官方 LeetCode 的登录配置、判题规则和限制见[LeetCode 插件](LEETCODE.md)。
 
-桌面构建与原生 WebKit 测试见[桌面版开发说明](DESKTOP.md#测试)。桌面 CI 为 Linux、Windows、macOS 分别构建安装包；LeetCode UI 测试模拟 IPC，Rust 测试使用受控上游服务，均不提交到真实账号。
+桌面构建与原生 WebKit 测试见[桌面版开发说明](DESKTOP.md#本地验证)。桌面 CI 为 Linux、Windows、macOS 分别构建安装包；LeetCode 插件协议测试和通用宿主网络测试使用受控响应，均不提交到真实账号。
 
 桌面安装程序支持 `--mcp-stdio --connection-file <绝对路径>`，在创建 Tauri 窗口前进入无界面 MCP 模式。它只代理运行中应用的本机接口，不读取 IndexedDB 或直接写入卡片。客户端配置生成、独占连接文件与协议限制见 [ADR 013](adr/013-mcp-clients.md)。构建后运行 `node scripts/test-mcp-stdio.mjs` 检查真实进程的初始化、工具发现、离线错误与 stdin EOF；三平台 CI 均运行此检查。Linux 原生测试再覆盖本机 HTTP、stdio 到 WebView 的查询、草稿确认和重启恢复，不调用付费模型或修改开发者的 Codex / Claude 配置。
 

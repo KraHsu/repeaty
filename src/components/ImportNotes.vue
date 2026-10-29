@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { UiSelect, UiInput, UiTextarea, UiCheckbox, UiButton } from './ui'
 import { t, msg, LocalizedError, locale, type DisplayMessage } from '../i18n'
 
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
@@ -73,14 +74,23 @@ async function fileChanged(event: Event) {
 <template>
   <div class="editor-form import-notes">
     <label for="import-format">{{ t('导入格式') }}</label>
-    <select id="import-format" v-model="format" :disabled="busy">
-      <option value="table">CSV / TSV</option>
-      <option value="anki">{{ t('Anki .apkg') }}</option>
-    </select>
+    <UiSelect
+      :items="[
+        { label: 'CSV / TSV', value: 'table' },
+        { label: t('Anki .apkg'), value: 'anki' },
+      ]"
+      id="import-format"
+      v-model="format"
+      :disabled="busy"
+    ></UiSelect>
     <label for="import-deck">{{ t('导入到卡组') }}</label>
-    <select id="import-deck" v-model="selectedDeck" required :disabled="busy">
-      <option v-for="deck in library.decks" :key="deck.id" :value="deck.id">{{ deck.name }}</option>
-    </select>
+    <UiSelect
+      :items="[...library.decks.map((deck) => ({ label: deck.name, value: deck.id }))]"
+      id="import-deck"
+      v-model="selectedDeck"
+      required
+      :disabled="busy"
+    ></UiSelect>
     <ImportAnki
       v-if="format === 'anki'"
       :library="library"
@@ -99,21 +109,28 @@ async function fileChanged(event: Event) {
           )
         }}
       </p>
-      <a class="text-button" :href="exampleUrl" download>{{ t('下载 CSV 示例') }}</a>
+      <UiButton variant="ghost" class="text-button" :href="exampleUrl" download>{{
+        t('下载 CSV 示例')
+      }}</UiButton>
       <label for="import-file">{{ t('选择 CSV / TSV 文件') }}</label
-      ><input
+      ><UiInput
         id="import-file"
         type="file"
         accept=".csv,.tsv,text/csv,text/tab-separated-values"
         @change="fileChanged"
       />
       <label for="import-delimiter">{{ t('分隔符') }}</label
-      ><select id="import-delimiter" v-model="delimiter">
-        <option value=",">{{ t('逗号 CSV') }}</option>
-        <option :value="'\t'">{{ t('制表符 TSV') }}</option>
-      </select>
+      ><UiSelect
+        :items="[
+          { label: t('逗号 CSV'), value: ',' },
+          { label: t('制表符 TSV'), value: '\t' },
+        ]"
+        id="import-delimiter"
+        v-model="delimiter"
+      ></UiSelect>
       <label for="import-text">{{ t('或粘贴表格文本') }}</label
-      ><textarea
+      ><UiTextarea
+        :ui="{ base: 'font-mono' }"
         id="import-text"
         v-model="text"
         required
@@ -135,25 +152,25 @@ async function fileChanged(event: Event) {
           <li v-for="(note, i) in preview.slice(0, 5)" :key="i">{{ note.front }}</li>
         </ol>
         <label class="check-line"
-          ><input v-model="skip" type="checkbox" />{{
+          ><UiCheckbox v-model="skip" />{{
             t('跳过同卡组中类型、格式、正面和背面均相同的笔记')
           }}</label
         >
       </div>
       <div class="form-actions">
-        <button type="button" class="button secondary" :disabled="busy" @click="emit('close')">
-          {{ t('取消') }}</button
-        ><button v-if="!preview.length" class="button primary" :disabled="busy">
-          {{ t('检查并预览') }}</button
-        ><button
+        <UiButton variant="secondary" type="button" :disabled="busy" @click="emit('close')">
+          {{ t('取消') }}</UiButton
+        ><UiButton variant="primary" v-if="!preview.length" type="submit" :disabled="busy">
+          {{ t('检查并预览') }}</UiButton
+        ><UiButton
+          variant="primary"
           v-else
           type="button"
-          class="button primary"
           :disabled="busy"
           @click="emit('import', preview, skip)"
         >
           {{ t('确认导入') }}
-        </button>
+        </UiButton>
       </div>
     </form>
   </div>
@@ -169,10 +186,10 @@ async function fileChanged(event: Event) {
 .import-notes :deep(.form-actions) {
   position: sticky;
   bottom: -20px;
-  background: #fff;
+  background: var(--ui-bg);
   padding: 16px 28px;
   margin-inline: -28px;
-  box-shadow: 0 -4px 12px #293d3308;
+  box-shadow: 0 -4px 12px color-mix(in srgb, var(--ui-text) 4%, transparent);
 }
 @media (max-width: 720px) {
   .import-notes {

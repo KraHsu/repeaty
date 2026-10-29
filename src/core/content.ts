@@ -53,8 +53,13 @@ markdown.inline.ruler.before('emphasis', 'cjk_strong_spacing', (state, silent) =
 markdown.renderer.rules.strong_close = (tokens, index, options, _env, renderer) =>
   renderer.renderToken(tokens, index, options) + (tokens[index]!.meta?.cjkSpacing ? ' ' : '')
 // Attachments are stored locally; Markdown images never trigger remote requests.
-markdown.renderer.rules.image = (tokens, index) =>
-  `<span class="media-placeholder">${markdown.utils.escapeHtml(t('[图片：{name} · 请使用附件]', { name: tokens[index]!.content }))}</span>`
+markdown.renderer.rules.image = (tokens, index, _options, env) => {
+  const token = tokens[index]!,
+    src = token.attrGet('src') ?? ''
+  return env.resources?.has(src)
+    ? `<img src="${markdown.utils.escapeHtml(src)}" alt="${markdown.utils.escapeHtml(token.content)}" loading="lazy">`
+    : `<span class="media-placeholder">${markdown.utils.escapeHtml(t('[图片：{name} · 请使用附件]', { name: token.content }))}</span>`
+}
 const linkOpen = markdown.renderer.rules.link_open
 markdown.renderer.rules.link_open = (tokens, index, options, env, renderer) => {
   tokens[index]!.attrSet('target', '_blank')
@@ -133,13 +138,19 @@ markdown.block.ruler.before('fence', 'math_block', (state, start, end, silent) =
   return true
 })
 markdown.renderer.rules.math_block = (tokens, index) => formula(tokens[index]!.content, true) + '\n'
-export function renderMarkdown(text: string): string {
+export function renderMarkdown(
+  text: string,
+  resources: ReadonlyMap<string, string> = new Map(),
+): string {
   const scope = contentScope()
-  return wrapHtml(cleanHtml(markdown.render(text), scope), scope)
+  return wrapHtml(cleanHtml(markdown.render(text, { resources }), scope, resources), scope)
 }
 
 /** Wrap top-level blocks with source offsets; ordinary card rendering stays unchanged. */
-export function renderReadingMarkdown(text: string): string {
+export function renderReadingMarkdown(
+  text: string,
+  resources: ReadonlyMap<string, string> = new Map(),
+): string {
   const scope = contentScope()
   const lines = [0]
   for (let index = 0; index < text.length; index++) if (text[index] === '\n') lines.push(index + 1)
@@ -156,8 +167,9 @@ export function renderReadingMarkdown(text: string): string {
         end++
     if (token.nesting === 1 && end < tokens.length) end++
     const html = cleanHtml(
-      markdown.renderer.render(tokens.slice(index, end), markdown.options, {}),
+      markdown.renderer.render(tokens.slice(index, end), markdown.options, { resources }),
       scope,
+      resources,
     )
     blocks.push(
       token.map

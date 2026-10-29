@@ -1,0 +1,28 @@
+{
+  "name": "@repeaty/plugin-typed-answer",
+  "version": "1.6.0",
+  "private": true,
+  "type": "module",
+  "description": "Type an answer before revealing it, with case-insensitive comparison.",
+  "scripts": {
+    "build": "repeaty-plugin .",
+    "dev": "repeaty-plugin . --watch",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  },
+  "dependencies": {
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@repeaty/plugin-api": "file:../../packages/plugin-api",
+    "@types/node": "^24.0.0",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5",
+    "vue-tsc": "^3.3.13"
+  }
+}

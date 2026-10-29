@@ -1,3 +1,4 @@
+import { createPinia } from 'pinia'
 // @vitest-environment happy-dom
 import { createApp, h, nextTick, shallowReactive, type App } from 'vue'
 import { expect, it, vi } from 'vitest'
@@ -70,6 +71,7 @@ it.each(['card', 'reading'] as const)(
         }),
     })
     try {
+      app.use(createPinia())
       app.mount(host)
       if (kind === 'card') {
         host.querySelector<HTMLButtonElement>('[data-test=grade]')!.click()

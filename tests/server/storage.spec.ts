@@ -1,3 +1,4 @@
+import { openPluginManager } from '../fixtures/settings-flow'
 import { test, expect, headers } from './fixture'
 import { test as isolatedTest } from '@playwright/test'
 import { openAsBlob } from 'node:fs'
@@ -69,8 +70,8 @@ test('128 MiB media and long text round trip through SQLite, snapshots, and the 
   await expect(staticPage.getByRole('dialog')).toHaveCount(0, { timeout: 30000 })
   await staticPage.reload()
   await staticPage.getByRole('button', { name: '全部卡片' }).click()
-  await staticPage.getByRole('textbox', { name: '搜索卡片' }).fill('长文本')
-  await staticPage.getByText('高级搜索、常用筛选与专项练习', { exact: true }).click()
+  await staticPage.getByLabel('搜索卡片', { exact: true }).fill('长文本')
+  await staticPage.getByRole('button', { name: '专项练习', exact: true }).click()
   await staticPage.getByRole('button', { name: '开始专项练习' }).click()
   await expect(staticPage.locator('.card-question')).toHaveText(front)
   const image = staticPage.getByRole('img', { name: 'pixel.png' })
@@ -143,12 +144,12 @@ test('account history fetches bodies only on expansion, retries safely and expor
   await expect(page.locator('.practice-history')).toHaveCount(20)
   await expect(page.locator('.attempt-code')).toHaveCount(0)
   expect(bodies).toEqual([])
-  await page.locator('.attempt-history > summary').first().click()
+  await page.locator('.attempt-history-trigger').first().click()
   await expect(page.locator('.attempt-body [role="alert"]')).toContainText('无法读取这次提交')
   await page.getByRole('button', { name: '重试', exact: true }).click()
   await expect(page.locator('.attempt-code code')).toContainText('# attempt 129')
   expect(bodies).toHaveLength(2)
-  await page.locator('.attempt-history > summary').first().click()
+  await page.locator('.attempt-history-trigger').first().click()
   await expect(page.locator('.attempt-code')).toHaveCount(0)
   await page.getByRole('button', { name: '下一页', exact: true }).click()
   expect(bodies).toHaveLength(2)
@@ -183,7 +184,7 @@ isolatedTest(
     expect(
       await page.evaluate(() => JSON.stringify([localStorage, sessionStorage, document.cookie])),
     ).not.toContain(cookie.value)
-    await page.getByRole('button', { name: '插件', exact: true }).click()
+    await openPluginManager(page)
     await expect(page.getByRole('switch', { name: '启用 LeetCode' })).toHaveCount(0)
     const cookieUsername = await page.locator('.account-controls > span').innerText()
     await page.getByRole('button', { name: '修改密码', exact: true }).click()

@@ -1,3 +1,4 @@
+import { createPinia } from 'pinia'
 import 'fake-indexeddb/auto'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createRepository } from '../core/storage'
@@ -70,7 +71,7 @@ async function setup() {
   await repository.load()
   await repository.save(library, 0, { assets: [asset] })
   factory.mockResolvedValueOnce(repository)
-  const workspace = useLibrary()
+  const workspace = useLibrary(createPinia())
   await workspace.init()
   expect(workspace.ready.value).toBe(true)
   const input = {

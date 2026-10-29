@@ -1,3 +1,5 @@
+import { selectUiValue } from './fixtures/ui-flow'
+import { setInterfaceLanguage } from './fixtures/settings-flow'
 import { test, expect } from './fixtures/empty-workspace'
 import { storedLibrary } from './fixtures/stored-library'
 import {
@@ -64,12 +66,14 @@ test('imports a lazy source, anchors an excerpt, reviews offline and preserves s
   await page.getByRole('button', { name: /良好/ }).click()
   await expect(page.getByRole('heading', { name: '本轮复习结束' })).toBeVisible()
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
+  const sourceBeforeBackup = ((await storedLibrary(page)).sources as { value: Source }[])[0]!.value
+  expect(sourceBeforeBackup).toMatchObject(source)
   const backupDownload = page.waitForEvent('download')
   await page.getByRole('button', { name: '导出 .repeaty', exact: true }).click()
   const archive = await parseArchive(
     new Blob([await readFile((await (await backupDownload).path())!)]),
   )
-  expect(archive.library.sources[0]).toEqual(source)
+  expect(archive.library.sources[0]).toEqual(sourceBeforeBackup)
   expect(archive.library.notes[0]!.excerpt).toMatchObject({
     sourceId: source.id,
     start: sourceText.lastIndexOf(sourceQuote),
@@ -81,8 +85,9 @@ test('imports a lazy source, anchors an excerpt, reviews offline and preserves s
   const before = await storedLibrary(page)
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await expect(page.getByRole('textbox', { name: '材料正文', exact: true })).toHaveValue(sourceText)
+  await setInterfaceLanguage(page, 'en')
+  await page.getByRole('button', { name: 'Sources', exact: true }).click()
   await selectSourceExcerpt(page)
-  await page.locator('.language-picker select').selectOption('en')
   await page.setViewportSize({ width: 320, height: 844 })
   await expect(
     page.getByRole('button', { name: 'Create card from excerpt', exact: true }),
@@ -92,7 +97,8 @@ test('imports a lazy source, anchors an excerpt, reviews offline and preserves s
   ).toBe(true)
   await page.screenshot({ path: testInfo.outputPath('sources-mobile-en.png'), fullPage: true })
   await page.setViewportSize({ width: 1280, height: 900 })
-  await page.locator('.language-picker select').selectOption('zh-CN')
+  await setInterfaceLanguage(page, 'zh-CN')
+  await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await page.screenshot({ path: testInfo.outputPath('sources-desktop.png'), fullPage: true })
   await page.getByRole('button', { name: '删除材料', exact: true }).click()
   await page.getByRole('button', { name: '确认删除', exact: true }).click()
@@ -124,7 +130,7 @@ test('rejects invalid files, supports pasted text and keeps an existing snapshot
   const before = await storedLibrary(page)
   await page.getByRole('button', { name: '导入材料', exact: true }).click()
   await page.getByLabel('材料标题').fill('学习笔记')
-  await page.getByLabel('内容格式').selectOption('plain')
+  await selectUiValue(page.getByLabel('内容格式'), 'plain')
   await page.getByLabel('粘贴正文').fill('A new snapshot of the source.')
   const original = ((await storedLibrary(page)).sources as { value: Source }[])[0]!.value
   // A layout change can scroll the underlying reader while the dialog is open.

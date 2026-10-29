@@ -1,3 +1,4 @@
+import { selectUiValue } from './fixtures/ui-flow'
 import { test, expect } from './fixtures/empty-workspace'
 import { storedLibrary } from './fixtures/stored-library'
 import {
@@ -50,10 +51,12 @@ test('a failed next-source save retains the current round and position for retry
   await moveReading(page, 0.65)
   await page.getByRole('button', { name: '下一篇', exact: true }).click()
   await expect(page.getByRole('alert').filter({ hasText: '存储空间不足' }).first()).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Next A', exact: true })).toBeVisible()
-  await expect(page.getByRole('region', { name: '本轮阅读', exact: true })).toContainText(
-    '第 1 篇，共 2 篇',
-  )
+  await expect(
+    page.getByRole('heading', { name: 'Next A', exact: true, includeHidden: true }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('region', { name: '本轮阅读', exact: true, includeHidden: true }),
+  ).toContainText('第 1 篇，共 2 篇')
   expect(await read(page)).toEqual(before)
   await page.getByRole('button', { name: '稍后阅读', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '稍后阅读', exact: true })
@@ -66,10 +69,12 @@ test('a failed next-source save retains the current round and position for retry
     'aria-pressed',
     'true',
   )
-  await expect(page.getByRole('heading', { name: 'Next A', exact: true })).toBeVisible()
-  await expect(page.getByRole('region', { name: '本轮阅读', exact: true })).toContainText(
-    '第 1 篇，共 2 篇',
-  )
+  await expect(
+    page.getByRole('heading', { name: 'Next A', exact: true, includeHidden: true }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('region', { name: '本轮阅读', exact: true, includeHidden: true }),
+  ).toContainText('第 1 篇，共 2 篇')
   expect(await read(page)).toEqual(before)
   await page.evaluate(() => ((window as unknown as { failNext: boolean }).failNext = false))
   await dialog.getByRole('button', { name: '保存阅读安排', exact: true }).click()
@@ -106,7 +111,9 @@ test('an unreadable source still allows ending the round without overwriting its
   await expect(page.locator('.source-reader [role="alert"]')).toBeVisible()
   await expect(page.getByRole('button', { name: '完成本轮', exact: true })).toBeDisabled()
   await page.getByRole('button', { name: '结束本轮', exact: true }).click()
-  await expect(page.getByRole('region', { name: '本轮阅读', exact: true })).toHaveCount(0)
+  await expect(
+    page.getByRole('region', { name: '本轮阅读', exact: true, includeHidden: true }),
+  ).toHaveCount(0)
   expect((await read(page)).sources.find((source) => source.id === target.id)).toEqual(target)
 })
 test('reading positions survive reload, responsive layouts and backup recovery without changing study progress', async ({
@@ -169,13 +176,13 @@ test('a failed queue write retains its material, position and arrangement for a 
   await expect(page.getByRole('alert')).toContainText('存储空间不足')
   expect(await read(page)).toEqual(before)
   await expect(page.getByRole('heading', { name: 'Queue retry', exact: true })).toBeVisible()
-  await page.getByLabel('阅读优先级', { exact: true }).selectOption('high')
+  await selectUiValue(page.getByLabel('阅读优先级', { exact: true }), 'high')
   await expect(page.getByRole('alert')).toContainText('存储空间不足')
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveValue('normal')
+  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'normal')
   expect(await read(page)).toEqual(before)
   await page.evaluate(() => ((window as unknown as { failQueue: boolean }).failQueue = false))
-  await page.getByLabel('阅读优先级', { exact: true }).selectOption('high')
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveValue('high')
+  await selectUiValue(page.getByLabel('阅读优先级', { exact: true }), 'high')
+  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'high')
   expect((await read(page)).sources[0]!.priority).toBe('high')
   await page.getByRole('button', { name: '归档材料', exact: true }).click()
   await expect(page.getByRole('heading', { name: '暂无待阅读材料', exact: true })).toBeVisible()
@@ -218,8 +225,8 @@ test('changing priority across list pages keeps the current material and support
   await page.locator('.source-list-title').filter({ hasText: 'Page 01' }).click()
   await moveReading(page, 0.45)
   const priority = page.getByLabel('阅读优先级', { exact: true })
-  await priority.selectOption('low')
-  await expect(priority).toHaveValue('low')
+  await selectUiValue(priority, 'low')
+  await expect(priority).toHaveAttribute('value', 'low')
   await expect(page.locator('.source-list-pages')).toContainText('2 / 2')
   await expect(page.locator('.source-list-title')).toHaveText(['Page 01'])
   await expect(page.getByRole('heading', { name: 'Page 01', exact: true })).toBeVisible()
@@ -227,14 +234,16 @@ test('changing priority across list pages keeps the current material and support
     await page.locator('.source-text').evaluate((element) => element.scrollTop),
   ).toBeGreaterThan(500)
   await priority.focus()
-  await priority.press('Home')
+  await priority.press('Space')
+  await page.getByRole('option').first().press('Home')
+  await page.getByRole('option').first().press('Enter')
   await priority.press('Tab')
-  await expect(priority).toHaveValue('high')
+  await expect(priority).toHaveAttribute('value', 'high')
   await expect(page.locator('.source-list-pages')).toContainText('1 / 2')
   await expect(page.locator('.source-list-title').first()).toHaveText('Page 01')
   await expect(page.locator('.source-list-title')).toHaveCount(20)
   await page.reload()
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Page 01', exact: true })).toBeVisible()
-  await expect(priority).toHaveValue('high')
+  await expect(priority).toHaveAttribute('value', 'high')
 })

@@ -1,37 +1,46 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { notifications } from '../notifications'
+import { computed, onMounted, ref, shallowRef, watch } from 'vue'
+import { useEventListener, useResizeObserver } from '@vueuse/core'
+import { useNotifications } from '../notifications'
 import { popupEnabled } from '../preferences'
 import NotificationToast from './NotificationToast.vue'
+const { notifications } = useNotifications()
+
 const floating = computed(() => notifications.value.filter((entry) => popupEnabled(entry.level)))
 const inline = computed(() => notifications.value.filter((entry) => !popupEnabled(entry.level)))
-const top = ref(90)
-let observer: ResizeObserver | undefined
+const top = ref(16)
+const header = shallowRef<HTMLElement | null>(null)
+function dismissing(element: Element) {
+  // A fading toast has already been dismissed; it must not remain an interactive
+  // or announced duplicate while the visual exit finishes.
+  element.setAttribute('inert', '')
+  element.setAttribute('aria-hidden', 'true')
+}
 function position() {
   if (!notifications.value.length) return
-  const bottom = document.querySelector('.topbar')?.getBoundingClientRect().bottom ?? 78
-  top.value = Math.min(Math.max(16, bottom + 12), innerHeight * 0.35)
+  const frame = document.querySelector('.desktop-titlebar')?.getBoundingClientRect().bottom ?? 0
+  const tools = header.value?.getBoundingClientRect().bottom ?? frame
+  top.value = Math.max(frame + 16, tools + 12)
 }
 watch(notifications, position, { flush: 'post' })
 onMounted(() => {
-  const header = document.querySelector('.topbar')
-  if (header && typeof ResizeObserver !== 'undefined') {
-    observer = new ResizeObserver(position)
-    observer.observe(header)
-  }
-  window.addEventListener('resize', position)
-  window.addEventListener('scroll', position, { passive: true, capture: true })
+  header.value = document.querySelector<HTMLElement>('.topbar')
+  position()
 })
-onUnmounted(() => {
-  observer?.disconnect()
-  window.removeEventListener('resize', position)
-  window.removeEventListener('scroll', position, true)
-})
+useResizeObserver(header, position)
+useEventListener(window, 'resize', position)
+useEventListener(window, 'scroll', position, { passive: true, capture: true })
 </script>
 <template>
-  <div v-if="floating.length" class="notification-center" :style="{ top: `${top}px` }">
+  <TransitionGroup
+    tag="div"
+    name="notification-toast"
+    class="notification-center"
+    :style="{ top: `${top}px` }"
+    @before-leave="dismissing"
+  >
     <NotificationToast v-for="entry in floating" :key="entry.id" :entry="entry" />
-  </div>
+  </TransitionGroup>
   <div v-if="inline.length" class="inline-notifications">
     <NotificationToast v-for="entry in inline" :key="entry.id" :entry="entry" inline />
   </div>
@@ -39,11 +48,12 @@ onUnmounted(() => {
 <style>
 .notification-center {
   position: fixed;
-  z-index: 1100;
-  top: 90px;
-  left: calc(50% + 115px);
-  transform: translateX(-50%);
-  width: min(620px, calc(100vw - 36px));
+  /* Application dialogs own their surface; background toasts must not cover
+     modal headings or remain visually actionable above an inert background. */
+  z-index: 900;
+  top: 16px;
+  right: 24px;
+  width: min(440px, calc(100vw - 48px));
   max-height: 50dvh;
   overflow: auto;
   display: grid;
@@ -51,38 +61,43 @@ onUnmounted(() => {
   pointer-events: none;
 }
 .notification {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  border: 1px solid #cedac7;
-  padding: 0.8rem 1rem;
-  background: #f4f8ef;
-  color: #365b42;
-  border-radius: 10px;
-  box-shadow: 0 8px 28px #20351b1c;
-  font-size: 1rem;
-  line-height: 1.6;
   pointer-events: auto;
+}
+.notification.info {
+  --notification-tone: var(--ui-info);
+}
+.notification.warning {
+  --notification-tone: var(--ui-warning);
+}
+.notification.error {
+  --notification-tone: var(--ui-error);
+}
+.notification-center > .notification {
+  /* A floating message needs an opaque surface so underlying page text cannot
+     show through the semantic tint provided by UAlert's soft variant. */
+  background: color-mix(in srgb, var(--notification-tone) 8%, var(--ui-bg));
+  border: 1px solid color-mix(in srgb, var(--notification-tone) 25%, var(--ui-bg));
+  box-shadow: 0 8px 30px #243c3118;
+}
+.notification-toast-enter-active,
+.notification-toast-leave-active {
+  transition:
+    opacity 180ms,
+    transform 180ms;
+}
+.notification-toast-enter-from,
+.notification-toast-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 .notification > svg {
   flex-shrink: 0;
 }
-.notification > span {
-  flex: 1;
+.notification [data-slot='description'] {
   overflow-wrap: anywhere;
 }
 .notification .icon-button {
   flex-shrink: 0;
-}
-.notification.warning {
-  background: #fff8e8;
-  border-color: #e2c894;
-  color: #775612;
-}
-.notification.error {
-  background: #fff1ec;
-  border-color: #e8bba9;
-  color: #914c36;
 }
 .inline-notifications {
   display: grid;
@@ -92,20 +107,10 @@ onUnmounted(() => {
 .inline-notification {
   box-shadow: none;
 }
-@media (max-width: 1200px) {
-  .notification-center {
-    left: calc(50% + 102px);
-  }
-}
-@media (max-width: 980px) {
-  .notification-center {
-    left: calc(50% + 92px);
-  }
-}
 @media (max-width: 720px) {
   .notification-center {
-    left: 50%;
-    top: 82px;
+    right: 16px;
+    width: calc(100vw - 32px);
   }
   .inline-notifications {
     margin: 1rem;

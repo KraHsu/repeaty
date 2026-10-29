@@ -1,3 +1,6 @@
+import { setResponsiveViewport } from './viewport-flow'
+import { setInterfaceLanguage } from './settings-flow'
+import { notesAfterSourceRekey } from './source-flow'
 import { expect, type Page, type TestInfo, type Locator } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import type { Library, MediaUpload } from '../../src/core/model'
@@ -160,11 +163,16 @@ export async function navigationFlow(page: Page, read: () => Promise<Library>, i
     await page.evaluate(() => (window as unknown as { sourceExecuted?: boolean }).sourceExecuted),
   ).toBeUndefined()
   await page.getByRole('button', { name: '阅读 Markdown 预览', exact: true }).click()
+  await expect(page.locator('.source-markdown-preview')).toHaveAttribute('aria-busy', 'false')
   const locate = excerptRow(page, '末尾摘录🙂').getByRole('button', {
     name: '定位「末尾摘录🙂」的原文',
     exact: true,
   })
+  // Preview restores its reading position asynchronously and temporarily disables
+  // navigation. Keyboard actions, unlike click(), do not wait for enablement.
+  await expect(locate).toBeEnabled()
   await locate.focus()
+  await expect(locate).toBeFocused()
   await locate.press('Enter')
   const reader = page.locator('.source-text')
   await expect(reader).toHaveAttribute('aria-busy', 'false')
@@ -198,7 +206,7 @@ export async function navigationFlow(page: Page, read: () => Promise<Library>, i
   await expect(reader).toHaveAttribute('aria-busy', 'false')
   await selectForExcerpt(page)
   await page.getByRole('button', { name: '查看已有摘录', exact: true }).click()
-  await page.setViewportSize({ width: 390, height: 844 })
+  await setResponsiveViewport(page, 390, 844)
   await expect(list.locator('li.matched')).toHaveCount(2)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   expect(
@@ -209,7 +217,11 @@ export async function navigationFlow(page: Page, read: () => Promise<Library>, i
   ).toBeGreaterThanOrEqual(16)
   await list.scrollIntoViewIfNeeded()
   await page.screenshot({ path: info.outputPath('source-excerpts-zh.png'), fullPage: true })
-  await page.getByLabel('界面语言').selectOption('en')
+  await setInterfaceLanguage(page, 'en')
+  await page.getByRole('button', { name: 'Sources', exact: true }).click()
+  await page.locator('.source-list-title').filter({ hasText: '导航原文' }).click()
+  await selectForExcerpt(page)
+  await page.getByRole('button', { name: 'Show saved excerpts', exact: true }).click()
   await expect(
     page.getByRole('heading', { name: 'Excerpts from this source (8)', exact: true }),
   ).toBeVisible()
@@ -218,7 +230,11 @@ export async function navigationFlow(page: Page, read: () => Promise<Library>, i
   )
   await expect(page.locator('.source-excerpt-pages')).toContainText('Page 2 of 2')
   await page.screenshot({ path: info.outputPath('source-excerpts-en.png'), fullPage: true })
-  await page.getByLabel('Interface language').selectOption('zh-CN')
+  await setInterfaceLanguage(page, 'zh-CN')
+  await page.getByRole('button', { name: '学习材料', exact: true }).click()
+  await page.locator('.source-list-title').filter({ hasText: '导航原文' }).click()
+  await selectForExcerpt(page)
+  await page.getByRole('button', { name: '查看已有摘录', exact: true }).click()
   await page.setViewportSize({ width: 1280, height: 900 })
   await page.getByRole('button', { name: '开始一轮阅读', exact: true }).click()
   const round = page.getByRole('region', { name: '本轮阅读', exact: true })
@@ -236,8 +252,11 @@ export async function navigationFlow(page: Page, read: () => Promise<Library>, i
   await expect(page.locator('.source-reader h2')).toHaveText('导航原文')
   expect(await round.textContent()).toBe(counter)
   await page.getByRole('button', { name: '结束本轮', exact: true }).click()
+  const recovered = await read()
   for (const store of ['notes', 'cards', 'reviews', 'practices', 'attempts'] as const)
-    expect((await read())[store]).toEqual(before[store])
+    expect(recovered[store]).toEqual(
+      store === 'notes' ? notesAfterSourceRekey(before, recovered) : before[store],
+    )
 
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
   const downloading = page.waitForEvent('download')
@@ -270,6 +289,9 @@ export async function navigationFlow(page: Page, read: () => Promise<Library>, i
   await page.locator('.source-list-title').filter({ hasText: '导航原文' }).click()
   await expect(list.getByRole('heading', { name: '本篇摘录（8）', exact: true })).toBeVisible()
   await expect(excerptRow(page, '开头摘录🙂')).toContainText('2 张关联卡片')
+  const restoredBackup = await read()
   for (const store of ['notes', 'cards', 'reviews', 'practices', 'attempts'] as const)
-    expect((await read())[store]).toEqual(before[store])
+    expect(restoredBackup[store]).toEqual(
+      store === 'notes' ? notesAfterSourceRekey(before, restoredBackup) : before[store],
+    )
 }

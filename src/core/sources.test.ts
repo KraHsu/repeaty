@@ -121,7 +121,10 @@ it('round-trips sources and offsets through archives, JSON and media rekeying', 
   for (const data of [archive, json]) {
     const restored = rekeyBackup(data)
     expect(restored.library.sources[0]!.mediaId).not.toBe(asset.meta.id)
-    expect(restored.library.notes[0]!.excerpt).toEqual(linked.notes[0]!.excerpt)
+    expect(restored.library.notes[0]!.excerpt).toEqual({
+      ...linked.notes[0]!.excerpt,
+      mediaId: restored.library.sources[0]!.mediaId,
+    })
     expect(
       await readSource(
         restored.library.sources[0]!,

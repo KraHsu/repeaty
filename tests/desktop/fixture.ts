@@ -1,8 +1,32 @@
 import { test as base, expect } from '@playwright/test'
+import { workspaceRuntime } from '../fixtures/workspace-runtime'
+import { mkdtemp, mkdir, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { installPluginHostFixture } from '../fixtures/plugin-host'
 export { storedLibrary } from '../fixtures/stored-library'
 export const test = base.extend<{ native: void; emptyWorkspace: void }>({
   native: [
     async ({ context }, use) => {
+      const root = await mkdtemp(join(tmpdir(), 'repeaty-browser-workspace-'))
+      const path = join(root, 'library')
+      await mkdir(path)
+      const runtime = workspaceRuntime(join(root, 'device'))
+      const status = await runtime.call<{ epoch: string }>('workspace_status')
+      await runtime.call('workspace_choose', { epoch: status.epoch, mode: 'create', path })
+      await installPluginHostFixture(context, runtime, root)
+      let choices = 0
+      await context.exposeBinding(
+        '__repeatyWorkspace',
+        async (_, command: string, args: Record<string, unknown> = {}) => {
+          if (command === 'workspace_choose') {
+            const path = join(root, 'chosen-' + ++choices)
+            await mkdir(path)
+            return runtime.call(command, { ...args, path })
+          }
+          return runtime.call(command, args)
+        },
+      )
       let configured: string[] = []
       await context.route('**/__native/leetcode', (route) => {
         const request = route.request().postDataJSON()
@@ -37,8 +61,63 @@ export const test = base.extend<{ native: void; emptyWorkspace: void }>({
           mcpKey = 0,
           requestId = 0
         let channel: { onmessage(request: unknown): void } | undefined
+        let watchId = 0
+        let watching: { id: string; timer: ReturnType<typeof setInterval> } | undefined
         const pending = new Map<string, (value: unknown) => void>()
+        const callbacks = new Map<number, (value: unknown) => void>()
+        const listeners = new Map<number, { event: string; callback: number }>()
+        let listenerId = 0
+        const desktopWindow = {
+          maximized: false,
+          focused: true,
+          calls: [] as string[],
+          failNext: '',
+          snapEpoch: 0,
+          snapSupported: true,
+          snapRequests: [] as { epoch: number; rect: unknown }[],
+          snapState(state: { epoch?: number; hovered: boolean; pressed: boolean }) {
+            emitWindowEvent('window-snap-state', {
+              ...state,
+              epoch: state.epoch ?? desktopWindow.snapEpoch,
+            })
+          },
+          invalidateSnap() {
+            emitWindowEvent('window-snap-invalidated', { epoch: desktopWindow.snapEpoch })
+          },
+          update(state: { maximized?: boolean; focused?: boolean }) {
+            if (state.maximized !== undefined) {
+              desktopWindow.maximized = state.maximized
+              emitWindowEvent('tauri://resize', { width: innerWidth, height: innerHeight })
+            }
+            if (state.focused !== undefined) {
+              desktopWindow.focused = state.focused
+              emitWindowEvent(state.focused ? 'tauri://focus' : 'tauri://blur', null)
+            }
+          },
+        }
+        function emitWindowEvent(event: string, payload: unknown) {
+          for (const [id, listener] of listeners)
+            if (listener.event === event) callbacks.get(listener.callback)?.({ event, id, payload })
+        }
+        Object.defineProperty(window, '__repeatyTestWindow', { value: desktopWindow })
+        Object.defineProperty(window, '__TAURI_EVENT_PLUGIN_INTERNALS__', {
+          value: {
+            unregisterListener: (_event: string, id: number) => {
+              const listener = listeners.get(id)
+              if (listener) callbacks.delete(listener.callback)
+              listeners.delete(id)
+            },
+          },
+        })
         Object.defineProperty(window, '__repeatyTestMcpFailReply', { value: false, writable: true })
+        Object.defineProperty(window, '__repeatyTestDropWatchEvents', {
+          value: false,
+          writable: true,
+        })
+        Object.defineProperty(window, '__repeatyTestDroppedWatchEvents', {
+          value: 0,
+          writable: true,
+        })
         const status = () => ({
           enabled: mcpEnabled,
           available: mcpAvailable,
@@ -56,9 +135,96 @@ export const test = base.extend<{ native: void; emptyWorkspace: void }>({
         })
         Object.defineProperty(window, '__TAURI_INTERNALS__', {
           value: {
-            transformCallback: () => ++callbackId,
-            unregisterCallback: () => {},
+            metadata: {
+              currentWindow: { label: 'main' },
+              currentWebview: { label: 'main', windowLabel: 'main' },
+            },
+            transformCallback: (callback: (value: unknown) => void, once = false) => {
+              const id = ++callbackId
+              callbacks.set(id, (value) => {
+                if (once) callbacks.delete(id)
+                callback(value)
+              })
+              return id
+            },
+            unregisterCallback: (id: number) => callbacks.delete(id),
             invoke: async (command: string, args: Record<string, unknown>) => {
+              if (command === 'window_snap_epoch')
+                return desktopWindow.snapSupported ? ++desktopWindow.snapEpoch : null
+              if (command === 'window_snap_region') {
+                desktopWindow.snapRequests.push({ epoch: args.epoch as number, rect: args.rect })
+                return (
+                  desktopWindow.snapSupported &&
+                  args.epoch === desktopWindow.snapEpoch &&
+                  args.rect !== null
+                )
+              }
+              if (command === 'plugin:event|listen') {
+                const id = ++listenerId
+                listeners.set(id, { event: args.event as string, callback: args.handler as number })
+                return id
+              }
+              if (command === 'plugin:event|unlisten') {
+                listeners.delete(args.eventId as number)
+                return
+              }
+              if (command.startsWith('plugin:window|')) {
+                const action = command.slice('plugin:window|'.length)
+                if (args.label !== 'main') throw Error('Unexpected window label')
+                if (action === 'is_maximized') return desktopWindow.maximized
+                if (action === 'is_focused') return desktopWindow.focused
+                if (action === 'is_fullscreen') return false
+                desktopWindow.calls.push(action)
+                if (desktopWindow.failNext === action) {
+                  desktopWindow.failNext = ''
+                  throw Error('test-window-operation-failed')
+                }
+                if (action === 'toggle_maximize')
+                  desktopWindow.update({ maximized: !desktopWindow.maximized })
+                else if (!['minimize', 'close', 'start_dragging'].includes(action))
+                  throw Error(`Unexpected window operation: ${action}`)
+                // This fixture records requests only; it never controls an OS window.
+                return
+              }
+              if (command === 'workspace_watch') {
+                if (watching) clearInterval(watching.timer)
+                const id = 'watch-' + ++watchId
+                const listener = args.onChange as { onmessage(event: unknown): void }
+                let waiting = false
+                const timer = setInterval(async () => {
+                  if (waiting || watching?.id !== id) return
+                  waiting = true
+                  try {
+                    const value = await (
+                      window as unknown as {
+                        __repeatyWorkspace(command: string, args: unknown): Promise<unknown>
+                      }
+                    ).__repeatyWorkspace('workspace_changes', { token: args.token })
+                    if (value && watching?.id === id) {
+                      const controls = window as unknown as {
+                        __repeatyTestDropWatchEvents: boolean
+                        __repeatyTestDroppedWatchEvents: number
+                      }
+                      if (controls.__repeatyTestDropWatchEvents)
+                        controls.__repeatyTestDroppedWatchEvents++
+                      else listener.onmessage(value)
+                    }
+                  } catch {
+                    clearInterval(timer)
+                  } finally {
+                    waiting = false
+                  }
+                }, 100)
+                watching = { id, timer }
+                return id
+              }
+              if (command === 'workspace_unwatch') {
+                if (watching && watching.id === args.id) {
+                  clearInterval(watching.timer)
+                  watching = undefined
+                }
+                return
+              }
               if (command === 'mcp_attach') {
                 channel = args.onRequest as typeof channel
                 mcpEnabled = false
@@ -170,43 +336,61 @@ export const test = base.extend<{ native: void; emptyWorkspace: void }>({
                 exporting = undefined
                 return
               }
-              if (command === 'desktop_config')
-                return { endpoint: localStorage.getItem('test.endpoint') ?? '' }
-              if (command === 'set_endpoint') {
-                localStorage.setItem('test.endpoint', args.endpoint as string)
-                return
+              if (command === 'workspace_write') {
+                const request = args.request as {
+                  type: string
+                  input?: { consumeCardDraft?: string }
+                }
+                const flags = window as unknown as Record<string, boolean>
+                if (
+                  (flags.failDraftSave &&
+                    request.type === 'commit' &&
+                    request.input?.consumeCardDraft) ||
+                  (flags.failDraftAdd && request.type === 'draft-add') ||
+                  (flags.failDraftEdit && request.type === 'draft-update') ||
+                  (flags.failDraftDiscard && request.type === 'draft-remove')
+                )
+                  throw 'storage-error'
               }
+              if (command.startsWith('workspace_'))
+                return (
+                  window as unknown as {
+                    __repeatyWorkspace(
+                      command: string,
+                      args: Record<string, unknown>,
+                    ): Promise<unknown>
+                  }
+                ).__repeatyWorkspace(command, args)
               if (command === 'open_external') {
                 window.open(args.url as string, '_blank')
                 return
               }
-              if (command === 'local_plugin') {
-                const response = await fetch(
-                  `/__native/${args.id}${args.operation === 'credentials' ? '/credentials' : ''}`,
-                  {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(args.payload),
-                  },
-                )
-                const value = await response.json()
-                if (!response.ok) throw value.error
-                return value
-              }
-              if (command === 'upstream_request') throw 'request-failed'
+              if (command === 'plugin_host')
+                return (
+                  window as unknown as {
+                    __repeatyPluginInvoke(args: Record<string, unknown>): Promise<unknown>
+                  }
+                ).__repeatyPluginInvoke(args)
               throw `Unexpected command: ${command}`
             },
           },
         })
       })
-      await use()
+      try {
+        await use()
+      } finally {
+        // Stop browser watchers before ending the native host's input stream.
+        await context.close()
+        await runtime.close()
+        await rm(root, { recursive: true, force: true })
+      }
     },
     { auto: true },
   ],
   emptyWorkspace: [
     async ({ page, native: _native }, use) => {
       await page.goto('./')
-      await page.locator('.deck-title').click()
+      await page.locator('.b-browse-deck').click()
       await page.getByRole('button', { name: '删除当前卡组' }).click()
       await page.getByRole('button', { name: '确认删除', exact: true }).click()
       await expect(page.getByRole('dialog')).toHaveCount(0)

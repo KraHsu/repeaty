@@ -1,3 +1,6 @@
+import { selectUiValue } from './ui-flow'
+import { setResponsiveViewport } from './viewport-flow'
+import { setInterfaceLanguage } from './settings-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import type { Library } from '../../src/core/model'
@@ -29,7 +32,7 @@ export async function selectForExcerpt(
     },
     { start, end },
   )
-  await expect(page.getByRole('button', { name: '保存为摘录', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: /^(保存为摘录|Save as excerpt)$/ })).toBeEnabled()
 }
 export async function saveIndependentExcerpt(page: Page, title: string) {
   await page.getByRole('button', { name: '保存为摘录', exact: true }).click()
@@ -54,7 +57,7 @@ export async function sourceExcerptFlow(page: Page, read: () => Promise<Library>
   await expect(dialog.getByLabel('选中的原文')).toHaveValue(sourceQuote)
   await expect(dialog.getByLabel('选中的原文')).toHaveAttribute('readonly', '')
   await dialog.getByLabel('摘录标题').fill('独立摘录🙂')
-  await page.setViewportSize({ width: 390, height: 844 })
+  await setResponsiveViewport(page, 390, 844)
   expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
   expect(
     await dialog
@@ -75,29 +78,34 @@ export async function sourceExcerptFlow(page: Page, read: () => Promise<Library>
   expect(first.cards).toEqual([])
   expect(child.origin).toEqual({
     sourceId: root.id,
+    mediaId: root.mediaId,
     start: sourceText.lastIndexOf(sourceQuote),
     end: sourceText.lastIndexOf(sourceQuote) + sourceQuote.length,
   })
   await page.getByRole('button', { name: '查看出处', exact: true }).click()
   await checkRootHighlight(page)
   await page.getByRole('button', { name: '关闭', exact: true }).click()
-  await page.getByLabel('界面语言').selectOption('en')
+  await setInterfaceLanguage(page, 'en')
+  await page.getByRole('button', { name: 'Sources', exact: true }).click()
+  await page.locator('.source-list-title').filter({ hasText: child.title }).click()
   await expect(
     page.getByRole('button', { name: 'Make a card from this excerpt', exact: true }),
   ).toBeDisabled()
   await expect(page.getByRole('button', { name: 'View original', exact: true })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: info.outputPath('excerpt-reader-en.png'), fullPage: true })
-  await page.getByLabel('Interface language').selectOption('zh-CN')
+  await setInterfaceLanguage(page, 'zh-CN')
+  await page.getByRole('button', { name: '学习材料', exact: true }).click()
+  await page.locator('.source-list-title').filter({ hasText: child.title }).click()
   await page.setViewportSize({ width: 1280, height: 900 })
-  await page.getByLabel('阅读优先级', { exact: true }).selectOption('high')
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveValue('high')
+  await selectUiValue(page.getByLabel('阅读优先级', { exact: true }), 'high')
+  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'high')
   expect((await read()).sources.find((source) => source.id === root.id)!.priority).toBeUndefined()
   await page.reload()
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await page.locator('.source-list-title').filter({ hasText: child.title }).click()
   await expect(page.locator('.source-text')).toHaveValue(sourceQuote)
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveValue('high')
+  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'high')
 
   await page.getByRole('button', { name: '学习概览', exact: true }).click()
   await createSourceDeck(page)
@@ -130,7 +138,7 @@ export async function sourceExcerptFlow(page: Page, read: () => Promise<Library>
     element.dispatchEvent(new Event('select', { bubbles: true }))
   }, partialStart)
   await page.getByRole('button', { name: '用摘录制卡', exact: true }).click()
-  await page.getByLabel('笔记类型', { exact: true }).selectOption('cloze')
+  await selectUiValue(page.getByLabel('笔记类型', { exact: true }), 'cloze')
   await page
     .getByLabel('正面 · 问题', { exact: true })
     .fill('间隔复习会根据{{c1::记忆状态}}安排下一次学习。🙂')
@@ -193,7 +201,10 @@ export async function sourceExcerptFlow(page: Page, read: () => Promise<Library>
   await page.getByRole('button', { name: '替换并恢复', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   const restored = await read()
-  expect(restored.sources.find((source) => source.id === child.id)!.origin).toEqual(child.origin)
+  expect(restored.sources.find((source) => source.id === child.id)!.origin).toEqual({
+    ...child.origin,
+    mediaId: restored.sources.find((source) => source.id === root.id)!.mediaId,
+  })
   expect(restored.sources.find((source) => source.id === child.id)!.mediaId).not.toBe(child.mediaId)
   expect(restored.cards).toEqual(cards.cards)
   expect(restored.reviews).toEqual(cards.reviews)

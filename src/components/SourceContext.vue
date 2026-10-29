@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { UiButton } from './ui'
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { t, locale, type DisplayMessage } from '../i18n'
 import type { Source, SourceExcerpt } from '../core/source-data'
@@ -11,7 +12,8 @@ const props = defineProps<{
   origin?: Source
   sources?: Source[]
   excerpt?: SourceExcerpt
-  read: (id: string, signal?: AbortSignal) => Promise<string>
+  getMedia?: (id: string) => Promise<Blob | undefined>
+  read: (id: string, signal?: AbortSignal, mediaId?: string) => Promise<string>
 }>()
 const emit = defineEmits<{ close: [] }>()
 const level = ref(0)
@@ -43,7 +45,7 @@ async function load() {
   error.value = ''
   text.value = ''
   try {
-    const body = await props.read(shown.value.id, current.signal)
+    const body = await props.read(shown.value.id, current.signal, shown.value.mediaId)
     if (!current.signal.aborted) text.value = body
   } catch (issue) {
     if (!current.signal.aborted) error.value = issue as Error
@@ -68,27 +70,40 @@ const matches = computed(
   <AppModal wide :title="shown.title" @close="emit('close')">
     <div class="source-context">
       <nav v-if="path.length > 2" class="source-context-path" :aria-label="t('出处路径')">
-        <button
+        <UiButton
+          variant="ghost"
           v-for="(entry, index) in [...path].reverse()"
           :key="entry.source.id"
           type="button"
-          class="text-button"
           :aria-current="entry.source.id === shown.id ? 'page' : undefined"
           @click="level = path.length - 1 - index"
         >
           {{ entry.source.title }}
-        </button>
+        </UiButton>
       </nav>
       <div v-if="path.length > 1" class="source-context-navigation">
-        <button v-if="level < path.length - 1" type="button" class="text-button" @click="level++">
+        <UiButton variant="ghost" v-if="level < path.length - 1" type="button" @click="level++">
           {{ t('查看出处') }}
-        </button>
-        <button v-if="level > 0" type="button" class="text-button" @click="level = 0">
+        </UiButton>
+        <UiButton variant="ghost" v-if="level > 0" type="button" @click="level = 0">
           {{ t('返回摘录') }}
-        </button>
+        </UiButton>
       </div>
       <p class="form-note">
-        {{ t('保存于 {date}', { date: new Date(shown.createdAt).toLocaleString(locale) }) }}
+        {{
+          t('保存于 {date}', {
+            date: new Date(shown.acceptedAt ?? shown.createdAt).toLocaleString(locale),
+          })
+        }}
+      </p>
+      <p
+        v-if="sources?.some((source) => source.id === shown.id && source.mediaId !== shown.mediaId)"
+        class="form-note"
+      >
+        {{ t('正在查看摘录保存时的版本。') }}
+      </p>
+      <p v-if="shown.derived" class="form-note">
+        {{ t('这篇摘录已经编辑，出处保留最初摘录的原文。') }}
       </p>
       <a
         v-if="shown.url"
@@ -101,25 +116,31 @@ const matches = computed(
       <p v-if="loading" role="status">{{ t('正在读取原文…') }}</p>
       <template v-else-if="error"
         ><p class="import-warning" role="alert">{{ t(error) }}</p>
-        <button type="button" class="button secondary" @click="load">
+        <UiButton variant="secondary" type="button" @click="load">
           {{ t('重试') }}
-        </button></template
+        </UiButton></template
       >
       <template v-else>
         <p v-if="selected && !matches" class="import-warning" role="alert">
           {{ t('摘录与原文不一致，请从备份恢复。') }}
         </p>
         <blockquote v-if="selected" class="source-quote">{{ selected.quote }}</blockquote>
-        <button
+        <UiButton
+          variant="ghost"
           v-if="shown.format === 'markdown'"
           type="button"
-          class="text-button"
           :aria-pressed="preview"
           @click="preview = !preview"
         >
           {{ t(preview ? '显示原文与摘录位置' : '阅读 Markdown 预览') }}
-        </button>
-        <CardContent v-if="preview" :text="text" format="markdown" />
+        </UiButton>
+        <CardContent
+          v-if="preview"
+          :text="text"
+          format="markdown"
+          :inline-media="shown.inlineMedia"
+          :get-media="getMedia"
+        />
         <div v-else class="source-original" tabindex="0" :aria-label="t('原文快照')">
           <template v-if="selected && matches"
             >{{ text.slice(0, selected.start)
@@ -129,9 +150,9 @@ const matches = computed(
         </div>
       </template>
       <div class="form-actions">
-        <button type="button" class="button secondary" @click="emit('close')">
+        <UiButton variant="secondary" type="button" @click="emit('close')">
           {{ t('关闭') }}
-        </button>
+        </UiButton>
       </div>
     </div>
   </AppModal>
@@ -155,15 +176,15 @@ const matches = computed(
 }
 .source-context-path {
   padding-bottom: 0.75rem;
-  border-bottom: 1px solid #dfe5d8;
+  border-bottom: 1px solid var(--ui-border);
 }
 .source-context-path button {
   overflow-wrap: anywhere;
   text-align: left;
 }
 .source-context-path [aria-current] {
-  font-weight: 700;
-  color: #35573c;
+  font-weight: var(--font-weight-semibold);
+  color: var(--green);
 }
 .source-context > * {
   min-width: 0;
@@ -173,24 +194,27 @@ const matches = computed(
   overflow-wrap: anywhere;
 }
 .source-quote {
+  font-size: var(--font-size-reading);
+  line-height: var(--line-height-reading);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   padding: 1rem;
-  border-left: 3px solid #66896b;
-  background: #f4f7ef;
+  border-left: 3px solid var(--green);
+  background: var(--ui-bg-muted);
 }
 .source-original {
+  font-size: var(--font-size-reading);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  line-height: 1.8;
+  line-height: var(--line-height-reading);
 }
 .source-original mark {
-  background: #f2df9b;
+  background: color-mix(in srgb, var(--ui-warning) 25%, var(--ui-bg));
   color: inherit;
   border-radius: 2px;
 }
 .source-context :deep(.card-content) {
-  font-size: 1rem;
+  font-size: var(--font-size-reading);
 }
 @media (max-width: 720px) {
   .source-context {

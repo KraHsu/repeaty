@@ -1,0 +1,400 @@
+/* B direction: navigation remains light; configuration and README share one reading surface.
+   Nuxt UI and the public SDK continue to own every control and save interaction. */
+.settings-mobile-category {
+  display: none;
+}
+.settings-panel {
+  padding: 1.875rem 2.25rem;
+  background: var(--ui-bg);
+  border: 1px solid var(--line);
+  border-radius: 0.875rem;
+}
+.settings-panel-heading {
+  padding-bottom: 1.4375rem;
+  border-bottom: 1px solid var(--app-soft-line);
+}
+.settings-panel-heading h2 {
+  margin: 0;
+  font-size: 1.375rem;
+  line-height: 1.4;
+  font-weight: var(--font-weight-semibold);
+}
+.settings-panel .settings-configuration,
+.settings-panel .settings-view > .ui-setting-group {
+  margin: 0;
+  padding: 1.6875rem 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  --tw-ring-shadow: 0 0 #0000;
+}
+.settings-panel .settings-content > .settings-configuration + .settings-configuration,
+.settings-panel .settings-content > .settings-view + .settings-configuration,
+.settings-panel .settings-content > .settings-configuration + .settings-view {
+  border-top: 1px solid var(--app-soft-line);
+}
+.settings-panel .settings-configuration > [data-slot='header'],
+.settings-panel .settings-view > .ui-setting-group > [data-slot='header'] {
+  padding: 0 0 0.5rem;
+  border: 0;
+}
+.settings-panel .ui-setting-group__title {
+  font-size: 1.125rem;
+  line-height: 1.5;
+}
+.settings-panel .settings-configuration > [data-slot='body'],
+.settings-panel .settings-view > .ui-setting-group > [data-slot='body'] {
+  padding: 0;
+}
+.settings-panel .ui-setting-field {
+  min-height: 5.375rem;
+  margin-block: 0;
+  padding-block: 1.5rem;
+  column-gap: 1.5rem;
+  border-bottom: 1px solid var(--app-soft-line);
+}
+.settings-panel .ui-setting-field:last-child {
+  border-bottom: 0;
+}
+.settings-panel
+  .ui-setting-field:not(.ui-setting-field--binary)[data-orientation='horizontal']
+  > :last-child {
+  max-width: 15rem;
+}
+.settings-panel .ui-setting-field[data-orientation='vertical'] {
+  min-height: 0;
+  border-bottom: 0;
+}
+.settings-panel .ui-setting-group__description {
+  max-width: 44rem;
+  line-height: var(--line-height-reading);
+}
+.settings-categories > [role='tree'] > .branched-menu__section + .branched-menu__section {
+  margin-top: 0.75rem;
+}
+.settings-mobile-category label {
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+}
+.plugins-page,
+.settings-plugins {
+  container-type: inline-size;
+}
+.plugin-manager {
+  display: grid;
+  gap: 1rem;
+  margin-block: 1.5rem 2rem;
+}
+.plugin-workbench + .plugin-manager {
+  margin-left: 20rem;
+}
+.plugin-manager .plugin-actions {
+  align-items: start;
+}
+.plugin-storage-help {
+  flex: 1 1 15rem;
+  max-width: 40rem;
+  min-width: 0;
+}
+.plugin-storage-help p {
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+  line-height: var(--line-height-reading);
+  margin-top: 0.75rem;
+}
+.plugin-workbench {
+  display: grid;
+  grid-template-columns: minmax(12rem, 18rem) minmax(0, 1fr);
+  align-items: start;
+  gap: 2rem;
+}
+.plugin-directory {
+  position: sticky;
+  top: 1rem;
+  min-width: 0;
+  max-width: 100%;
+}
+.plugin-directory-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.25rem 0.75rem 1rem;
+  font-size: var(--font-size-meta);
+  color: var(--muted);
+}
+.plugin-directory-heading h2 {
+  margin: 0;
+  font: inherit;
+  font-weight: var(--font-weight-semibold);
+}
+.plugin-directory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.plugin-directory-list .plugin-directory-item {
+  display: flex;
+  align-items: center;
+  justify-content: start;
+  gap: 0.75rem;
+  min-width: 0;
+  width: 100%;
+  min-height: 5.25rem;
+  padding: 1rem 0.875rem;
+  border: 1px solid transparent;
+  border-radius: 0.75rem;
+  text-align: left;
+  white-space: normal;
+}
+.plugin-directory-item.selected {
+  background: var(--app-selected);
+  border-color: var(--ui-border-accented);
+}
+.plugin-directory-item:not(.selected):hover {
+  background: var(--app-rail);
+}
+.plugin-directory-mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 2.75rem;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.625rem;
+  border: 1px solid var(--line);
+  background: var(--ui-bg);
+  color: var(--ui-primary);
+}
+.plugin-directory-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 0.25rem;
+  overflow-wrap: anywhere;
+}
+.plugin-directory-copy strong {
+  color: var(--ui-text);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+}
+.plugin-directory-copy > span {
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+  font-weight: var(--font-weight-regular);
+}
+.plugin-directory-state {
+  flex: 0 0 0.5rem;
+  height: 0.5rem;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--ui-text-dimmed);
+}
+.plugin-directory-state.enabled {
+  background: var(--ui-primary);
+}
+.plugin-directory-state.issue {
+  background: var(--ui-warning);
+}
+.plugin-detail-pane {
+  min-width: 0;
+}
+.plugin-detail-pane .plugin-settings {
+  margin-bottom: 0;
+  border-radius: 0.875rem;
+  scroll-margin-top: 4rem;
+}
+.plugin-detail-pane .plugin-settings > [data-slot='header'] {
+  padding: 1.875rem 2.125rem 0;
+  border: 0;
+}
+.plugin-detail-pane .plugin-settings > [data-slot='body'] {
+  padding: 0 2.125rem 1.875rem;
+}
+.plugin-detail-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.plugin-detail-mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 3.5rem;
+  width: 3.5rem;
+  height: 3.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.8125rem;
+  color: var(--green);
+  background: var(--ui-bg-elevated);
+}
+.plugin-detail-copy {
+  min-width: 0;
+}
+.plugin-detail-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+.plugin-detail-title h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  line-height: 1.45;
+  font-weight: var(--font-weight-semibold);
+}
+.plugin-detail-version {
+  font-size: var(--font-size-meta);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.plugin-detail-copy p {
+  margin: 0.4375rem 0 0;
+  font-size: var(--font-size-meta);
+  color: var(--muted);
+  line-height: 1.7;
+}
+.plugin-enabled-field {
+  margin-block: 1.5rem;
+  padding-block: 1.125rem;
+  border-block: 1px solid var(--app-soft-line);
+}
+.plugin-configure-row,
+.plugin-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: 0 1.75rem;
+}
+.plugin-configure-row > span {
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+}
+.plugin-detail-actions {
+  justify-content: end;
+  padding-block: 1.5rem 0;
+  border-top: 1px solid var(--app-soft-line);
+}
+.plugin-readme {
+  padding-block: 1.5625rem 1.25rem;
+  border-top: 1px solid var(--line);
+}
+.plugin-readme-trigger {
+  font-weight: var(--font-weight-semibold);
+  font-size: 1.125rem;
+  padding-inline: 0;
+}
+.plugin-readme .card-content {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-reading);
+}
+.plugin-readme pre,
+.plugin-readme table {
+  font-size: inherit;
+}
+.plugin-metadata {
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+.plugin-metadata h3 {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  margin: 0 0 1rem;
+}
+.plugin-permissions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+}
+.plugin-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+.official-plugin-list {
+  display: grid;
+  margin-top: 1rem;
+}
+.official-plugin-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+.official-plugin-copy {
+  flex: 1 1 16rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.official-plugin-copy h3,
+.official-plugin-copy p {
+  margin: 0;
+}
+.official-plugin-copy h3 {
+  font-size: var(--font-size-control);
+}
+.official-plugin-copy h3 span {
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+  font-weight: normal;
+}
+.official-plugin-copy p {
+  margin-top: 0.375rem;
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+}
+@container (max-width: 50rem) {
+  .plugin-workbench + .plugin-manager {
+    margin-left: 0;
+  }
+  .plugin-workbench {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+  }
+  .plugin-directory {
+    position: static;
+  }
+  .plugin-directory-list {
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 0.25rem 0.25rem 0.75rem;
+  }
+  .plugin-directory-list .plugin-directory-item {
+    flex: 0 0 14rem;
+  }
+}
+@container (max-width: 40rem) {
+  .settings-panel {
+    padding: 1.375rem 1.25rem;
+  }
+  .settings-panel-heading h2 {
+    font-size: 1.25rem;
+  }
+  .plugin-detail-pane .plugin-settings > [data-slot='header'] {
+    padding: 1.5rem 1.25rem 0;
+  }
+  .plugin-detail-pane .plugin-settings > [data-slot='body'] {
+    padding: 0 1.25rem 1.5rem;
+  }
+  .plugin-detail-title h2 {
+    font-size: 1.375rem;
+  }
+  .plugin-detail-mark {
+    flex-basis: 3rem;
+    width: 3rem;
+    height: 3rem;
+  }
+}
+@container (max-width: 36rem) {
+  .settings-panel
+    .ui-setting-field:not(.ui-setting-field--binary)[data-orientation='horizontal']
+    > :last-child {
+    max-width: none;
+  }
+}

@@ -1,5 +1,151 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
 export const en = {
+  展开侧栏: 'Expand sidebar',
+  收起侧栏: 'Collapse sidebar',
+  学习与管理: 'Study and management',
+  帮助: 'Help',
+  '{p0} 个卡组 · {p1} 张卡片': '{p0} decks · {p1} cards',
+  当前卡组: 'Current deck',
+  '其中 {count} 张正在学习': '{count} cards in learning',
+  '稍后到期 {count} 张': '{count} due later',
+  '选择卡组 {p0}': 'Select deck {p0}',
+  '今日已复习 {count} 次': '{count} reviews today',
+  插件信息: 'Plugin information',
+  已启用: 'Enabled',
+  未启用: 'Disabled',
+  '收起 {name}': 'Collapse {name}',
+  '展开 {name}': 'Expand {name}',
+  调整侧栏宽度: 'Resize sidebar',
+  窗口控制: 'Window controls',
+  最小化窗口: 'Minimize window',
+  最大化窗口: 'Maximize window',
+  还原窗口: 'Restore window',
+  关闭窗口: 'Close window',
+  '窗口操作失败，请重试。': 'The window action failed. Try again.',
+  卡片: 'Cards',
+  复习记录: 'Review history',
+  工作目录试用: 'Workspace trial',
+  '正在试用「{name}」': 'Trying “{name}”',
+  '修改和评分只保留在本页，原目录不变。':
+    'Edits and ratings stay on this page. The original folder is unchanged.',
+  在浏览器中打开工作目录: 'Open a workspace in your browser',
+  '查看本地卡片、材料和学习记录，无需上传或连接服务器。':
+    'View local cards, sources and study history without uploading them or connecting to a server.',
+  '原目录只读。可在独立副本中复习和编辑，试用进度只保留在当前页面。':
+    'The original folder is read-only. Review and edit a separate copy; trial progress lasts for this page only.',
+  '先在桌面版中关闭学习库，再选择包含 workspace.json 的整个文件夹。':
+    'Close the library in the desktop app, then select the entire folder containing workspace.json.',
+  打开本地工作目录: 'Open local workspace',
+  使用文件夹选择: 'Use folder selection',
+  选择工作目录文件夹: 'Select workspace folder',
+  工作目录预览: 'Workspace preview',
+  '目录格式 {version}': 'Folder format {version}',
+  '使用桌面已接受的内容；尚未接受的外部编辑不会用于本次试用。':
+    'Uses content accepted in the desktop app. Pending external edits are excluded from this trial.',
+  开始试用: 'Start trial',
+  当前试用副本: 'Current trial copy',
+  '可以从侧栏进入卡片和材料。离开前，可在「数据与备份」中导出试用副本。':
+    'Open cards and sources from the sidebar. Export the trial copy from Data & backup before leaving.',
+  '文件更新、接受外部修改和自动检测请使用桌面版。':
+    'Use the desktop app to update files, accept external changes or detect file changes automatically.',
+  返回浏览器学习库: 'Return to browser library',
+  '打开试用副本不会覆盖已有的浏览器学习库。':
+    'Opening a trial copy keeps your existing browser library.',
+  结束当前试用: 'End current trial',
+  '当前试用的修改将不再保留。需要保存时，请先到「数据与备份」导出副本。原目录不受影响。':
+    'Edits in this trial will be discarded. Export a copy from Data & backup first if you want to keep them. The original folder is unaffected.',
+  继续试用: 'Keep trying',
+  结束试用: 'End trial',
+  '请选择完整的 Repeaty 工作目录，包括隐藏的 .repeaty 文件夹。':
+    'Select the complete Repeaty workspace, including its hidden .repeaty folder.',
+  '这个工作目录的格式暂不受支持，请使用当前桌面版创建的目录。':
+    'This workspace format is not supported. Use a workspace created by the current desktop version.',
+  '工作目录还有未完成的保存。请在桌面版中关闭学习库，再重新选择目录。':
+    'This workspace has unfinished saves. Close the library in the desktop app, then select it again.',
+  '读取期间文件发生变化。请关闭桌面学习库，再重新选择目录。':
+    'Files changed while being read. Close the desktop library, then select the folder again.',
+  '工作目录中的数据损坏或不完整，未替换当前学习库。':
+    'The workspace is damaged or incomplete. Your current library has been kept.',
+  '工作目录超过浏览器读取上限，请使用桌面版打开。':
+    'This workspace exceeds the browser reading limit. Open it in the desktop app.',
+  '无法读取所选目录，请检查文件访问权限后重试。':
+    'Cannot read the selected folder. Check file access permissions and try again.',
+  '无法启动工作目录读取器，请重新加载页面后重试。':
+    'Cannot start the workspace reader. Reload the page and try again.',
+  '试用副本已关闭，请重新选择工作目录。': 'This trial copy is closed. Select the workspace again.',
+  '{count} 项文件修改待检查': '{count} file changes to review',
+  '文件检测需要检查，请打开工作目录。': 'Check Workspace for file detection issues.',
+  '自动检测暂不可用，可手动重新扫描；返回窗口时会补检。':
+    'Automatic detection is unavailable. Rescan manually; returning to this window also checks for changes.',
+  '外部修改会自动列出，确认接受后用于学习。':
+    'External changes appear here automatically. Accept them to update your study content.',
+
+  '正文引用的附件已变化，接受后保存新的附件版本。':
+    'An attachment used in this document has changed. Accept it to save a new version.',
+  编辑材料: 'Edit source',
+  '正在查看摘录保存时的版本。': 'This is the version saved with the excerpt.',
+  '这篇摘录已经编辑，出处保留最初摘录的原文。':
+    'This excerpt has been edited. Its origin still points to the original quotation.',
+  '接受新版本后，已有摘录继续引用原版。阅读安排保持不变。':
+    'Existing excerpts will keep their original version. The reading schedule stays the same.',
+  接受材料修改: 'Accept source changes',
+  '来源链接（选填）': 'Source URL (optional)',
+  '正文或附件变更后，从新版开头阅读；只改标题或文件名会保留当前位置。阅读安排、摘录和卡片进度不变。':
+    'Changes to text or attachments start a new version at the beginning. Renaming the title or file keeps your location. Schedules, excerpts and card progress stay the same.',
+  历史版本: 'Previous versions',
+  '旧版正文和阅读位置保留。查看旧版不会改变当前阅读进度。':
+    'Previous text and reading locations are kept. Viewing a previous version leaves your current reading progress unchanged.',
+  '版本 {number} · {date}': 'Version {number} · {date}',
+  '阅读位置：{offset}': 'Reading location: {offset}',
+
+  '请先创建卡组，再添加或恢复笔记。': 'Create a deck before adding or restoring a note.',
+  查找: 'Find',
+  '确定删除「{name}」吗？其中的 {count} 张卡片将退出学习队列，笔记与记录仍可在工作目录中恢复。':
+    'Delete “{name}”? Its {count} cards will leave study. Notes and history can still be restored from Workspace.',
+  '确定移除 {notes} 条笔记及其 {cards} 张关联卡片吗？笔记与学习记录仍可在工作目录中恢复。':
+    'Remove {notes} notes and their {cards} cards from study? Notes and history can still be restored from Workspace.',
+
+  查找已移除的笔记: 'Find removed notes',
+  '共 {count} 条': '{count} notes',
+  '{count} 张卡片': '{count} cards',
+  '修改后部分卡片将暂不复习，已有记录会保留。请确认后继续。':
+    'Some cards will leave the study queue. Their records will be kept. Confirm to continue.',
+  '确认让不再生成的 {p0} 张卡片暂不复习，记录保留，重新添加后恢复。':
+    'Retire {p0} cards. Keep their history and restore it when the variants are added again.',
+  '题面和答案之间请单独放一行 <!-- repeaty:answer -->。':
+    'Separate the question and answer with a line containing <!-- repeaty:answer -->.',
+  '文件路径必须位于 notes/ 下，并以 .md 结尾。':
+    'The file path must be under notes/ and end with .md.',
+  移除这条笔记: 'Remove this note',
+  已移除的笔记: 'Removed notes',
+  '笔记和学习记录仍保存在目录中，可以恢复后继续学习。':
+    'Notes and study history are kept in the folder. Restore them to continue learning.',
+  恢复笔记: 'Restore note',
+  确认移除笔记: 'Remove note',
+  接受文件修改: 'Accept file changes',
+  '磁盘文件已不存在。确认后，{count} 张卡片将退出学习队列，笔记和历史记录仍可恢复。':
+    'The file is missing. Confirm to remove {count} cards from study. The note and its history can still be restored.',
+  '保留 {keep} 张，恢复 {restore} 张，新增 {create} 张，退役 {retire} 张。':
+    'Keep {keep}, restore {restore}, create {create}, retire {retire} cards.',
+  '退役卡片不再进入复习，历史记录保留；重新添加相同方向或挖空编号时恢复。':
+    'Retired cards leave the study queue. Their history returns when the same direction or cloze number is added again.',
+  确认接受: 'Accept changes',
+  确认恢复: 'Restore',
+
+  '文件中的笔记身份已被移除，请恢复后再接受修改。':
+    'The note identity was removed. Restore it before accepting changes.',
+  '文件身份与原笔记不同，请检查文件头。':
+    'The file identity differs from the original note. Check its frontmatter.',
+  '多个文件使用了同一个身份，请保留一份后重新扫描。':
+    'Multiple files share the same identity. Keep one and scan again.',
+  '文件路径重复，请改名后重新扫描。': 'File paths overlap. Rename the file and scan again.',
+  '磁盘上缺少文件，已接受的内容和学习记录仍保留。':
+    'The file is missing. Accepted content and study history are still kept.',
+  '文件格式或引用无效，请检查后重新扫描。':
+    'The file format or a reference is invalid. Check the file and scan again.',
+  '文件数：{count}': 'Files: {count}',
+  选择文件: 'Select a file',
+  工作文件: 'Working file',
   '操作涉及的内容已变化，无法撤销。请刷新后检查学习库。':
     'The affected content has changed. Refresh and check your library before continuing.',
   '撤销所需的媒体已不存在，请从快照恢复。':
@@ -29,6 +175,23 @@ export const en = {
   '输入框保留文字撤销；学习库支持撤销当前会话最近 20 次修改。评分在重启后仍可撤销。':
     'Text fields keep text undo. Library undo covers the last 20 changes in this session; the latest rating can also be undone after restarting.',
   设置分类: 'Settings categories',
+  插件页面: 'Plugin page',
+  '插件页面定义无效。': 'The plugin page definition is invalid.',
+  '插件页面视图无效。': 'The plugin page component is invalid.',
+  '插件页面图标无效。': 'The plugin page icon is invalid.',
+  '插件页面标识重复。': 'The plugin page ID is already registered.',
+  '当前宿主不支持插件页面注册。': 'This host does not support plugin page registration.',
+  '插件组件定义无效。': 'The plugin widget definition is invalid.',
+  '插件组件视图无效。': 'The plugin widget component is invalid.',
+  '插件组件标识重复。': 'The plugin widget ID is already registered.',
+  '当前宿主不支持插件组件注册。': 'This host does not support plugin widget registration.',
+  '插件页面暂时无法显示。': 'This plugin page could not be displayed.',
+  '插件组件暂时无法显示。': 'This plugin widget could not be displayed.',
+  重新加载页面: 'Reload page',
+  重新加载组件: 'Reload widget',
+  '管理软件和插件的偏好设置。': 'Manage preferences for the app and your plugins.',
+  '查看插件详情、使用说明，管理安装与权限。':
+    'View plugin details and guides, and manage installation and permissions.',
   通用: 'General',
   界面: 'Appearance',
   偏好语言: 'Preferred language',
@@ -51,6 +214,9 @@ export const en = {
   '关闭题目插件会暂停相关题目，关闭显示插件会隐藏其界面。内容和进度保留，开关仅影响当前浏览器。':
     'Disabling a question plugin pauses its questions; disabling a display plugin hides its interface. Content and progress stay intact. Switches apply to this browser.',
   答题历史: 'Review history',
+  复习热力图: 'Review heatmap',
+  '在学习概览中以日历热力图展示最近 365 天的正式评分次数。':
+    'Show formal review counts from the last 365 days in a calendar on the learning overview.',
   '在当前卡片上方显示最近的评分，虚线圆表示本次作答。':
     'Show recent ratings above the current card. A dashed circle marks this attempt.',
   当前卡片的答题历史: 'Review history for this card',
@@ -602,6 +768,14 @@ export const en = {
   替换并恢复: 'Replace and restore',
   关闭弹窗: 'Close dialog',
   搜索卡片: 'Search cards',
+  已到期: 'Due now',
+  'LeetCode 题目': 'LeetCode problem',
+  今天及之前到期: 'Due today or earlier',
+  '七天内到期（含逾期）': 'Due within seven days, including overdue',
+  已逾期: 'Overdue',
+  至少遗忘三次: 'At least three lapses',
+  尚未遗忘: 'No lapses yet',
+  至少遗忘一次: 'At least one lapse',
   '关键词、tag:英语、is:due、lapses:>=3…': 'Keywords, tag:English, is:due, lapses:>=3…',
   筛选卡组: 'Filter by deck',
   全部卡组: 'All decks',
@@ -632,7 +806,7 @@ export const en = {
     'Ratings apply only to this session. Due dates, daily counts, and statistics stay unchanged.',
   '可练习 {p0} 张，已排除暂停和今日暂缓的卡片。每张卡片练习一次。{p1}':
     'Available cards: {p0}. Suspended and buried cards are excluded. Each card is shown once. {p1}',
-  '{p0} 张卡片 · {p1} 条笔记': 'Cards: {p0} · Notes: {p1}',
+  '{p0} 张卡片 · 全库 {p1} 条笔记': 'Cards: {p0} · Total notes in library: {p1}',
   '已选 {p0} 张卡片（{p1} 条笔记）': 'Selected cards: {p0} · Notes: {p1}',
   删除所选笔记: 'Delete selected notes',
   批量修改笔记的卡组与标签: 'Bulk edit decks and tags',
@@ -890,6 +1064,21 @@ export const en = {
   'type,front,back,tags\nbasic,hello,你好,英语|问候':
     'type,front,back,tags\nbasic,bonjour,hello,French|greetings',
   界面语言: 'Interface language',
+  颜色模式: 'Color mode',
+  跟随系统: 'Follow system',
+  浅色: 'Light',
+  深色: 'Dark',
+  '跟随系统时，外观会随设备的浅色或深色模式自动切换。':
+    'Follow system automatically matches your device’s light or dark appearance.',
+  文件检查: 'File review',
+  '{count} 项待处理': '{count} pending',
+  暂无待处理的文件: 'No pending files',
+  自动检测中: 'Watching for changes',
+  等待检查: 'Waiting for a scan',
+  没有匹配的文件: 'No matching files',
+  '选择左侧文件，查看工作文件与已接受版本。':
+    'Select a file to view its working and accepted versions.',
+  目录中暂无可检查的文件: 'There are no files to review in this workspace',
   '字段「{field}」格式不正确，请检查必填内容和取值范围。':
     'Invalid field “{field}”. Check required values and allowed ranges.',
   内容: 'Content',
@@ -1038,6 +1227,31 @@ export const en = {
   '有一次提交未取得编号，尝试次数可能不完整。本轮请手动评分，再次提交前请先检查 LeetCode 提交记录。':
     'A submission ID was not received, so the attempt count may be incomplete. Use a manual rating this round and check your LeetCode history before resubmitting.',
   插件: 'Plugins',
+  '插件将在应用中执行代码。确认安装并启用 {name}？':
+    'Plugins run code inside the app. Install and enable {name}?',
+  '插件将在应用中执行代码。确认启用 {name}？': 'Plugins run code inside the app. Enable {name}?',
+  '卸载插件代码？题目、历史、设置和插件数据会保留。':
+    'Remove plugin code? Questions, history, settings and plugin data will be kept.',
+  '插件独立安装和更新，无需重新编译 Repeaty。':
+    'Install and update plugins independently, without rebuilding Repeaty.',
+  '插件代码保存在当前学习目录中，随目录移动。新设备首次启用时需确认，登录凭据留在设备上。':
+    'Plugin code stays in the current library folder and moves with it. Confirm it before first use on a new device; credentials stay on the device.',
+  '前端插件保存在此浏览器的独立副本中，不写入只读打开的原目录。':
+    'Frontend plugins are saved in a separate copy in this browser. The original read-only folder is unchanged.',
+  安装插件包: 'Install plugin package',
+  联网域名: 'Allowed websites',
+  设备凭据: 'Device credentials',
+  插件文件: 'Plugin files',
+  无原生能力: 'No native capabilities',
+  安装或更新官方插件: 'Install or update official plugins',
+  重新扫描插件: 'Rescan plugins',
+  '请先结束复习或关闭编辑器，再修改插件。':
+    'Finish the review or close the editor before changing plugins.',
+  卸载插件: 'Uninstall plugin',
+  '此设备尚未信任此插件包。启用前请确认代码来源。':
+    'This device has not trusted this plugin package. Check its source before enabling it.',
+  '当前学习库尚未安装插件。普通卡片可正常使用。':
+    'No plugins are installed in this library. Standard cards remain available.',
   内置: 'Built in',
   '将 LeetCode 题目加入卡组，编写代码并提交判题，按结果安排复习。':
     'Add LeetCode problems to a deck, submit code for judging, and schedule reviews from the results.',
@@ -1314,4 +1528,206 @@ export const en = {
   '第 {page} 页，共 {pages} 页': 'Page {page} of {pages}',
   '这段原文已有 {count} 份摘录。': 'Existing excerpts for this selection: {count}.',
   查看已有摘录: 'Show saved excerpts',
+  工作目录: 'Workspace',
+  预览: 'Preview',
+  打开目录: 'Open folder',
+  创建预览目录: 'Create preview folder',
+  重新扫描: 'Rescan',
+  关闭目录: 'Close folder',
+  当前预览目录: 'Current preview folder',
+  目录文件: 'Workspace files',
+  查找文件: 'Find a file',
+  文件路径: 'File path',
+  '{p0} 个文件': '{p0} files',
+  最近打开: 'Recently opened',
+  文件版本: 'File version',
+  文件原文: 'Working file',
+  已接受版本: 'Accepted version',
+  未变化: 'Unchanged',
+  文件已修改: 'Modified',
+  文件已改名: 'Renamed',
+  改名并修改: 'Renamed and modified',
+  尚未接受: 'Not yet accepted',
+  '普通 Markdown': 'Plain Markdown file',
+  '待添加 · Markdown': 'To add · Markdown',
+  缺少身份: 'Missing identity',
+  需要检查: 'Needs attention',
+  存在冲突: 'Conflict',
+  文件缺失: 'Missing file',
+  '查看外部 Markdown 与已接受版本。当前学习库不会随预览切换。':
+    'Inspect external Markdown and accepted versions. Your study library stays separate.',
+  '此预览使用独立的实验目录，尚不用于日常复习。旧库迁移与自动接收文件修改尚未开放。':
+    'This preview uses a separate experimental folder. Daily study, migration, and automatic acceptance of file changes are not available here yet.',
+  '正在读取工作目录…': 'Reading workspace…',
+  '扫描未完成。缺失文件不会据此认定为已删除。':
+    'The scan is incomplete. Missing files will not be treated as deleted.',
+  '没有匹配的文件。': 'No matching files.',
+  '目录中还没有 Markdown 文件。': 'There are no Markdown files in this folder yet.',
+  '文件内容为空。': 'The file is empty.',
+  '没有可预览的正文。': 'No text is available to preview.',
+  '选择文件查看原文。预览不会执行 HTML 或插件。':
+    'Select a file to read its text. The preview does not execute HTML or plugins.',
+  '请选择一个空文件夹。目录中已有的文件不会被覆盖。':
+    'Choose an empty folder. Existing files will be kept.',
+  '暂不支持这个目录格式。请选择由工作目录预览创建的文件夹。':
+    'This folder format is not supported yet. Choose a folder created by Workspace Preview.',
+  '这个工作目录已在使用中。请先关闭另一会话，再重新打开。':
+    'This workspace is already open. Close the other session before opening it here.',
+  '目录已被移动或替换。请通过“打开目录”重新选择。':
+    'The folder was moved or replaced. Use “Open folder” to select it again.',
+  '找不到目录或必要文件。请检查位置，再重新打开。':
+    'The folder or a required file could not be found. Check its location and open it again.',
+  '目录会话已变化。请重新扫描或打开目录。':
+    'The workspace session changed. Rescan or open the folder again.',
+  '无法访问这个目录。请检查文件夹权限。': 'This folder cannot be accessed. Check its permissions.',
+  '文件数量或总大小超出本次预览范围，扫描结果不完整。':
+    'The file count or total size exceeds the preview limit. The scan is incomplete.',
+  '文件不是有效的 UTF-8 文本。请保留原文件，检查编码后重新扫描。':
+    'This file is not valid UTF-8. Keep the original, check its encoding, and rescan.',
+  '文件超过 2 MiB，未读取其正文。': 'The file exceeds 2 MiB. Its text was not read.',
+  '读取期间文件发生变化。请保存后重新扫描。':
+    'The file changed while being read. Save it and rescan.',
+  '已跳过链接或不支持的文件。扫描结果不完整。':
+    'Links or unsupported files were skipped. The scan is incomplete.',
+  '暂时无法读取工作目录。请检查文件和权限后重试。':
+    'The workspace could not be read. Check its files and permissions, then try again.',
+  '多个文件使用了同一个身份。请保留各份内容，检查后再处理。':
+    'Several files share the same identity. Keep every copy and review them before proceeding.',
+  '文件名存在大小写或 Unicode 冲突。请分别保留并检查。':
+    'File names conflict by case or Unicode spelling. Keep each file and review the names.',
+  '这个位置的笔记身份已变化。原已接受版本仍保留。':
+    'The note identity at this path changed. The original accepted version is retained.',
+  '工作文件暂时缺失，已接受的正文仍保留。':
+    'The working file is missing. Its accepted text is retained.',
+  '文件内容尚未通过校验。请检查元数据、题面与答案分隔，再重新扫描。':
+    'The file has not passed validation. Check its metadata and question/answer separator, then rescan.',
+  '浏览目录中的 Markdown 与已接受版本。': 'Browse Markdown files and accepted versions.',
+  '预览目录独立于当前学习库，暂不用于复习或旧库迁移。':
+    'Preview folders stay separate from your study library. Study and migration are not available here yet.',
+  '文件：{p0}': 'Files: {p0}',
+  文件分页: 'File pages',
+  '最近记录已变化。请通过“打开目录”重新选择。':
+    'Recent folders changed. Use “Open folder” to choose it again.',
+  '请先创建或打开工作目录。': 'Create or open a workspace first.',
+  '请选择空文件夹。已有文件不会被覆盖。': 'Choose an empty folder. Existing files will be kept.',
+  '不支持这个工作目录格式。': 'This workspace format is not supported.',
+  '这个学习库已在另一窗口中打开。': 'This workspace is already open in another window.',
+  '找不到工作目录或必要文件。': 'The workspace or a required file could not be found.',
+  '工作目录已被移动或替换，请重新打开。': 'The workspace was moved or replaced. Open it again.',
+  '学习库已切换，请重新打开当前内容。': 'The workspace changed. Open this item again.',
+  '文件已在外部修改，请先在工作目录页面检查并接受修改。':
+    'This file was edited externally. Review and accept the change in Workspace first.',
+  '学习库内容已变化，请重新载入。': 'The workspace changed. Reload it before continuing.',
+  '无法访问工作目录，请检查文件夹权限。':
+    'Cannot access the workspace. Check the folder permissions.',
+  '目录中包含链接或不支持的文件，操作已停止。':
+    'The workspace contains a link or an unsupported file. The operation was stopped.',
+  '本次文件检查超过范围，请减少文件数量或大小。': 'This scan exceeds the file count or size limit.',
+  '内容无效，修改未保存。': 'The content is invalid. Changes were not saved.',
+  '内容已不存在，请重新载入。': 'This item no longer exists. Reload the workspace.',
+  '无法读写工作目录，请检查磁盘空间和文件权限。':
+    'Cannot read or write the workspace. Check free space and folder permissions.',
+  '卡片、材料、附件和学习进度保存在同一个文件夹中。':
+    'Cards, sources, attachments and study progress live in one folder.',
+  创建学习库: 'Create workspace',
+  当前学习库: 'Current workspace',
+  '打开文件夹，开始学习': 'Open a folder to start learning',
+  '首次使用请选择空文件夹创建学习库，入门卡组会自动添加。':
+    'Choose an empty folder to create a workspace. A starter deck will be added.',
+  '已有学习库请选择包含 workspace.json 的文件夹。':
+    'To open an existing workspace, choose the folder containing workspace.json.',
+  '部分正文文件需要检查。已保存的学习进度仍保留在当前目录。':
+    'Some content files need attention. Your saved study progress remains in this workspace.',
+  '卡片方向或挖空编号已变化，请在应用内编辑确认。':
+    'Card directions or cloze numbers changed. Edit the note in the app to confirm these changes.',
+  '材料快照的外部修改暂不自动接受，原有摘录与出处保持不变。':
+    'External changes to source snapshots are not accepted automatically. Existing excerpts and references are preserved.',
+  接受修改: 'Accept changes',
+  '在侧边栏“工作目录”中创建、打开或关闭学习库。':
+    'Use Workspace in the sidebar to create, open or close a workspace.',
+  保存在工作目录中: 'Saved in your workspace folder',
+  '插件包格式或 API 版本不受支持。': 'The plugin package format or API version is not supported.',
+  '插件文件已变化，请重新扫描后再试。': 'The plugin files changed. Rescan them and try again.',
+  '插件目录包含链接或不支持的文件，请检查后重新安装。':
+    'The plugin folder contains a link or unsupported file. Check it and reinstall the plugin.',
+  '无法访问插件文件，请检查文件夹权限。':
+    'Cannot access the plugin files. Check the folder permissions.',
+  '无法读写插件文件，请检查磁盘空间和文件权限。':
+    'Cannot read or write the plugin files. Check free space and folder permissions.',
+  插件管理: 'Plugin management',
+  插件说明: 'Plugin documentation',
+  介绍与使用: 'Overview and usage',
+  '此插件包尚未提供使用说明。': 'This plugin package has no usage guide yet.',
+  连接: 'Connections',
+  工具: 'Tools',
+  学习: 'Study',
+  通知: 'Notifications',
+  控件示例: 'Control examples',
+  '设置分类路径无效。': 'The settings category path is invalid.',
+  '设置分类标题无效。': 'The settings category title is invalid.',
+  '按分类调整软件与插件提供的选项。': 'Configure application and plugin options by category.',
+  '此分类暂时没有可配置的选项。': 'There are no settings in this category.',
+  插件设置: 'Plugin settings',
+  '插件设置定义无效。': 'The plugin settings definition is invalid.',
+  '插件设置必须提供字段或自定义视图。': 'Plugin settings must provide fields or a custom view.',
+  '插件设置视图无效。': 'The plugin settings view is invalid.',
+  '插件设置说明无效。': 'The plugin settings description is invalid.',
+  '插件设置错误信息无效。': 'The plugin settings error message is invalid.',
+  '插件设置字段不能为空。': 'Plugin settings fields cannot be empty.',
+  '插件设置字段无效或标识重复。': 'A plugin settings field is invalid or has a duplicate key.',
+  '插件设置字段的值与类型不一致。': 'A plugin settings value does not match its field type.',
+  '插件设置范围无效。': 'The plugin settings range is invalid.',
+  '插件设置选项无效。': 'The plugin settings options are invalid.',
+  '插件设置标识重复。': 'The plugin settings ID is already registered.',
+  '当前宿主不支持插件设置注册。': 'This host does not support registering plugin settings.',
+  配置插件: 'Configure plugin',
+  插件标识: 'Plugin ID',
+  安装位置: 'Installed in',
+  浏览器副本: 'Browser copy',
+  '已启用插件提供的配置，统一在这里调整。': 'Configure your enabled plugins in one place.',
+  '当前没有可配置的插件。启用提供设置的插件后，配置会出现在这里。':
+    'No plugin settings are available. Enable a plugin that provides settings to see them here.',
+  '无法保存插件设置，请重试。': 'Could not save plugin settings. Try again.',
+  '安装、更新与管理当前学习库的插件。': 'Install, update and manage plugins for this workspace.',
+  插件安装与存储: 'Installation and storage',
+  运行环境: 'Availability',
+  访问权限: 'Permissions',
+  桌面应用: 'Desktop app',
+  桌面与网页: 'Desktop and web',
+  '关闭插件会保留题目、历史和设置。': 'Disabling keeps your questions, history and settings.',
+  保存筛选: 'Save filter',
+  搜索语法: 'Search syntax',
+  专项练习: 'Focused practice',
+  保存当前条件: 'Save current filters',
+  未限制关键词: 'No keyword restriction',
+  收起搜索工具: 'Close search tools',
+  指定标签: 'Match a tag',
+  指定卡组: 'Match a deck',
+  'tag:英语': 'tag:English',
+  'deck:"卡组名称"': 'deck:"Deck name"',
+  '新卡、到期或顽固卡': 'New, due or leech cards',
+  '正反面、双向或挖空': 'Basic, reversed or cloze notes',
+  '插件卡片或 LeetCode': 'Plugin cards or LeetCode',
+  '未来 7 天内到期（含逾期）': 'Due within seven days, including overdue',
+  '遗忘至少 3 次': 'At least three lapses',
+  '多个条件用空格连接；用双引号匹配短语，用减号排除条件。':
+    'Separate conditions with spaces. Use quotes for phrases and a minus sign to exclude a condition.',
+  'due 按距今天的日历天数计算，负数表示逾期。is:due 包含所有到期卡片，不考虑每日额度。':
+    'due counts calendar days from today; negative values are overdue. is:due includes all due cards, regardless of daily limits.',
+  '正在计算可练习卡片…': 'Finding available cards…',
+  '请先修正搜索条件。': 'Correct the search conditions first.',
+  '可练习 {count} 张': '{count} cards available',
+  '已排除暂停和今日暂缓的卡片。': 'Suspended and buried cards are excluded.',
+  '评分会更新复习时间并计入今日学习，不受每日上限限制。':
+    'Ratings update review dates and count toward today’s study, without daily limits.',
+  '评分仅用于本轮练习，不改变复习时间、每日用量或统计。':
+    'Ratings apply only to this session. Review dates, daily usage and statistics stay unchanged.',
+  '1–500 张，每张练习一次': '1–500 cards, once each',
+  '本轮 {count} 张': '{count} cards this session',
+  安装并启用: 'Install and enable',
+  更新并启用: 'Update and enable',
+  已安装较新版本: 'Newer version installed',
+  '选择要安装的官方插件，仅修改所选插件。安装后会自动启用。':
+    'Choose an official plugin. Only that plugin will be installed or updated, then enabled.',
+  '暂无可安装的官方插件。': 'No official plugins are available.',
 } as const

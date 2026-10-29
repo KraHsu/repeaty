@@ -46,6 +46,7 @@ it('translates a selection through every immutable ancestor, including repeated 
   expect(path[1]!.excerpt).toEqual(selection)
   expect(path[2]!.excerpt).toEqual({
     sourceId: root.source.id,
+    mediaId: root.source.mediaId,
     start: paragraph.start + selection.start,
     end: paragraph.start + selection.end,
     quote: '变量🙂',
@@ -147,7 +148,16 @@ it('keeps descendants, cards, reading positions and arrangements when a middle e
         bodies[i],
       )
     expect(restored.library.sources.map((source) => source.origin)).toEqual(
-      library.sources.map((source) => source.origin),
+      library.sources.map((source) =>
+        source.origin
+          ? {
+              ...source.origin,
+              mediaId: restored.library.sources.find(
+                (entry) => entry.id === source.origin!.sourceId,
+              )!.mediaId,
+            }
+          : undefined,
+      ),
     )
     expect(restored.library.cards).toEqual(library.cards)
     await verify.close()

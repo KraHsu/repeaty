@@ -3,6 +3,7 @@ import { reviewPolishFlow, skillSettingsFlow, seedPolish } from './fixtures/poli
 import { readBrowserLibrary, startMixed } from './fixtures/adaptive-mixed-flow'
 import { importReading, readingText } from './fixtures/reading-flow'
 import { fixture, now } from '../src/core/test-fixtures'
+import { selectSettingsCategory } from './fixtures/settings-flow'
 
 test('review editing, Chinese emphasis, code highlighting and configurable history work together', async ({
   page,
@@ -31,7 +32,7 @@ test('info expires, warnings persist until dismissed, and popup preferences pres
   }
   await seedPolish(page, library)
   await page.getByRole('button', { name: '学习概览', exact: true }).click()
-  await page.locator('.deck-review').click()
+  await page.locator('.b-start-review').click()
   await page.getByRole('button', { name: '显示答案', exact: true }).click()
   await page.getByRole('button', { name: /^重来/ }).click()
   const info = page.locator('.notification.info').filter({ hasText: '关联卡片' }),
@@ -52,7 +53,7 @@ test('a failed grade keeps the current answer and can be retried once, with a ma
 }) => {
   await seedPolish(page)
   await page.getByRole('button', { name: '学习概览', exact: true }).click()
-  await page.locator('.deck-review').click()
+  await page.locator('.b-start-review').click()
   await page.getByRole('button', { name: '显示答案', exact: true }).click()
   await page.evaluate(() => {
     const original = IDBObjectStore.prototype.put
@@ -81,7 +82,7 @@ test('the no-MCP instructions remain available offline', async ({ page, context 
   await page.reload()
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await context.setOffline(true)
-  await page.getByRole('tab', { name: 'AI 制卡', exact: true }).click()
+  await selectSettingsCategory(page, 'tools.ai')
   await expect(page.getByLabel('制卡说明（可直接粘贴到 AI 聊天中）')).toHaveValue(
     /name: repeaty-cards/,
   )

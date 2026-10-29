@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { UiButton, UiProgress, UiCheckbox, UiCollapsible } from './ui'
 import { computed, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { t, type DisplayMessage, type MessageKey } from '../i18n'
 import type { Library } from '../core/model'
@@ -224,14 +225,15 @@ function downloadReport() {
       :disabled="busy || reading"
       @change="fileChanged"
     />
-    <button
+    <UiButton
+      variant="secondary"
       type="button"
-      class="button attachment-button anki-file-button"
+      class="attachment-button anki-file-button"
       :disabled="busy || reading"
       @click="fileInput?.click()"
     >
       <Upload :size="18" aria-hidden="true" />{{ t('选择 Anki 文件') }} (.apkg)
-    </button>
+    </UiButton>
     <div v-if="reading" class="anki-progress" role="status" aria-live="polite">
       <p>
         {{
@@ -240,24 +242,27 @@ function downloadReport() {
             : t('正在读取 Anki 文件… {percent}%', { percent: progress })
         }}
       </p>
-      <progress
+      <UiProgress
         v-if="!comparing"
-        :value="progress"
-        max="100"
+        :model-value="progress"
+        :max="100"
         :aria-label="t('正在读取 Anki 文件…')"
       />
-      <button type="button" class="text-button" @click="cancelRead">{{ t('取消') }}</button>
+      <UiButton variant="ghost" type="button" @click="cancelRead">
+        {{ t('取消') }}
+      </UiButton>
     </div>
     <p v-if="error" class="import-warning" role="alert">{{ t(error) }}</p>
-    <button
+    <UiButton
+      variant="ghost"
       v-if="data && !reading"
       type="button"
-      class="text-button anki-retry"
+      class="anki-retry"
       :disabled="busy"
       @click="retryComparison"
     >
       {{ t('重新比较') }}
-    </button>
+    </UiButton>
     <section v-if="data && plan && summary" class="anki-preview" aria-live="polite">
       <strong>{{ data.name }}</strong>
       <p>
@@ -322,34 +327,41 @@ function downloadReport() {
         </p>
         <p class="form-note">{{ t('导入前会保存快照，可恢复原内容、进度和附件。') }}</p>
         <label class="check-line"
-          ><input v-model="confirmCardChanges" type="checkbox" :disabled="busy" />{{
+          ><UiCheckbox v-model="confirmCardChanges" :disabled="busy" />{{
             t('我已确认以上卡片变化')
           }}</label
         >
       </div>
-      <details v-if="data.issues.length" class="anki-report">
-        <summary>{{ t('导入报告') }} ({{ data.issues.length }})</summary>
-        <ul>
-          <li v-for="(issue, index) in data.issues.slice(0, 20)" :key="index">
-            <strong>{{ t(issue.skipped ? '已跳过' : '已调整') }}</strong> · {{ issue.model }} ·
-            {{ issue.noteId }}
-            <p>{{ t(reasons[issue.reason]) }}</p>
-          </li>
-        </ul>
-        <p v-if="data.issues.length > 20" class="form-note">
-          {{ t('还有 {count} 项，完整列表见下载报告。', { count: data.issues.length - 20 }) }}
-        </p>
-      </details>
-      <button type="button" class="text-button" @click="downloadReport">{{ t('下载报告') }}</button>
+      <UiCollapsible :unmount-on-hide="false" v-if="data.issues.length" class="anki-report">
+        <template #default="{ open }"
+          ><UiButton type="button" variant="ghost" :aria-expanded="open"
+            >{{ t('导入报告') }} ({{ data.issues.length }})</UiButton
+          ></template
+        ><template #content>
+          <ul>
+            <li v-for="(issue, index) in data.issues.slice(0, 20)" :key="index">
+              <strong>{{ t(issue.skipped ? '已跳过' : '已调整') }}</strong> · {{ issue.model }} ·
+              {{ issue.noteId }}
+              <p>{{ t(reasons[issue.reason]) }}</p>
+            </li>
+          </ul>
+          <p v-if="data.issues.length > 20" class="form-note">
+            {{ t('还有 {count} 项，完整列表见下载报告。', { count: data.issues.length - 20 }) }}
+          </p>
+        </template></UiCollapsible
+      >
+      <UiButton variant="ghost" type="button" @click="downloadReport">
+        {{ t('下载报告') }}
+      </UiButton>
       <p v-if="!selected.length" class="form-note">{{ t('未选择添加或更新任何笔记。') }}</p>
     </section>
     <div class="form-actions">
-      <button type="button" class="button secondary" :disabled="busy" @click="emit('close')">
+      <UiButton variant="secondary" type="button" :disabled="busy" @click="emit('close')">
         {{ t('取消') }}
-      </button>
-      <button
+      </UiButton>
+      <UiButton
+        variant="primary"
         type="button"
-        class="button primary"
         :disabled="
           busy ||
           reading ||
@@ -361,7 +373,7 @@ function downloadReport() {
         @click="submit"
       >
         {{ t('确认导入') }}
-      </button>
+      </UiButton>
     </div>
   </div>
 </template>
@@ -407,8 +419,8 @@ function downloadReport() {
 }
 .anki-card-impact {
   padding: 1rem;
-  background: #faf6e9;
-  border: 1px solid #dfd1a9;
+  background: color-mix(in srgb, var(--ui-warning) 12%, var(--ui-bg));
+  border: 1px solid color-mix(in srgb, var(--ui-warning) 35%, var(--ui-border));
   border-radius: 10px;
 }
 .anki-progress progress {

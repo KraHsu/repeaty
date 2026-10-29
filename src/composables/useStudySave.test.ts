@@ -1,3 +1,4 @@
+import { createPinia } from 'pinia'
 import 'fake-indexeddb/auto'
 import { expect, it, vi } from 'vitest'
 import { createRepository, type BackupSummary } from '../core/storage'
@@ -17,7 +18,7 @@ it('shows the next card after its durable save without waiting for metadata; an 
       connectSecond = resolve
     })
     factory.mockResolvedValueOnce(first).mockReturnValueOnce(connecting)
-    const workspace = useLibrary()
+    const workspace = useLibrary(createPinia())
     await workspace.init()
     let reject!: (error: Error) => void
     const metadata = new Promise<BackupSummary[]>((_resolve, no) => {

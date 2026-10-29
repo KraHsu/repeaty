@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { inlineMediaSchema } from './inline-media-data'
 
 export const MAX_SOURCE_BYTES = 1024 * 1024
 export const MAX_SOURCE_CHARACTERS = 250_000
@@ -91,6 +92,7 @@ export interface SourceBatchUpdate {
 export const sourceOriginSchema = z
   .object({
     sourceId: id,
+    mediaId: id.optional(),
     start: z.number().int().min(0).max(MAX_SOURCE_CHARACTERS),
     end: z.number().int().positive().max(MAX_SOURCE_CHARACTERS),
   })
@@ -108,6 +110,17 @@ export const sourceDetailsSchema = z.strictObject({
     .default(''),
 })
 export type SourceDetails = z.infer<typeof sourceDetailsSchema>
+export const sourceVersionSchema = z.object({
+  ...sourceDetailsSchema.shape,
+  mediaId: id,
+  format: z.enum(['plain', 'markdown']),
+  characters: z.number().int().min(1).max(MAX_SOURCE_CHARACTERS),
+  acceptedAt: z.iso.datetime(),
+  inlineMedia: inlineMediaSchema.optional(),
+  reading: sourceReadingSchema.optional(),
+  derived: z.literal(true).optional(),
+})
+export type SourceVersion = z.infer<typeof sourceVersionSchema>
 export interface SourceDetailsUpdate {
   sourceId: string
   mediaId: string
@@ -129,6 +142,10 @@ export const sourceSchema = z
     priority: sourcePrioritySchema.optional(),
     readingIntervalDays: sourceReadingIntervalSchema.optional(),
     adaptiveReading: adaptiveReadingSchema.optional(),
+    inlineMedia: inlineMediaSchema.optional(),
+    versions: z.array(sourceVersionSchema).max(1000).optional(),
+    acceptedAt: z.iso.datetime().optional(),
+    derived: z.literal(true).optional(),
     kind: z.literal('excerpt').optional(),
     origin: sourceOriginSchema.optional(),
   })
@@ -144,9 +161,19 @@ export const sourceSchema = z
       (source.origin &&
         (source.kind !== 'excerpt' ||
           source.origin.sourceId === source.id ||
-          source.origin.end - source.origin.start !== source.characters))
+          (!source.derived && source.origin.end - source.origin.start !== source.characters)))
     )
       context.addIssue({ code: 'custom', message: '摘录与来源不匹配。' })
+    const ids = [source.mediaId, ...(source.versions ?? []).map((version) => version.mediaId)]
+    if (new Set(ids).size !== ids.length)
+      context.addIssue({ code: 'custom', message: '材料版本重复。' })
+    for (const version of source.versions ?? [])
+      if (
+        version.reading &&
+        (version.reading.offset > version.characters ||
+          (version.format !== 'markdown' && version.reading.view === 'preview'))
+      )
+        context.addIssue({ code: 'custom', message: '阅读位置与材料不匹配。' })
   })
 export type ReadingPosition = z.infer<typeof readingPositionSchema>
 export interface ReadingUpdate {
@@ -159,6 +186,7 @@ export interface ReadingUpdate {
 export const excerptSchema = z
   .object({
     sourceId: id,
+    mediaId: id.optional(),
     start: z.number().int().min(0).max(MAX_SOURCE_CHARACTERS),
     end: z.number().int().positive().max(MAX_SOURCE_CHARACTERS),
     quote: z.string().min(1).max(MAX_EXCERPT_CHARACTERS),
@@ -170,6 +198,30 @@ export const excerptSchema = z
       !!excerpt.quote.trim(),
   )
 export type Source = z.infer<typeof sourceSchema>
+/** Unversioned references address the first snapshot, including retired notes and drafts. */
+export function referencedSource(
+  source: Source,
+  reference: { mediaId?: string },
+): Source | undefined {
+  return sourceAtVersion(
+    source,
+    reference.mediaId ?? source.versions?.[0]?.mediaId ?? source.mediaId,
+  )
+}
+export function sourceAtVersion(source: Source, mediaId = source.mediaId): Source | undefined {
+  if (mediaId === source.mediaId) return source
+  const version = source.versions?.find((version) => version.mediaId === mediaId)
+  return version
+    ? {
+        ...source,
+        ...version,
+        reading: version.reading,
+        inlineMedia: version.inlineMedia,
+        derived: version.derived,
+        versions: undefined,
+      }
+    : undefined
+}
 export type SourceExcerpt = z.infer<typeof excerptSchema>
 export interface SourceInput {
   title: string

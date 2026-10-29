@@ -1,3 +1,5 @@
+import { selectUiValue } from './fixtures/ui-flow'
+import { setInterfaceLanguage } from './fixtures/settings-flow'
 import { expect, test } from './fixtures/empty-workspace'
 import type { Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
@@ -92,11 +94,11 @@ test('backup export and confirmed restore retain cards, and malformed imports do
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.reload()
   await page.getByRole('button', { name: '全部卡片' }).click()
-  await page.getByRole('textbox', { name: '搜索卡片' }).fill('study')
+  await page.getByLabel('搜索卡片', { exact: true }).fill('study')
   await expect(
     page.getByRole('button', { name: 'What is active recall?', exact: true }),
   ).toBeVisible()
-  await page.getByRole('textbox', { name: '搜索卡片' }).fill('no match')
+  await page.getByLabel('搜索卡片', { exact: true }).fill('no match')
   await expect(page.getByRole('heading', { name: '没有匹配的卡片' })).toBeVisible()
 })
 
@@ -105,7 +107,7 @@ test('mobile workspace and sample deck fit without page overflow', async ({ page
   await page.goto('./')
   await page.getByRole('button', { name: '添加入门卡组', exact: true }).click()
   await expect(
-    page.getByRole('button', { name: '从这里开始：FSRS 与 Repeaty', exact: true }),
+    page.getByRole('button', { name: '选择卡组 从这里开始：FSRS 与 Repeaty', exact: true }),
   ).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
@@ -124,7 +126,9 @@ test('desktop sample dashboard renders cleanly', async ({ page }) => {
   await page.goto('./')
   await page.getByRole('button', { name: '添加入门卡组', exact: true }).click()
   await expect(
-    page.getByRole('button', { name: '从这里开始：FSRS 与 Repeaty', exact: true }),
+    page
+      .locator('.dashboard')
+      .getByRole('button', { name: '选择卡组 从这里开始：FSRS 与 Repeaty', exact: true }),
   ).toBeVisible()
   await page.screenshot({ path: 'test-results/desktop-dashboard.png', fullPage: true })
 })
@@ -134,15 +138,17 @@ test('reverse cards share note content, preserve independent progress and suppor
 }) => {
   await createCard(page)
   await page.getByRole('button', { name: '编辑卡片 What is active recall?', exact: true }).click()
-  await page.getByLabel('笔记类型').selectOption('reversed')
+  await selectUiValue(page.getByLabel('笔记类型'), 'reversed')
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   await expect(page.locator('tbody tr')).toHaveCount(2)
   await expect(page.locator('tbody .tag').filter({ hasText: '正面 → 背面' })).toBeVisible()
   await expect(page.locator('tbody .tag').filter({ hasText: '背面 → 正面' })).toBeVisible()
-  await page.getByLabel('界面语言').selectOption('en')
+  await setInterfaceLanguage(page, 'en')
+  await page.getByRole('button', { name: /^All cards/ }).click()
   await expect(page.locator('tbody .tag').filter({ hasText: 'Front → Back' })).toBeVisible()
   await expect(page.locator('tbody .tag').filter({ hasText: 'Back → Front' })).toBeVisible()
-  await page.getByLabel('Interface language').selectOption('zh-CN')
+  await setInterfaceLanguage(page, 'zh-CN')
+  await page.getByRole('button', { name: /^全部卡片/ }).click()
   await page.getByRole('button', { name: '复习', exact: true }).click()
   await expect(page.locator('.card-question')).toHaveText('What is active recall?')
   const question = await page.locator('.card-question').innerText()
@@ -165,7 +171,7 @@ test('reverse cards share note content, preserve independent progress and suppor
 test('cloze generation and daily new-card quotas work together', async ({ page }) => {
   await createCard(page)
   await page.getByRole('button', { name: '编辑卡片 What is active recall?', exact: true }).click()
-  await page.getByLabel('笔记类型').selectOption('cloze')
+  await selectUiValue(page.getByLabel('笔记类型'), 'cloze')
   await page
     .getByLabel('正面 · 问题')
     .fill('法国的首都是 {{c1::巴黎::城市}}，日本的首都是 {{c2::东京}}。')
@@ -209,7 +215,7 @@ test('CSV preview, duplicate handling and batch tag editing', async ({ page }) =
   await page.getByLabel('添加标签', { exact: true }).fill('batch')
   await page.getByRole('button', { name: '应用笔记修改', exact: true }).click()
   await expect(page.locator('tbody').getByText('batch', { exact: true })).toHaveCount(4)
-  await page.getByRole('textbox', { name: '搜索卡片' }).fill('batch')
+  await page.getByLabel('搜索卡片', { exact: true }).fill('batch')
   await expect(page.locator('tbody tr')).toHaveCount(4)
 })
 
@@ -261,7 +267,6 @@ test('image/audio survive backup, deletion and automatic snapshot recovery', asy
 test('production shell reopens offline with persisted content', async ({ page, context }) => {
   await createCard(page)
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '离线已就绪', exact: true })).toBeVisible()
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready
   })
@@ -337,8 +342,8 @@ test('continuous authoring, selected cloze, Markdown, formulas and image paste p
   await expect(front).toHaveValue('Capital: {{c1::Paris}}')
   await page.getByRole('button', { name: '保存并继续', exact: true }).click()
   await expect(front).toHaveValue('')
-  await expect(page.getByLabel('笔记类型')).toHaveValue('cloze')
-  await page.getByLabel('笔记类型').selectOption('basic')
+  await expect(page.getByLabel('笔记类型')).toHaveAttribute('value', 'cloze')
+  await selectUiValue(page.getByLabel('笔记类型'), 'basic')
   await front.fill('**Formula** $x^2$')
   await page.getByLabel('背面 · 答案').fill('$$\\frac{1}{2}$$')
   const bytes = [...(await readFile('public/icon-192.png'))]
@@ -355,12 +360,14 @@ test('continuous authoring, selected cloze, Markdown, formulas and image paste p
   await expect(page.locator('.note-preview .katex')).toHaveCount(2)
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '离线已就绪', exact: true })).toBeVisible()
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready
+  })
   await context.setOffline(true)
   await page.reload()
   await page.getByRole('button', { name: '全部卡片' }).click()
-  await page.getByRole('textbox', { name: '搜索卡片' }).fill('Formula')
-  await page.getByText('高级搜索、常用筛选与专项练习', { exact: true }).click()
+  await page.getByLabel('搜索卡片', { exact: true }).fill('Formula')
+  await page.getByRole('button', { name: '专项练习', exact: true }).click()
   await page.getByRole('button', { name: '开始专项练习' }).click()
   await expect(page.locator('.card-question strong')).toHaveText('Formula')
   await expect(page.locator('.card-question .katex')).toHaveCount(1)
@@ -373,16 +380,16 @@ test('continuous authoring, selected cloze, Markdown, formulas and image paste p
 
 test('saved filters persist and practice mode never changes durable progress', async ({ page }) => {
   await createCard(page)
-  await page.getByRole('textbox', { name: '搜索卡片' }).fill('tag:study is:new lapses:0')
-  await page.getByText('高级搜索、常用筛选与专项练习', { exact: true }).click()
+  await page.getByLabel('搜索卡片', { exact: true }).fill('tag:study is:new lapses:0')
+  await page.getByRole('button', { name: '保存筛选', exact: true }).click()
   await page.getByLabel('筛选名称').fill('New study cards')
   await page.getByRole('button', { name: '另存筛选', exact: true }).click()
   await expect(page.getByRole('status')).toContainText('常用筛选已保存')
   await page.reload()
   await page.getByRole('button', { name: '全部卡片' }).click()
-  await page.getByText('高级搜索、常用筛选与专项练习', { exact: true }).click()
-  await page.getByLabel('常用筛选', { exact: true }).selectOption({ label: 'New study cards' })
-  await expect(page.getByRole('textbox', { name: '搜索卡片' })).toHaveValue(
+  await page.getByRole('button', { name: '专项练习', exact: true }).click()
+  await selectUiValue(page.getByLabel('常用筛选', { exact: true }), { label: 'New study cards' })
+  await expect(page.getByLabel('搜索卡片', { exact: true })).toHaveValue(
     'tag:study is:new lapses:0',
   )
   const original = await readWorkspace(page)
@@ -395,8 +402,24 @@ test('saved filters persist and practice mode never changes durable progress', a
   await expect(page.locator('.card-question')).toBeVisible()
   expect(await readWorkspace(page)).toEqual(original)
   await page.getByRole('button', { name: '结束专项练习' }).click()
-  await page.getByText('高级搜索、常用筛选与专项练习', { exact: true }).click()
-  await page.getByLabel('练习模式').selectOption({ label: '评分并更新进度' })
+  await page.getByRole('button', { name: '专项练习', exact: true }).click()
+  await page.getByLabel('练习模式').click()
+  // Opening a menu while its form expands must keep every option in view after
+  // layout settles, including when the select has already locked body scrolling.
+  await page.locator('.search-tools-panel').evaluate(async (element) => {
+    await Promise.all(
+      element.getAnimations().map((animation) => animation.finished.catch(() => {})),
+    )
+  })
+  const gradedPractice = page.getByRole('option', { name: '评分并更新进度', exact: true })
+  await page.getByRole('listbox').evaluate(async (element) => {
+    await Promise.all(
+      element.getAnimations().map((animation) => animation.finished.catch(() => {})),
+    )
+  })
+  await expect(gradedPractice).toBeInViewport({ ratio: 1 })
+  await page.screenshot({ path: test.info().outputPath('practice-mode-menu.png') })
+  await gradedPractice.click()
   await page.getByRole('button', { name: '开始专项练习' }).click()
   await page.getByRole('button', { name: '显示答案' }).click()
   await page.getByRole('button', { name: /简单/ }).click()
@@ -410,7 +433,7 @@ test('saved filters persist and practice mode never changes durable progress', a
 test('automatic sibling burying and deck settings survive reload and undo', async ({ page }) => {
   await createCard(page)
   await page.getByRole('button', { name: '编辑卡片 What is active recall?', exact: true }).click()
-  await page.getByLabel('笔记类型').selectOption('reversed')
+  await selectUiValue(page.getByLabel('笔记类型'), 'reversed')
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   await page.getByRole('button', { name: '编辑当前卡组' }).click()
   await page.getByLabel('目标记忆保留率（%）', { exact: true }).fill('95')

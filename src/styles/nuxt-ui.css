@@ -1,0 +1,89 @@
+@import 'tailwindcss' source(none);
+@import '@nuxt/ui';
+/* Plugin projects own their styles and never participate in host compilation. */
+@source '../';
+@source '../../config/ui.ts';
+
+@theme {
+  --color-sage-50: #f3f7ef;
+  --color-sage-100: #e5eddf;
+  --color-sage-200: #cbdcc1;
+  --color-sage-300: #aac49d;
+  --color-sage-400: #76986c;
+  --color-sage-500: #527c50;
+  --color-sage-600: #40765a;
+  --color-sage-700: #34674d;
+  --color-sage-800: #29563f;
+  --color-sage-900: #244637;
+  --color-sage-950: #14271f;
+  --font-sans: var(--font-ui);
+  --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', 'Noto Sans Mono', monospace;
+  --text-xs: 0.875rem;
+  --text-sm: 1rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2rem;
+}
+
+:root {
+  /* Define the complete pair of foregrounds and surfaces. Mixing Nuxt's dark
+     text defaults with fixed light surfaces makes controls unreadable. */
+  --ui-primary: var(--color-sage-700);
+  --ui-secondary: #6b558d;
+  --ui-success: #326442;
+  --ui-info: #35638b;
+  --ui-warning: #845b18;
+  --ui-error: #b34339;
+  --ui-bg: #ffffff;
+  --ui-bg-muted: #f3f5f0;
+  --ui-bg-elevated: #edf1e8;
+  --ui-bg-accented: #e2e9dd;
+  --ui-bg-inverted: #243c31;
+  --ui-text: #243c31;
+  --ui-text-muted: #52665a;
+  --ui-text-dimmed: #647260;
+  --ui-text-toned: #405348;
+  --ui-text-highlighted: #1f352a;
+  --ui-text-inverted: #ffffff;
+  --ui-border: #d8e1d4;
+  --ui-border-muted: #e7ece3;
+  --ui-border-accented: #aebfa5;
+  --ui-border-inverted: #243c31;
+  --ui-radius: 0.5rem;
+}
+
+:root.dark {
+  --ui-primary: #a2c7a3;
+  --ui-secondary: #c6b4e1;
+  --ui-success: #a4cfaa;
+  --ui-info: #a6c5e9;
+  --ui-warning: #e8c080;
+  --ui-error: #f0aaa0;
+  --ui-bg: #1b2721;
+  --ui-bg-muted: #121b17;
+  --ui-bg-elevated: #25332b;
+  --ui-bg-accented: #34473a;
+  --ui-bg-inverted: #e5ece4;
+  --ui-text: #e5ece4;
+  --ui-text-muted: #b0bfb0;
+  --ui-text-dimmed: #95a892;
+  --ui-text-toned: #cad6c8;
+  --ui-text-highlighted: #f0f5ed;
+  --ui-text-inverted: #15251c;
+  --ui-border: #3b4c40;
+  --ui-border-muted: #2f3d33;
+  --ui-border-accented: #667e62;
+  --ui-border-inverted: #e5ece4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

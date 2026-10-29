@@ -1,0 +1,29 @@
+[package]
+name = "repeaty-workspace"
+version = "0.27.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+rusqlite = { version = "0.40.2", features = ["bundled", "functions"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+jsonschema = { version = "0.37", default-features = false }
+sha2 = "0.10"
+uuid = { version = "1", features = ["v4"] }
+cap-std = "4.0.3"
+cap-primitives = "4.0.3"
+same-file = "1"
+base64 = "0.22"
+notify = "8.2.0"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+
+[dev-dependencies]
+tempfile = "3"

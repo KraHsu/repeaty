@@ -1,5 +1,8 @@
+import { selectUiValue } from '../fixtures/ui-flow'
 import { test, expect, storedLibrary } from './fixture'
 import type { Locator } from '@playwright/test'
+import { openPluginSettings, setInterfaceLanguage } from '../fixtures/settings-flow'
+import { setResponsiveViewport } from '../fixtures/viewport-flow'
 
 async function save(region: Locator) {
   await region.getByLabel('LEETCODE_SESSION', { exact: true }).fill('account-test-session')
@@ -26,7 +29,7 @@ test('verification distinguishes expired sessions, website checks, network failu
       },
     })
   })
-  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await openPluginSettings(page, 'leetcode')
   const cn = page.getByRole('region', { name: '中国站 · leetcode.cn', exact: true })
   const com = page.getByRole('region', { name: '国际站 · leetcode.com', exact: true })
   const before = await storedLibrary(page)
@@ -59,12 +62,13 @@ test('verification distinguishes expired sessions, website checks, network failu
   )
   await expect(cn.locator('.connection-account img')).toHaveCount(0)
   expect(await storedLibrary(page)).toEqual(before)
-  await page.getByLabel('界面语言').selectOption('en')
+  await setInterfaceLanguage(page, 'en')
+  await openPluginSettings(page, 'leetcode')
   const english = page.getByRole('region', { name: 'China · leetcode.cn', exact: true })
   mode = 'verification-required'
   await english.getByRole('button', { name: 'Refresh status' }).click()
   await expect(english.getByRole('status')).toContainText('Website verification required')
-  await page.setViewportSize({ width: 390, height: 844 })
+  await setResponsiveViewport(page, 390, 844)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: 'test-results/account-status-mobile-en.png', fullPage: true })
 })
@@ -73,7 +77,7 @@ test('clearing credentials while verification is pending discards the late accou
   page,
   context,
 }) => {
-  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await openPluginSettings(page, 'leetcode')
   const cn = page.getByRole('region', { name: '中国站 · leetcode.cn', exact: true })
   await save(cn)
   await expect(cn.getByRole('status')).toContainText('登录有效')
@@ -124,15 +128,15 @@ test('changing sites during verification clears cookie drafts and ignores the pr
   await page.getByLabel('卡组名称').fill('Account checks')
   await page.getByRole('button', { name: '保存卡组', exact: true }).click()
   await page.getByRole('button', { name: '添加卡片', exact: true }).first().click()
-  await page.getByLabel('笔记类型').selectOption('plugin')
+  await selectUiValue(page.getByLabel('笔记类型'), 'plugin')
   const cn = page.getByRole('region', { name: '中国站 · leetcode.cn', exact: true })
   const com = page.getByRole('region', { name: '国际站 · leetcode.com', exact: true })
   await save(cn)
   await expect(cn.getByRole('status')).toContainText('登录有效')
-  await page.getByLabel('LeetCode 站点').selectOption('leetcode.com')
+  await selectUiValue(page.getByLabel('LeetCode 站点'), 'leetcode.com')
   await save(com)
   await expect(com.getByRole('status')).toContainText('登录有效')
-  await page.getByLabel('LeetCode 站点').selectOption('leetcode.cn')
+  await selectUiValue(page.getByLabel('LeetCode 站点'), 'leetcode.cn')
   await expect(cn.getByRole('status')).toContainText('登录有效')
   let release!: () => void, started!: () => void
   const gate = new Promise<void>((resolve) => {
@@ -160,7 +164,7 @@ test('changing sites during verification clears cookie drafts and ignores the pr
     await cn.getByRole('button', { name: '刷新状态' }).click()
     await arrived
     await cn.getByLabel('LEETCODE_SESSION', { exact: true }).fill('unsaved-private-cookie')
-    await page.getByLabel('LeetCode 站点').selectOption('leetcode.com')
+    await selectUiValue(page.getByLabel('LeetCode 站点'), 'leetcode.com')
     await expect(com.getByRole('status')).toContainText('登录有效')
     await expect(com.locator('.connection-account')).toHaveText('当前账号：tester-com')
     await expect(com.getByLabel('LEETCODE_SESSION', { exact: true })).toHaveValue('')

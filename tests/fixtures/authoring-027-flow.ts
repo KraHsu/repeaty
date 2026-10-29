@@ -5,6 +5,7 @@ import type { Library } from '../../src/core/model'
 import { seedPolish } from './polish-flow'
 import { importReading, moveReading, saveReading, readingText } from './reading-flow'
 import { startMixed } from './adaptive-mixed-flow'
+import { modalOutsidePoint, setResponsiveViewport } from './viewport-flow'
 
 async function undoAction(page: Page, shortcut = 'Control+z') {
   // A new question can render before the surrounding save promise has settled.
@@ -47,7 +48,7 @@ export async function rendering027Flow(page: Page, info: TestInfo) {
   )
   await seedPolish(page, library)
   await page.getByRole('button', { name: '学习概览', exact: true }).click()
-  await page.locator('.deck-review').click()
+  await page.locator('.b-start-review').click()
   const question = page.locator('.card-question')
   await expect(question.locator('.rich-content')).toHaveCSS('text-align', 'left')
   await expect(question.locator('.styled')).toHaveCSS('color', 'rgb(12, 34, 56)')
@@ -87,7 +88,7 @@ export async function rendering027Flow(page: Page, info: TestInfo) {
   expect(
     await page.evaluate(() => (window as Window & { cardExecuted?: boolean }).cardExecuted),
   ).toBeUndefined()
-  await page.setViewportSize({ width: 390, height: 844 })
+  await setResponsiveViewport(page, 390, 844)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: info.outputPath('rendering-027-mobile.png'), fullPage: true })
 }
@@ -100,7 +101,13 @@ export async function modal027Flow(page: Page) {
   await dialog.getByLabel('正面 · 问题', { exact: true }).fill('Keep this draft')
   const field = (await dialog.getByLabel('正面 · 问题', { exact: true }).boundingBox())!
   const inside = { x: field.x + 25, y: field.y + 25 },
-    outside = { x: 5, y: 5 }
+    outside = await modalOutsidePoint(page)
+  expect(
+    await dialog.locator('.app-modal-panel').evaluate((element, point) => {
+      const box = element.getBoundingClientRect()
+      return point.x < box.left || point.x > box.right || point.y < box.top || point.y > box.bottom
+    }, outside),
+  ).toBe(true)
   for (const [start, end] of [
     [inside, outside],
     [outside, inside],
@@ -132,8 +139,10 @@ export async function reviewActions027Flow(page: Page, read: () => Promise<Libra
     new Date(now.getTime() + 1000),
   )
   await seedPolish(page, library)
-  await page.getByRole('button', { name: '学习概览', exact: true }).click()
-  await page.getByRole('button', { name: '开始复习', exact: true }).first().click()
+  // This scenario spans two decks. The overview starts only its focused deck;
+  // use the collection's global review entry to keep the cross-deck undo coverage.
+  await page.getByRole('button', { name: '全部卡片', exact: true }).click()
+  await page.getByRole('button', { name: '复习', exact: true }).click()
   const question = page.locator('.card-question')
   await expect(question).toContainText('Original front')
   await page.locator('.flashcard').click()
@@ -166,10 +175,11 @@ export async function reviewActions027Flow(page: Page, read: () => Promise<Libra
   await page.locator('.flashcard').click()
   await page.keyboard.press('Space')
   await page.getByLabel('更多操作', { exact: true }).click()
-  await page.locator('.review-menu').getByRole('button', { name: /^添加/ }).click()
+  await page.getByRole('menuitem', { name: /^添加/ }).click()
   const add = page.getByRole('dialog', { name: '添加卡片', exact: true })
   const beforeAdd = await read()
-  await expect(add.getByLabel('所属卡组', { exact: true })).toHaveValue(
+  await expect(add.getByLabel('所属卡组', { exact: true })).toHaveAttribute(
+    'value',
     beforeAdd.decks.find((deck) => deck.name === 'Other deck')!.id,
   )
   const front = add.getByLabel('正面 · 问题', { exact: true })
@@ -199,7 +209,7 @@ export async function reviewActions027Flow(page: Page, read: () => Promise<Libra
     expect((await read()).cards).toEqual(before.cards)
   }
   await page.getByLabel('更多操作', { exact: true }).click()
-  await page.locator('.review-menu').getByRole('button', { name: /^删除/ }).click()
+  await page.getByRole('menuitem', { name: /^删除/ }).click()
   const confirm = page.getByRole('dialog', { name: '删除笔记', exact: true })
   await expect(confirm).toContainText('2 张')
   await page.keyboard.press('Escape')
@@ -235,7 +245,7 @@ export async function reviewActions027Flow(page: Page, read: () => Promise<Libra
   await expect(page.getByRole('dialog', { name: '快捷键', exact: true })).toBeVisible()
   await page.keyboard.press('Escape')
   await page.keyboard.press('/')
-  await expect(page.getByRole('textbox', { name: '搜索卡片', exact: true })).toBeFocused()
+  await expect(page.getByLabel('搜索卡片', { exact: true })).toBeFocused()
 }
 
 export async function readingUndo027Flow(page: Page, read: () => Promise<Library>) {
@@ -304,7 +314,7 @@ export async function practiceUndo027Flow(page: Page, read: () => Promise<Librar
   await seedPolish(page, saveNote(fixture(), { ...input, front: 'Second practice question' }))
   const original = await read()
   await page.getByRole('button', { name: /^全部卡片/ }).click()
-  await page.getByText('高级搜索、常用筛选与专项练习', { exact: true }).click()
+  await page.getByRole('button', { name: '专项练习', exact: true }).click()
   await page.getByRole('button', { name: '开始专项练习', exact: true }).click()
   const question = page.locator('.card-question')
   await expect(question).toHaveText(/^(?:Question|Second practice question)$/)

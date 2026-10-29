@@ -2,16 +2,15 @@
 mod exports;
 mod mcp;
 mod plugins;
-use tauri_plugin_dialog::DialogExt;
-mod upstream;
+mod window_frame;
+mod workspaces;
 use plugins::Plugins;
 use std::sync::Arc;
 use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_dialog::DialogExt;
 use tokio::sync::Mutex;
-use upstream::{Config, Request, Response, Upstream};
 
 struct Desktop {
-    upstream: Upstream,
     plugins: Plugins,
     exports: Mutex<exports::Exporter>,
     mcp: Arc<mcp::Mcp>,
@@ -22,6 +21,20 @@ fn main_window(window: &tauri::WebviewWindow) -> Result<(), String> {
     } else {
         Err("library-unavailable".into())
     }
+}
+#[tauri::command]
+async fn window_snap_epoch(window: tauri::WebviewWindow) -> Result<Option<u64>, String> {
+    main_window(&window)?;
+    window_frame::claim(window).await
+}
+#[tauri::command]
+async fn window_snap_region(
+    window: tauri::WebviewWindow,
+    epoch: u64,
+    rect: Option<window_frame::Region>,
+) -> Result<bool, String> {
+    main_window(&window)?;
+    window_frame::update(window, epoch, rect).await
 }
 #[tauri::command]
 fn mcp_attach(
@@ -72,9 +85,6 @@ async fn mcp_start(
     state: State<'_, Desktop>,
 ) -> Result<mcp::Status, String> {
     main_window(&window)?;
-    if !state.upstream.endpoint().is_empty() {
-        return Err("library-unavailable".into());
-    }
     state.mcp.start().await.map_err(str::to_owned)
 }
 #[tauri::command]
@@ -107,27 +117,20 @@ fn mcp_client_configuration(
         .map_err(str::to_owned)
 }
 #[tauri::command]
-async fn desktop_config(state: State<'_, Desktop>) -> Result<Config, String> {
-    Ok(state.upstream.config())
-}
-#[tauri::command]
-async fn set_endpoint(state: State<'_, Desktop>, endpoint: String) -> Result<(), String> {
-    state.upstream.set_endpoint(&endpoint)?;
-    state.mcp.detach();
-    Ok(())
-}
-#[tauri::command]
-async fn upstream_request(state: State<'_, Desktop>, request: Request) -> Result<Response, String> {
-    state.upstream.request(request).await
-}
-#[tauri::command]
-async fn local_plugin(
+async fn plugin_host(
+    window: tauri::WebviewWindow,
     state: State<'_, Desktop>,
+    workspaces: State<'_, workspaces::Workspaces>,
+    token: String,
     id: String,
     operation: String,
     payload: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    state.plugins.call(&id, operation, payload).await
+    main_window(&window)?;
+    state
+        .plugins
+        .call(&workspaces, token, id, operation, payload)
+        .await
 }
 fn external(url: &str) -> Result<(), String> {
     let parsed = reqwest::Url::parse(url).map_err(|_| "invalid-url")?;
@@ -215,36 +218,42 @@ fn main() {
                 mcp: Arc::new(mcp::Mcp::with_connection_file(
                     directory.join("mcp.connection.json"),
                 )),
-                upstream: Upstream::open(&directory.join("desktop.json"))?,
-                plugins: Plugins::new(vec![Arc::new(
-                    repeaty_leetcode_local::leetcode::LeetCode::open(
-                        &directory.join("leetcode.credentials.sqlite3"),
-                    )?,
-                )])?,
+                plugins: Plugins::new(&directory)?,
             });
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                .title("Repeaty")
-                .inner_size(1280.0, 850.0)
-                .min_inner_size(720.0, 560.0)
-                .on_navigation(|url| {
-                    let bundled = matches!(
-                        (url.scheme(), url.host_str()),
-                        ("tauri", Some("localhost")) | ("http" | "https", Some("tauri.localhost"))
-                    );
-                    let development = cfg!(debug_assertions)
-                        && url.as_str().starts_with("http://localhost:4178/");
-                    bundled || development
-                })
-                .on_new_window(|url, _| {
-                    let _ = external(url.as_str());
-                    tauri::webview::NewWindowResponse::Deny
-                })
-                .on_page_load(|window, payload| {
-                    if payload.event() == tauri::webview::PageLoadEvent::Started {
-                        window.state::<Desktop>().mcp.detach();
-                    }
-                })
-                .build()?;
+            app.manage(workspaces::Workspaces::new(&directory));
+            let window =
+                WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                    .title("Repeaty")
+                    .decorations(false)
+                    .resizable(true)
+                    .shadow(true)
+                    .inner_size(1280.0, 850.0)
+                    .min_inner_size(500.0, 400.0)
+                    .on_navigation(|url| {
+                        let bundled = matches!(
+                            (url.scheme(), url.host_str()),
+                            ("tauri", Some("localhost"))
+                                | ("http" | "https", Some("tauri.localhost"))
+                        );
+                        let development = cfg!(debug_assertions)
+                            && url.as_str().starts_with("http://localhost:4178/");
+                        bundled || development
+                    })
+                    .on_new_window(|url, _| {
+                        let _ = external(url.as_str());
+                        tauri::webview::NewWindowResponse::Deny
+                    })
+                    .on_page_load(|window, payload| {
+                        if payload.event() == tauri::webview::PageLoadEvent::Started {
+                            window_frame::page_started(&window);
+                            window.state::<Desktop>().mcp.detach();
+                            window
+                                .state::<workspaces::Workspaces>()
+                                .invalidate_watches();
+                        }
+                    })
+                    .build()?;
+            window_frame::install(&window);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -260,10 +269,18 @@ fn main() {
             export_write,
             export_finish,
             export_cancel,
-            desktop_config,
-            set_endpoint,
-            upstream_request,
-            local_plugin,
+            plugin_host,
+            window_snap_epoch,
+            window_snap_region,
+            workspaces::workspace_status,
+            workspaces::workspace_choose,
+            workspaces::workspace_recent,
+            workspaces::workspace_close,
+            workspaces::workspace_restore,
+            workspaces::workspace_read,
+            workspaces::workspace_write,
+            workspaces::workspace_watch,
+            workspaces::workspace_unwatch,
             open_external
         ])
         .run(tauri::generate_context!())

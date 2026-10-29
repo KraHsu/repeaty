@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 import { test, expect, storedLibrary } from './fixture'
 import { richLibrary } from '../fixtures/rich-library'
+import { openSettings, setInterfaceLanguage } from '../fixtures/settings-flow'
 import {
   createSourceDeck,
   previewSource,
@@ -54,25 +55,22 @@ async function share(page: Page) {
 
 async function setDraftVersion(page: Page, version: number) {
   return page.evaluate(async (version) => {
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('repeaty')
-      request.onsuccess = () => resolve(request.result)
-      request.onerror = () => reject(request.error)
-    })
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction('cardDrafts', 'readwrite')
-        const rows = tx.objectStore('cardDrafts').getAll()
-        rows.onsuccess = () => {
-          for (const row of rows.result)
-            tx.objectStore('cardDrafts').put({ ...row, version }, row.id)
+    const invoke = (
+      window as unknown as {
+        __TAURI_INTERNALS__: {
+          invoke(command: string, args?: Record<string, unknown>): Promise<unknown>
         }
-        tx.oncomplete = () => resolve()
-        tx.onerror = () => reject(tx.error)
-      })
-    } finally {
-      db.close()
-    }
+      }
+    ).__TAURI_INTERNALS__.invoke
+    const { active } = (await invoke('workspace_status')) as { active: { token: string } }
+    const entries = (await invoke('workspace_read', {
+      token: active.token,
+      request: { type: 'drafts' },
+    })) as Record<string, unknown>[]
+    await invoke('workspace_write', {
+      token: active.token,
+      request: { type: 'draft-update', entries: entries.map((entry) => ({ ...entry, version })) },
+    })
   }, version)
 }
 
@@ -115,7 +113,7 @@ test('shared excerpts become editable drafts, save all three types with provenan
   await queue().getByRole('button', { name: '检查并编辑' }).first().click()
   let editor = page.getByRole('dialog', { name: '确认制卡草稿' })
   await expect(editor.locator('#card-tags')).toHaveValue('FSRS, 待确认')
-  await editor.locator('.note-preview summary').click()
+  await editor.locator('.note-preview').getByRole('button', { expanded: false }).click()
   expect(
     await page.evaluate(() => (globalThis as Record<string, unknown>).draftExecuted),
   ).toBeUndefined()
@@ -133,16 +131,10 @@ test('shared excerpts become editable drafts, save all three types with provenan
   await editor.getByLabel('正面 · 问题', { exact: true }).fill('用户修改后的问题')
   await editor.getByLabel('背面 · 答案', { exact: true }).fill('用户确认的答案')
   await page.evaluate(() => {
-    const original = IDBObjectStore.prototype.put
     ;(window as unknown as { failDraftSave: boolean }).failDraftSave = true
-    IDBObjectStore.prototype.put = function (...args: Parameters<typeof original>) {
-      if ((window as unknown as { failDraftSave: boolean }).failDraftSave && this.name === 'notes')
-        throw new DOMException('Synthetic full storage', 'QuotaExceededError')
-      return original.apply(this, args)
-    }
   })
   await editor.getByRole('button', { name: '确认并保存卡片' }).click()
-  await expect(editor.getByRole('alert')).toContainText('存储空间不足')
+  await expect(editor.getByRole('alert')).toContainText('无法读写工作目录')
   expect(await storedLibrary(page)).toEqual(before)
   await expect(editor.getByLabel('正面 · 问题', { exact: true })).toHaveValue('用户修改后的问题')
   await page.evaluate(() => {
@@ -153,6 +145,7 @@ test('shared excerpts become editable drafts, save all three types with provenan
   for (let remaining = 2; remaining > 0; remaining--) {
     await queue().getByRole('button', { name: '检查并编辑' }).first().click()
     await page.getByRole('button', { name: '确认并保存卡片' }).click()
+    await expect(page.getByRole('dialog', { name: '确认制卡草稿', exact: true })).toHaveCount(0)
     await expect(queue().locator('.draft-list li')).toHaveCount(remaining - 1)
   }
   const saved = await storedLibrary(page)
@@ -175,7 +168,8 @@ test('shared excerpts become editable drafts, save all three types with provenan
   await expect(queue().locator('.draft-list li')).toHaveCount(1)
   expect(await storedLibrary(page)).toEqual(saved)
   await queue().getByRole('button', { name: '关闭弹窗' }).click()
-  await page.getByLabel('界面语言').selectOption('en')
+  await setInterfaceLanguage(page, 'en')
+  await page.getByRole('button', { name: 'Sources', exact: true }).click()
   await page.getByRole('button', { name: 'Card drafts (1)' }).click()
   await page.setViewportSize({ width: 720, height: 850 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -186,7 +180,7 @@ test('shared excerpts become editable drafts, save all three types with provenan
   await expect(restored.locator('.draft-list li')).toHaveCount(1)
   await expect(restored.getByText('Shared excerpt', { exact: true })).toHaveCount(0)
   await restored.getByRole('button', { name: 'Close dialog' }).click()
-  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await openSettings(page, 'connections.mcp')
   await expect(page.getByRole('region', { name: 'MCP connection' }).getByRole('status')).toHaveText(
     'Disabled',
   )
@@ -216,16 +210,7 @@ test('failed storage refuses a batch, lost replies retain durable drafts, and de
     cards: [{ type: 'basic', front: 'Q'.repeat(9000), back: 'A' }],
   }
   await page.evaluate(() => {
-    const original = IDBObjectStore.prototype.add
     ;(window as unknown as { failDraftAdd: boolean }).failDraftAdd = true
-    IDBObjectStore.prototype.add = function (...args: Parameters<typeof original>) {
-      if (
-        (window as unknown as { failDraftAdd: boolean }).failDraftAdd &&
-        this.name === 'cardDrafts'
-      )
-        throw new DOMException('Synthetic full storage', 'QuotaExceededError')
-      return original.apply(this, args)
-    }
   })
   const queue = page.getByRole('dialog', { name: '制卡草稿', exact: true })
   expect(await query(page, 'repeaty_propose_cards', input)).toMatchObject({
@@ -233,7 +218,7 @@ test('failed storage refuses a batch, lost replies retain durable drafts, and de
     code: 'library-unavailable',
   })
   await expect(queue.locator('.draft-list li')).toHaveCount(0)
-  await expect(queue.getByRole('alert')).toContainText('存储空间不足')
+  await expect(queue.getByRole('alert')).toContainText('无法读写工作目录')
   await page.evaluate(() => {
     ;(window as unknown as { failDraftAdd: boolean }).failDraftAdd = false
   })
@@ -274,7 +259,7 @@ test('failed storage refuses a batch, lost replies retain durable drafts, and de
   await expect(page.getByRole('button', { name: /^制卡草稿/ })).toHaveCount(0)
 })
 
-test('unfinished edits, long text, image and audio survive restart and upstream switching, then confirm once', async ({
+test('unfinished edits, long text, image and audio survive restart and workspace closing, then confirm once', async ({
   page,
 }, info) => {
   await prepareSource(page)
@@ -305,19 +290,10 @@ test('unfinished edits, long text, image and audio survive restart and upstream 
       })
   }
   await page.evaluate(() => {
-    const original = IDBObjectStore.prototype.put
     ;(window as unknown as { failDraftEdit: boolean }).failDraftEdit = true
-    IDBObjectStore.prototype.put = function (...args: Parameters<typeof original>) {
-      if (
-        (window as unknown as { failDraftEdit: boolean }).failDraftEdit &&
-        this.name === 'cardDrafts'
-      )
-        throw new DOMException('Synthetic full storage', 'QuotaExceededError')
-      return original.apply(this, args)
-    }
   })
   await editor().getByRole('button', { name: '保存草稿', exact: true }).click()
-  await expect(editor().getByRole('alert')).toContainText('存储空间不足')
+  await expect(editor().getByRole('alert')).toContainText('无法读写工作目录')
   await expect(editor().locator('#card-front')).toHaveValue(long)
   await page.evaluate(() => {
     ;(window as unknown as { failDraftEdit: boolean }).failDraftEdit = false
@@ -352,17 +328,18 @@ test('unfinished edits, long text, image and audio survive restart and upstream 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: info.outputPath('persistent-draft-editor-zh.png'), fullPage: true })
   await editor().getByRole('button', { name: '关闭弹窗' }).click()
-  await page.evaluate(() => localStorage.setItem('test.endpoint', 'http://127.0.0.1:8080'))
-  await page.reload()
+  await queue().getByRole('button', { name: '关闭弹窗', exact: true }).click()
+  await page.getByRole('button', { name: '工作目录', exact: true }).click()
+  await page.getByRole('button', { name: '关闭目录', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '打开文件夹，开始学习' })).toBeVisible()
+  await page.locator('.workspace-recent-entry').first().click()
   await page.getByRole('button', { name: '设置', exact: true }).waitFor()
-  await expect(page.getByRole('button', { name: /^制卡草稿/ })).toHaveCount(0)
-  await page.evaluate(() => localStorage.setItem('test.endpoint', ''))
-  await page.reload()
   await page.getByRole('button', { name: '制卡草稿（1）', exact: true }).click()
   await queue().getByRole('button', { name: '检查并编辑' }).click()
   await expect(editor().locator('#card-front')).toHaveValue(long)
   await editor().locator('#card-back').fill('Completed answer')
   await editor().getByRole('button', { name: '确认并保存卡片' }).click()
+  await expect(editor()).toHaveCount(0)
   await expect(queue().locator('.draft-list li')).toHaveCount(0)
   const saved = await storedLibrary(page)
   expect(saved.notes).toHaveLength(1)
@@ -397,19 +374,10 @@ test('unreadable drafts remain intact, recovery can retry, and failed discard ke
   await expect(queue.locator('.draft-list li')).toHaveCount(1)
   await expect(queue).toContainText('Keep this draft')
   await page.evaluate(() => {
-    const original = IDBObjectStore.prototype.delete
     ;(window as unknown as { failDraftDiscard: boolean }).failDraftDiscard = true
-    IDBObjectStore.prototype.delete = function (...args: Parameters<typeof original>) {
-      if (
-        (window as unknown as { failDraftDiscard: boolean }).failDraftDiscard &&
-        this.name === 'cardDrafts'
-      )
-        throw new DOMException('Synthetic full storage', 'QuotaExceededError')
-      return original.apply(this, args)
-    }
   })
   await queue.getByRole('button', { name: '丢弃草稿' }).click()
-  await expect(queue.getByRole('alert')).toContainText('存储空间不足')
+  await expect(queue.getByRole('alert')).toContainText('无法读写工作目录')
   await expect(queue.locator('.draft-list li')).toHaveCount(1)
   await page.evaluate(() => {
     ;(window as unknown as { failDraftDiscard: boolean }).failDraftDiscard = false

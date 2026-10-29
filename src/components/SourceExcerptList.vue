@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { UiButton } from './ui'
 import { computed, nextTick, ref, watch } from 'vue'
 import { t } from '../i18n'
 import { excerptPreview, matchingExcerpts, type SavedExcerpt } from '../core/source-navigation'
@@ -61,40 +62,35 @@ defineExpose({ showMatches })
           }}</span>
         </div>
         <div class="source-excerpt-buttons">
-          <button
+          <UiButton
+            variant="secondary"
             type="button"
-            class="button secondary"
             :disabled="busy || !canLocate"
             :aria-label="t('定位「{title}」的原文', { title: entry.source.title })"
             @click="emit('locate', entry.source.id)"
           >
             {{ t('定位原文') }}
-          </button>
-          <button
+          </UiButton>
+          <UiButton
+            variant="ghost"
             type="button"
-            class="text-button"
             :disabled="busy"
             :aria-label="t('打开摘录「{title}」', { title: entry.source.title })"
             @click="emit('open', entry.source.id)"
           >
             {{ t('打开摘录') }}
-          </button>
+          </UiButton>
         </div>
       </li>
     </ol>
     <nav v-if="pages > 1" class="source-excerpt-pages" :aria-label="t('本篇摘录分页')">
-      <button type="button" class="text-button" :disabled="busy || page === 0" @click="page--">
+      <UiButton variant="ghost" type="button" :disabled="busy || page === 0" @click="page--">
         {{ t('上一页') }}
-      </button>
+      </UiButton>
       <span>{{ t('第 {page} 页，共 {pages} 页', { page: page + 1, pages }) }}</span>
-      <button
-        type="button"
-        class="text-button"
-        :disabled="busy || page + 1 >= pages"
-        @click="page++"
-      >
+      <UiButton variant="ghost" type="button" :disabled="busy || page + 1 >= pages" @click="page++">
         {{ t('下一页') }}
-      </button>
+      </UiButton>
     </nav>
   </section>
 </template>
@@ -107,7 +103,7 @@ defineExpose({ showMatches })
 }
 .source-excerpts h3 {
   margin: 0 0 0.6rem;
-  font-size: 1.125rem;
+  font-size: var(--font-size-section);
 }
 .source-excerpt-list {
   display: grid;
@@ -124,18 +120,18 @@ defineExpose({ showMatches })
   padding: 1rem;
 }
 .source-excerpt-list li.matched {
-  border-color: #67886d;
-  background: #f4f7ef;
+  border-color: var(--green);
+  background: var(--ui-bg-muted);
 }
 .source-excerpt-list h4 {
-  font-size: 1rem;
+  font-size: var(--font-size-body);
   margin: 0;
   overflow-wrap: anywhere;
 }
 .source-excerpt-preview {
   margin: 0;
-  font-size: 1rem;
-  line-height: 1.7;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-ui);
   overflow-wrap: anywhere;
 }
 .source-excerpt-meta {
@@ -144,11 +140,11 @@ defineExpose({ showMatches })
   align-items: center;
   gap: 0.5rem 1rem;
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--font-size-meta);
 }
 .source-excerpt-match {
-  color: #3c624b;
-  font-weight: 600;
+  color: var(--green);
+  font-weight: var(--font-weight-semibold);
 }
 .source-excerpt-buttons,
 .source-excerpt-pages {
@@ -159,9 +155,6 @@ defineExpose({ showMatches })
 }
 .source-excerpt-pages {
   justify-content: space-between;
-  font-size: 0.875rem;
-}
-.source-excerpt-buttons button {
-  min-height: 44px;
+  font-size: var(--font-size-meta);
 }
 </style>

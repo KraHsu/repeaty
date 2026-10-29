@@ -1,3 +1,11 @@
+import { setResponsiveViewport } from './viewport-flow'
+import {
+  openPluginManager,
+  openPluginSettings,
+  selectPlugin,
+  selectSettingsCategory,
+  setInterfaceLanguage,
+} from './settings-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { fixture, input, now } from '../../src/core/test-fixtures'
@@ -35,12 +43,12 @@ export async function reviewPolishFlow(page: Page, read: () => Promise<Library>,
     source: 'normal',
   }))
   await seedPolish(page, library)
-  await page.getByRole('button', { name: '插件', exact: true }).click()
-  await page.getByLabel('显示最近几次评分', { exact: true }).fill('2')
-  await page.getByLabel('显示最近几次评分', { exact: true }).blur()
+  await openPluginSettings(page)
+  await page.getByLabel('显示条数', { exact: true }).fill('2')
+  await page.getByLabel('显示条数', { exact: true }).blur()
   await page.getByRole('button', { name: '学习概览', exact: true }).click()
-  await expect(page.locator('.deck-study-status .new dd')).toHaveText('2')
-  await page.locator('.deck-review').click()
+  await expect(page.locator('.b-focus-counts dd').nth(1)).toHaveText('2')
+  await page.locator('.b-start-review').click()
   await expect(page.locator('.flashcard')).toContainText('History card')
   await expect(page.locator('.review-history-dots')).toHaveCount(0)
   await page.getByRole('button', { name: '显示答案', exact: true }).click()
@@ -74,7 +82,7 @@ export async function reviewPolishFlow(page: Page, read: () => Promise<Library>,
   await page.getByRole('button', { name: '显示答案', exact: true }).click()
   await expect(page.locator('.card-answer')).toContainText('Updated answer')
   await page.getByLabel('更多操作', { exact: true }).click()
-  await page.locator('.review-menu').getByRole('button', { name: /编辑/ }).click()
+  await page.getByRole('menuitem', { name: /编辑/ }).click()
   await expect(editor).toBeVisible()
   await editor.getByRole('button', { name: '关闭弹窗', exact: true }).click()
   await expect(page.locator('.card-answer')).toContainText('Updated answer')
@@ -85,24 +93,29 @@ export async function reviewPolishFlow(page: Page, read: () => Promise<Library>,
   expect((await read()).reviews).toHaveLength(5)
   await page.getByRole('button', { name: '撤销上次评分', exact: true }).click()
   expect((await read()).reviews).toEqual(before.reviews)
-  await page.getByRole('button', { name: '插件', exact: true }).click()
+  await openPluginSettings(page)
   await page.getByLabel('翻面后才显示历史', { exact: true }).uncheck()
   await page.reload()
-  await page.locator('.deck-review').click()
+  await page.locator('.b-start-review').click()
   await expect(page.locator('.review-history-dots .history-dot')).toHaveCount(3)
-  await page.getByRole('button', { name: '插件', exact: true }).click()
-  await page.getByRole('switch', { name: '启用 答题历史', exact: true }).uncheck()
+  await openPluginManager(page)
+  await selectPlugin(page, 'review-history')
+  await page.getByRole('switch', { name: '启用 答题历史', exact: true }).click()
+  await expect(page.getByRole('switch', { name: '启用 答题历史', exact: true })).not.toBeChecked()
   await page.getByRole('button', { name: '学习概览', exact: true }).click()
-  await page.locator('.deck-review').click()
+  await page.locator('.b-start-review').click()
   await expect(page.locator('.review-history-dots')).toHaveCount(0)
   expect([...(await read()).cards].sort((a, b) => a.id.localeCompare(b.id))).toEqual(
     [...before.cards].sort((a, b) => a.id.localeCompare(b.id)),
   )
-  await page.getByRole('button', { name: '插件', exact: true }).click()
-  await page.getByRole('switch', { name: '启用 答题历史', exact: true }).check()
-  await page.getByLabel('界面语言').selectOption('en')
-  await page.setViewportSize({ width: 390, height: 844 })
-  await expect(page.getByLabel('Number of recent ratings', { exact: true })).toHaveValue('2')
+  await openPluginManager(page)
+  await selectPlugin(page, 'review-history')
+  await page.getByRole('switch', { name: '启用 答题历史', exact: true }).click()
+  await expect(page.getByRole('switch', { name: '启用 答题历史', exact: true })).toBeChecked()
+  await setInterfaceLanguage(page, 'en')
+  await openPluginSettings(page)
+  await setResponsiveViewport(page, 390, 844)
+  await expect(page.getByLabel('Number of ratings', { exact: true })).toHaveValue('2')
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: info.outputPath('history-settings-en.png'), fullPage: true })
 }
@@ -112,7 +125,7 @@ export async function skillSettingsFlow(page: Page, read: () => Promise<Library>
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await page.getByLabel('信息通知', { exact: true }).uncheck()
   await page.getByLabel('警告通知', { exact: true }).uncheck()
-  await page.getByRole('tab', { name: 'AI 制卡', exact: true }).click()
+  await selectSettingsCategory(page, 'tools.ai')
   await expect(page.getByLabel('制卡说明（可直接粘贴到 AI 聊天中）')).toHaveValue(
     /name: repeaty-cards/,
   )
@@ -134,8 +147,8 @@ export async function skillSettingsFlow(page: Page, read: () => Promise<Library>
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await expect(page.getByLabel('信息通知', { exact: true })).not.toBeChecked()
   await expect(page.getByLabel('警告通知', { exact: true })).not.toBeChecked()
-  await page.getByLabel('界面语言').selectOption('en')
-  await page.setViewportSize({ width: 390, height: 844 })
+  await setInterfaceLanguage(page, 'en')
+  await setResponsiveViewport(page, 390, 844)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: info.outputPath('settings-general-en.png'), fullPage: true })
 }

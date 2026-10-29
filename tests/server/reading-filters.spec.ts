@@ -1,3 +1,4 @@
+import { selectUiValue } from '../fixtures/ui-flow'
 import { test, expect, headers } from './fixture'
 import { readingFilterFlow, filteredRoundRetry } from '../fixtures/reading-filter-flow'
 import { importReading, moveReading, readingText } from '../fixtures/reading-flow'
@@ -37,7 +38,7 @@ test('a late filtered-round start cannot recreate the round after leaving the pa
 }) => {
   await page.goto('./')
   await importReading(page, 'Delayed filtered source', 'plain', readingText)
-  await page.getByLabel('材料类型', { exact: true }).selectOption('original')
+  await selectUiValue(page.getByLabel('材料类型', { exact: true }), 'original')
   await page.getByLabel('搜索材料', { exact: true }).fill('Delayed')
   let release!: () => void
   const gate = new Promise<void>((resolve) => {
@@ -61,6 +62,6 @@ test('a late filtered-round start cannot recreate the round after leaving the pa
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await expect(page.getByRole('button', { name: '开始一轮阅读', exact: true })).toBeEnabled()
   await expect(page.getByRole('region', { name: '本轮阅读', exact: true })).toHaveCount(0)
-  await expect(page.getByLabel('材料类型', { exact: true })).toHaveValue('all')
+  await expect(page.getByLabel('材料类型', { exact: true })).toHaveAttribute('value', 'all')
   await expect(page.getByLabel('搜索材料', { exact: true })).toHaveValue('')
 })

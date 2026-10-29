@@ -20,3 +20,6 @@ src-tauri/Cargo.lock
 crates/*/target/
 crates/*/Cargo.lock
 playwright-report-desktop/
+plugins/*/dist/
+plugins/packages/
+docs/designs/b-prototype/site/

@@ -30,13 +30,25 @@ Windows / macOS 安装包尚未配置代码签名或公证。自动构建、MCP 
 发布一个新版本时，在同一分支更新：
 
 - `package.json` 与 `package-lock.json` 的根包版本。
-- `server/Cargo.toml`、`src-tauri/Cargo.toml`、`crates/leetcode-local/Cargo.toml`。
-- 对应三个 `Cargo.lock` 中的自身包版本，以及桌面锁文件中嵌入的本地插件版本。
+- `server/Cargo.toml`、`src-tauri/Cargo.toml`、`crates/workspace-store/Cargo.toml`。
+- 对应三个 `Cargo.lock` 中的自身包版本，以及桌面锁文件中嵌入的本地存储包版本。
 - `src-tauri/tauri.conf.json`。
 
 运行 `node scripts/release.mjs check` 核对版本，再完成正常测试与 PR。合并后自动发布；已有公开 Release 的同版本提交只做正常检查和部署，不替换下载文件。需要发布后续修复时，增加版本号。
 
+插件代码有独立版本，不随主程序版本机械递增。官方插件先在各自项目完成测试和构建，再更新固定的 `plugins/packages/*.repeaty-plugin`；主程序构建只复制这些已有包，不调用插件编译器。插件包版本、SDK 协议版本及笔记数据版本分别管理，见[插件开发](PLUGINS.md)。
+
 带预发布标识的版本（如 `1.0.0-rc.1`）自动标记为 Pre-release，不替换 Latest。稳定的 `1.0.0` 还要求 [发布清单](RELEASE_1_0.md) 全部完成，脚本不会代为勾选或跳过验收。
+
+## 开发阶段的检查
+
+功能分支推送和 PR 只运行 **Unit tests**：应用单元测试与发布脚本的单元测试。草稿与待合并 PR 使用同一规则；同一分支的新提交会取消过期的单元测试运行。合并要求对应提交的 Unit tests 通过。
+
+完整 CI、三平台持久化、浏览器端到端、桌面安装包、Pages 部署和自动发布只在 `main` 执行。CI / Desktop 的手动入口也限制为 `main`，在其他分支选择这些入口时不会启动构建任务。不要再为功能分支手动启动重型工作流。
+
+Unit tests 是独立工作流，不替代发布所需的同一 `main` 提交的完整 CI。原有发布门槛与安装包来源检查保持不变。
+
+修改桌面布局时，本地运行 `npm run test:e2e:desktop`，覆盖普通尺寸与短窗口；修改原生目录接口时，本地运行对应 Rust、跨语言和原生客户端测试。类型、格式与必要构建检查也在提交前按修改范围验证。三平台完整 CI 在合并后的 `main` 执行。
 
 ## 失败与重试
 
@@ -47,3 +59,5 @@ Windows / macOS 安装包尚未配置代码签名或公证。自动构建、MCP 
 也可以在 Actions 中对 `main` 手动运行 Desktop 工作流：它会重新检查、构建并按相同规则发布。CI 失败时应先修复；发布任务等待同一提交的 CI，不能使用其他提交的绿色结果。
 
 本地可执行 `node --test scripts/release.test.mjs` 验证发布规则。`plan` 模式只读取 GitHub 状态，不创建标签或 Release；需提供 `GITHUB_REPOSITORY`、`GITHUB_SHA`、`GITHUB_RUN_ID` 和只读令牌。
+
+链接拒绝用例在 Windows 使用临时目录联接（junction），无需管理员权限或开发者模式；其他平台使用临时文件符号链接。两者均验证发布扫描拒绝链接，测试不跳过此检查，链接及目标均位于同一临时夹具内。

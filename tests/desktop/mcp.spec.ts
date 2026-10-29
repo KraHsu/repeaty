@@ -1,6 +1,8 @@
+import { selectUiValue } from '../fixtures/ui-flow'
 import type { Page } from '@playwright/test'
 import { test, expect, storedLibrary } from './fixture'
 import { practiceHistoryFixture } from '../fixtures/practice-history'
+import { openSettings, setInterfaceLanguage } from '../fixtures/settings-flow'
 
 function query(page: Page, tool: string, args: Record<string, unknown> = {}, scope?: string) {
   return page.evaluate(
@@ -31,10 +33,10 @@ test('desktop settings opt in to local read queries, revoke keys, and retain the
   await page.getByRole('button', { name: '替换并恢复', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   const before = await storedLibrary(page)
-  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await openSettings(page, 'connections.mcp')
   const dialog = page.getByRole('region', { name: '桌面设置' })
   const mcp = dialog.getByRole('region', { name: 'MCP 连接' })
-  await mcp.getByLabel('MCP 客户端', { exact: true }).selectOption('http')
+  await selectUiValue(mcp.getByLabel('MCP 客户端', { exact: true }), 'http')
   await expect(mcp.getByRole('status')).toHaveText('已关闭')
   await expect(mcp.getByRole('button', { name: '开启 MCP' })).toBeEnabled()
   await mcp.getByRole('button', { name: '开启 MCP' }).click()
@@ -70,29 +72,27 @@ test('desktop settings opt in to local read queries, revoke keys, and retain the
       .Authorization,
   ).not.toBe(key)
   await page.getByRole('button', { name: '学习概览', exact: true }).click()
-  await page.getByLabel('界面语言').selectOption('en')
-  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await setInterfaceLanguage(page, 'en')
+  await openSettings(page, 'connections.mcp')
   await expect(page.getByRole('region', { name: 'MCP connection' })).toContainText('read-only')
   await page.setViewportSize({ width: 720, height: 850 })
   await page.getByRole('button', { name: 'Show connection configuration' }).click()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: info.outputPath('mcp-settings-en.png'), fullPage: true })
   await page.reload()
-  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await openSettings(page, 'connections.mcp')
   await expect(page.getByRole('region', { name: 'MCP connection' }).getByRole('status')).toHaveText(
     'Disabled',
   )
   expect(await storedLibrary(page)).toEqual(before)
 })
 
-test('an upstream workspace cannot enable MCP', async ({ page }) => {
-  await page.evaluate(() => localStorage.setItem('test.endpoint', 'http://127.0.0.1:8080'))
-  await page.reload()
-  await page.getByRole('button', { name: '设置', exact: true }).click()
+test('closing a workspace disables MCP until a directory is opened', async ({ page }) => {
+  await page.getByRole('button', { name: '工作目录', exact: true }).click()
+  await page.getByRole('button', { name: '关闭目录', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '打开文件夹，开始学习' })).toBeVisible()
+  await openSettings(page, 'connections.mcp')
   await expect(page.getByRole('button', { name: '开启 MCP' })).toBeDisabled()
-  await expect(page.getByRole('region', { name: 'MCP 连接' })).toContainText('仅支持本地学习库')
-  await expect(page.getByLabel('MCP 客户端', { exact: true })).toBeDisabled()
-  await expect(page.getByRole('button', { name: '显示连接配置' })).toBeDisabled()
 })
 
 test('client configurations can be copied before enabling MCP and reused after restart', async ({
@@ -100,7 +100,7 @@ test('client configurations can be copied before enabling MCP and reused after r
   context,
 }, info) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
-  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await openSettings(page, 'connections.mcp')
   const dialog = page.getByRole('region', { name: '桌面设置' })
   const mcp = dialog.getByRole('region', { name: 'MCP 连接' })
   const client = mcp.getByLabel('MCP 客户端', { exact: true })
@@ -110,7 +110,7 @@ test('client configurations can be copied before enabling MCP and reused after r
     ['claude-code', '.mcp.json'],
     ['claude-desktop', 'claude_desktop_config.json'],
   ]) {
-    await client.selectOption(name!)
+    await selectUiValue(client, name!)
     await expect(mcp.locator('textarea')).toHaveCount(0)
     await mcp.getByRole('button', { name: '显示连接配置' }).click()
     const field = mcp.getByLabel('客户端连接配置')
@@ -131,7 +131,10 @@ test('client configurations can be copied before enabling MCP and reused after r
     ).toBeGreaterThanOrEqual(16)
     await mcp.getByRole('button', { name: '复制配置' }).click()
     await expect(mcp.getByRole('button', { name: '已复制' })).toBeVisible()
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(configuration)
+    // Windows clipboard text uses CRLF; textarea values use LF on every platform.
+    expect((await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, '\n')).toBe(
+      configuration,
+    )
   }
   await mcp.getByRole('button', { name: '隐藏连接配置' }).click()
   await expect(mcp.locator('textarea')).toHaveCount(0)
@@ -142,11 +145,11 @@ test('client configurations can be copied before enabling MCP and reused after r
   )
   await mcp.getByRole('button', { name: '关闭 MCP' }).click()
   await expect(mcp.locator('textarea')).toHaveCount(0)
-  await client.selectOption('http')
+  await selectUiValue(client, 'http')
   await expect(mcp.getByRole('button', { name: '显示连接配置' })).toHaveCount(0)
   await page.reload()
-  await page.getByLabel('界面语言').selectOption('en')
-  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await setInterfaceLanguage(page, 'en')
+  await openSettings(page, 'connections.mcp')
   await page.setViewportSize({ width: 390, height: 844 })
   const englishMcp = page.getByRole('region', { name: 'MCP connection' })
   await expect(englishMcp.getByRole('status')).toHaveText('Disabled')

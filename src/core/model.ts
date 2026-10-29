@@ -1,9 +1,10 @@
 import { msg, LocalizedError } from '../i18n'
+import { inlineMediaSchema } from './inline-media-data'
 import { z } from 'zod'
 import { createEmptyCard, type Card as FsrsCard } from 'ts-fsrs'
 import { scheduleSchema, librarySchema as legacySchema } from './legacy'
 import { pluginDataSchema, assessmentSchema } from '../plugins/data'
-import { sourceSchema, excerptSchema, MAX_SOURCE_BYTES } from './source-data'
+import { sourceSchema, excerptSchema, MAX_SOURCE_BYTES, referencedSource } from './source-data'
 import { validateSourceHierarchy } from './source-tree'
 import { practiceSchema, attemptSchema, attemptSummarySchema } from './practice-data'
 
@@ -118,9 +119,14 @@ export const noteSchema = z
     type: z.enum(['basic', 'reversed', 'cloze', 'plugin']),
     plugin: pluginDataSchema.optional(),
     excerpt: excerptSchema.optional(),
+    inlineMedia: inlineMediaSchema.optional(),
     format: z.enum(['plain', 'markdown']).default('plain'),
-    front: z.string().trim().min(1).max(10_000),
-    back: z.string().trim().max(10_000),
+    front: z
+      .string()
+      .min(1)
+      .max(10_000)
+      .refine((value) => value.trim().length > 0),
+    back: z.string().max(10_000),
     tags,
     frontMedia: z.array(id).max(8),
     backMedia: z.array(id).max(8),
@@ -207,7 +213,16 @@ export type DeckInput = Pick<
 >
 export type NoteInput = Pick<
   Note,
-  'deckId' | 'type' | 'front' | 'back' | 'tags' | 'frontMedia' | 'backMedia' | 'plugin' | 'excerpt'
+  | 'deckId'
+  | 'type'
+  | 'front'
+  | 'back'
+  | 'tags'
+  | 'frontMedia'
+  | 'backMedia'
+  | 'plugin'
+  | 'excerpt'
+  | 'inlineMedia'
 > & { format?: Note['format'] }
 export type CardView = Card &
   Pick<
@@ -222,6 +237,7 @@ export type CardView = Card &
     | 'backMedia'
     | 'plugin'
     | 'excerpt'
+    | 'inlineMedia'
   > & { cloze?: { answers: string[]; context: string; extra: string } }
 export interface MediaUpload {
   meta: Media
@@ -274,19 +290,33 @@ export function validateLibraryReferences(
   const media = new Map(library.media.map((item) => [item.id, item]))
   const sources = new Map(library.sources.map((source) => [source.id, source]))
   for (const source of library.sources) {
-    const asset = media.get(source.mediaId)
-    if (
-      !asset ||
-      asset.type !== (source.format === 'markdown' ? 'text/markdown' : 'text/plain') ||
-      asset.size > MAX_SOURCE_BYTES
-    )
-      problem('来源正文缺失或格式不正确')
+    for (const snapshot of [source, ...(source.versions ?? [])]) {
+      const asset = media.get(snapshot.mediaId)
+      if (
+        !asset ||
+        asset.type !== (snapshot.format === 'markdown' ? 'text/markdown' : 'text/plain') ||
+        asset.size > MAX_SOURCE_BYTES
+      )
+        problem('来源正文缺失或格式不正确')
+    }
     if (source.origin) {
       const parent = sources.get(source.origin.sourceId)
-      if (!parent || source.format !== parent.format || source.origin.end > parent.characters)
+      const snapshot = parent && referencedSource(parent, source.origin)
+      if (
+        !snapshot ||
+        (!source.derived && source.format !== snapshot.format) ||
+        source.origin.end > snapshot.characters
+      )
         problem('摘录与来源不匹配')
     }
   }
+  for (const entry of [
+    ...library.notes,
+    ...library.sources.flatMap((source) => [source, ...(source.versions ?? [])]),
+  ])
+    for (const ref of entry.inlineMedia ?? [])
+      if (!media.has(ref.mediaId) || media.get(ref.mediaId)!.type.startsWith('text/'))
+        problem('笔记引用的媒体不存在')
   validateSourceHierarchy(library.sources, problem)
   const cardVariants = new Map<string, string[]>()
   for (const card of library.cards) {
@@ -302,7 +332,8 @@ export function validateLibraryReferences(
     )
       problem('正文快照不能用作图片或音频')
     if (note.excerpt) {
-      const source = sources.get(note.excerpt.sourceId)
+      const parent = sources.get(note.excerpt.sourceId)
+      const source = parent && referencedSource(parent, note.excerpt)
       if (
         !source ||
         note.excerpt.end > source.characters ||
@@ -431,6 +462,7 @@ export function renderCard(card: Card, note: Note): CardView {
     type: note.type,
     plugin: note.plugin,
     excerpt: note.excerpt,
+    inlineMedia: note.inlineMedia,
     format: note.format,
     tags: note.tags,
     front,
@@ -466,8 +498,15 @@ export function createCardViewReader() {
 export function pruneMedia(library: Library): Library {
   const used = new Set([
     ...library.notes.flatMap((note) => [...note.frontMedia, ...note.backMedia]),
-    ...library.sources.map((source) => source.mediaId),
+    ...library.sources.flatMap((source) => [
+      source.mediaId,
+      ...(source.versions ?? []).map((version) => version.mediaId),
+    ]),
   ])
+  for (const note of library.notes) for (const ref of note.inlineMedia ?? []) used.add(ref.mediaId)
+  for (const source of library.sources)
+    for (const version of [source, ...(source.versions ?? [])])
+      for (const ref of version.inlineMedia ?? []) used.add(ref.mediaId)
   return { ...library, media: library.media.filter((item) => used.has(item.id)) }
 }
 export function saveNote(
@@ -482,6 +521,7 @@ export function saveNote(
   const note = noteSchema.parse({
     ...input,
     excerpt: input.excerpt ?? previous?.excerpt,
+    inlineMedia: input.inlineMedia ?? previous?.inlineMedia,
     id: noteId ?? crypto.randomUUID(),
     createdAt: previous?.createdAt ?? now.toISOString(),
     updatedAt: now.toISOString(),

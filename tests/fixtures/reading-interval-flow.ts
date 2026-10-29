@@ -1,3 +1,7 @@
+import { selectUiValue } from './ui-flow'
+import { setResponsiveViewport } from './viewport-flow'
+import { setInterfaceLanguage } from './settings-flow'
+import { notesAfterSourceRekey } from './source-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import type { Library } from '../../src/core/model'
@@ -64,7 +68,7 @@ export async function readingIntervalFlow(
     '第 1 篇，共 1 篇',
   )
   dialog = await openReadSchedule(page, 1)
-  await page.setViewportSize({ width: 390, height: 844 })
+  await setResponsiveViewport(page, 390, 844)
   expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
   expect(
     await dialog
@@ -102,7 +106,13 @@ export async function readingIntervalFlow(
 
   await queueView(page, '稍后阅读')
   await selectSource(page, root.title)
-  await page.getByLabel('界面语言').selectOption('en')
+  await setInterfaceLanguage(page, 'en')
+  await page.getByRole('button', { name: 'Sources', exact: true }).click()
+  await page
+    .getByRole('navigation', { name: 'Reading queue', exact: true })
+    .getByRole('button', { name: /^Read later/ })
+    .click()
+  await selectSource(page, root.title)
   await page.getByRole('button', { name: 'Read and schedule next', exact: true }).click()
   const english = page.getByRole('dialog', { name: 'Read and schedule next', exact: true })
   await expect(english.locator('[aria-current="step"]')).toHaveText('3 days')
@@ -117,7 +127,10 @@ export async function readingIntervalFlow(
   })
   await english.getByRole('button', { name: 'Save reading schedule', exact: true }).click()
   await expect(english).toHaveCount(0)
-  await page.getByLabel('Interface language').selectOption('zh-CN')
+  await setInterfaceLanguage(page, 'zh-CN')
+  await page.getByRole('button', { name: '学习材料', exact: true }).click()
+  await queueView(page, '稍后阅读')
+  await selectSource(page, root.title)
   const second = (await read()).sources.find((source) => source.id === root.id)!
   expect(second.readingIntervalDays).toBe(3)
   expect(second.queue!.availableOn).toBe(threeDays)
@@ -126,8 +139,8 @@ export async function readingIntervalFlow(
   await manual.getByLabel('下次阅读日期').fill('2099-06-12')
   await manual.getByRole('button', { name: '保存阅读安排', exact: true }).click()
   await expect(manual).toHaveCount(0)
-  await page.getByLabel('阅读优先级', { exact: true }).selectOption('high')
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveValue('high')
+  await selectUiValue(page.getByLabel('阅读优先级', { exact: true }), 'high')
+  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'high')
   const custom = (await read()).sources.find((source) => source.id === root.id)!
   expect(custom.readingIntervalDays).toBe(3)
   expect(custom.queue!.availableOn).toBe('2099-06-12')
@@ -185,7 +198,9 @@ export async function readingIntervalFlow(
   expect(after.sources.find((source) => source.id === root.id)!.readingIntervalDays).toBe(1)
   expect(after.sources.find((source) => source.id === child.id)!.readingIntervalDays).toBe(1)
   for (const store of ['notes', 'cards', 'reviews', 'practices', 'attempts'] as const)
-    expect(after[store]).toEqual(before[store])
+    expect(after[store]).toEqual(
+      store === 'notes' ? notesAfterSourceRekey(before, after) : before[store],
+    )
   dialog = await openReadSchedule(page, 3)
   await dialog.getByRole('button', { name: '取消', exact: true }).click()
 }

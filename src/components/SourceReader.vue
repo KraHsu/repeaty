@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { UiButton, UiTextarea } from './ui'
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { t } from '../i18n'
+import { useInlineMedia } from '../composables/useInlineMedia'
 import type { Source, SourceOrigin, ReadingPosition, ReadingUpdate } from '../core/source-data'
 import { sourceExcerpt } from '../core/sources'
 import { renderReadingMarkdown } from '../core/content'
@@ -11,15 +13,25 @@ import {
   previewSourceOffset,
 } from './reading-position'
 
-const props = defineProps<{ source: Source; text: string; scope: string }>()
+const props = defineProps<{
+  source: Source
+  text: string
+  scope: string
+  getMedia?: (id: string) => Promise<Blob | undefined>
+}>()
 const emit = defineEmits<{
   select: [sourceId: string, start: number, end: number]
   position: [update: ReadingUpdate]
 }>()
 const preview = ref(props.source.reading?.view === 'preview' && props.source.format === 'markdown')
-const reader = ref<HTMLTextAreaElement>(),
+const reader = ref<{ textareaRef?: HTMLTextAreaElement }>(),
   rendered = ref<HTMLElement>()
-const html = computed(() => renderReadingMarkdown(props.text))
+const media = useInlineMedia(() => ({
+  text: props.text,
+  media: preview.value ? props.source.inlineMedia : undefined,
+  read: props.getMedia,
+}))
+const html = computed(() => renderReadingMarkdown(props.text, media.urls.value))
 let mirror: TextareaPosition | undefined, observer: ResizeObserver | undefined
 const restoring = ref(true)
 let alive = true
@@ -29,8 +41,8 @@ let restoreSequence = 0
 function capture(): ReadingPosition {
   return preview.value && rendered.value
     ? capturePreview(rendered.value)
-    : reader.value
-      ? (mirror ??= new TextareaPosition(reader.value)).capture()
+    : reader.value?.textareaRef
+      ? (mirror ??= new TextareaPosition(reader.value?.textareaRef)).capture()
       : last
 }
 function update(): ReadingUpdate {
@@ -46,8 +58,13 @@ function scrolled() {
   if (!restoring.value && alive) emit('position', update())
 }
 function selected() {
-  if (reader.value)
-    emit('select', props.source.id, reader.value.selectionStart, reader.value.selectionEnd)
+  if (reader.value?.textareaRef)
+    emit(
+      'select',
+      props.source.id,
+      reader.value?.textareaRef.selectionStart,
+      reader.value?.textareaRef.selectionEnd,
+    )
 }
 async function restore(position: ReadingPosition, focus = false) {
   const sequence = ++restoreSequence
@@ -55,10 +72,13 @@ async function restore(position: ReadingPosition, focus = false) {
   await nextTick()
   if (!alive || sequence !== restoreSequence) return
   if (preview.value && rendered.value) restorePreview(rendered.value, position)
-  else if (reader.value)
-    (mirror ??= new TextareaPosition(reader.value)).restore(position.offset, focus)
+  else if (reader.value?.textareaRef)
+    (mirror ??= new TextareaPosition(reader.value?.textareaRef)).restore(position.offset, focus)
   last = capture()
-  if (focus) (preview.value ? rendered.value : reader.value)?.scrollIntoView({ block: 'nearest' })
+  if (focus)
+    (preview.value ? rendered.value : reader.value?.textareaRef)?.scrollIntoView({
+      block: 'nearest',
+    })
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
   if (alive && sequence === restoreSequence) restoring.value = false
 }
@@ -98,11 +118,12 @@ async function locate(origin: SourceOrigin) {
   preview.value = false
   const sequence = restoreSequence + 1
   await restore({ offset: selection.start, fraction: 0, view: 'source' }, true)
-  if (!alive || sequence !== restoreSequence || preview.value || !reader.value) return false
-  reader.value.focus({ preventScroll: true })
-  reader.value.setSelectionRange(selection.start, selection.end)
+  if (!alive || sequence !== restoreSequence || preview.value || !reader.value?.textareaRef)
+    return false
+  reader.value?.textareaRef.focus({ preventScroll: true })
+  reader.value?.textareaRef.setSelectionRange(selection.start, selection.end)
   // Selecting a long range can scroll to its end; keep the start visible instead.
-  ;(mirror ??= new TextareaPosition(reader.value)).restore(selection.start)
+  ;(mirror ??= new TextareaPosition(reader.value?.textareaRef)).restore(selection.start)
   observeReader()
   emit('select', props.source.id, selection.start, selection.end)
   emit('position', update())
@@ -110,7 +131,7 @@ async function locate(origin: SourceOrigin) {
 }
 function observeReader() {
   observer?.disconnect()
-  if (reader.value) observer?.observe(reader.value)
+  if (reader.value?.textareaRef) observer?.observe(reader.value?.textareaRef)
   if (rendered.value) observer?.observe(rendered.value)
 }
 onMounted(async () => {
@@ -142,14 +163,15 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
         )
       }}
     </p>
-    <button
+    <UiButton
+      variant="ghost"
+      type="submit"
       v-if="source.format === 'markdown'"
-      class="text-button"
       :aria-pressed="preview"
       @click="toggle"
     >
       {{ t(preview ? '返回原文选取摘录' : '阅读 Markdown 预览') }}
-    </button>
+    </UiButton>
   </div>
   <div
     v-if="preview"
@@ -161,12 +183,13 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
     @scroll.passive="scrolled"
     v-html="html"
   />
-  <textarea
+  <UiTextarea
+    :ui="{
+      base: `source-text ${source.kind === 'excerpt' && text.length < 600 ? 'short-excerpt' : ''}`,
+    }"
     v-else
     ref="reader"
-    class="source-text"
-    :class="{ 'short-excerpt': source.kind === 'excerpt' && text.length < 600 }"
-    :value="text"
+    :model-value="text"
     readonly
     :aria-label="t('材料正文')"
     :aria-busy="restoring"
@@ -176,6 +199,9 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
     @mouseup="selected"
     @touchend="selected"
   />
+  <p v-if="media.error.value" role="alert" class="form-note">
+    {{ t('部分媒体无法读取，请从完整备份恢复。') }}
+  </p>
 </template>
 
 <style scoped>
@@ -185,31 +211,22 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
   gap: 0.6rem;
   align-items: center;
 }
-.source-text {
+:deep(.source-text) {
+  min-height: 28rem;
   width: 100%;
   min-width: 0;
-  min-height: 28rem;
   resize: vertical;
-  line-height: 1.8;
-  font-family: inherit;
-  font-size: 1rem;
-  border: 1px solid #d4decd;
-  border-radius: 8px;
-  background: #fafbf8;
-  color: #293d33;
-  padding: 11px 13px;
+  font-size: var(--font-size-reading);
+  line-height: var(--line-height-reading);
 }
-.source-text.short-excerpt {
+:deep(.source-text.short-excerpt) {
   min-height: 10rem;
-}
-.source-text:hover {
-  border-color: #a8bca2;
 }
 .source-markdown-preview {
   max-height: 36rem;
   overflow: auto;
-  font-size: 1rem;
-  line-height: 1.8;
+  font-size: var(--font-size-reading);
+  line-height: var(--line-height-reading);
   overflow-wrap: anywhere;
   scroll-behavior: auto;
 }

@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { UiButton, UiSelect } from '../components/ui'
 import { computed, ref, watch } from 'vue'
 import { t, type DisplayMessage } from '../i18n'
 import { remoteWorkspace } from '../edition'
-import type { SourceExcerpt } from '../core/source-data'
+import { referencedSource, type SourceExcerpt } from '../core/source-data'
 import type { MediaUpload, NoteInput } from '../core/model'
 import type { CardDraft } from '../core/draft-proposals'
 import {
@@ -28,9 +29,10 @@ const queueOpen = ref(false),
   error = ref<DisplayMessage>(''),
   shareError = ref<DisplayMessage>('')
 const library = computed(() => props.workspace.library.value)
-const source = computed(() =>
-  library.value.sources.find((source) => source.id === props.selection?.sourceId),
-)
+const source = computed(() => {
+  const entry = library.value.sources.find((source) => source.id === props.selection?.sourceId)
+  return entry && props.selection ? referencedSource(entry, props.selection) : undefined
+})
 const count = computed(() => draftSession.drafts.length)
 const context = () => ({ library: library.value, scope: props.workspace.scope.value, revision: 0 })
 const typeLabel = (type: string) =>
@@ -84,7 +86,7 @@ async function share() {
   sharing.value = true
   shareError.value = ''
   try {
-    const text = await props.workspace.getSource(selected.sourceId)
+    const text = await props.workspace.getSource(selected.sourceId, undefined, mediaId)
     draftSession.share(
       props.workspace.localLearningSnapshot(scope),
       selected,
@@ -166,13 +168,14 @@ async function discard(id: string) {
 </script>
 
 <template>
-  <button
+  <UiButton
+    variant="ghost"
+    type="submit"
     v-if="!remoteWorkspace && (count || draftSession.selection || draftState.error)"
-    class="text-button"
     @click="openQueue"
   >
     {{ t('制卡草稿（{count}）', { count }) }}
-  </button>
+  </UiButton>
   <AppModal
     v-if="selection && !remoteWorkspace"
     wide
@@ -189,33 +192,35 @@ async function discard(id: string) {
       <blockquote class="draft-quote">{{ selection.quote }}</blockquote>
       <label class="form-field" for="draft-deck"
         >{{ t('草稿默认卡组') }}
-        <select id="draft-deck" v-model="deckId" :disabled="sharing">
-          <option v-for="deck in library.decks" :key="deck.id" :value="deck.id">
-            {{ deck.name }}
-          </option>
-        </select>
+        <UiSelect
+          :items="[...library.decks.map((deck) => ({ label: deck.name, value: deck.id }))]"
+          id="draft-deck"
+          v-model="deckId"
+          :disabled="sharing"
+        ></UiSelect>
       </label>
       <p class="form-note">
         {{ t('客户端可能将摘录发送给它使用的模型服务。请确认选区中包含的内容。') }}
       </p>
       <McpSettings />
       <div class="form-actions">
-        <button
-          class="button secondary"
+        <UiButton
+          variant="secondary"
           type="button"
           :disabled="sharing"
           @click="emit('closeSelection')"
         >
           {{ t('取消') }}
-        </button>
-        <button
-          class="button primary"
+        </UiButton>
+        <UiButton
+          variant="primary"
+          type="submit"
           :disabled="
             sharing || !deckId || !mcpStatus.enabled || !mcpStatus.available || !draftState.ready
           "
         >
           {{ t(sharing ? '正在分享…' : '分享这段摘录') }}
-        </button>
+        </UiButton>
       </div>
     </form>
   </AppModal>
@@ -229,18 +234,21 @@ async function discard(id: string) {
   >
     <section class="draft-queue">
       <p v-if="draftState.error" role="alert">{{ t(draftState.error) }}</p>
-      <button
+      <UiButton
+        variant="secondary"
+        type="submit"
         v-if="draftState.error"
-        class="button secondary"
         :disabled="draftState.loading || workspace.busy.value || saving"
         @click="reloadDrafts(workspace)"
       >
         {{ t('重新读取草稿') }}
-      </button>
+      </UiButton>
       <template v-if="draftSession.selection">
         <div class="draft-sharing">
           <strong>{{ t('当前分享的摘录') }}</strong>
-          <button class="text-button" @click="draftSession.revoke()">{{ t('停止分享') }}</button>
+          <UiButton variant="ghost" type="submit" @click="draftSession.revoke()">
+            {{ t('停止分享') }}
+          </UiButton>
         </div>
         <p>{{ draftSession.selection.title }}</p>
         <blockquote class="draft-quote">{{ draftSession.selection.excerpt.quote }}</blockquote>
@@ -265,8 +273,9 @@ async function discard(id: string) {
             {{ t('材料或卡组已不存在，请丢弃草稿后重新选取。') }}
           </p>
           <div class="connection-actions">
-            <button
-              class="button secondary"
+            <UiButton
+              variant="secondary"
+              type="submit"
               :disabled="
                 workspace.busy.value ||
                 saving ||
@@ -276,14 +285,15 @@ async function discard(id: string) {
               @click="openDraft(draft.id)"
             >
               {{ t('检查并编辑') }}
-            </button>
-            <button
-              class="text-button"
+            </UiButton>
+            <UiButton
+              variant="ghost"
+              type="submit"
               :disabled="workspace.busy.value || saving || !draftState.ready"
               @click="discard(draft.id)"
             >
               {{ t('丢弃草稿') }}
-            </button>
+            </UiButton>
           </div>
         </li>
       </ol>
@@ -316,14 +326,14 @@ async function discard(id: string) {
 .draft-share,
 .draft-queue {
   padding: 1.5rem 1.75rem;
-  font-size: 1rem;
-  line-height: 1.65;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-ui);
 }
 .draft-quote {
   margin: 1rem 0;
   padding: 1rem;
   border-left: 3px solid var(--green);
-  background: #f8f9f6;
+  background: var(--ui-bg-muted);
   max-height: 14rem;
   overflow: auto;
   white-space: pre-wrap;
@@ -339,7 +349,7 @@ async function discard(id: string) {
 }
 .draft-meta span {
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--font-size-meta);
   overflow-wrap: anywhere;
 }
 .draft-list {

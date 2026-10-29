@@ -1,3 +1,4 @@
+import { selectUiValue } from '../fixtures/ui-flow'
 import { test, expect, headers } from './fixture'
 import {
   readingFlow,
@@ -193,13 +194,13 @@ test('an unavailable service refuses to archive and retains the original reading
   await expect(
     page.getByRole('heading', { name: 'Account queue retry', exact: true }),
   ).toBeVisible()
-  await page.getByLabel('阅读优先级', { exact: true }).selectOption('high')
+  await selectUiValue(page.getByLabel('阅读优先级', { exact: true }), 'high')
   await expect(page.getByRole('alert')).toBeVisible()
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveValue('normal')
+  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'normal')
   expect((await (await request.get('api/library', { headers })).json()).library).toEqual(before)
   reject = false
-  await page.getByLabel('阅读优先级', { exact: true }).selectOption('high')
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveValue('high')
+  await selectUiValue(page.getByLabel('阅读优先级', { exact: true }), 'high')
+  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'high')
   await page.getByRole('button', { name: '归档材料', exact: true }).click()
   await expect(page.getByRole('heading', { name: '暂无待阅读材料', exact: true })).toBeVisible()
 })

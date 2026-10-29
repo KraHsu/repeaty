@@ -1,5 +1,12 @@
-import { computed, defineAsyncComponent, ref } from 'vue'
-import installations from '@repeaty-plugins'
+import { computed, defineAsyncComponent } from 'vue'
+import { defaultPluginManager, usePluginManager, type PluginManager } from './manager'
+import type { Pinia } from 'pinia'
+export {
+  PLUGIN_PREFERENCES_KEY,
+  pluginPreferenceError,
+  restorePluginPreferences,
+  listenPluginPreferences,
+} from './preferences'
 import { desktopEdition } from '../edition'
 import type { CardView } from '../core/model'
 import {
@@ -14,8 +21,8 @@ const flashcard: QuestionPlugin = {
   kind: 'frontend',
   label: '卡片',
   version: 1,
-  showQuestion: defineAsyncComponent(() => import('./flashcard/Question.vue')),
-  showAnswer: defineAsyncComponent(() => import('./flashcard/Answer.vue')),
+  showQuestion: defineAsyncComponent(() => import('../components/flashcard/Question.vue')),
+  showAnswer: defineAsyncComponent(() => import('../components/flashcard/Answer.vue')),
 }
 // Installation is a deployment decision. Backups contain data, never plugin code.
 export function validateInstallations(entries: readonly PluginInstallation[]) {
@@ -29,99 +36,102 @@ export function validateInstallations(entries: readonly PluginInstallation[]) {
   }
   return entries
 }
-export const installedPlugins = validateInstallations(installations).filter(
-  ({ plugin }) => plugin.kind === 'frontend' || desktopEdition,
-)
-export const PLUGIN_PREFERENCES_KEY = 'repeaty.plugins.v1'
-const preferences = ref<Record<string, boolean>>({})
-export function pluginAvailable(id: string) {
-  return installedPlugins.some(
-    ({ plugin }) => plugin.id === id && (plugin.kind === 'frontend' || desktopEdition),
-  )
-}
-export const pluginPreferenceError = ref('')
-export function restorePluginPreferences() {
-  try {
-    const value = JSON.parse(localStorage.getItem(PLUGIN_PREFERENCES_KEY) ?? '{}')
-    preferences.value = Object.fromEntries(
-      installedPlugins.flatMap(({ plugin }) =>
-        value &&
-        typeof value === 'object' &&
-        Object.hasOwn(value, plugin.id) &&
-        typeof value[plugin.id] === 'boolean'
-          ? [[plugin.id, value[plugin.id]]]
-          : [],
-      ),
+export function createPluginRegistry(manager: PluginManager) {
+  const installedPlugins = manager.pluginRuntime.installations
+  const pluginPreferences = manager.pluginPreferences
+  function pluginAvailable(id: string) {
+    return installedPlugins.some(
+      ({ plugin }) => plugin.id === id && (plugin.kind === 'frontend' || desktopEdition),
     )
-  } catch {
-    preferences.value = {}
   }
-}
-export function pluginEnabled(id: string): boolean {
-  if (id === 'flashcard') return true
-  const installed = installedPlugins.find(({ plugin }) => plugin.id === id)
-  return Boolean(
-    installed &&
-    pluginAvailable(id) &&
-    ((Object.hasOwn(preferences.value, id) ? preferences.value[id] : installed.enabledByDefault) ??
-      true),
-  )
-}
-export function setPluginEnabled(id: string, enabled: boolean) {
-  if (!installedPlugins.some(({ plugin }) => plugin.id === id)) return
-  preferences.value = { ...preferences.value, [id]: enabled }
-  pluginPreferenceError.value = ''
-  try {
-    localStorage.setItem(PLUGIN_PREFERENCES_KEY, JSON.stringify(preferences.value))
-  } catch {
-    pluginPreferenceError.value = '插件开关已生效，但未能保存；下次打开时可能恢复默认设置。'
+  function pluginEnabled(id: string): boolean {
+    if (id === 'flashcard') return true
+    const installed = installedPlugins.find(({ plugin }) => plugin.id === id)
+    return Boolean(
+      installed &&
+      pluginAvailable(id) &&
+      ((Object.hasOwn(pluginPreferences.value, id)
+        ? pluginPreferences.value[id]
+        : installed.enabledByDefault) ??
+        true),
+    )
   }
-}
-export function listenPluginPreferences() {
-  restorePluginPreferences()
-  const receive = (event: StorageEvent) => {
-    if (event.key === null || event.key === PLUGIN_PREFERENCES_KEY) restorePluginPreferences()
+  function setPluginEnabled(id: string, enabled: boolean) {
+    if (id === 'flashcard') return Promise.resolve()
+    return manager.enablePlugin(id, enabled)
   }
-  window.addEventListener('storage', receive)
-  return () => window.removeEventListener('storage', receive)
-}
-export const enabledEditorPlugins = computed(() =>
-  installedPlugins
-    .map(({ plugin }) => plugin)
-    .filter(
-      (plugin): plugin is QuestionPlugin =>
-        isQuestionPlugin(plugin) && pluginEnabled(plugin.id) && !!plugin.editor,
-    ),
-)
-export const enabledReviewPanels = computed(() =>
-  installedPlugins
-    .map(({ plugin }) => plugin)
-    .filter(
-      (plugin): plugin is ReviewPanelPlugin => 'reviewPanel' in plugin && pluginEnabled(plugin.id),
-    ),
-)
-const unavailable: QuestionPlugin = {
-  id: 'unavailable',
-  kind: 'frontend',
-  label: '插件题目',
-  version: 1,
-  showQuestion: defineAsyncComponent(() => import('./Unavailable.vue')),
-  showAnswer: defineAsyncComponent(() => import('./Unavailable.vue')),
-}
-export function questionPlugin(card: Pick<CardView, 'type' | 'plugin'>): QuestionPlugin {
-  if (card.type !== 'plugin') return flashcard
-  return (
+  const enabledEditorPlugins = computed(() =>
     installedPlugins
       .map(({ plugin }) => plugin)
-      .filter(isQuestionPlugin)
-      .find(
-        (plugin) =>
-          plugin.id === card.plugin?.id &&
-          plugin.version === card.plugin.version &&
-          pluginEnabled(plugin.id),
-      ) ?? unavailable
+      .filter(
+        (plugin): plugin is QuestionPlugin =>
+          isQuestionPlugin(plugin) && pluginEnabled(plugin.id) && !!plugin.editor,
+      ),
   )
+  const enabledReviewPanels = computed(() =>
+    installedPlugins
+      .map(({ plugin }) => plugin)
+      .filter(
+        (plugin): plugin is ReviewPanelPlugin =>
+          'reviewPanel' in plugin && pluginEnabled(plugin.id),
+      ),
+  )
+  const unavailable: QuestionPlugin = {
+    id: 'unavailable',
+    kind: 'frontend',
+    label: '插件题目',
+    version: 1,
+    showQuestion: defineAsyncComponent(() => import('../components/UnavailableQuestion.vue')),
+    showAnswer: defineAsyncComponent(() => import('../components/UnavailableQuestion.vue')),
+  }
+  function questionPlugin(card: Pick<CardView, 'type' | 'plugin'>): QuestionPlugin {
+    if (card.type !== 'plugin') return flashcard
+    return (
+      installedPlugins
+        .map(({ plugin }) => plugin)
+        .filter(isQuestionPlugin)
+        .find(
+          (plugin) =>
+            plugin.id === card.plugin?.id &&
+            plugin.version === card.plugin.version &&
+            pluginEnabled(plugin.id),
+        ) ?? unavailable
+    )
+  }
+  function canReviewCard(card: Pick<CardView, 'type' | 'plugin'>) {
+    return questionPlugin(card).id !== 'unavailable'
+  }
+  return {
+    installedPlugins,
+    pluginAvailable,
+    pluginEnabled,
+    setPluginEnabled,
+    enabledEditorPlugins,
+    enabledReviewPanels,
+    questionPlugin,
+    canReviewCard,
+    pluginPreferenceError: manager.pluginPreferenceError,
+    restorePluginPreferences: manager.restorePluginPreferences,
+    listenPluginPreferences: manager.listenPluginPreferences,
+  }
 }
-export function canReviewCard(card: Pick<CardView, 'type' | 'plugin'>) {
-  return questionPlugin(card).id !== 'unavailable'
+const registries = new WeakMap<PluginManager, ReturnType<typeof createPluginRegistry>>()
+export function usePlugins(pinia?: Pinia) {
+  const manager = usePluginManager(pinia)
+  let registry = registries.get(manager)
+  if (!registry) {
+    registry = createPluginRegistry(manager)
+    registries.set(manager, registry)
+  }
+  return registry
 }
+export const {
+  installedPlugins,
+  pluginAvailable,
+  pluginEnabled,
+  setPluginEnabled,
+  enabledEditorPlugins,
+  enabledReviewPanels,
+  questionPlugin,
+  canReviewCard,
+} = createPluginRegistry(defaultPluginManager)
