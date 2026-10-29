@@ -1,21 +1,34 @@
 import { expect, type Page, type TestInfo } from '@playwright/test'
 
-async function navigate(page: Page, name: string) {
+async function navigate(page: Page, name: string, heading = name) {
   await page.locator('.main-nav').getByRole('button', { name, exact: true }).click()
-  await expect(page.locator('.app-page-header h1')).toHaveText(name)
+  await expect(page.locator('.app-page-header h1')).toHaveText(heading)
+  await expect(page.locator('.main-content .page')).toHaveCount(1)
 }
 
-export async function pageHeaderFlow(page: Page, info: TestInfo, narrowWidth: number) {
+export async function pageHeaderFlow(
+  page: Page,
+  info: TestInfo,
+  narrowWidth: number,
+  edition: 'web' | 'desktop',
+) {
   await page.setViewportSize({ width: 1440, height: 1000 })
   await navigate(page, '学习概览')
   if (!(await page.locator('.b-deck-tile').count())) {
     await page.getByRole('button', { name: '添加入门卡组', exact: true }).click()
     await expect(page.locator('.b-deck-tile').first()).toBeVisible()
   }
+  for (const dismiss of await page.getByRole('button', { name: '关闭提示', exact: true }).all()) {
+    await dismiss.click()
+  }
   const pages = [
     ['学习概览', 'overview'],
     ['全部卡片', 'cards'],
     ['学习材料', 'sources'],
+    ['设置', 'settings'],
+    ['插件', 'plugins'],
+    ['工作目录', 'workspace'],
+    ['数据与备份', 'backup'],
   ] as const
 
   for (const [width, scale, theme] of [
@@ -38,18 +51,24 @@ export async function pageHeaderFlow(page: Page, info: TestInfo, narrowWidth: nu
     }, scale)
     const frames: { left: number; width: number; top: number }[] = []
     for (const [name, id] of pages) {
-      await navigate(page, name)
+      await navigate(
+        page,
+        name,
+        name === '工作目录' && edition === 'web' ? '在浏览器中打开工作目录' : name,
+      )
       const header = page.locator('.app-page-header')
+      await expect(header.locator('.app-page-header__description')).toBeVisible()
       const metrics = await header.evaluate((element) => {
         const header = element.getBoundingClientRect()
         const page = element.closest('.page')!
         const pageBox = page.getBoundingClientRect()
         const pageStyle = getComputedStyle(page)
         const title = element.querySelector('h1')!.getBoundingClientRect()
-        const description = element.querySelector('p')!.getBoundingClientRect()
-        const actions = element.querySelector('.app-page-header__actions')!
-        const actionBox = actions.getBoundingClientRect()
-        const buttons = [...actions.querySelectorAll('button')]
+        const description = element.querySelector('p')?.getBoundingClientRect()
+        const copy = element.querySelector('.app-page-header__copy')!.getBoundingClientRect()
+        const actions = element.querySelector('.app-page-header__actions')
+        const actionBox = actions?.getBoundingClientRect()
+        const buttons = [...(actions?.querySelectorAll('button') ?? [])]
         const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
         const stacked = header.width <= 48 * rem
         return {
@@ -61,13 +80,19 @@ export async function pageHeaderFlow(page: Page, info: TestInfo, narrowWidth: nu
             header.right - pageBox.right + Number.parseFloat(pageStyle.paddingRight),
           ),
           titleInset: Math.abs(title.left - header.left),
-          actionAlignment: stacked
-            ? Math.abs(actionBox.left - header.left)
-            : Math.abs(actionBox.top - title.top),
-          actionEdge: stacked ? 0 : Math.abs(actionBox.right - header.right),
-          separation: stacked ? actionBox.top - description.bottom : 0,
+          descriptionInset: description ? Math.abs(description.left - header.left) : 0,
+          descriptionGap: description ? description.top - title.bottom : undefined,
+          copyRightInset: Math.abs(copy.right - header.right),
+          hasActions: Boolean(actions),
+          actionAlignment: actionBox
+            ? stacked
+              ? Math.abs(actionBox.left - header.left)
+              : Math.abs(actionBox.top - title.top)
+            : 0,
+          actionEdge: stacked || !actionBox ? 0 : Math.abs(actionBox.right - header.right),
+          separation: stacked && actionBox ? actionBox.top - (description ?? title).bottom : 0,
           stacked,
-          gap: Number.parseFloat(getComputedStyle(actions).gap),
+          gap: actions ? Number.parseFloat(getComputedStyle(actions).gap) : 0,
           buttonCount: buttons.length,
           buttonsContained: buttons.every((button) => {
             const box = button.getBoundingClientRect()
@@ -88,13 +113,21 @@ export async function pageHeaderFlow(page: Page, info: TestInfo, narrowWidth: nu
       expect(metrics.inset).toBeLessThanOrEqual(1)
       expect(metrics.rightInset).toBeLessThanOrEqual(1)
       expect(metrics.titleInset).toBeLessThanOrEqual(1)
-      expect(metrics.actionAlignment).toBeLessThanOrEqual(1)
-      expect(metrics.actionEdge).toBeLessThanOrEqual(1)
-      if (metrics.stacked) expect(metrics.separation).toBeGreaterThanOrEqual(16 * scale - 1)
-      expect(metrics.gap).toBe(8 * scale)
-      expect(metrics.buttonCount).toBeGreaterThan(0)
-      expect(metrics.buttonsContained).toBe(true)
-      expect(metrics.minButtonHeight).toBeGreaterThanOrEqual(44 * scale)
+      expect(metrics.descriptionInset).toBeLessThanOrEqual(1)
+      if (metrics.descriptionGap !== undefined) expect(metrics.descriptionGap).toBe(6 * scale)
+      expect(metrics.hasActions).toBe(!['settings', 'backup'].includes(id))
+      if (metrics.hasActions) {
+        expect(metrics.actionAlignment).toBeLessThanOrEqual(1)
+        expect(metrics.actionEdge).toBeLessThanOrEqual(1)
+        if (metrics.stacked) expect(metrics.separation).toBeGreaterThanOrEqual(16 * scale - 1)
+        expect(metrics.gap).toBe(8 * scale)
+        expect(metrics.buttonCount).toBeGreaterThan(0)
+        expect(metrics.buttonsContained).toBe(true)
+        expect(metrics.minButtonHeight).toBeGreaterThanOrEqual(44 * scale)
+      } else {
+        // Pages without global actions use the full header width, without a phantom grid column.
+        expect(metrics.copyRightInset).toBeLessThanOrEqual(1)
+      }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
       )
@@ -132,5 +165,26 @@ export async function pageHeaderFlow(page: Page, info: TestInfo, narrowWidth: nu
     await modal.getByRole('button', { name: '关闭弹窗', exact: true }).click()
     await expect(modal).toHaveCount(0)
     await expect(button).toBeFocused()
+  }
+
+  await navigate(page, '插件')
+  const install = page.locator('.app-page-header__actions').getByRole('button', {
+    name: '安装插件包',
+    exact: true,
+  })
+  const chooser = page.waitForEvent('filechooser')
+  await install.click()
+  expect((await chooser).isMultiple()).toBe(false)
+
+  if (edition === 'web') {
+    await navigate(page, '工作目录', '在浏览器中打开工作目录')
+    const actions = page.locator('.app-page-header__actions')
+    const fallback = actions.getByRole('button', { name: '使用文件夹选择', exact: true })
+    const open = (await fallback.count())
+      ? fallback
+      : actions.getByRole('button', { name: '打开本地工作目录', exact: true })
+    const directoryChooser = page.waitForEvent('filechooser')
+    await open.click()
+    expect((await directoryChooser).isMultiple()).toBe(true)
   }
 }

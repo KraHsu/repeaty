@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import '../../styles/content-pages.css'
+import AppPage from '../../components/AppPage.vue'
 import { UiProgress, UiButton } from '../../components/ui'
 import { version } from '../../../package.json'
 import { t, locale } from '../../i18n'
@@ -27,21 +28,13 @@ function bindUpload(instance: unknown) {
 }
 </script>
 <template>
-  <div class="page data-page">
-    <header class="page-heading">
-      <div>
-        <h1>{{ t('数据与备份') }}</h1>
-        <p>
-          {{
-            t(
-              remoteWorkspace
-                ? '导出、恢复备份，管理服务中的数据。'
-                : '导出、恢复备份，管理本地数据。',
-            )
-          }}
-        </p>
-      </div>
-    </header>
+  <AppPage
+    class="data-page"
+    :title="t('数据与备份')"
+    :description="
+      t(remoteWorkspace ? '导出、恢复备份，管理服务中的数据。' : '导出、恢复备份，管理本地数据。')
+    "
+  >
     <section class="storage-banner data-overview">
       <ShieldCheck :size="29" />
       <div>
@@ -247,5 +240,5 @@ function bindUpload(instance: unknown) {
         {{ t('刷新以更新版本') }}
       </UiButton>
     </div>
-  </div>
+  </AppPage>
 </template>

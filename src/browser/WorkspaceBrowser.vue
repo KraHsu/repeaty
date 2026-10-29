@@ -5,6 +5,7 @@ import { FolderOpen, BookOpen, FileText, Layers, ShieldCheck, X } from '@lucide/
 import { t, type DisplayMessage } from '../i18n'
 import type { useLibrary } from '../composables/useLibrary'
 import AppModal from '../components/AppModal.vue'
+import AppPage from '../components/AppPage.vue'
 import { createRepository } from '../core/storage'
 import { readBrowserWorkspace } from './worker-client'
 import { createBrowserRepository, type BrowserWorkspaceSource } from './repository'
@@ -147,22 +148,12 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="browser-workspace">
-    <header class="browser-workspace-heading">
-      <span class="workspace-symbol"><FolderOpen :size="30" /></span>
-      <div>
-        <h1>{{ t('在浏览器中打开工作目录') }}</h1>
-        <p>{{ t('查看本地卡片、材料和学习记录，无需上传或连接服务器。') }}</p>
-      </div>
-    </header>
-    <div class="workspace-readonly-note">
-      <ShieldCheck :size="22" aria-hidden="true" />
-      <p>{{ t('原目录只读。可在独立副本中复习和编辑，试用进度只保留在当前页面。') }}</p>
-    </div>
-    <p class="workspace-folder-help">
-      {{ t('先在桌面版中关闭学习库，再选择包含 workspace.json 的整个文件夹。') }}
-    </p>
-    <div class="workspace-actions">
+  <AppPage
+    class="browser-workspace"
+    :title="t('在浏览器中打开工作目录')"
+    :description="t('查看本地卡片、材料和学习记录，无需上传或连接服务器。')"
+  >
+    <template #actions>
       <UiButton variant="primary" type="submit" :disabled="locked" @click="choose">
         <FolderOpen :size="19" />{{ t('打开本地工作目录') }}
       </UiButton>
@@ -175,17 +166,24 @@ onUnmounted(() => {
       >
         {{ t('使用文件夹选择') }}
       </UiButton>
-      <input
-        ref="folderInput"
-        class="sr-only"
-        type="file"
-        webkitdirectory
-        multiple
-        :aria-label="t('选择工作目录文件夹')"
-        :disabled="locked"
-        @change="selected"
-      />
+    </template>
+    <input
+      ref="folderInput"
+      class="sr-only"
+      type="file"
+      webkitdirectory
+      multiple
+      :aria-label="t('选择工作目录文件夹')"
+      :disabled="locked"
+      @change="selected"
+    />
+    <div class="workspace-readonly-note">
+      <ShieldCheck :size="22" aria-hidden="true" />
+      <p>{{ t('原目录只读。可在独立副本中复习和编辑，试用进度只保留在当前页面。') }}</p>
     </div>
+    <p class="workspace-folder-help">
+      {{ t('先在桌面版中关闭学习库，再选择包含 workspace.json 的整个文件夹。') }}
+    </p>
     <p v-if="error" role="alert" class="workspace-read-error">{{ t(error) }}</p>
     <div v-if="loading" class="workspace-progress" role="status">
       <div>
@@ -261,37 +259,10 @@ onUnmounted(() => {
         </UiButton>
       </div>
     </AppModal>
-  </section>
+  </AppPage>
 </template>
 
 <style scoped>
-.browser-workspace {
-  max-width: 1020px;
-  padding: 2.5rem;
-  margin: 0 auto;
-  width: 100%;
-}
-.browser-workspace-heading {
-  display: flex;
-  gap: 1.1rem;
-  align-items: flex-start;
-  margin-bottom: 1.5rem;
-}
-.workspace-symbol {
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  width: 58px;
-  height: 58px;
-  border-radius: 16px;
-  color: var(--green);
-  background: var(--sage);
-}
-h1 {
-  font-size: var(--font-size-page);
-  line-height: var(--line-height-heading);
-  margin: 0 0 0.6rem;
-}
 h2 {
   font-size: var(--font-size-section);
   line-height: var(--line-height-heading);
@@ -301,7 +272,6 @@ p {
   font-size: var(--font-size-body);
   line-height: var(--line-height-ui);
 }
-.browser-workspace-heading p,
 .workspace-folder-help,
 .workspace-preview > p {
   color: var(--muted);
@@ -384,17 +354,6 @@ p {
   accent-color: var(--green);
 }
 @media (max-width: 760px) {
-  .browser-workspace {
-    padding: 1.5rem 1rem;
-  }
-  .browser-workspace-heading {
-    gap: 0.75rem;
-  }
-  .workspace-symbol {
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-  }
   .workspace-preview {
     padding: 1.1rem;
   }

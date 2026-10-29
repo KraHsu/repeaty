@@ -10,6 +10,7 @@ import { usePluginManager, officialPluginBundles, type PackageEntry } from '../p
 import { SettingField, UiButton, UiCollapsible, UiNotice } from './ui'
 import CardContent from './CardContent.vue'
 import AppModal from './AppModal.vue'
+import AppPage from './AppPage.vue'
 import { Puzzle, Download, RefreshCw } from '@lucide/vue'
 import '../styles/settings-plugins.css'
 const { installedPlugins, pluginEnabled, pluginPreferenceError } = usePlugins()
@@ -237,20 +238,27 @@ async function installOfficial() {
 }
 </script>
 <template>
-  <div ref="panel" :class="embedded ? 'settings-plugins' : 'page plugins-page'">
-    <header v-if="!embedded" class="page-heading">
-      <h1>{{ t('插件') }}</h1>
+  <component
+    :is="embedded ? 'div' : AppPage"
+    :class="embedded ? 'settings-plugins' : 'plugins-page'"
+    v-bind="
+      embedded
+        ? {}
+        : { title: t('插件'), description: t('查看插件详情、使用说明，管理安装与权限。') }
+    "
+  >
+    <template v-if="!embedded" #actions>
       <UiButton variant="secondary" :disabled="locked" @click="picker?.click()">
         <Download :size="18" />{{ t('安装插件包') }}
       </UiButton>
-    </header>
+    </template>
     <UiNotice v-if="activePluginViews" tone="warning">{{
       t('请先结束复习或关闭编辑器，再修改插件。')
     }}</UiNotice>
     <UiNotice v-if="error || pluginManagerError || pluginPreferenceError" tone="error">{{
       t(error || pluginManagerError || pluginPreferenceError)
     }}</UiNotice>
-    <div v-if="entries.length" class="plugin-workbench">
+    <div v-if="entries.length" ref="panel" class="plugin-workbench">
       <aside class="plugin-directory">
         <div class="plugin-directory-heading">
           <h2>{{ t('插件管理') }}</h2>
@@ -450,5 +458,5 @@ async function installOfficial() {
         >
       </div>
     </AppModal>
-  </div>
+  </component>
 </template>

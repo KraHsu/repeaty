@@ -176,36 +176,39 @@ it('ties enable and uninstall confirmation to the exact package entry and reques
   expect(boundary.manager.removePlugin).not.toHaveBeenCalled()
 })
 
-it('shows only the selected package and opens and focuses requested plugin documentation', async () => {
-  boundary.manager.pluginPackages.push({
-    id: 'second',
-    trusted: true,
-    bundle: {
-      ...bundle,
-      manifest: { ...bundle.manifest, id: 'second', name: 'Second' },
-      readme: '# Second documentation',
-    },
-  })
-  const props = reactive({ focusPlugin: undefined as string | undefined })
-  app = createApp({ render: () => h(PluginPanel, props) })
-  app.mount(host)
-  await settle()
-  expect(host.querySelector('.readme-rendered')?.textContent).toContain('Example documentation')
-  expect(host.querySelectorAll('.plugin-settings')).toHaveLength(1)
-  host.querySelector<HTMLButtonElement>('[data-plugin-select="second"]')!.click()
-  await settle()
-  expect(host.querySelector('.readme-rendered')?.textContent).toContain('Second documentation')
-  expect(host.querySelector('.plugin-settings')?.getAttribute('data-plugin-id')).toBe('second')
-  props.focusPlugin = 'example'
-  await settle()
-  const trigger = host.querySelector<HTMLButtonElement>('.plugin-readme-trigger')!
-  expect(trigger.getAttribute('aria-expanded')).toBe('true')
-  expect(document.activeElement).toBe(trigger)
-  expect(host.querySelector('.readme-rendered')?.textContent).toContain('Example documentation')
-  trigger.click()
-  await settle()
-  expect(host.querySelector('.readme-rendered')).toBeNull()
-})
+it.each([false, true])(
+  'opens and focuses requested plugin documentation (embedded: %s)',
+  async (embedded) => {
+    boundary.manager.pluginPackages.push({
+      id: 'second',
+      trusted: true,
+      bundle: {
+        ...bundle,
+        manifest: { ...bundle.manifest, id: 'second', name: 'Second' },
+        readme: '# Second documentation',
+      },
+    })
+    const props = reactive({ embedded, focusPlugin: undefined as string | undefined })
+    app = createApp({ render: () => h(PluginPanel, props) })
+    app.mount(host)
+    await settle()
+    expect(host.querySelector('.readme-rendered')?.textContent).toContain('Example documentation')
+    expect(host.querySelectorAll('.plugin-settings')).toHaveLength(1)
+    host.querySelector<HTMLButtonElement>('[data-plugin-select="second"]')!.click()
+    await settle()
+    expect(host.querySelector('.readme-rendered')?.textContent).toContain('Second documentation')
+    expect(host.querySelector('.plugin-settings')?.getAttribute('data-plugin-id')).toBe('second')
+    props.focusPlugin = 'example'
+    await settle()
+    const trigger = host.querySelector<HTMLButtonElement>('.plugin-readme-trigger')!
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    expect(document.activeElement).toBe(trigger)
+    expect(host.querySelector('.readme-rendered')?.textContent).toContain('Example documentation')
+    trigger.click()
+    await settle()
+    expect(host.querySelector('.readme-rendered')).toBeNull()
+  },
+)
 
 it('selects a current package after removal and resets selection when the workspace changes', async () => {
   boundary.manager.pluginPackages.push({ id: 'second', trusted: true, bundle })

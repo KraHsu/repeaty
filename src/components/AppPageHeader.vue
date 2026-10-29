@@ -4,7 +4,7 @@ defineProps<{ title: string; description?: string }>()
 
 <template>
   <header class="page-heading app-page-header">
-    <div class="app-page-header__layout">
+    <div class="app-page-header__layout" :class="{ 'has-actions': !!$slots.actions }">
       <div class="app-page-header__copy">
         <h1>{{ title }}</h1>
         <p v-if="description || $slots.description" class="app-page-header__description">
@@ -28,9 +28,12 @@ defineProps<{ title: string; description?: string }>()
 }
 .app-page-header__layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 1.5rem;
+}
+.app-page-header__layout.has-actions {
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 .app-page-header__copy {
   min-width: 0;
@@ -64,7 +67,7 @@ defineProps<{ title: string; description?: string }>()
   min-height: var(--ui-control-height);
 }
 @container (max-width: 48rem) {
-  .app-page-header__layout {
+  .app-page-header__layout.has-actions {
     grid-template-columns: minmax(0, 1fr);
     gap: 1rem;
   }

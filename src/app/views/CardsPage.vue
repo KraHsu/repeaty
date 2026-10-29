@@ -5,7 +5,7 @@ import { t } from '../../i18n'
 import { ArrowUpFromLine, Pencil, Plus, Trash2 } from '@lucide/vue'
 import CollectionPanel from '../../components/CollectionPanel.vue'
 import DeckStatus from '../../components/DeckStatus.vue'
-import AppPageHeader from '../../components/AppPageHeader.vue'
+import AppPage from '../../components/AppPage.vue'
 import { useApplication } from '../context'
 const {
   workspace,
@@ -32,38 +32,37 @@ const {
 } = useApplication()
 </script>
 <template>
-  <div class="page cards-page">
-    <AppPageHeader
-      :title="currentDeck?.name ?? t('全部卡片')"
-      :description="currentDeck?.description || t('搜索、编辑卡片，或批量调整卡组和标签。')"
-    >
-      <template #actions>
-        <UiButton
-          v-bind="{ variant: 'ghost', icon: true }"
-          type="submit"
-          v-if="currentDeck"
-          :aria-label="t('编辑当前卡组')"
-          @click="editDeck(currentDeck)"
-        >
-          <Pencil :size="18" /></UiButton
-        ><UiButton
-          v-bind="{ variant: 'ghost', icon: true }"
-          type="submit"
-          v-if="currentDeck"
-          class="danger-text"
-          :aria-label="t('删除当前卡组')"
-          @click="confirmDeleteDeck(currentDeck)"
-        >
-          <Trash2 :size="18" />
-        </UiButton>
-        <UiButton variant="secondary" type="submit" @click="openImport">
-          <ArrowUpFromLine :size="16" />{{ t('批量导入') }}
-        </UiButton>
-        <UiButton variant="primary" type="submit" @click="editCard()">
-          <Plus :size="17" />{{ t('添加卡片') }}
-        </UiButton>
-      </template>
-    </AppPageHeader>
+  <AppPage
+    class="cards-page"
+    :title="currentDeck?.name ?? t('全部卡片')"
+    :description="currentDeck?.description || t('搜索、编辑卡片，或批量调整卡组和标签。')"
+  >
+    <template #actions>
+      <UiButton
+        v-bind="{ variant: 'ghost', icon: true }"
+        type="submit"
+        v-if="currentDeck"
+        :aria-label="t('编辑当前卡组')"
+        @click="editDeck(currentDeck)"
+      >
+        <Pencil :size="18" /></UiButton
+      ><UiButton
+        v-bind="{ variant: 'ghost', icon: true }"
+        type="submit"
+        v-if="currentDeck"
+        class="danger-text"
+        :aria-label="t('删除当前卡组')"
+        @click="confirmDeleteDeck(currentDeck)"
+      >
+        <Trash2 :size="18" />
+      </UiButton>
+      <UiButton variant="secondary" type="submit" @click="openImport">
+        <ArrowUpFromLine :size="16" />{{ t('批量导入') }}
+      </UiButton>
+      <UiButton variant="primary" type="submit" @click="editCard()">
+        <Plus :size="17" />{{ t('添加卡片') }}
+      </UiButton>
+    </template>
     <DeckStatus v-if="currentDeck" :status="deckStates.get(currentDeck.id)!" />
     <CollectionPanel
       :query-cards="workspace.queryCards"
@@ -83,5 +82,5 @@ const {
       @review="startReview(selectedDeck || undefined)"
       @history="openHistory"
     />
-  </div>
+  </AppPage>
 </template>

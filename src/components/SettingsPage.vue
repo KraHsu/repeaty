@@ -7,6 +7,7 @@ import { createApplicationSettings } from '../settings/application'
 import { buildSettingsCategories, collectSettingsCategoryEntries } from '../settings/categories'
 import type { SettingsCategoryNode, SettingsContribution, SettingsEntry } from '../settings/types'
 import SettingsContent from './SettingsContent.vue'
+import AppPage from './AppPage.vue'
 import BranchedMenu from './ui/BranchedMenu.vue'
 import { UiSelect } from './ui'
 import '../styles/settings-plugins.css'
@@ -145,12 +146,7 @@ watch(
 </script>
 
 <template>
-  <div class="page settings-page">
-    <header class="page-heading">
-      <div>
-        <h1>{{ t('设置') }}</h1>
-      </div>
-    </header>
+  <AppPage class="settings-page" :title="t('设置')" :description="t('管理软件和插件的偏好设置。')">
     <div class="settings-layout">
       <div class="settings-mobile-category">
         <label :for="`${domId}-mobile-category`">{{ t('设置分类') }}</label>
@@ -189,7 +185,7 @@ watch(
         />
       </section>
     </div>
-  </div>
+  </AppPage>
 </template>
 <style scoped>
 .settings-page {

@@ -175,6 +175,9 @@ export const en = {
   '输入框保留文字撤销；学习库支持撤销当前会话最近 20 次修改。评分在重启后仍可撤销。':
     'Text fields keep text undo. Library undo covers the last 20 changes in this session; the latest rating can also be undone after restarting.',
   设置分类: 'Settings categories',
+  '管理软件和插件的偏好设置。': 'Manage preferences for the app and your plugins.',
+  '查看插件详情、使用说明，管理安装与权限。':
+    'View plugin details and guides, and manage installation and permissions.',
   通用: 'General',
   界面: 'Appearance',
   偏好语言: 'Preferred language',

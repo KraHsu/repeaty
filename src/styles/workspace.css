@@ -1,10 +1,7 @@
-.workspace-manager {
+.workspace-content {
   display: grid;
   gap: 1.5rem;
   min-width: 0;
-}
-.workspace-manager > .page-heading {
-  margin-bottom: 0;
 }
 .workspace-actions {
   display: flex;
@@ -465,7 +462,7 @@
   }
 }
 @media (max-width: 720px) {
-  .workspace-manager {
+  .workspace-content {
     gap: 1rem;
   }
   .workspace-card,

@@ -49,7 +49,7 @@ import {
 } from '../core/reading-round'
 import { createExportFile } from '@repeaty-platform'
 import AppModal from './AppModal.vue'
-import AppPageHeader from './AppPageHeader.vue'
+import AppPage from './AppPage.vue'
 import SourceReader from './SourceReader.vue'
 import SourceContext from './SourceContext.vue'
 import SourceExcerptList from './SourceExcerptList.vue'
@@ -926,42 +926,40 @@ async function download() {
 </script>
 
 <template>
-  <div class="page sources-page">
-    <AppPageHeader
-      v-if="!session"
-      :title="t('学习材料')"
-      :description="t('保存原文，选取摘录制作卡片。')"
-    >
-      <template #actions>
-        <UiButton
-          variant="secondary"
-          type="submit"
-          v-if="canUndoReading && !session"
-          :title="t('撤销最近一次阅读安排（刷新后清除）')"
-          :disabled="busy || moving || arranging || undoing"
-          @click="undoArrangement"
-        >
-          {{ t('撤销阅读安排') }}
-        </UiButton>
-        <UiButton
-          variant="secondary"
-          type="submit"
-          v-if="!inRound"
-          :disabled="busy || moving || arranging || !readyCount || (!!source && !canMove)"
-          @click="beginRound()"
-        >
-          {{ t('开始一轮阅读') }}
-        </UiButton>
-        <UiButton
-          variant="primary"
-          type="submit"
-          :disabled="busy || moving || inRound"
-          @click="openImport"
-        >
-          <Plus :size="18" />{{ t('导入材料') }}
-        </UiButton>
-      </template>
-    </AppPageHeader>
+  <AppPage
+    class="sources-page"
+    :title="session ? undefined : t('学习材料')"
+    :description="t('保存原文，选取摘录制作卡片。')"
+  >
+    <template #actions>
+      <UiButton
+        variant="secondary"
+        type="submit"
+        v-if="canUndoReading && !session"
+        :title="t('撤销最近一次阅读安排（刷新后清除）')"
+        :disabled="busy || moving || arranging || undoing"
+        @click="undoArrangement"
+      >
+        {{ t('撤销阅读安排') }}
+      </UiButton>
+      <UiButton
+        variant="secondary"
+        type="submit"
+        v-if="!inRound"
+        :disabled="busy || moving || arranging || !readyCount || (!!source && !canMove)"
+        @click="beginRound()"
+      >
+        {{ t('开始一轮阅读') }}
+      </UiButton>
+      <UiButton
+        variant="primary"
+        type="submit"
+        :disabled="busy || moving || inRound"
+        @click="openImport"
+      >
+        <Plus :size="18" />{{ t('导入材料') }}
+      </UiButton>
+    </template>
     <div v-if="!library.sources.length && !inRound" class="empty-state">
       <FileText :size="36" />
       <h2>{{ t('还没有学习材料') }}</h2>
@@ -1993,7 +1991,7 @@ async function download() {
         </div>
       </div></AppModal
     >
-  </div>
+  </AppPage>
 </template>
 
 <style scoped>
