@@ -228,15 +228,64 @@ async function runCommand(commandId: string) {
 }
 const reader = ref<{ textareaRef?: HTMLTextAreaElement }>(),
   rendered = ref<HTMLElement>()
-const media = useInlineMedia(() => ({
-  text: props.text,
-  media: preview.value ? props.source.inlineMedia : undefined,
-  read: props.getMedia,
-}))
+type ReaderMediaInput = {
+  scope: string
+  sourceId: string
+  versionId: string
+  text: string
+  media?: Source['inlineMedia']
+  read?: (id: string) => Promise<Blob | undefined>
+}
+const mediaInput = computed<ReaderMediaInput>((previous) => {
+  const next = {
+    scope: props.scope,
+    sourceId: props.source.id,
+    versionId: props.source.mediaId,
+    text: props.text,
+    media: preview.value ? props.source.inlineMedia : undefined,
+    read: props.getMedia,
+  }
+  // Position/metadata saves replace Source objects, but not their accepted media.
+  // Keep URLs and preview DOM stable while still isolating every source/session.
+  if (
+    previous &&
+    previous.scope === next.scope &&
+    previous.sourceId === next.sourceId &&
+    previous.versionId === next.versionId &&
+    previous.text === next.text &&
+    previous.read === next.read &&
+    previous.media?.length === next.media?.length &&
+    (next.media ?? []).every((entry, index) => {
+      const before = previous.media![index]!
+      return (
+        before.url === entry.url &&
+        before.mediaId === entry.mediaId &&
+        before.path === entry.path &&
+        before.hash === entry.hash
+      )
+    })
+  )
+    return previous
+  return { ...next, media: next.media?.map((entry) => ({ ...entry })) }
+})
+const media = useInlineMedia(mediaInput)
 const html = computed(() =>
   renderReadingMarkdown(props.text, media.urls.value, {
-    editableTasks: props.editable && !props.busy,
+    editableTasks: props.editable,
   }),
+)
+watch(
+  [rendered, html, () => props.busy],
+  () => {
+    // Saving reading progress must not replace text nodes or a native selection.
+    // Only task controls change availability while the existing preview stays put.
+    const disabled = !props.editable || !!props.busy
+    for (const task of rendered.value?.querySelectorAll<HTMLElement>('[data-reading-task]') ?? []) {
+      task.setAttribute('aria-disabled', String(disabled))
+      task.tabIndex = disabled ? -1 : 0
+    }
+  },
+  { flush: 'post' },
 )
 let mirror: TextareaPosition | undefined, observer: ResizeObserver | undefined
 const restoring = ref(true)

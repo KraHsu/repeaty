@@ -85,6 +85,7 @@ test('imports a lazy source, anchors an excerpt, reviews offline and preserves s
   )
   const before = await storedLibrary(page)
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
+  await showSourceText(page)
   await expect(page.getByRole('textbox', { name: '材料正文', exact: true })).toHaveValue(sourceText)
   await setInterfaceLanguage(page, 'en')
   await page.getByRole('button', { name: 'Sources', exact: true }).click()

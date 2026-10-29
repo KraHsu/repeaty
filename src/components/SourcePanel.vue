@@ -670,6 +670,17 @@ const canMove = computed(
     !error.value &&
     (!!reader.value?.ready || editingContent.value),
 )
+// Locating an excerpt only moves within the already loaded immutable text.
+// Background persistence must not disable its focused keyboard control.
+const canLocateExcerpt = computed(
+  () =>
+    !arranging.value &&
+    !moving.value &&
+    !loading.value &&
+    !error.value &&
+    !editingContent.value &&
+    !!reader.value?.ready,
+)
 watch(
   () =>
     props.busy ||
@@ -723,7 +734,13 @@ defineExpose({
   leaveSession,
   undoArrangement,
   locked: computed(
-    () => props.busy || moving.value || arranging.value || loading.value || undoing.value,
+    () =>
+      props.busy ||
+      moving.value ||
+      arranging.value ||
+      loading.value ||
+      undoing.value ||
+      (!!source.value && !editingContent.value && !error.value && !reader.value?.ready),
   ),
 })
 function showRound(next: ReadingRound) {
@@ -921,7 +938,7 @@ function changePriority(priority: string) {
 }
 async function locateExcerpt(id: string) {
   const entry = savedExcerpts.value.find((entry) => entry.source.id === id)
-  if (!entry || !canMove.value) return
+  if (!entry || !canLocateExcerpt.value) return
   emit('clearNotice')
   navigationError.value = ''
   moving.value = true
@@ -2003,7 +2020,7 @@ async function download() {
             :selection="excerpt"
             :today="today"
             :busy="busy || moving || arranging"
-            :can-locate="canMove"
+            :can-locate="canLocateExcerpt"
             @locate="locateExcerpt"
             @open="openExcerptSource"
           />

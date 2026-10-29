@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test'
 import type { Library } from '../../src/core/model'
+import { showSourceText } from './source-controls'
 /** Backups replace media identities while preserving the referenced version and all study data. */
 export function notesAfterSourceRekey(before: Library, after: Library) {
   return before.notes.map((note) => {
@@ -48,6 +49,7 @@ export async function saveSource(page: Page) {
   await expect(page.getByRole('textbox', { name: '材料正文', exact: true })).toHaveValue(sourceText)
 }
 export async function selectSourceExcerpt(page: Page) {
+  await showSourceText(page)
   const start = sourceText.lastIndexOf(sourceQuote)
   await page.getByRole('textbox', { name: /^(材料正文|Source text)$/ }).evaluate(
     (el: HTMLTextAreaElement, { start, end }) => {

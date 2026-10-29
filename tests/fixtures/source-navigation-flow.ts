@@ -175,6 +175,7 @@ export async function navigationFlow(page: Page, read: () => Promise<Library>, i
   await expect(locate).toBeEnabled()
   await locate.focus()
   await expect(locate).toBeFocused()
+  await expect(locate).toBeEnabled()
   await locate.press('Enter')
   const reader = page.locator('.source-text')
   await expect(reader).toHaveAttribute('aria-busy', 'false')
@@ -206,6 +207,7 @@ export async function navigationFlow(page: Page, read: () => Promise<Library>, i
     data.late.queue,
   )
   await page.locator('.source-list-title').filter({ hasText: '导航原文' }).click()
+  await showSourceText(page)
   await expect(reader).toHaveAttribute('aria-busy', 'false')
   await selectForExcerpt(page)
   await page.getByRole('button', { name: '查看已有摘录', exact: true }).click()

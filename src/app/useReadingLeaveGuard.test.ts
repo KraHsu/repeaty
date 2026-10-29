@@ -1,5 +1,5 @@
 import { createPinia } from 'pinia'
-import { effectScope, ref } from 'vue'
+import { effectScope, nextTick, ref } from 'vue'
 import { afterEach, expect, it, vi } from 'vitest'
 import { useReadingLeaveGuard } from './useReadingLeaveGuard'
 import { useAppNavigation } from './useAppNavigation'
@@ -21,8 +21,8 @@ function setup() {
   scopes.push(lifetime)
   const scope = ref('library:one'),
     busy = ref(false),
-    activeSource = ref<{ leaveSession(): Promise<boolean> }>(),
-    mixedReader = ref<{ leaveSession(): Promise<boolean> }>(),
+    activeSource = ref<{ locked?: boolean; leaveSession(): Promise<boolean> }>(),
+    mixedReader = ref<{ locked?: boolean; leaveSession(): Promise<boolean> }>(),
     reading = { pending: new Map<string, unknown>(), flush: vi.fn(async () => {}) }
   const beforeLeave = lifetime.run(() =>
     useReadingLeaveGuard({ scope, busy, activeSource, mixedReader, reading }),
@@ -35,12 +35,22 @@ function setup() {
 it('allows unrelated page navigation during background metadata saves but keeps close and workspace changes guarded', async () => {
   const test = setup()
   test.busy.value = true
-  expect(test.beforeLeave()).toBe(false)
   expect(test.navigation.navigate('cards')).toBe(true)
   expect(test.navigation.tab.value).toBe('cards')
+  const closed = vi.fn(),
+    closing = Promise.resolve(test.beforeLeave()).then(closed)
+  await nextTick()
+  expect(closed).not.toHaveBeenCalled()
+  test.busy.value = false
+  await closing
+  expect(closed).toHaveBeenCalledWith(true)
   test.activeSource.value = { leaveSession: vi.fn(async () => true) }
-  expect(test.navigation.navigate('workspace')).toBe(false)
+  test.busy.value = true
+  const navigation = test.navigation.navigate('workspace')
   expect(test.navigation.tab.value).toBe('cards')
+  test.busy.value = false
+  expect(await navigation).toBe(true)
+  expect(test.navigation.tab.value).toBe('workspace')
 })
 
 it('awaits main reader drafts before navigating and keeps the page when draft or annotation refuses leaving', async () => {
@@ -97,8 +107,54 @@ it('flushes mixed reading and pending positions, and never authorizes a failed r
   })
   expect(await test.beforeLeave()).toBe(true)
   test.busy.value = true
-  expect(await test.beforeLeave()).toBe(false)
+  const leaving = test.beforeLeave()
+  test.busy.value = false
+  expect(await leaving).toBe(true)
 })
+
+it('waits for reader restore and autosave, coalesces navigation clicks, then flushes once without a second click', async () => {
+  const test = setup(),
+    leave = vi.fn(async () => true)
+  test.activeSource.value = { locked: true, leaveSession: leave }
+  test.busy.value = true
+  const first = test.navigation.navigate('cards'),
+    second = test.navigation.navigate('settings')
+  expect(leave).not.toHaveBeenCalled()
+  test.busy.value = false
+  await nextTick()
+  expect(leave).not.toHaveBeenCalled()
+  expect(test.navigation.tab.value).toBe('sources')
+  test.activeSource.value.locked = false
+  expect(await first).toBe(false)
+  expect(await second).toBe(true)
+  expect(leave).toHaveBeenCalledOnce()
+  expect(test.reading.flush).toHaveBeenCalledOnce()
+  expect(test.navigation.tab.value).toBe('settings')
+})
+
+it.each(['scope', 'view', 'unmount'] as const)(
+  'cancels an idle wait on %s without late navigation or retained listeners',
+  async (change) => {
+    const test = setup(),
+      leave = vi.fn(async () => true)
+    test.activeSource.value = { locked: true, leaveSession: leave }
+    test.busy.value = true
+    const changing = test.navigation.navigate('settings')
+    if (change === 'scope') {
+      test.scope.value = 'library:two'
+      test.navigation.resetLibrary()
+    } else if (change === 'view') test.activeSource.value = undefined
+    else test.lifetime.stop()
+    expect(await changing).toBe(false)
+    expect(leave).not.toHaveBeenCalled()
+    expect(test.reading.flush).not.toHaveBeenCalled()
+    test.busy.value = false
+    if (test.activeSource.value) test.activeSource.value.locked = false
+    await nextTick()
+    expect(test.navigation.tab.value).toBe('sources')
+    expect(leave).not.toHaveBeenCalled()
+  },
+)
 
 it('coalesces pending flushes, uses the latest navigation target and rejects scope or view replacements', async () => {
   const test = setup(),

@@ -2,12 +2,14 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick, ref, type App } from 'vue'
 import SourcePanel from './SourcePanel.vue'
-import { addSource, prepareSource } from '../core/sources'
+import { addSource, prepareSource, prepareSourceExcerpt, sourceExcerpt } from '../core/sources'
 import { fixture, now } from '../core/test-fixtures'
 import type { ReadingProgress } from '../composables/useReadingProgress'
 import type { MaterialWorkbenchActions } from './material-workbench-actions'
 
 const annotation = vi.hoisted(() => ({ canLeave: true }))
+const readerLocation = vi.hoisted(() => vi.fn(async () => true))
+const readerState = vi.hoisted(() => ({ ready: undefined as { value: boolean } | undefined }))
 vi.mock('../composables/material-knowledge', () => ({
   createMaterialKnowledge: () => ({ dispose: vi.fn() }),
 }))
@@ -32,13 +34,16 @@ vi.mock('./SourceAnnotations.vue', async () => {
   }
 })
 vi.mock('./SourceReader.vue', async () => {
-  const { defineComponent, h } = await import('vue')
+  const { defineComponent, h, ref } = await import('vue')
   return {
     default: defineComponent({
       props: ['source', 'scope', 'text'],
       setup(props, { expose }) {
+        const ready = ref(true)
+        readerState.ready = ready
         expose({
-          ready: true,
+          ready,
+          locate: readerLocation,
           capture: () => ({
             sourceId: props.source.id,
             mediaId: props.source.mediaId,
@@ -93,6 +98,8 @@ afterEach(() => {
   app = undefined
   document.body.replaceChildren()
   annotation.canLeave = true
+  readerLocation.mockClear()
+  readerState.ready = undefined
 })
 async function settle() {
   for (let i = 0; i < 7; i++) {
@@ -114,7 +121,9 @@ it('drops late old-scope text and prevents leaving a reader with unsaved annotat
       ? new Promise<string>((resolve) => {
           finish = resolve
         })
-      : Promise.resolve('Current library text'),
+      : scope.value === 'local:read-error'
+        ? Promise.reject(new Error('source failed'))
+        : Promise.resolve('Current library text'),
   )
   const saveReading = vi.fn(async () => true)
   const reading = {
@@ -167,6 +176,12 @@ it('drops late old-scope text and prevents leaving a reader with unsaved annotat
   scope.value = 'local:second'
   await settle()
   expect(host.querySelector('[data-testid="reader"]')?.textContent).toBe('Current library text')
+  readerState.ready!.value = false
+  await settle()
+  expect(panel.value!.locked).toBe(true)
+  readerState.ready!.value = true
+  await settle()
+  expect(panel.value!.locked).toBe(false)
   finish('Stale library text')
   await settle()
   expect(host.querySelector('[data-testid="reader"]')?.textContent).toBe('Current library text')
@@ -176,6 +191,10 @@ it('drops late old-scope text and prevents leaving a reader with unsaved annotat
   annotation.canLeave = true
   expect(await panel.value!.leaveSession()).toBe(true)
   expect(saveReading).toHaveBeenCalledOnce()
+  scope.value = 'local:read-error'
+  await settle()
+  expect(panel.value!.locked).toBe(false)
+  expect(await panel.value!.leaveSession()).toBe(true)
 })
 
 it.each([
@@ -250,4 +269,76 @@ it.each([
   expect(
     [...host.querySelectorAll('button')].some((button) => button.textContent?.includes('编辑正文')),
   ).toBe(editable)
+})
+
+it('keeps read-only excerpt location enabled and focused during background persistence', async () => {
+  const text = 'Original quoted text',
+    prepared = prepareSource(
+      { title: 'Material', url: '', format: 'markdown', content: text },
+      now,
+    ),
+    excerpt = prepareSourceExcerpt(
+      prepared.source,
+      text,
+      sourceExcerpt(prepared.source, text, 9, 15),
+      'Quote',
+      now,
+    ),
+    library = addSource(
+      addSource(fixture(), prepared.source, prepared.asset),
+      excerpt.source,
+      excerpt.asset,
+    ),
+    busy = ref(false)
+  const reading = {
+    savingId: ref<string>(),
+    pending: new Map(),
+    errors: new Map(),
+    hold: () => () => {},
+    record: vi.fn(),
+    acknowledge: vi.fn(),
+    flush: vi.fn(async () => true),
+  } as unknown as ReadingProgress
+  const host = document.createElement('div')
+  document.body.append(host)
+  app = createApp({
+    render: () =>
+      h(SourcePanel, {
+        library,
+        scope: 'local:locate',
+        busy: busy.value,
+        reading,
+        now,
+        session: { sourceId: prepared.source.id, mediaId: prepared.source.mediaId },
+        canUndoReading: false,
+        arrangeBatch: async () => true,
+        undoReading: async () => true,
+        read: async () => text,
+        save: async () => true,
+        updateDetails: async () => true,
+        saveExcerpt: async () => true,
+        remove: async () => true,
+        arrange: async () => true,
+        saveReading: async () => true,
+      }),
+  })
+  app.mount(host)
+  await settle()
+  const locate = host.querySelector<HTMLButtonElement>('[aria-label="定位「Quote」的原文"]')!,
+    open = host.querySelector<HTMLButtonElement>('[aria-label="打开摘录「Quote」"]')!
+  expect(locate.disabled).toBe(false)
+  locate.focus()
+  busy.value = true
+  await settle()
+  expect(locate.disabled).toBe(false)
+  expect(document.activeElement).toBe(locate)
+  expect(open.disabled).toBe(true)
+  locate.click()
+  await settle()
+  expect(readerLocation).toHaveBeenCalledExactlyOnceWith(excerpt.source.origin)
+  readerState.ready!.value = false
+  await settle()
+  expect(locate.disabled).toBe(true)
+  locate.click()
+  expect(readerLocation).toHaveBeenCalledOnce()
 })
