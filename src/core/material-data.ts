@@ -82,11 +82,12 @@ export const materialReceiptSchema = z.strictObject({
   id: z.string().min(1).max(150),
   pluginId: contributor,
   operationId: z.string().min(1).max(150),
-  kind: z.enum(['import', 'create-note', 'create-excerpt']),
+  kind: z.enum(['import', 'create-note', 'create-excerpt', 'edit-content']),
   fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
   result: z.strictObject({
     sourceIds: z.array(id).max(1000),
     noteIds: z.array(z.string().min(1).max(150)).max(1000),
+    versionId: id.optional(),
   }),
   createdAt: z.iso.datetime(),
 })

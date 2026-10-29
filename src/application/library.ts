@@ -30,6 +30,8 @@ import { createFilesCommands } from './library-files'
 import { createStudyCommands } from './library-study'
 import { createTransfersCommands } from './library-transfers'
 import { createMaterialCommands } from './library-materials'
+import { createOrganizationCommands } from './library-organization'
+import { createWorkbenchCommands } from './library-workbench'
 export function createLibraryService(state: LibraryState, dependencies: LibraryDependencies) {
   const {
     library,
@@ -565,6 +567,8 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
       ...createStudyCommands(context),
       ...createTransfersCommands(context),
       ...createMaterialCommands(context),
+      ...createOrganizationCommands(context),
+      ...createWorkbenchCommands(context),
     },
   }
 }

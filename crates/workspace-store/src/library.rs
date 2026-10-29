@@ -53,6 +53,8 @@ pub struct Save {
     pub operation_history: Option<Value>,
     pub consume_card_draft: Option<String>,
     #[serde(default)]
+    pub consume_source_draft: Option<String>,
+    #[serde(default)]
     pub scan_hash: Option<String>,
     #[serde(default)]
     pub asset_observations: Vec<working_media::Observation>,
@@ -133,6 +135,7 @@ impl Library {
           CREATE INDEX publications_status ON publications(status);
           CREATE TABLE receipts(id TEXT PRIMARY KEY,digest TEXT NOT NULL,revision INTEGER NOT NULL);
           CREATE TABLE card_drafts(id TEXT PRIMARY KEY,data TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS source_drafts(id TEXT PRIMARY KEY,data TEXT NOT NULL);
           CREATE TABLE values_store(namespace TEXT NOT NULL,id TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(namespace,id));")?;
         retirement::schema(&db.connection)?;
         db.connection
@@ -188,7 +191,7 @@ impl Library {
         let identity: String = check
             .query_row("SELECT id FROM workspace_identity", [], |r| r.get(0))
             .map_err(|_| fail("workspace-incompatible"))?;
-        if app != APP_ID || ![10, 11, 12].contains(&version) || identity != marker.id {
+        if app != APP_ID || ![10, 11, 12, 13].contains(&version) || identity != marker.id {
             return Err(fail("workspace-incompatible"));
         }
         drop(check);
@@ -559,6 +562,7 @@ impl Library {
             }
         }
         let consume = request.consume_card_draft;
+        let consume_source = request.consume_source_draft;
         let operation = request.operation_id;
         let patches = request.patches;
         let metadata = patches
@@ -579,6 +583,7 @@ impl Library {
             working_media::verify(anchor, observations)?;
             retirement::reactivate(tx,reactivate)?;
             if let Some(id)=consume && tx.execute("DELETE FROM card_drafts WHERE id=?1",[id])?!=1 { return Err(Error::conflict()); }
+            if let Some(id)=consume_source && tx.execute("DELETE FROM source_drafts WHERE json_extract(data,'$.id')=?1",[id])?!=1 { return Err(Error::conflict()); }
             for (doc,hash) in &documents {
                 // A newly accepted observation supersedes older incomplete publication
                 // attempts for this document, including its previous working path.
@@ -885,6 +890,20 @@ impl Library {
             "backup" => self
                 .db
                 .backup(request["id"].as_str().ok_or_else(Error::invalid)?),
+            "source-draft" => {
+                let id = request["sourceId"].as_str().ok_or_else(Error::invalid)?;
+                let raw: Option<String> = self
+                    .db
+                    .connection
+                    .query_row("SELECT data FROM source_drafts WHERE id=?1", [id], |r| {
+                        r.get(0)
+                    })
+                    .optional()?;
+                Ok(raw
+                    .map(|value| serde_json::from_str(&value))
+                    .transpose()?
+                    .unwrap_or(Value::Null))
+            }
             "drafts" => {
                 let mut stmt = self.db.connection.prepare(
                     "SELECT data FROM card_drafts ORDER BY json_extract(data,'$.position'),id",
@@ -973,6 +992,72 @@ impl Library {
             "backup" => {
                 self.db
                     .backup_now(request["force"].as_bool().unwrap_or(false))?;
+                Ok(Value::Null)
+            }
+            "source-draft" => {
+                let draft = &request["draft"];
+                let source_id = draft["sourceId"].as_str().ok_or_else(Error::invalid)?;
+                let id = draft["id"].as_str().ok_or_else(Error::invalid)?;
+                let media_id = draft["mediaId"].as_str().ok_or_else(Error::invalid)?;
+                if source_id.len() > 100
+                    || source_id.is_empty()
+                    || Uuid::parse_str(id).is_err()
+                    || media_id.is_empty()
+                    || media_id.len() > 100
+                    || draft["scope"].as_str() != Some(&format!("local:workspace:{}", self.id))
+                    || draft["content"]
+                        .as_str()
+                        .is_none_or(|v| v.encode_utf16().count() > 250_000)
+                    || draft["properties"]
+                        .as_str()
+                        .is_none_or(|v| v.encode_utf16().count() > 65_536)
+                    || draft["title"]
+                        .as_str()
+                        .is_none_or(|v| v.encode_utf16().count() > 160)
+                    || draft["url"]
+                        .as_str()
+                        .is_none_or(|v| v.encode_utf16().count() > 2048)
+                    || draft["updatedAt"]
+                        .as_str()
+                        .is_none_or(|v| chrono::DateTime::parse_from_rfc3339(v).is_err())
+                    || draft.to_string().len() > 2 * 1024 * 1024
+                {
+                    return Err(Error::invalid());
+                }
+                let tx = self.db.connection.transaction()?;
+                let source: Option<String> = tx
+                    .query_row("SELECT data FROM sources WHERE id=?1", [source_id], |r| {
+                        r.get(0)
+                    })
+                    .optional()?;
+                let source: Value = serde_json::from_str(&source.ok_or_else(Error::conflict)?)?;
+                if source["mediaId"] != media_id
+                    && !source["versions"].as_array().is_some_and(|versions| {
+                        versions
+                            .iter()
+                            .any(|version| version["mediaId"] == media_id)
+                    })
+                {
+                    return Err(Error::conflict());
+                }
+                tx.execute("INSERT INTO source_drafts VALUES(?1,?2) ON CONFLICT(id) DO UPDATE SET data=excluded.data", params![source_id,draft.to_string()])?;
+                let count: i64 =
+                    tx.query_row("SELECT COUNT(*) FROM source_drafts", [], |r| r.get(0))?;
+                if count > 50 {
+                    return Err(fail("draft-limit"));
+                }
+                tx.pragma_update(None, "user_version", 13)?;
+                tx.commit()?;
+                Ok(Value::Null)
+            }
+            "source-draft-remove" => {
+                self.db.connection.execute(
+                    "DELETE FROM source_drafts WHERE id=?1 AND json_extract(data,'$.id')=?2",
+                    params![
+                        request["sourceId"].as_str().ok_or_else(Error::invalid)?,
+                        request["id"].as_str().ok_or_else(Error::invalid)?
+                    ],
+                )?;
                 Ok(Value::Null)
             }
             "draft-add" | "draft-update" => {

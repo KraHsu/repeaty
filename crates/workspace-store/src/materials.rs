@@ -250,7 +250,7 @@ mod tests {
         let mut db = Database::open(&path, assets.clone()).unwrap();
         assert_eq!(version(&db), 11);
         let library = db.load().unwrap()["library"].clone();
-        assert_eq!(library["version"], 14);
+        assert_eq!(library["version"], 15);
         assert!(library["sources"].as_array().unwrap().contains(&imported));
         assert_eq!(library["materialReceipts"][0], receipt);
         assert_eq!(
@@ -269,9 +269,40 @@ mod tests {
         );
         assert_eq!(db.load().unwrap()["revision"], 2);
         db.connection
-            .pragma_update(None, "user_version", 13)
+            .pragma_update(None, "user_version", 14)
             .unwrap();
         drop(db);
         assert!(Database::open(&path, assets).is_err());
+    }
+
+    #[test]
+    fn folder_moves_validate_descendant_depth_and_commit_atomically() {
+        let root = tempfile::tempdir().unwrap();
+        let assets = Arc::new(Dir::open_ambient_dir(root.path(), ambient_authority()).unwrap());
+        let mut db = Database::open(&root.path().join("state.sqlite3"), assets).unwrap();
+        db.connection.execute_batch("CREATE TABLE retired_media(id TEXT PRIMARY KEY,data TEXT); CREATE TABLE card_drafts(id TEXT PRIMARY KEY,data TEXT);").unwrap();
+        let mut folders = Vec::new();
+        for index in 0..33 {
+            let mut value = json!({"id":format!("folder-{index}"),"name":format!("Folder {index}"),"order":index,"createdAt":"2026-10-30T00:00:00.000Z"});
+            if index > 0 && index != 31 {
+                value["parentId"] = json!(format!("folder-{}", index - 1));
+            }
+            let mut change = patch("materialFolders", value);
+            change.position = Some(index);
+            folders.push(change);
+        }
+        db.commit(commit(0, folders.clone())).unwrap();
+        assert_eq!(version(&db), 13);
+        let before = db.load().unwrap();
+        let mut change = folders[31].clone();
+        change.value.as_mut().unwrap()["parentId"] = json!("folder-30");
+        assert!(db.commit(commit(1, vec![change.clone()])).is_err());
+        assert_eq!(db.load().unwrap(), before);
+        change.value.as_mut().unwrap()["parentId"] = json!("folder-29");
+        db.commit(commit(1, vec![change])).unwrap();
+        let mut cycle = folders[0].clone();
+        cycle.value.as_mut().unwrap()["parentId"] = json!("folder-32");
+        assert!(db.commit(commit(2, vec![cycle])).is_err());
+        assert_eq!(db.load().unwrap()["revision"], 2);
     }
 }

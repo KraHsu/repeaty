@@ -36,6 +36,7 @@ export interface CommitOptions {
   assets?: MediaUpload[]
   reason?: string
   consumeCardDraft?: string
+  consumeSourceDraft?: string
   externalDocuments?: DocumentWrite[]
   scanHash?: string
   assetObservations?: { path: string; hash: string }[]

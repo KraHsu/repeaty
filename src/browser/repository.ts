@@ -25,6 +25,11 @@ import { validateMaterialChanges } from '../core/material-data'
 import { LocalizedError, msg } from '../i18n'
 import { WorkspaceReadError } from './errors'
 import type { BrowserWorkspaceSnapshot } from './workspace-reader'
+import {
+  checkSourceDraftVersion,
+  sourceDraftSchema,
+  type SourceDraft,
+} from '../core/source-workbench'
 
 export interface BrowserWorkspaceSource {
   snapshot: BrowserWorkspaceSnapshot
@@ -52,6 +57,12 @@ export function createBrowserRepository(
           if (value) baselineMedia.set(value.id, value as Library['media'][number])
   let bodies = new WeakMap<AttemptRecord, Attempt>()
   const blobs = new Map<string, Blob>()
+  const drafts = new Map<string, SourceDraft>(
+    (source.snapshot.sourceDrafts ?? []).map((draft) => [
+      draft.sourceId,
+      sourceDraftSchema.parse({ ...draft, scope }),
+    ]),
+  )
   const backups: AutoBackup[] = []
   let current: Snapshot = {
     revision: source.snapshot.revision,
@@ -113,6 +124,7 @@ export function createBrowserRepository(
         assets?: MediaUpload[]
         reason?: string
         consumeCardDraft?: string
+        consumeSourceDraft?: string
         operationHistory?: OperationHistory
       } = {},
     ): Promise<Snapshot> {
@@ -122,6 +134,10 @@ export function createBrowserRepository(
           ? current.operationHistory
           : parseOperationHistory(options.operationHistory)
       if (options.consumeCardDraft) throw new WorkspaceReadError('invalid')
+      const consumedDraft = options.consumeSourceDraft
+        ? [...drafts.values()].find((draft) => draft.id === options.consumeSourceDraft)
+        : undefined
+      if (options.consumeSourceDraft && !consumedDraft) throw new WorkspaceReadError('invalid')
       const before = current.library
       validateMaterialChanges(before, library)
       const progressOnly =
@@ -135,6 +151,7 @@ export function createBrowserRepository(
             'practices',
             'attempts',
             'materialReceipts',
+            'materialFolders',
           ] as const
         ).every((key) => library[key] === before[key]) &&
         library.cards.length === before.cards.length
@@ -240,6 +257,7 @@ export function createBrowserRepository(
       backup(options.reason ?? '自动备份', Boolean(options.reason))
       for (const [id, blob] of uploads) blobs.set(id, blob)
       current = { revision: expectedRevision + 1, library: next, operationHistory }
+      if (consumedDraft) drafts.delete(consumedDraft.sourceId)
       onChange()
       return current
     },
@@ -306,12 +324,40 @@ export function createBrowserRepository(
       }
     },
     getMedia: media,
+    async readSourceProperties(sourceId: string) {
+      check()
+      if (!current.library.sources.some((source) => source.id === sourceId))
+        throw new WorkspaceReadError('invalid')
+      return source.snapshot.sourceProperties?.[sourceId] ?? ''
+    },
+    async readSourceDraft(sourceId: string) {
+      check()
+      const draft = drafts.get(sourceId)
+      return draft ? sourceDraftSchema.parse(draft) : undefined
+    },
+    async writeSourceDraft(input: SourceDraft) {
+      check()
+      const draft = sourceDraftSchema.parse(input)
+      if (draft.scope !== scope) throw new WorkspaceReadError('invalid')
+      checkSourceDraftVersion(
+        current.library.sources.find((source) => source.id === draft.sourceId),
+        draft,
+      )
+      if (!drafts.has(draft.sourceId) && drafts.size >= 50)
+        throw new Error('材料草稿已达到 50 份上限。')
+      drafts.set(draft.sourceId, draft)
+    },
+    async discardSourceDraft(sourceId: string, id: string) {
+      check()
+      if (drafts.get(sourceId)?.id === id) drafts.delete(sourceId)
+    },
     async close() {
       if (closed) return
       closed = true
       source.close()
       bodies = new WeakMap()
       blobs.clear()
+      drafts.clear()
       backups.splice(0)
     },
   }

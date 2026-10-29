@@ -16,12 +16,14 @@ const kinds = [
   'attempts',
   'sources',
   'materialReceipts',
+  'materialFolders',
 ] as const
 const MB = 1024 * 1024
 export const MAX_ARCHIVE_BYTES = 2 * 1024 * MB
 const PART_BYTES = MB
 const MAX_PART_BYTES = 8 * MB
 const countSchema = z.object({
+  materialFolders: z.number().int().min(0).max(10_000).default(0),
   materialReceipts: z.number().int().min(0).max(100_000).default(0),
   sources: z.number().int().min(0).max(10_000).default(0),
   decks: z.number().int().min(0).max(1000),
@@ -48,6 +50,7 @@ const manifestSchema = z
       z.literal(9),
       z.literal(10),
       z.literal(11),
+      z.literal(12),
     ]),
     libraryVersion: z.union([
       z.literal(3),
@@ -62,38 +65,41 @@ const manifestSchema = z
       z.literal(12),
       z.literal(13),
       z.literal(14),
+      z.literal(15),
     ]),
     counts: countSchema,
     parts: countSchema,
   })
   .refine((manifest) =>
-    manifest.version === 11
-      ? manifest.libraryVersion === 14
-      : manifest.version === 10
-        ? manifest.libraryVersion === 13
-        : manifest.version === 9
-          ? manifest.libraryVersion === 12
-          : manifest.version === 8
-            ? manifest.libraryVersion === 11
-            : manifest.version === 7
-              ? manifest.libraryVersion === 10
-              : manifest.version === 6
-                ? manifest.libraryVersion === 9
-                : manifest.version === 5
-                  ? manifest.libraryVersion === 8
-                  : manifest.version === 4
-                    ? manifest.libraryVersion === 7
-                    : manifest.version === 3
-                      ? manifest.libraryVersion === 6
-                      : manifest.counts.sources === 0 &&
-                        manifest.parts.sources === 0 &&
-                        (manifest.version === 2
-                          ? manifest.libraryVersion === 5
-                          : manifest.libraryVersion < 5 &&
-                            manifest.counts.practices === 0 &&
-                            manifest.counts.attempts === 0 &&
-                            manifest.parts.practices === 0 &&
-                            manifest.parts.attempts === 0),
+    manifest.version === 12
+      ? manifest.libraryVersion === 15
+      : manifest.version === 11
+        ? manifest.libraryVersion === 14
+        : manifest.version === 10
+          ? manifest.libraryVersion === 13
+          : manifest.version === 9
+            ? manifest.libraryVersion === 12
+            : manifest.version === 8
+              ? manifest.libraryVersion === 11
+              : manifest.version === 7
+                ? manifest.libraryVersion === 10
+                : manifest.version === 6
+                  ? manifest.libraryVersion === 9
+                  : manifest.version === 5
+                    ? manifest.libraryVersion === 8
+                    : manifest.version === 4
+                      ? manifest.libraryVersion === 7
+                      : manifest.version === 3
+                        ? manifest.libraryVersion === 6
+                        : manifest.counts.sources === 0 &&
+                          manifest.parts.sources === 0 &&
+                          (manifest.version === 2
+                            ? manifest.libraryVersion === 5
+                            : manifest.libraryVersion < 5 &&
+                              manifest.counts.practices === 0 &&
+                              manifest.counts.attempts === 0 &&
+                              manifest.parts.practices === 0 &&
+                              manifest.parts.attempts === 0),
   )
 export interface TransferOptions {
   signal?: AbortSignal
@@ -196,8 +202,8 @@ export async function exportArchive(
       new Blob([
         JSON.stringify({
           format: 'repeaty-archive',
-          version: 11,
-          libraryVersion: 14,
+          version: 12,
+          libraryVersion: 15,
           counts,
           parts,
         }),

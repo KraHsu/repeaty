@@ -84,7 +84,12 @@ describe('Markdown and math rendering', () => {
     expect(renderReadingMarkdown(source)).toContain(
       `data-reading-offset="${source.indexOf('Second')}"`,
     )
-    expect(renderReadingMarkdown(source)).toContain('<strong>中文：</strong> 中文中文')
+    expect(
+      renderReadingMarkdown(source).replace(
+        /<span data-reading-start="\d+" data-reading-stop="\d+">([^<]*)<\/span>/g,
+        '$1',
+      ),
+    ).toContain('<strong>中文：</strong> 中文中文')
   })
   it('highlights explicit fence languages and aliases, safely falling back for unknown or oversized code', () => {
     expect(renderMarkdown('```python\ndef answer():\n    return 42\n```')).toContain('hljs-keyword')

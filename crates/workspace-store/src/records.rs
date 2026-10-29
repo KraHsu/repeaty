@@ -12,7 +12,7 @@ use std::{
 };
 use std::{io::Write, sync::Arc};
 
-pub const STORES: [&str; 10] = [
+pub const STORES: [&str; 11] = [
     "decks",
     "notes",
     "cards",
@@ -23,6 +23,7 @@ pub const STORES: [&str; 10] = [
     "attempts",
     "sources",
     "materialReceipts",
+    "materialFolders",
 ];
 pub const MAX_MEDIA: usize = 10 * 1024 * 1024;
 
@@ -77,7 +78,7 @@ impl Database {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         let version: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 12 {
+        if version > 13 {
             return Err(Error::invalid());
         }
         let tx = connection.transaction()?;
@@ -112,6 +113,9 @@ impl Database {
             };
             tx.execute_batch(&format!("CREATE TABLE IF NOT EXISTS {store} (id TEXT PRIMARY KEY, position INTEGER NOT NULL CHECK(position>=0), data TEXT NOT NULL CHECK(json_valid(data)){relation}); CREATE INDEX IF NOT EXISTS {store}_position ON {store}(position);"))?;
         }
+        tx.execute_batch(
+            "CREATE TABLE IF NOT EXISTS source_drafts(id TEXT PRIMARY KEY,data TEXT NOT NULL);",
+        )?;
         tx.execute_batch("CREATE INDEX IF NOT EXISTS notes_deck ON notes(deck_id); CREATE INDEX IF NOT EXISTS cards_note ON cards(note_id); CREATE INDEX IF NOT EXISTS reviews_card ON reviews(card_id); CREATE INDEX IF NOT EXISTS practices_card ON practices(card_id); CREATE INDEX IF NOT EXISTS attempts_practice ON attempts(practice_id);")?;
         tx.pragma_update(None, "user_version", version.max(10))?;
         tx.commit()?;
@@ -171,7 +175,7 @@ impl Database {
         Ok(snapshot)
     }
     fn library_history(db: &Connection, summary: bool) -> Result<Value> {
-        let mut library = json!({"version":14});
+        let mut library = json!({"version":15});
         for store in STORES {
             let data = if store == "attempts" && summary {
                 "json_remove(data,'$.code','$.result.detail')"
@@ -413,11 +417,15 @@ impl Database {
                 "savedSearches" => 100,
                 "sources" => 10000,
                 "materialReceipts" => 100000,
+                "materialFolders" => 10000,
                 _ => 1600000,
             };
             if count > limit || distinct != count || (count > 0 && max != Some(count - 1)) {
                 return Err(Error::invalid());
             }
+        }
+        if touched_stores.contains("materialFolders") {
+            Self::validate_folder_graph(&tx)?;
         }
         for (patch, previous) in &changed {
             if !patch.position_only {
@@ -443,7 +451,8 @@ impl Database {
                 return Err(Error::invalid());
             }
             tx.execute("INSERT INTO operation_history VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET data=excluded.data",[history.to_string()])?;
-            tx.pragma_update(None, "user_version", 12)?;
+            let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+            tx.pragma_update(None, "user_version", version.max(12))?;
         }
         // This reader gate commits with the new records: a failed import cannot upgrade
         // the library, and an old application cannot strip unknown material metadata.
@@ -466,6 +475,22 @@ impl Database {
             let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
             tx.pragma_update(None, "user_version", version.max(11))?;
         }
+        if commit.patches.iter().any(|patch| {
+            patch.store == "materialFolders"
+                || (patch.store == "materialReceipts"
+                    && patch
+                        .value
+                        .as_ref()
+                        .is_some_and(|value| value["kind"] == "edit-content"))
+                || (patch.store == "sources"
+                    && patch.value.as_ref().is_some_and(|value| {
+                        ["folderId", "order", "properties", "annotations"]
+                            .iter()
+                            .any(|key| !value[*key].is_null())
+                    }))
+        }) {
+            tx.pragma_update(None, "user_version", 13)?;
+        }
         tx.execute("UPDATE workspace SET revision=?1 WHERE id=1", [current + 1])?;
         Self::collect_assets(&tx)?;
         tx.commit()?;
@@ -479,8 +504,48 @@ impl Database {
         match patch.store.as_str() {
             "sources" => {
                 Self::validate_source(tx, patch, previous)?;
+                if let Some(value) = &patch.value {
+                    if previous.is_none_or(|old| {
+                        old["folderId"] != value["folderId"]
+                            || old["parentSourceId"] != value["parentSourceId"]
+                    }) && let Some(id) = value["folderId"].as_str()
+                        && (!value["parentSourceId"].is_null()
+                            || !Self::exists(
+                                tx,
+                                "SELECT EXISTS(SELECT 1 FROM materialFolders WHERE id=?1)",
+                                id,
+                            )?)
+                    {
+                        return Err(Error::invalid());
+                    }
+                    if previous.is_none_or(|old| {
+                        old["annotations"] != value["annotations"]
+                            || old["versions"] != value["versions"]
+                            || old["mediaId"] != value["mediaId"]
+                    }) {
+                        let mut ids = HashSet::new();
+                        for annotation in value["annotations"].as_array().into_iter().flatten() {
+                            if !ids.insert(annotation["id"].as_str().unwrap_or("")) {
+                                return Err(Error::invalid());
+                            }
+                            let snapshot = Self::source_snapshot(value, annotation)?;
+                            let text = Self::source_body(tx, &snapshot)?;
+                            let start = annotation["start"].as_u64().unwrap_or(u64::MAX) as usize;
+                            let end = annotation["end"].as_u64().unwrap_or(0) as usize;
+                            let quote: Vec<u16> = annotation["quote"]
+                                .as_str()
+                                .unwrap_or("")
+                                .encode_utf16()
+                                .collect();
+                            if end <= start || text.get(start..end) != Some(quote.as_slice()) {
+                                return Err(Error::invalid());
+                            }
+                        }
+                    }
+                }
                 Self::validate_inline_media(tx, patch, previous)
             }
+            "materialFolders" => Self::validate_folder(tx, patch),
             "notes" => {
                 Self::validate_note(tx, patch, previous)?;
                 Self::validate_inline_media(tx, patch, previous)
@@ -507,6 +572,56 @@ impl Database {
     }
     fn exists(tx: &Transaction<'_>, sql: &str, id: &str) -> Result<bool> {
         Ok(tx.query_row(sql, [id], |row| row.get(0))?)
+    }
+    fn validate_folder_graph(tx: &Transaction<'_>) -> Result<()> {
+        let mut query =
+            tx.prepare("SELECT id,json_extract(data,'$.parentId') FROM materialFolders")?;
+        let folders = query
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+            })?
+            .collect::<std::result::Result<HashMap<_, _>, _>>()?;
+        for id in folders.keys() {
+            let mut seen = HashSet::new();
+            let mut current = Some(id);
+            while let Some(id) = current {
+                if seen.len() >= 32 || !seen.insert(id) {
+                    return Err(Error::invalid());
+                }
+                current = folders.get(id).ok_or_else(Error::invalid)?.as_ref();
+            }
+        }
+        Ok(())
+    }
+    fn validate_folder(tx: &Transaction<'_>, patch: &Patch) -> Result<()> {
+        let Some(value) = &patch.value else {
+            if Self::exists(
+                tx,
+                "SELECT EXISTS(SELECT 1 FROM materialFolders WHERE json_extract(data,'$.parentId')=?1) OR EXISTS(SELECT 1 FROM sources WHERE json_extract(data,'$.folderId')=?1)",
+                &patch.id,
+            )? {
+                return Err(Error::invalid());
+            }
+            return Ok(());
+        };
+        let mut seen = HashSet::from([patch.id.clone()]);
+        let mut parent = value["parentId"].as_str().map(str::to_owned);
+        while let Some(id) = parent {
+            if seen.len() >= 32 || !seen.insert(id.clone()) {
+                return Err(Error::invalid());
+            }
+            let data: String = tx
+                .query_row(
+                    "SELECT data FROM materialFolders WHERE id=?1",
+                    [&id],
+                    |row| row.get(0),
+                )
+                .map_err(|_| Error::invalid())?;
+            parent = serde_json::from_str::<Value>(&data)?["parentId"]
+                .as_str()
+                .map(str::to_owned);
+        }
+        Ok(())
     }
     fn validate_inline_media(
         tx: &Transaction<'_>,
@@ -979,7 +1094,7 @@ impl Database {
             })
             .optional()?
             .ok_or_else(Error::missing)?;
-        let mut library = json!({"version":14});
+        let mut library = json!({"version":15});
         for store in STORES {
             let mut rows = BTreeMap::<String, (i64, Value)>::new();
             let mut stmt = self
