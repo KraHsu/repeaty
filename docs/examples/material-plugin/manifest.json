@@ -1,0 +1,9 @@
+{
+  "id": "structured-study-example",
+  "name": "Structured Study",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "dataVersion": 1,
+  "kind": "frontend",
+  "description": "Import chapter collections and read them through the shared material workflow."
+}

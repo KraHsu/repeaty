@@ -186,7 +186,7 @@ impl Library {
         let identity: String = check
             .query_row("SELECT id FROM workspace_identity", [], |r| r.get(0))
             .map_err(|_| fail("workspace-incompatible"))?;
-        if app != APP_ID || version != 10 || identity != marker.id {
+        if app != APP_ID || ![10, 11].contains(&version) || identity != marker.id {
             return Err(fail("workspace-incompatible"));
         }
         drop(check);
@@ -530,6 +530,7 @@ impl Library {
                             "derived",
                             "versions",
                             "inlineMedia",
+                            "document",
                         ]
                         .iter()
                         .any(|key| before[key] != value[key])

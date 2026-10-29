@@ -21,6 +21,7 @@ import { MAX_AUTO_BACKUPS } from '../core/storage'
 import { compileSearch } from '../core/search'
 import { available } from '../core/scheduler'
 import { validateSourceOrigins } from '../core/sources'
+import { validateMaterialChanges } from '../core/material-data'
 import { LocalizedError, msg } from '../i18n'
 import { WorkspaceReadError } from './errors'
 import type { BrowserWorkspaceSnapshot } from './workspace-reader'
@@ -100,9 +101,19 @@ export function createBrowserRepository(
       check(expectedRevision)
       if (options.consumeCardDraft) throw new WorkspaceReadError('invalid')
       const before = current.library
+      validateMaterialChanges(before, library)
       const progressOnly =
         (
-          ['decks', 'notes', 'media', 'savedSearches', 'sources', 'practices', 'attempts'] as const
+          [
+            'decks',
+            'notes',
+            'media',
+            'savedSearches',
+            'sources',
+            'practices',
+            'attempts',
+            'materialReceipts',
+          ] as const
         ).every((key) => library[key] === before[key]) &&
         library.cards.length === before.cards.length
       let next = library

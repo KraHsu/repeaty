@@ -4,7 +4,7 @@ import { format } from 'prettier'
 import { readFile, writeFile } from 'node:fs/promises'
 const vite = await createServer({
   configFile: 'config/vite.config.ts',
-  server: { middlewareMode: true, watch: null },
+  server: { middlewareMode: true, watch: null, hmr: false, ws: false },
   appType: 'custom',
 })
 try {
@@ -14,6 +14,7 @@ try {
   const schemas = {}
   for (const [store, name] of Object.entries({
     sources: 'sourceSchema',
+    materialReceipts: 'materialReceiptSchema',
     decks: 'deckSchema',
     notes: 'noteSchema',
     cards: 'cardSchema',

@@ -32,6 +32,7 @@ const limits = {
   practices: 100_000,
   attempts: 500_000,
   sources: 10_000,
+  materialReceipts: 100_000,
 }
 const assetSchema = z.object({
   id: z.string(),
@@ -88,16 +89,19 @@ export class BrowserWorkspaceReader {
       db.run('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF;')
       if (
         scalar(db, 'PRAGMA application_id') !== 0x52505459 ||
-        scalar(db, 'PRAGMA user_version') !== 10 ||
+        ![10, 11].includes(scalar(db, 'PRAGMA user_version') as number) ||
         scalar(db, 'SELECT id FROM workspace_identity') !== marker.id
       )
         throw new WorkspaceReadError('incompatible')
       const tables = new Set(
         rows(db, "SELECT name FROM sqlite_schema WHERE type='table'").map((row) => row.name),
       )
+      const materialReceiptsRequired = scalar(db, 'PRAGMA user_version') === 11
       if (
         [
-          ...recordStores,
+          ...recordStores.filter(
+            (store) => store !== 'materialReceipts' || materialReceiptsRequired,
+          ),
           'workspace',
           'workspace_identity',
           'documents',
@@ -121,8 +125,12 @@ export class BrowserWorkspaceReader {
         .safe()
         .parse(scalar(db, 'SELECT revision FROM workspace WHERE id=1'))
       progress(30)
-      const content: Record<string, unknown> = { version: 13 }
+      const content: Record<string, unknown> = { version: 14 }
       for (const [index, store] of recordStores.entries()) {
+        if (store === 'materialReceipts' && !tables.has(store) && !materialReceiptsRequired) {
+          content[store] = []
+          continue
+        }
         const count = scalar(db, `SELECT COUNT(*) FROM ${store}`)
         if (typeof count !== 'number' || count > limits[store])
           throw new WorkspaceReadError('limit')

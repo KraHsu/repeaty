@@ -127,13 +127,13 @@ it('round-trips positions through archive, JSON and rekeying, and migrates v6 wi
     now,
   )
   const json = await exportBackup(next, async () => asset.blob)
-  expect(JSON.parse(json).version).toBe(13)
+  expect(JSON.parse(json).version).toBe(14)
   for (const data of [
     parseBackup(json),
     await parseArchive((await exportArchive(next, async () => asset.blob))!),
   ]) {
     const restored = rekeyBackup(data)
-    expect(restored.library.version).toBe(13)
+    expect(restored.library.version).toBe(14)
     expect(restored.library.sources[0]!.reading).toEqual(next.sources[0]!.reading)
     expect(
       await readSource(

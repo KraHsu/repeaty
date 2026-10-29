@@ -27,6 +27,7 @@ const packageSchema = z.object({
     z.literal(11),
     z.literal(12),
     z.literal(13),
+    z.literal(14),
   ]),
   library: z.unknown().transform((value) => migrateLibrary(value)),
   assets: z.array(
@@ -58,7 +59,7 @@ export async function exportBackup(
       binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
     assets.push({ id: meta.id, data: btoa(binary) })
   }
-  const result = JSON.stringify({ format: 'repeaty-backup', version: 13, library, assets })
+  const result = JSON.stringify({ format: 'repeaty-backup', version: 14, library, assets })
   if (new Blob([result]).size > MAX_BACKUP_BYTES)
     throw new LocalizedError(msg('JSON 备份超过 100 MB。'))
   return result
@@ -102,13 +103,47 @@ export function rekeyBackup(data: BackupData): BackupData {
   return {
     library: {
       ...data.library,
+      // A restore/import assigns a new operation scope; old retry keys must not affect it.
+      materialReceipts: [],
       sources: data.library.sources.map((source) => ({
         ...source,
         mediaId: ids.get(source.mediaId)!,
+        reading: source.reading
+          ? {
+              ...source.reading,
+              ...(source.reading.locator
+                ? {
+                    locator: {
+                      ...source.reading.locator,
+                      versionId: ids.get(source.reading.locator.versionId)!,
+                    },
+                  }
+                : {}),
+            }
+          : undefined,
+        document: source.document
+          ? { ...source.document, originalMediaId: ids.get(source.document.originalMediaId)! }
+          : undefined,
         inlineMedia: source.inlineMedia?.map((ref) => ({ ...ref, mediaId: ids.get(ref.mediaId)! })),
         versions: source.versions?.map((version) => ({
           ...version,
           mediaId: ids.get(version.mediaId)!,
+          reading: version.reading
+            ? {
+                ...version.reading,
+                ...(version.reading.locator
+                  ? {
+                      locator: {
+                        ...version.reading.locator,
+                        versionId: ids.get(version.reading.locator.versionId)!,
+                      },
+                    }
+                  : {}),
+              }
+            : undefined,
+          document: version.document
+            ? { ...version.document, originalMediaId: ids.get(version.document.originalMediaId)! }
+            : undefined,
           inlineMedia: version.inlineMedia?.map((ref) => ({
             ...ref,
             mediaId: ids.get(ref.mediaId)!,
@@ -118,6 +153,14 @@ export function rekeyBackup(data: BackupData): BackupData {
           ? {
               ...source.origin,
               ...(source.origin.mediaId ? { mediaId: ids.get(source.origin.mediaId)! } : {}),
+              ...(source.origin.locator
+                ? {
+                    locator: {
+                      ...source.origin.locator,
+                      versionId: ids.get(source.origin.locator.versionId)!,
+                    },
+                  }
+                : {}),
             }
           : undefined,
       })),
@@ -131,6 +174,14 @@ export function rekeyBackup(data: BackupData): BackupData {
           ? {
               ...note.excerpt,
               ...(note.excerpt.mediaId ? { mediaId: ids.get(note.excerpt.mediaId)! } : {}),
+              ...(note.excerpt.locator
+                ? {
+                    locator: {
+                      ...note.excerpt.locator,
+                      versionId: ids.get(note.excerpt.locator.versionId)!,
+                    },
+                  }
+                : {}),
             }
           : undefined,
       })),

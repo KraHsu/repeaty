@@ -17,6 +17,15 @@ import { PluginRuntime, type PluginModule } from './runtime'
 import { createPluginApi, evaluatePlugin, nativePluginCall } from './sdk'
 import { currentPluginWorkspace } from '@repeaty-plugin-host'
 import { createPluginPreferences, defaultPluginPreferences } from './preferences'
+import type { PluginMaterialHostFactory } from './materials'
+import { PluginTaskScheduler } from './tasks'
+import type {
+  MaterialCommandRequest,
+  MaterialSearchQuery,
+  MaterialTaskOptions,
+} from '@repeaty/plugin-api'
+import type { PluginInstallation } from './types'
+import { materialLocatorSchema } from '../core/material-data'
 
 export interface PackageEntry {
   id: string
@@ -40,6 +49,7 @@ export interface PluginManagerEnvironment {
   officialBundles?: typeof officialPluginBundles
   evaluate?: (code: string, api: ReturnType<typeof createPluginApi>) => Promise<PluginModule>
   seedOfficial?: boolean
+  materialHost?: PluginMaterialHostFactory
 }
 let environmentFactory: (() => PluginManagerEnvironment) | undefined
 /** Embedded hosts supply a new adapter environment per app; mutable runtimes are never shared. */
@@ -78,6 +88,130 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
   const preferences = environment.preferences ?? createPluginPreferences({ read, write })
   let storage = environment.storage
   const pluginRuntime = new PluginRuntime()
+  const materialApis = new Map<
+    string,
+    { api: ReturnType<typeof createPluginApi>; installation: PluginInstallation }
+  >()
+  const taskScheduler = new PluginTaskScheduler()
+  const commandScheduler = new PluginTaskScheduler(1)
+  let materialHost = environment.materialHost
+  function setMaterialHost(factory: PluginMaterialHostFactory) {
+    materialHost = factory
+    return () => {
+      if (materialHost === factory) materialHost = undefined
+    }
+  }
+  function materialApiFor(pluginId: string) {
+    const installed = materialApis.get(pluginId)
+    if (!installed || !pluginRuntime.installations.includes(installed.installation))
+      return undefined
+    return installed.api.materials
+  }
+  function materialContribution(pluginId: string) {
+    const value = materialApis.get(pluginId)
+    if (!value || !pluginRuntime.installations.includes(value.installation))
+      throw new Error('插件已卸载或学习库已切换。')
+    // Capabilities checks the instance lifetime even while a replacement is being published.
+    value.api.materials.capabilities()
+    return value
+  }
+  async function parseMaterialFile(
+    pluginId: string,
+    importerId: string,
+    file: File,
+    options: Pick<MaterialTaskOptions, 'signal' | 'onProgress'> = {},
+  ) {
+    const { api, installation } = materialContribution(pluginId)
+    const importer = installation.importers?.find((entry) => entry.id === importerId)
+    if (!importer) throw new Error('材料导入器不可用。')
+    return api.tasks.run(
+      { id: `parse-${crypto.randomUUID()}`, title: importer.title, ...options },
+      (context) => importer.parse(file, context),
+    )
+  }
+  async function executeMaterialCommand(
+    pluginId: string,
+    commandId: string,
+    request: MaterialCommandRequest,
+    options: Pick<MaterialTaskOptions, 'signal' | 'onProgress'> = {},
+  ) {
+    const { api, installation } = materialContribution(pluginId)
+    const command = installation.commands?.find((entry) => entry.id === commandId)
+    if (!command) throw new Error('插件命令不可用。')
+    if (
+      !Number.isSafeInteger(request.expectedRevision) ||
+      request.expectedRevision < 0 ||
+      !/^[a-zA-Z0-9._-]{1,100}$/.test(request.operationId)
+    )
+      throw new Error('插件命令请求无效。')
+    const snapshot = api.materials.snapshot()
+    if (snapshot.revision !== request.expectedRevision)
+      throw new Error('学习库已更新，请重新打开命令。')
+    return api.runMaterialCommand(
+      { id: `command-${crypto.randomUUID()}`, title: command.title, ...options },
+      (context) => {
+        if (api.materials.snapshot().revision !== request.expectedRevision)
+          throw new Error('学习库已更新，请重新打开命令。')
+        return command.run({ ...context, ...request, workspaceScope: snapshot.workspaceScope })
+      },
+    )
+  }
+  async function searchMaterialProvider(
+    pluginId: string,
+    providerId: string,
+    query: MaterialSearchQuery,
+    options: Pick<MaterialTaskOptions, 'signal' | 'onProgress'> = {},
+  ) {
+    const { api, installation } = materialContribution(pluginId)
+    const provider = installation.searchProviders?.find((entry) => entry.id === providerId)
+    if (!provider) throw new Error('材料搜索扩展不可用。')
+    if (
+      typeof query.text !== 'string' ||
+      query.text.length > 1000 ||
+      !Number.isInteger(query.limit) ||
+      query.limit < 1 ||
+      query.limit > 100 ||
+      (query.cursor !== undefined &&
+        (typeof query.cursor !== 'string' || query.cursor.length > 2048))
+    )
+      throw new Error('材料搜索请求无效。')
+    const result = await api.tasks.run(
+      { id: `search-${crypto.randomUUID()}`, title: provider.title, ...options },
+      (context) => provider.search(query, context),
+    )
+    if (
+      !result ||
+      !Array.isArray(result.hits) ||
+      result.hits.length > query.limit ||
+      (result.nextCursor !== undefined &&
+        (typeof result.nextCursor !== 'string' || result.nextCursor.length > 2048))
+    )
+      throw new Error('材料搜索结果无效。')
+    const sources = new Map(api.materials.snapshot().sources.map((source) => [source.id, source]))
+    for (const hit of result.hits) {
+      const source = hit && sources.get(hit.sourceId)
+      if (
+        !hit ||
+        typeof hit.sourceId !== 'string' ||
+        !source ||
+        typeof hit.versionId !== 'string' ||
+        !hit.versionId ||
+        hit.versionId.length > 100 ||
+        hit.versionId !== source.versionId ||
+        typeof hit.title !== 'string' ||
+        hit.title.length > 500 ||
+        typeof hit.snippet !== 'string' ||
+        hit.snippet.length > 1000 ||
+        (hit.locator !== undefined &&
+          (!materialLocatorSchema.safeParse(hit.locator).success ||
+            hit.locator.sourceId !== hit.sourceId ||
+            hit.locator.versionId !== hit.versionId ||
+            (hit.locator.kind !== 'text' && hit.locator.kind !== source.document?.format)))
+      )
+        throw new Error('材料搜索结果无效。')
+    }
+    return result
+  }
   const pluginPackages = reactive<PackageEntry[]>([])
   const pluginManagerBusy = ref(false),
     pluginManagerError = ref(''),
@@ -176,6 +310,9 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
     }
   }
   async function persist(bundle: PluginBundle, scope: string, generation: number, trust = true) {
+    // Rollback entries come from reactive UI state. Parse a detached plain package before any
+    // structured-clone storage/IPC boundary, including nested manifest and permission arrays.
+    bundle = bundleSchema.parse(bundle)
     await assertScope(scope, generation)
     if (storage) {
       await storage.save(bundle, trust)
@@ -242,9 +379,10 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
     if (requireMutable) mutable()
     const bundle = entry.bundle,
       scope = pluginScope.value
-    await pluginRuntime.load(
+    let materialApi: ReturnType<typeof createPluginApi> | undefined
+    const installation = await pluginRuntime.load(
       bundle,
-      async (code, disposers, registerSettings, registerPage, registerWidget) => {
+      async (code, disposers, registerSettings, registerPage, registerWidget, registrations) => {
         check(generation)
         const api = createPluginApi(
           bundle.manifest,
@@ -254,7 +392,23 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
           registerSettings,
           registerPage,
           registerWidget,
+          {
+            registrations,
+            host: () => {
+              // Evaluation/factory code may register contributions, but cannot mutate or read
+              // the library until this exact activation has been published successfully.
+              const published = materialApis.get(bundle.manifest.id)
+              return published &&
+                published.api === materialApi &&
+                pluginRuntime.installations.includes(published.installation)
+                ? materialHost
+                : undefined
+            },
+            scheduler: taskScheduler,
+            commandScheduler,
+          },
         )
+        materialApi = api
         const module = await (environment.evaluate ?? evaluatePlugin)(code, api)
         check(generation)
         if (requireMutable) mutable()
@@ -275,6 +429,7 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
       },
     )
     check(generation)
+    if (materialApi) materialApis.set(bundle.manifest.id, { api: materialApi, installation })
     entry.error = undefined
   }
   function initializePlugins(scope?: string, requireMutable = false) {
@@ -286,6 +441,7 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
       check(generation)
       if (requireMutable) mutable()
       await pluginRuntime.close()
+      materialApis.clear()
       check(generation)
       pluginPackages.splice(0)
       let resolved = requested
@@ -309,7 +465,7 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
       if (!desktopEdition && !storage) {
         const db = await database()
         try {
-          seeded = Boolean(await db.get('metadata', ['seeded', resolved]))
+          seeded = !seedAllowed || Boolean(await db.get('metadata', ['seeded', resolved]))
         } finally {
           db.close()
         }
@@ -407,6 +563,7 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
       } else {
         mutable()
         await pluginRuntime.unload(id)
+        materialApis.delete(id)
       }
       check(generation)
       preferences.savePluginPreference(id, enabled)
@@ -427,6 +584,7 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
         throw error
       }
       await pluginRuntime.unload(id)
+      materialApis.delete(id)
       check(generation)
       const index = pluginPackages.findIndex((entry) => entry.id === id)
       if (index !== -1) pluginPackages.splice(index, 1)
@@ -445,6 +603,8 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
     boot = undefined
     pluginManagerBusy.value = false
     await pluginRuntime.close()
+    materialApis.clear()
+    materialHost = undefined
     pluginPackages.splice(0)
   }
   function useStorage(value: PluginStorage) {
@@ -452,10 +612,16 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
     epoch++
     boot = undefined
     void pluginRuntime.close()
+    materialApis.clear()
     pluginPackages.splice(0)
   }
   return {
     pluginRuntime,
+    setMaterialHost,
+    materialApiFor,
+    parseMaterialFile,
+    executeMaterialCommand,
+    searchMaterialProvider,
     pluginPackages,
     pluginManagerBusy,
     pluginManagerError,

@@ -1,7 +1,9 @@
 import { IDBDatabase, IDBFactory } from 'fake-indexeddb'
 import { describe, expect, it, vi } from 'vitest'
 import { fixture, legacyFixture, now } from '../core/test-fixtures'
-import { recordStores } from '../core/storage'
+import { recordStores as currentRecordStores } from '../core/storage'
+// This inventory fixture describes the pre-material v16 database only.
+const recordStores = currentRecordStores.filter((store) => store !== 'materialReceipts')
 import { summarizeAttempt } from '../core/practice-data'
 import {
   captureLegacyInventory,

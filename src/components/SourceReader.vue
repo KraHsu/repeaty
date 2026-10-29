@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { UiButton, UiTextarea } from './ui'
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
+import type { MaterialSelection, MaterialReaderProps } from '@repeaty/plugin-api'
+import { usePluginManager } from '../plugins/manager'
+import { validateMaterialLocator, type MaterialLocator } from '../core/material-data'
+import { createExportFile } from '@repeaty-platform'
+import MaterialReaderView from './MaterialReaderView.vue'
 import { t } from '../i18n'
 import { useInlineMedia } from '../composables/useInlineMedia'
 import type { Source, SourceOrigin, ReadingPosition, ReadingUpdate } from '../core/source-data'
@@ -18,12 +23,202 @@ const props = defineProps<{
   text: string
   scope: string
   getMedia?: (id: string) => Promise<Blob | undefined>
+  originalName?: string
 }>()
 const emit = defineEmits<{
-  select: [sourceId: string, start: number, end: number]
+  select: [sourceId: string, start: number, end: number, locator?: MaterialLocator]
   position: [update: ReadingUpdate]
 }>()
 const preview = ref(props.source.reading?.view === 'preview' && props.source.format === 'markdown')
+const plugins = usePluginManager()
+const textOnly = ref(false),
+  materialError = ref(''),
+  originalLoading = ref(false),
+  exportingOriginal = ref(false),
+  commandBusy = ref(false)
+const original = shallowRef<Blob>()
+const currentSelection = shallowRef<MaterialSelection>()
+const requestedPosition = shallowRef<ReadingPosition | undefined>(props.source.reading)
+const installation = computed(() =>
+  plugins.pluginRuntime.installations.find(
+    (item) => item.plugin.id === props.source.document?.providerId,
+  ),
+)
+const contributed = computed(() =>
+  installation.value?.readers?.find(
+    (reader) =>
+      reader.id === props.source.document?.readerId &&
+      reader.formats.includes(props.source.document?.format ?? ''),
+  ),
+)
+const customReader = computed(() => !!contributed.value && !textOnly.value)
+originalLoading.value = customReader.value
+let originalSequence = 0
+async function originalBytes() {
+  const sourceId = props.source.id,
+    versionId = props.source.mediaId,
+    scope = props.scope
+  const mediaId = props.source.document?.originalMediaId
+  if (!mediaId || !props.getMedia) throw new Error('原始文件缺失，请从备份恢复。')
+  const blob = await props.getMedia(mediaId)
+  if (
+    !alive ||
+    sourceId !== props.source.id ||
+    versionId !== props.source.mediaId ||
+    scope !== props.scope
+  )
+    throw new DOMException('Aborted', 'AbortError')
+  if (!blob) throw new Error('原始文件缺失，请从备份恢复。')
+  return blob
+}
+watch(customReader, async (enabled) => {
+  const sequence = ++originalSequence
+  currentSelection.value = undefined
+  emit('select', props.source.id, 0, 0)
+  if (!enabled) {
+    original.value = undefined
+    originalLoading.value = false
+    return
+  }
+  originalLoading.value = true
+  try {
+    const blob = await originalBytes()
+    if (alive && sequence === originalSequence) original.value = blob
+  } catch (issue) {
+    if (alive && sequence === originalSequence) {
+      materialError.value = t(issue as Error)
+      textOnly.value = true
+    }
+  } finally {
+    if (alive && sequence === originalSequence) originalLoading.value = false
+  }
+})
+function materialSelected(value: MaterialSelection | undefined) {
+  if (!customReader.value) return
+  try {
+    if (!value) throw new Error('empty-selection')
+    const locator = validateMaterialLocator(props.source, value.locator)
+    const range = locator.kind === 'text' ? locator : value.projection
+    if (!range) throw new Error('missing-projection')
+    const excerpt = sourceExcerpt(props.source, props.text, range.start, range.end)
+    if (
+      excerpt.quote !== value.text ||
+      (locator.kind === 'text' && locator.quote !== excerpt.quote)
+    )
+      throw new Error('invalid-projection')
+    currentSelection.value = {
+      locator,
+      text: excerpt.quote,
+      projection: { start: excerpt.start, end: excerpt.end },
+    }
+    emit('select', props.source.id, excerpt.start, excerpt.end, locator)
+  } catch {
+    currentSelection.value = undefined
+    emit('select', props.source.id, 0, 0)
+  }
+}
+function materialPosition(position: NonNullable<MaterialReaderProps['position']>) {
+  try {
+    const locator = validateMaterialLocator(props.source, position.locator)
+    if (
+      !Number.isInteger(position.projectionOffset) ||
+      position.projectionOffset < 0 ||
+      position.projectionOffset > props.text.length
+    )
+      return
+    last = { offset: position.projectionOffset, fraction: 0, view: 'source', locator }
+    emit('position', update())
+  } catch {
+    /* A stale or malformed plugin location never changes the saved position. */
+  }
+}
+const readerProps = computed<MaterialReaderProps>(() => {
+  const owner = installation.value,
+    contributor = contributed.value,
+    scope = props.scope,
+    sourceId = props.source.id,
+    versionId = props.source.mediaId
+  const current = () =>
+    alive &&
+    customReader.value &&
+    installation.value === owner &&
+    contributed.value === contributor &&
+    scope === props.scope &&
+    sourceId === props.source.id &&
+    versionId === props.source.mediaId
+  return {
+    material: {
+      id: sourceId,
+      versionId,
+      title: props.source.title,
+      format: props.source.format,
+      document: props.source.document && structuredClone(props.source.document),
+      parentSourceId: props.source.parentSourceId,
+    },
+    text: props.text,
+    original: original.value,
+    selection: currentSelection.value,
+    position: requestedPosition.value?.locator
+      ? {
+          locator: requestedPosition.value.locator,
+          projectionOffset: requestedPosition.value.offset,
+        }
+      : undefined,
+    onSelect: (value) => {
+      if (current()) materialSelected(value)
+    },
+    onPosition: (value) => {
+      if (current()) materialPosition(value)
+    },
+  }
+})
+function readerFailed() {
+  materialError.value = t('插件阅读器暂时无法显示，已切换到文本副本。')
+  textOnly.value = true
+}
+async function exportOriginal() {
+  if (exportingOriginal.value) return
+  exportingOriginal.value = true
+  try {
+    const blob = original.value ?? (await originalBytes())
+    const name =
+      props.originalName ?? `${props.source.title}.${props.source.document?.format ?? 'bin'}`
+    if (createExportFile) await blob.stream().pipeTo(await createExportFile(name))
+    else {
+      const url = URL.createObjectURL(blob),
+        link = document.createElement('a')
+      link.href = url
+      link.download = name
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    }
+  } catch (issue) {
+    if (alive && !(issue instanceof DOMException && issue.name === 'AbortError'))
+      materialError.value = t(issue as Error)
+  } finally {
+    if (alive) exportingOriginal.value = false
+  }
+}
+async function runCommand(commandId: string) {
+  const owner = installation.value
+  if (!owner || commandBusy.value) return
+  const api = plugins.materialApiFor(owner.plugin.id)
+  if (!api) return
+  commandBusy.value = true
+  materialError.value = ''
+  try {
+    await plugins.executeMaterialCommand(owner.plugin.id, commandId, {
+      expectedRevision: api.snapshot().revision,
+      operationId: crypto.randomUUID(),
+      sourceId: props.source.id,
+      selection: currentSelection.value,
+    })
+  } catch (issue) {
+    if (alive) materialError.value = t(issue as Error)
+  } finally {
+    if (alive) commandBusy.value = false
+  }
+}
 const reader = ref<{ textareaRef?: HTMLTextAreaElement }>(),
   rendered = ref<HTMLElement>()
 const media = useInlineMedia(() => ({
@@ -39,6 +234,7 @@ let last: ReadingPosition = props.source.reading ?? { offset: 0, fraction: 0, vi
 let restoreSequence = 0
 
 function capture(): ReadingPosition {
+  if (customReader.value) return last
   return preview.value && rendered.value
     ? capturePreview(rendered.value)
     : reader.value?.textareaRef
@@ -58,6 +254,22 @@ function scrolled() {
   if (!restoring.value && alive) emit('position', update())
 }
 function selected() {
+  const textarea = reader.value?.textareaRef
+  currentSelection.value =
+    textarea && textarea.selectionEnd > textarea.selectionStart
+      ? {
+          text: props.text.slice(textarea.selectionStart, textarea.selectionEnd),
+          locator: {
+            schemaVersion: 1,
+            sourceId: props.source.id,
+            versionId: props.source.mediaId,
+            kind: 'text',
+            start: textarea.selectionStart,
+            end: textarea.selectionEnd,
+            quote: props.text.slice(textarea.selectionStart, textarea.selectionEnd),
+          },
+        }
+      : undefined
   if (reader.value?.textareaRef)
     emit(
       'select',
@@ -71,6 +283,10 @@ async function restore(position: ReadingPosition, focus = false) {
   restoring.value = true
   await nextTick()
   if (!alive || sequence !== restoreSequence) return
+  if (customReader.value) {
+    last = position
+    requestedPosition.value = position
+  }
   if (preview.value && rendered.value) restorePreview(rendered.value, position)
   else if (reader.value?.textareaRef)
     (mirror ??= new TextareaPosition(reader.value?.textareaRef)).restore(position.offset, focus)
@@ -113,6 +329,8 @@ async function restart() {
 async function locate(origin: SourceOrigin) {
   if (!alive || origin.sourceId !== props.source.id) return false
   const selection = sourceExcerpt(props.source, props.text, origin.start, origin.end)
+  // The host's text projection remains an exact, plugin-independent way back to the source.
+  textOnly.value = true
   mirror?.dispose()
   mirror = undefined
   preview.value = false
@@ -135,6 +353,21 @@ function observeReader() {
   if (rendered.value) observer?.observe(rendered.value)
 }
 onMounted(async () => {
+  if (customReader.value) {
+    const sequence = ++originalSequence
+    originalLoading.value = true
+    try {
+      const blob = await originalBytes()
+      if (alive && sequence === originalSequence) original.value = blob
+    } catch (issue) {
+      if (alive && sequence === originalSequence) {
+        materialError.value = t(issue as Error)
+        textOnly.value = true
+      }
+    } finally {
+      if (alive && sequence === originalSequence) originalLoading.value = false
+    }
+  }
   if (props.source.reading) await document.fonts.ready
   if (!alive) return
   // Explicit resume may already have started while fonts were loading.
@@ -146,6 +379,7 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   alive = false
+  originalSequence++
   observer?.disconnect()
   mirror?.dispose()
 })
@@ -154,6 +388,17 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
 
 <template>
   <div class="source-selection-tools">
+    <template v-if="source.document">
+      <UiButton v-if="contributed" variant="ghost" @click="textOnly = !textOnly">
+        {{ t(customReader ? '查看文本副本' : '使用插件阅读器') }}
+      </UiButton>
+      <UiButton variant="secondary" :disabled="exportingOriginal" @click="exportOriginal">{{
+        t('导出原件')
+      }}</UiButton>
+      <span v-if="!contributed" class="form-note">{{
+        t('阅读器插件未启用，显示保留的文本副本。')
+      }}</span>
+    </template>
     <p class="form-note">
       {{
         t(
@@ -166,15 +411,24 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
     <UiButton
       variant="ghost"
       type="submit"
-      v-if="source.format === 'markdown'"
+      v-if="source.format === 'markdown' && !customReader"
       :aria-pressed="preview"
       @click="toggle"
     >
       {{ t(preview ? '返回原文选取摘录' : '阅读 Markdown 预览') }}
     </UiButton>
   </div>
+  <p v-if="materialError" class="form-note" role="alert">{{ materialError }}</p>
+  <p v-if="customReader && originalLoading" role="status">{{ t('正在读取原始文件…') }}</p>
+  <MaterialReaderView
+    v-else-if="customReader && contributed"
+    :key="installation!.instanceId"
+    :component="contributed.component"
+    :reader-props="readerProps"
+    @failed="readerFailed"
+  />
   <div
-    v-if="preview"
+    v-else-if="preview"
     ref="rendered"
     class="source-markdown-preview markdown-content card-content"
     tabindex="0"
@@ -202,6 +456,20 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
   <p v-if="media.error.value" role="alert" class="form-note">
     {{ t('部分媒体无法读取，请从完整备份恢复。') }}
   </p>
+  <div
+    v-if="installation?.commands?.length"
+    class="source-selection-tools"
+    :aria-label="t('材料命令')"
+  >
+    <UiButton
+      v-for="command in installation.commands"
+      :key="command.id"
+      variant="secondary"
+      :disabled="commandBusy"
+      @click="runCommand(command.id)"
+      >{{ command.title }}</UiButton
+    >
+  </div>
 </template>
 
 <style scoped>

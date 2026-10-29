@@ -9,6 +9,9 @@ import type { PluginModule } from './runtime'
 import type { PluginSettingsContribution, RegisterPluginSettings } from './settings'
 import type { PluginPageContribution, RegisterPluginPage } from './pages'
 import type { PluginWidgetContribution, RegisterPluginWidget } from './widgets'
+import type { MaterialHostApi, MaterialTaskContext, MaterialTaskOptions } from '@repeaty/plugin-api'
+import type { MaterialRegistrations, PluginMaterialHostFactory } from './materials'
+import { PluginTaskScheduler, supportsPluginWorkers } from './tasks'
 import AppPage from '../components/AppPage.vue'
 import {
   SettingGroup,
@@ -49,10 +52,21 @@ export function createPluginApi(
   registerContribution?: RegisterPluginSettings,
   registerPageContribution?: RegisterPluginPage,
   registerWidgetContribution?: RegisterPluginWidget,
+  materialOptions: {
+    registrations?: MaterialRegistrations
+    host?: () => PluginMaterialHostFactory | undefined
+    scheduler?: PluginTaskScheduler
+    commandScheduler?: PluginTaskScheduler
+  } = {},
 ) {
   let alive = true
+  const lifetime = new AbortController()
+  const taskOwner = Symbol(manifest.id)
+  const scheduler = materialOptions.scheduler ?? new PluginTaskScheduler()
+  const commandScheduler = materialOptions.commandScheduler ?? new PluginTaskScheduler(1)
   disposers.push(() => {
     alive = false
+    lifetime.abort()
   })
   function guard() {
     if (!alive || !isCurrent()) throw new Error('插件已卸载或学习库已切换。')
@@ -75,6 +89,97 @@ export function createPluginApi(
         throw new Error('插件数据超过大小限制。')
       await writePluginData(manifest.id, id, value, scope)
     },
+  }
+  const materialHost = () => {
+    guard()
+    const factory = materialOptions.host?.()
+    if (!factory) throw new Error('当前学习库尚未提供材料服务。')
+    return factory({
+      pluginId: manifest.id,
+      scope,
+      signal: lifetime.signal,
+      worker: supportsPluginWorkers(),
+      assertCurrent: guard,
+      runTask,
+    })
+  }
+  async function materialCall<T>(run: (host: MaterialHostApi) => Promise<T>) {
+    const result = await run(materialHost())
+    guard()
+    return result
+  }
+  const materials: MaterialHostApi = {
+    capabilities() {
+      guard()
+      if (!materialOptions.host?.())
+        return {
+          protocolVersion: 1,
+          workspaceScope: scope,
+          available: false,
+          import: false,
+          createNote: false,
+          search: false,
+          worker: supportsPluginWorkers(),
+        }
+      return materialHost().capabilities()
+    },
+    snapshot: () => materialHost().snapshot(),
+    list: () => materialCall((host) => host.list()),
+    get: (id, version) => materialCall((host) => host.get(id, version)),
+    original: (id, version) => materialCall((host) => host.original(id, version)),
+    prepareImport: (request, signal) => materialCall((host) => host.prepareImport(request, signal)),
+    commitImport: (request) => materialCall((host) => host.commitImport(request)),
+    discardImport: (id) => materialHost().discardImport(id),
+    createNote: (request) => materialCall((host) => host.createNote(request)),
+    createExcerpt: (request) => materialCall((host) => host.createExcerpt(request)),
+    search: (query, signal) => materialCall((host) => host.search(query, signal)),
+  }
+  const registration = <K extends keyof MaterialRegistrations>(name: K) => {
+    guard()
+    const value = materialOptions.registrations
+    if (!value) throw new Error('当前宿主不支持材料扩展。')
+    return value[name]
+  }
+  function runTask<T>(
+    options: MaterialTaskOptions,
+    run: (context: MaterialTaskContext) => Promise<T>,
+  ): Promise<T> {
+    return runScheduled(scheduler, options, run)
+  }
+  function runScheduled<T>(
+    queue: PluginTaskScheduler,
+    options: MaterialTaskOptions,
+    run: (context: MaterialTaskContext) => Promise<T>,
+  ): Promise<T> {
+    guard()
+    return queue.run(
+      taskOwner,
+      options,
+      async (context) => {
+        guard()
+        const result = await run({
+          ...context,
+          createWorker: context.createWorker
+            ? (source, options) => {
+                guard()
+                return context.createWorker!(source, options)
+              }
+            : undefined,
+          progress(value) {
+            guard()
+            context.progress(value)
+          },
+          async yield() {
+            guard()
+            await context.yield()
+            guard()
+          },
+        })
+        guard()
+        return result
+      },
+      lifetime.signal,
+    )
   }
   return {
     t,
@@ -121,6 +226,37 @@ export function createPluginApi(
       const remove = registerWidgetContribution(contribution)
       disposers.push(remove)
       return remove
+    },
+    registerImporter(contribution: Parameters<MaterialRegistrations['registerImporter']>[0]) {
+      const remove = registration('registerImporter')(contribution)
+      disposers.push(remove)
+      return remove
+    },
+    registerReader(contribution: Parameters<MaterialRegistrations['registerReader']>[0]) {
+      const remove = registration('registerReader')(contribution)
+      disposers.push(remove)
+      return remove
+    },
+    registerCommand(contribution: Parameters<MaterialRegistrations['registerCommand']>[0]) {
+      const remove = registration('registerCommand')(contribution)
+      disposers.push(remove)
+      return remove
+    },
+    registerSearchProvider(
+      contribution: Parameters<MaterialRegistrations['registerSearchProvider']>[0],
+    ) {
+      const remove = registration('registerSearchProvider')(contribution)
+      disposers.push(remove)
+      return remove
+    },
+    materials,
+    tasks: { run: runTask },
+    // Host-only command orchestration must not occupy the background parser queue it awaits.
+    runMaterialCommand<T>(
+      options: MaterialTaskOptions,
+      run: (context: MaterialTaskContext) => Promise<T>,
+    ) {
+      return runScheduled(commandScheduler, options, run)
     },
     pluginData,
     readSetting(key: string) {

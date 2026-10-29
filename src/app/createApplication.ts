@@ -1,4 +1,4 @@
-import { computed, watch } from 'vue'
+import { computed, onScopeDispose, watch } from 'vue'
 import { t } from '../i18n'
 import { useLibrary } from '../composables/useLibrary'
 import { useReadingProgress } from '../composables/useReadingProgress'
@@ -25,6 +25,14 @@ export function createApplication() {
   const { clearNotifications } = useNotifications()
 
   const workspace = useLibrary()
+  const releaseMaterials = plugins.setMaterialHost((owner) =>
+    workspace.materialApi(owner, (id) =>
+      plugins.pluginRuntime.installations
+        .find((entry) => entry.plugin.id === owner.pluginId)
+        ?.importers?.find((entry) => entry.id === id),
+    ),
+  )
+  onScopeDispose(releaseMaterials)
   const readingProgress = useReadingProgress(workspace)
   const offline = useOffline()
   const { library, ready, busy, loadError, backups, backupError } = workspace

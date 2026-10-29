@@ -26,6 +26,7 @@ import { exportBackup, parseBackup, rekeyBackup } from '../../src/core/backups'
 import { readWorkspaceMarkdown, registerWorkspaceNote } from '../../src/workspace/markdown'
 import { sha256 } from '../../src/workspace/source-revisions'
 import type { CardDraft } from '../../src/core/card-draft-data'
+import { materialFixture } from '../fixtures/material-model'
 let binary: string
 const roots: string[] = []
 const processes: ChildProcessWithoutNullStreams[] = []
@@ -129,6 +130,55 @@ async function docs(env: Awaited<ReturnType<typeof workspace>>) {
   })
 }
 describe('the desktop workspace is the learning store', () => {
+  it('persists material originals, reading locators and retry receipts through the real workspace and restart', async () => {
+    const env = await workspace(),
+      material = materialFixture()
+    await env.repo.load()
+    const saved = await env.repo.save(material.library, 0, { assets: material.assets })
+    expect(saved.library).toEqual(material.library)
+    expect((await docs(env)).filter((doc) => doc.kind === 'source')).toHaveLength(2)
+    await env.runtime.stop()
+    const runtime = host(env.device)
+    const status = statusSchema.parse(await runtime.api('workspace_status'))
+    const repo = createNativeRepository(status.active!, runtime.api)
+    expect(await repo.load()).toEqual(saved)
+    expect(await (await repo.getMedia(material.original.meta.id))!.text()).toBe(
+      await material.original.blob.text(),
+    )
+    const restored = parseBackup(await exportBackup(saved.library, repo.getMedia))
+    expect(restored.library).toEqual(saved.library)
+    expect(
+      await restored.assets
+        .find((asset) => asset.meta.id === material.original.meta.id)!
+        .blob.text(),
+    ).toBe(await material.original.blob.text())
+    const updated = saveReadingPosition(
+      saved.library,
+      material.root.source.id,
+      material.root.source.mediaId,
+      {
+        offset: 0,
+        fraction: 0,
+        view: 'source',
+        locator: { ...material.locator, regions: [{ page: 3, x: 0, y: 0, width: 1, height: 1 }] },
+      },
+    )
+    const moved = await repo.save(updated, saved.revision)
+    expect(moved.library.sources[0]!.reading!.locator).toEqual(updated.sources[0]!.reading!.locator)
+    await expect(
+      repo.save(
+        {
+          ...moved.library,
+          materialReceipts: moved.library.materialReceipts.map((receipt) => ({
+            ...receipt,
+            operationId: 'rewritten',
+          })),
+        },
+        moved.revision,
+      ),
+    ).rejects.toThrow()
+    expect(await repo.load()).toEqual(moved)
+  })
   it('observes OS hints incrementally, distinguishes accepted self writes and leaves pending text alone when grading', async () => {
     const env = await workspace()
     await env.repo.load()

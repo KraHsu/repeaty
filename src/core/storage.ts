@@ -19,6 +19,7 @@ import {
   renderCard,
 } from './model'
 import { sourceSchema, type Source } from './source-data'
+import { materialReceiptSchema, validateMaterialChanges } from './material-data'
 import { validateSourceOrigins } from './sources'
 import { cardDraftSchema, MAX_DRAFTS, type CardDraft } from './card-draft-data'
 import { compileSearch } from './search'
@@ -53,6 +54,7 @@ export const recordStores = [
   'practices',
   'attempts',
   'sources',
+  'materialReceipts',
 ] as const
 export type RecordStore = (typeof recordStores)[number]
 type Entity = Library[RecordStore][number]
@@ -101,6 +103,7 @@ interface RepeatyDB extends DBSchema {
   attempts: RecordTable
   attemptSummaries: RecordTable
   sources: RecordTable
+  materialReceipts: RecordTable
   cardDrafts: { key: string; value: CardDraft }
 }
 const stores = [
@@ -117,6 +120,7 @@ const stores = [
 type Transaction = IDBPTransaction<RepeatyDB, typeof stores, 'readwrite'>
 const schemas = {
   sources: sourceSchema,
+  materialReceipts: materialReceiptSchema,
   decks: deckSchema,
   notes: noteSchema,
   cards: cardSchema,
@@ -147,7 +151,7 @@ export function createRepository(
 ) {
   // save() shadows `options` with its own parameter, so keep the repository setting here.
   const compactHistory = Boolean(options.compactHistory)
-  const database = openDB<RepeatyDB>(name, 16, {
+  const database = openDB<RepeatyDB>(name, 17, {
     async upgrade(db, _oldVersion, _newVersion, tx) {
       try {
         for (const store of stores)
@@ -164,7 +168,7 @@ export function createRepository(
         const summaries = tx.objectStore('attemptSummaries')
         if (!summaries.indexNames.contains('position'))
           summaries.createIndex('position', 'position')
-        let cursor = await tx.objectStore('attempts').openCursor()
+        let cursor = _oldVersion < 16 ? await tx.objectStore('attempts').openCursor() : null
         while (cursor) {
           const row = cursor.value
           await summaries.put({ ...row, value: summarizeAttempt(row.value as Attempt) }, row.id)
@@ -310,6 +314,7 @@ export function createRepository(
       meta.counts.sources ??= 0
       meta.counts.practices ??= 0
       meta.counts.attempts ??= 0
+      meta.counts.materialReceipts ??= 0
       return meta
     }
     const old = await tx.objectStore('workspace').get('main')
@@ -443,10 +448,11 @@ export function createRepository(
     ): Promise<Snapshot> {
       if (!cached) await this.load()
       const previous = cached!.library
+      validateMaterialChanges(previous, library)
       // The frequent grading path validates only changed cards/reviews. Structural edits and
       // external restores still receive complete cross-reference validation at the boundary.
       const progressOnly =
-        ['decks', 'notes', 'media', 'savedSearches', 'sources'].every(
+        ['decks', 'notes', 'media', 'savedSearches', 'sources', 'materialReceipts'].every(
           (key) => previous[key as RecordStore] === library[key as RecordStore],
         ) &&
         library.cards.length === previous.cards.length &&

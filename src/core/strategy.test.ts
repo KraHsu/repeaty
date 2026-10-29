@@ -108,7 +108,7 @@ describe('v2 compatibility', () => {
     for (const note of old.notes) delete note.format
     for (const card of old.cards) delete card.leech
     const migrated = migrateLibrary(old)
-    expect(migrated.version).toBe(13)
+    expect(migrated.version).toBe(14)
     expect(migrated.notes[0]!.format).toBe('plain')
     expect(cardViews(migrated)[0]!.front).toBe('**literal** $5')
     expect(migrated.cards.map((card) => card.schedule)).toEqual(

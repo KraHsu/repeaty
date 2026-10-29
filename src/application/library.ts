@@ -22,6 +22,7 @@ import { createReadingCommands } from './library-reading'
 import { createFilesCommands } from './library-files'
 import { createStudyCommands } from './library-study'
 import { createTransfersCommands } from './library-transfers'
+import { createMaterialCommands } from './library-materials'
 export function createLibraryService(state: LibraryState, dependencies: LibraryDependencies) {
   const { library, scope, ready, busy, loadError, backupError, backups, readingUndo, operations } =
     state
@@ -477,6 +478,7 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
       ...createFilesCommands(context),
       ...createStudyCommands(context),
       ...createTransfersCommands(context),
+      ...createMaterialCommands(context),
     },
   }
 }
