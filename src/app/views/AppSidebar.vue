@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onBeforeUnmount, onMounted, onUpdated, ref } from 'vue'
 import { UiButton } from '../../components/ui'
 import { version } from '../../../package.json'
 import { t } from '../../i18n'
@@ -36,6 +37,58 @@ function active(page: string) {
     ? tab.value === page || !!review.value || !!mixed.value
     : tab.value === page && !review.value && !mixed.value
 }
+const navigation = ref<HTMLElement>()
+const selection = ref<HTMLElement>()
+let observer: ResizeObserver | undefined
+const observedLinks = new Set<HTMLElement>()
+function positionSelection() {
+  const nav = navigation.value
+  const background = selection.value
+  if (!nav || !background) return
+  const target = nav.querySelector<HTMLElement>('.nav-link[aria-current="page"]')
+  if (!target?.offsetWidth || !target.offsetHeight) {
+    background.removeAttribute('data-on')
+    return
+  }
+  const firstFrame = !background.hasAttribute('data-on')
+  if (firstFrame) background.style.transition = 'none'
+  // Layout offsets ignore the button's brief pressed scale and remain stable
+  // while the navigation scrolls. Vertical width follows the rail directly in CSS.
+  background.style.transform = `translate(${target.offsetLeft}px, ${target.offsetTop}px)`
+  background.style.setProperty('--selection-width', `${target.offsetWidth}px`)
+  background.style.height = `${target.offsetHeight}px`
+  background.setAttribute('data-on', '')
+  if (firstFrame) {
+    void background.offsetHeight
+    background.style.transition = ''
+  }
+}
+function updateSelection() {
+  const links = new Set(navigation.value?.querySelectorAll<HTMLElement>('.nav-link'))
+  for (const link of observedLinks) {
+    if (!links.has(link)) {
+      observer?.unobserve(link)
+      observedLinks.delete(link)
+    }
+  }
+  for (const link of links) {
+    if (!observedLinks.has(link)) {
+      observer?.observe(link)
+      observedLinks.add(link)
+    }
+  }
+  positionSelection()
+}
+onMounted(() => {
+  observer = new ResizeObserver(positionSelection)
+  if (navigation.value) observer.observe(navigation.value)
+  updateSelection()
+})
+onUpdated(updateSelection)
+onBeforeUnmount(() => {
+  observer?.disconnect()
+  observedLinks.clear()
+})
 </script>
 <template>
   <aside class="sidebar">
@@ -62,7 +115,8 @@ function active(page: string) {
       >
     </div>
     <div class="sidebar-content">
-      <nav id="primary-navigation" class="main-nav" :aria-label="t('主导航')">
+      <nav ref="navigation" id="primary-navigation" class="main-nav" :aria-label="t('主导航')">
+        <span ref="selection" class="sidebar-nav-selection" aria-hidden="true" />
         <UiButton
           v-for="item in learning"
           :key="item.page"
@@ -70,9 +124,7 @@ function active(page: string) {
           class="nav-link text-(--muted) hover:bg-(--app-nav-hover)"
           :class="{
             active: active(item.page),
-            'bg-(--app-nav-active) text-(--app-nav-ink) hover:bg-(--app-nav-active)': active(
-              item.page,
-            ),
+            'bg-transparent text-(--app-nav-ink) hover:bg-transparent': active(item.page),
           }"
           :aria-current="active(item.page) ? 'page' : undefined"
           :aria-label="t(item.label)"
@@ -88,8 +140,7 @@ function active(page: string) {
           class="nav-link text-(--muted) hover:bg-(--app-nav-hover)"
           :class="{
             active: active('history'),
-            'bg-(--app-nav-active) text-(--app-nav-ink) hover:bg-(--app-nav-active)':
-              active('history'),
+            'bg-transparent text-(--app-nav-ink) hover:bg-transparent': active('history'),
           }"
           :aria-current="active('history') ? 'page' : undefined"
           :aria-label="t('练习历史')"
@@ -104,8 +155,7 @@ function active(page: string) {
           class="nav-link workspace-nav text-(--muted) hover:bg-(--app-nav-hover)"
           :class="{
             active: active('workspace'),
-            'bg-(--app-nav-active) text-(--app-nav-ink) hover:bg-(--app-nav-active)':
-              active('workspace'),
+            'bg-transparent text-(--app-nav-ink) hover:bg-transparent': active('workspace'),
           }"
           :aria-current="active('workspace') ? 'page' : undefined"
           :aria-label="t('工作目录')"
@@ -137,8 +187,7 @@ function active(page: string) {
           class="nav-link text-(--muted) hover:bg-(--app-nav-hover)"
           :class="{
             active: active('data'),
-            'bg-(--app-nav-active) text-(--app-nav-ink) hover:bg-(--app-nav-active)':
-              active('data'),
+            'bg-transparent text-(--app-nav-ink) hover:bg-transparent': active('data'),
           }"
           :aria-current="active('data') ? 'page' : undefined"
           :aria-label="t('数据与备份')"
@@ -154,9 +203,7 @@ function active(page: string) {
           :class="{
             active: active(item.page),
             'nav-utility-start': index === 0,
-            'bg-(--app-nav-active) text-(--app-nav-ink) hover:bg-(--app-nav-active)': active(
-              item.page,
-            ),
+            'bg-transparent text-(--app-nav-ink) hover:bg-transparent': active(item.page),
           }"
           :aria-current="active(item.page) ? 'page' : undefined"
           :aria-label="t(item.label)"
