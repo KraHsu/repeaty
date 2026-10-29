@@ -47,9 +47,8 @@ export function createStudyCommands(context: LibraryContext) {
             attempt,
           )
         },
-        { undoLabel: false },
+        { undoLabel: false, undoBarrier: !previous },
       )
-      if (!previous) context.undoBarrier()
     },
     revealPracticeHistory(practiceId: string, expectedScope: string) {
       if (expectedScope !== context.scope.value || !expectedScope)

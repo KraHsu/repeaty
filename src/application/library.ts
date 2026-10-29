@@ -1,21 +1,28 @@
-import { msg, LocalizedError, validationMessage, type MessageKey } from '../i18n'
+import { msg, LocalizedError, validationMessage } from '../i18n'
 import { ZodError } from 'zod'
-import { type Library, type MediaUpload, type SearchFilter } from '../core/model'
+import { type Library, type SearchFilter } from '../core/model'
 import { undoReview } from '../core/scheduler'
 import { readSource } from '../core/sources'
 import { sourceAtVersion } from '../core/source-data'
-import { canUndoReading } from '../core/reading-operations'
+import { canUndoReading, sourceArrangement } from '../core/reading-operations'
+import type { Source } from '../core/source-data'
 import { initializeWorkspace } from '../core/onboarding'
 import { hasAttemptBody, sameAttemptSummary, type Attempt } from '../core/practice-data'
-import type { DocumentWrite } from '../desktop/repository'
 import { readLearning, LearningQueryError, type LearningQuery } from '../core/learning-reader'
 import type { CardDraft } from '../core/card-draft-data'
-import { operationFor, revertOperation, type Operation } from '../core/operations'
+import { operationFor, revertOperation, replayOperation, type Operation } from '../core/operations'
+import {
+  operationHistory,
+  rebindOperationHistory,
+  MAX_OPERATION_HISTORY,
+  type OperationHistory,
+} from '../core/operation-history'
 import type {
   LibraryState,
   LibraryDependencies,
   LibraryContext,
   LibraryRepository,
+  CommitOptions,
 } from './library-context'
 import { createCollectionsCommands } from './library-collections'
 import { createReadingCommands } from './library-reading'
@@ -24,22 +31,48 @@ import { createStudyCommands } from './library-study'
 import { createTransfersCommands } from './library-transfers'
 import { createMaterialCommands } from './library-materials'
 export function createLibraryService(state: LibraryState, dependencies: LibraryDependencies) {
-  const { library, scope, ready, busy, loadError, backupError, backups, readingUndo, operations } =
-    state
+  const {
+    library,
+    scope,
+    ready,
+    busy,
+    loadError,
+    backupError,
+    backups,
+    readingUndo,
+    operations,
+    redoOperations,
+  } = state
   const { createWorkspaceRepository, remoteWorkspace, desktopEdition, canReviewCard } = dependencies
 
   const backupListWarning = '修改已保存，但暂时无法读取快照列表。'
 
   let legacyUndo = true
-  function undoBarrier() {
-    operations.value = []
-    legacyUndo = false
+  function syncReadingUndo() {
+    readingUndo.value = undefined
+    for (const entry of [...operations.value].reverse()) {
+      if (entry.kind !== 'reading') continue
+      const changes = entry.changes
+        .filter((change) => change.store === 'sources' && change.before && change.after)
+        .map((change) => ({
+          id: change.id,
+          mediaId: (change.after as Source).mediaId,
+          before: sourceArrangement(change.before as Source),
+          after: sourceArrangement(change.after as Source),
+        }))
+      const undo = { id: entry.id, scope: scope.value, changes }
+      if (canUndoReading(library.value, undo)) {
+        readingUndo.value = undo
+        return
+      }
+    }
   }
-  function forgetOperation(id: string | undefined) {
-    if (id)
-      operations.value = operations.value.filter(
-        (entry) => entry.id !== id && entry.reviewId !== id,
-      )
+  function adoptHistory(history?: OperationHistory) {
+    const current = rebindOperationHistory(history ?? operationHistory(), scope.value)
+    operations.value = current.undo
+    redoOperations.value = current.redo
+    legacyUndo = history === undefined
+    syncReadingUndo()
   }
   let revision = 0
   let repository: LibraryRepository
@@ -80,6 +113,7 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
     scope.value = ''
     readingUndo.value = undefined
     operations.value = []
+    redoOperations.value = []
     legacyUndo = true
     try {
       await savingDone
@@ -100,6 +134,7 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
       library.value = saved.library
       scope.value = repository.scope()
       revision = saved.revision
+      adoptHistory(saved.operationHistory)
       ready.value = true
       loadError.value = ''
       await refreshBackups()
@@ -137,13 +172,11 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
       library.value = saved.library
       revision = saved.revision
       backups.value = entries
-      readingUndo.value = undefined
-      operations.value = []
-      legacyUndo = true
       loadError.value = ''
       backupError.value = ''
       ready.value = true
       scope.value = next.scope()
+      adoptHistory(saved.operationHistory)
       await release(previous).catch(() => {})
     } catch (error) {
       if (repository !== next) await release(next)
@@ -154,17 +187,7 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
   }
   async function commit(
     update: (current: Library) => Library | Promise<Library>,
-    options: {
-      assets?: MediaUpload[]
-      reason?: string
-      consumeCardDraft?: string
-      externalDocuments?: DocumentWrite[]
-      scanHash?: string
-      assetObservations?: { path: string; hash: string }[]
-      backgroundMetadata?: boolean
-      undoLabel?: MessageKey | false
-      undoKind?: Operation['kind']
-    } = {},
+    options: CommitOptions = {},
   ) {
     if (busy.value) throw new LocalizedError(msg('正在保存，请稍候。'))
     if (!ready.value) throw new LocalizedError(msg('本地数据库尚未准备好。'))
@@ -183,7 +206,7 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
       const before = library.value,
         next = await update(before),
         entry =
-          options.undoLabel === false || options.consumeCardDraft
+          options.undoLabel === false || options.consumeCardDraft || options.undoBarrier
             ? undefined
             : operationFor(before, next, scope.value, options.undoLabel ?? '修改', options.undoKind)
       if (entry) {
@@ -198,26 +221,24 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
           )
             change.before = await targetRepository.getAttempt(change.id, ownerRevision)
       }
-      const priorReading = readingUndo.value
-      const removedAssets: MediaUpload[] = []
-      if (entry)
-        for (const change of entry.changes) {
-          if (change.store === 'media' && change.before && !change.after) {
-            const blob = await targetRepository.getMedia(change.id)
-            if (blob) removedAssets.push({ meta: change.before as Library['media'][number], blob })
-          }
-        }
+      const history =
+        options.undoBarrier || options.consumeCardDraft
+          ? operationHistory()
+          : (options.operationHistory ??
+            (entry
+              ? operationHistory([...operations.value.slice(-(MAX_OPERATION_HISTORY - 1)), entry])
+              : legacyUndo
+                ? undefined
+                : operationHistory(operations.value, redoOperations.value)))
       if (!owns()) throw new LocalizedError(msg('学习库内容已变化，请重新载入。'))
-      const saved = await targetRepository.save(next, ownerRevision, options)
+      const saved = await targetRepository.save(next, ownerRevision, {
+        ...options,
+        operationHistory: history,
+      })
       if (!owns()) return
       library.value = saved.library
       revision = saved.revision
-      if (entry)
-        operations.value = [
-          ...operations.value.slice(-19),
-          { ...entry, previousReadingUndo: priorReading, removedAssets },
-        ]
-      if (options.consumeCardDraft) undoBarrier()
+      adoptHistory(history)
       // The transaction is durable. A later metadata read must not invite a second write.
       const target = repository,
         metadataScope = scope.value,
@@ -250,70 +271,131 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
   }
   async function undoRating() {
     const reviewId = library.value.reviews.at(-1)?.id
-    await commit(undoReview, { backgroundMetadata: true, undoLabel: false })
-    forgetOperation(reviewId)
+    const entry = operations.value.find((entry) => entry.reviewId === reviewId)
+    if (entry) {
+      await undoRecordedOperation(entry.id)
+      return
+    }
+    if (!legacyUndo) throw new LocalizedError(msg('没有可撤销的操作。'))
+    const before = library.value
+    const next = undoReview(before)
+    const replay = operationFor(next, before, scope.value, '评分', 'review')!
+    await commit(() => next, {
+      backgroundMetadata: true,
+      undoLabel: false,
+      operationHistory: operationHistory(operations.value, [
+        ...redoOperations.value.slice(-19),
+        replay,
+      ]),
+    })
   }
-  async function undoLastOperation(): Promise<Operation> {
+  async function undoRecordedOperation(id: string): Promise<Operation> {
     const target = repository,
       expectedScope = scope.value
     await savingDone
-    const entry = operations.value.at(-1)
-    if (!ready.value || target !== repository || !expectedScope || expectedScope !== scope.value)
+    const entry = operations.value.find((entry) => entry.id === id)
+    if (
+      !ready.value ||
+      target !== repository ||
+      !expectedScope ||
+      expectedScope !== scope.value ||
+      !entry ||
+      entry.scope !== expectedScope
+    )
       throw new LocalizedError(msg('操作涉及的内容已变化，无法撤销。请刷新后检查学习库。'))
-    if (!entry) {
-      const review = library.value.reviews.at(-1)
-      if (!legacyUndo || !review?.previous) throw new LocalizedError(msg('没有可撤销的操作。'))
-      await undoRating()
-      return {
-        id: review.id,
-        scope: expectedScope,
-        label: '评分',
-        kind: 'review',
-        changes: [],
-        cardId: review.cardId,
-        reviewId: review.id,
-        noteIds: [],
-      }
-    }
-    if (entry.scope !== expectedScope) throw new LocalizedError(msg('没有可撤销的操作。'))
-    if (entry.kind === 'review') {
-      if (entry.reviewId !== library.value.reviews.at(-1)?.id)
-        throw new LocalizedError(msg('操作涉及的内容已变化，无法撤销。请刷新后检查学习库。'))
-      await undoRating()
-      return entry
-    }
     const expectedRevision = revision
-    const next = revertOperation(library.value, entry)
-    const assets: MediaUpload[] = []
+    if (entry.kind === 'review' && entry.reviewId !== library.value.reviews.at(-1)?.id)
+      throw new LocalizedError(msg('操作涉及的内容已变化，无法撤销。请刷新后检查学习库。'))
+    const before = library.value
+    // Judge-aware rating undo preserves completed practice, while redo stores the
+    // exact inverse of this result and never invokes a judge or reruns FSRS.
+    const next = entry.kind === 'review' ? undoReview(before) : revertOperation(before, entry)
+    const replay =
+      entry.kind === 'review'
+        ? {
+            ...operationFor(next, before, expectedScope, entry.label, 'review')!,
+            id: entry.id,
+            createdAt: entry.createdAt,
+          }
+        : entry
     for (const change of entry.changes)
       if (
         change.store === 'media' &&
         change.before &&
         !change.after &&
         !(await target.getMedia(change.id))
-      ) {
-        const retained = entry.removedAssets.find((asset) => asset.meta.id === change.id)
-        if (!retained) throw new LocalizedError(msg('撤销所需的媒体已不存在，请从快照恢复。'))
-        assets.push(retained)
-      }
+      )
+        throw new LocalizedError(msg('撤销所需的媒体已不存在，请从快照恢复。'))
     if (
       scope.value !== expectedScope ||
       repository !== target ||
       revision !== expectedRevision ||
-      operations.value.at(-1) !== entry
+      !operations.value.includes(entry)
     )
       throw new LocalizedError(msg('操作涉及的内容已变化，无法撤销。请刷新后检查学习库。'))
     await commit(() => next, {
-      assets,
       undoLabel: false,
       reason: '撤销操作前',
       backgroundMetadata: true,
+      operationHistory: operationHistory(
+        operations.value.filter((item) => item.id !== entry.id),
+        [...redoOperations.value.slice(-19), replay],
+      ),
     })
-    forgetOperation(entry.id)
-    if (entry.previousReadingUndo && canUndoReading(library.value, entry.previousReadingUndo))
-      readingUndo.value = entry.previousReadingUndo
-    else if (entry.kind === 'reading' || !canUndoReading(library.value, readingUndo.value))
-      readingUndo.value = undefined
+    return entry
+  }
+  async function undoLastOperation(): Promise<Operation> {
+    const target = repository,
+      expectedScope = scope.value
+    await savingDone
+    if (!ready.value || target !== repository || !expectedScope || expectedScope !== scope.value)
+      throw new LocalizedError(msg('操作涉及的内容已变化，无法撤销。请刷新后检查学习库。'))
+    const entry = operations.value.at(-1)
+    if (entry) return undoRecordedOperation(entry.id)
+    const review = library.value.reviews.at(-1)
+    if (!legacyUndo || !review?.previous) throw new LocalizedError(msg('没有可撤销的操作。'))
+    await undoRating()
+    return redoOperations.value.at(-1)!
+  }
+  async function redoLastOperation(): Promise<Operation> {
+    const target = repository,
+      expectedScope = scope.value
+    await savingDone
+    const entry = redoOperations.value.at(-1)
+    if (
+      !ready.value ||
+      target !== repository ||
+      !expectedScope ||
+      expectedScope !== scope.value ||
+      !entry ||
+      entry.scope !== expectedScope
+    )
+      throw new LocalizedError(msg('操作涉及的内容已变化，无法撤销。请刷新后检查学习库。'))
+    const expectedRevision = revision
+    const next = replayOperation(library.value, entry)
+    for (const change of entry.changes)
+      if (
+        change.store === 'media' &&
+        change.after &&
+        !change.before &&
+        !(await target.getMedia(change.id))
+      )
+        throw new LocalizedError(msg('撤销所需的媒体已不存在，请从快照恢复。'))
+    if (
+      scope.value !== expectedScope ||
+      repository !== target ||
+      revision !== expectedRevision ||
+      redoOperations.value.at(-1) !== entry
+    )
+      throw new LocalizedError(msg('操作涉及的内容已变化，无法撤销。请刷新后检查学习库。'))
+    await commit(() => next, {
+      undoLabel: false,
+      backgroundMetadata: true,
+      operationHistory: operationHistory(
+        [...operations.value.slice(-19), entry],
+        redoOperations.value.slice(0, -1),
+      ),
+    })
     return entry
   }
   async function getAttempt(id: string, signal?: AbortSignal): Promise<Attempt> {
@@ -390,8 +472,7 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
     commit,
     getSource,
     getAttempt,
-    forgetOperation,
-    undoBarrier,
+    undoRecordedOperation,
     undoRating,
     refreshBackups,
     draftRepository,
@@ -409,6 +490,8 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
   return {
     getters: {
       lastOperation: () => operations.value.at(-1),
+      lastRedoOperation: () => redoOperations.value.at(-1),
+      canRedoOperation: () => ready.value && redoOperations.value.length > 0,
       canUndoOperation: () =>
         ready.value &&
         (operations.value.length > 0 || (legacyUndo && !!library.value.reviews.at(-1)?.previous)),
@@ -419,6 +502,7 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
     },
     commands: {
       undoLastOperation,
+      redoLastOperation,
       readCardDrafts: (scope: string) => draftRepository(scope).readCardDrafts(),
       addCardDrafts: (scope: string, drafts: CardDraft[]) =>
         draftRepository(scope).addCardDrafts(drafts),
@@ -458,6 +542,8 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
         busy.value = false
         scope.value = ''
         operations.value = []
+        redoOperations.value = []
+        readingUndo.value = undefined
         const target = repository
         return savingDone.then(() => release(target))
       },

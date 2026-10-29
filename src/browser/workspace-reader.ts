@@ -1,6 +1,7 @@
 import type { Database, SqlJsStatic, SqlValue } from 'sql.js'
 import { z } from 'zod'
 import { workspaceLibrarySchema, type Library } from '../core/model'
+import { parseOperationHistory, type OperationHistory } from '../core/operation-history'
 import { recordStores } from '../core/storage'
 import { readWorkspaceMarkdown, MAX_WORKSPACE_TEXT_BYTES } from '../workspace/markdown'
 import {
@@ -49,6 +50,7 @@ export interface BrowserWorkspaceSnapshot {
   name: string
   revision: number
   library: Library
+  operationHistory?: OperationHistory
 }
 
 /** SQLite is an immutable in-memory copy. No native open, lock, migration or checkpoint. */
@@ -89,14 +91,15 @@ export class BrowserWorkspaceReader {
       db.run('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF;')
       if (
         scalar(db, 'PRAGMA application_id') !== 0x52505459 ||
-        ![10, 11].includes(scalar(db, 'PRAGMA user_version') as number) ||
+        ![10, 11, 12].includes(scalar(db, 'PRAGMA user_version') as number) ||
         scalar(db, 'SELECT id FROM workspace_identity') !== marker.id
       )
         throw new WorkspaceReadError('incompatible')
       const tables = new Set(
         rows(db, "SELECT name FROM sqlite_schema WHERE type='table'").map((row) => row.name),
       )
-      const materialReceiptsRequired = scalar(db, 'PRAGMA user_version') === 11
+      const databaseVersion = scalar(db, 'PRAGMA user_version') as number
+      const materialReceiptsRequired = databaseVersion >= 11
       if (
         [
           ...recordStores.filter(
@@ -107,6 +110,7 @@ export class BrowserWorkspaceReader {
           'documents',
           'publications',
           'assets',
+          ...(databaseVersion >= 12 ? ['operation_history'] : []),
         ].some((name) => !tables.has(name)) ||
         scalar(db, 'PRAGMA quick_check(1)') !== 'ok'
       )
@@ -210,10 +214,17 @@ export class BrowserWorkspaceReader {
       )
         throw new WorkspaceReadError('invalid')
       const assets = new Map<string, z.infer<typeof assetSchema>>()
-      for (const row of rows(
-        db,
-        'SELECT a.id,a.mime,a.path,a.size FROM assets a JOIN media m ON m.id=a.id',
-      )) {
+      const rawHistory = tables.has('operation_history')
+        ? scalar(db, 'SELECT data FROM operation_history WHERE id=1')
+        : undefined
+      const operationHistory =
+        typeof rawHistory === 'string' ? parseOperationHistory(JSON.parse(rawHistory)) : undefined
+      const retainedIds = new Set([
+        ...library.media.map((media) => media.id),
+        ...(operationHistory?.mediaIds ?? []),
+      ])
+      for (const row of rows(db, 'SELECT id,mime,path,size FROM assets')) {
+        if (!retainedIds.has(row.id as string)) continue
         const asset = assetSchema.parse(row)
         assets.set(asset.id, asset)
       }
@@ -233,7 +244,7 @@ export class BrowserWorkspaceReader {
       return new BrowserWorkspaceReader(
         db,
         files,
-        { id: marker.id, name: files.name, revision, library },
+        { id: marker.id, name: files.name, revision, library, operationHistory },
         assets,
       )
     } catch (error) {

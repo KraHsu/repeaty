@@ -1,11 +1,13 @@
 import { createPinia } from 'pinia'
 // @vitest-environment happy-dom
-import { createApp, h, nextTick, shallowReactive, type App } from 'vue'
+import { createApp, h, nextTick, ref, shallowReactive, type App } from 'vue'
 import { expect, it, vi } from 'vitest'
 import MixedSession from './MixedSession.vue'
 import { fixture, now } from '../core/test-fixtures'
 import { addSource, prepareSource } from '../core/sources'
-import { reviewCard } from '../core/scheduler'
+import { reviewCard, undoReview } from '../core/scheduler'
+import { operationFor, replayOperation, revertOperation, type Operation } from '../core/operations'
+import { arrangeSource } from '../core/source-queue'
 import { setLocale } from '../i18n'
 
 it.each(['card', 'reading'] as const)(
@@ -96,6 +98,151 @@ it.each(['card', 'reading'] as const)(
     } finally {
       app?.unmount()
       resume(true)
+      host.remove()
+    }
+  },
+)
+
+it.each(['card', 'reading'] as const)(
+  'restores the mixed-session %s checkpoint exactly once on redo',
+  async (kind) => {
+    setLocale('zh-CN')
+    const prepared = prepareSource(
+      { title: 'Source', url: '', format: 'plain', content: 'Text' },
+      now,
+    )
+    const original = addSource(fixture(), prepared.source, prepared.asset)
+    if (kind === 'reading') {
+      original.notes = []
+      original.cards = []
+    }
+    let operation: Operation
+    const component = ref<InstanceType<typeof MixedSession>>()
+    const props = shallowReactive({
+      library: original,
+      now,
+      scope: 'local:test',
+      busy: false,
+      cardsPerReading: 1,
+      leaveReading: async () => true,
+      undoCard: async (): Promise<boolean> => {
+        props.library = undoReview(props.library)
+        await nextTick()
+        return true
+      },
+      undoReading: async (): Promise<boolean> => {
+        props.library = revertOperation(props.library, operation)
+        await nextTick()
+        return true
+      },
+      canUndoReading: true,
+      readingUndoId: undefined as string | undefined,
+    })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const app = createApp({
+      render: () =>
+        h(
+          MixedSession,
+          { ...props, ref: component },
+          {
+            card: ({
+              item,
+              done,
+              activity,
+            }: {
+              item: { id: string }
+              done: (graded: boolean) => void
+              activity: (busy: boolean) => void
+            }) =>
+              h(
+                'button',
+                {
+                  'data-test': 'grade',
+                  onClick: async () => {
+                    activity(true)
+                    const before = props.library
+                    props.library = reviewCard(before, item.id, 3, now)
+                    operation = operationFor(before, props.library, props.scope, '评分', 'review')!
+                    await nextTick()
+                    done(true)
+                    activity(false)
+                  },
+                },
+                'Grade',
+              ),
+            reading: ({
+              done,
+              activity,
+            }: {
+              done: (arranged: boolean) => void
+              activity: (busy: boolean) => void
+            }) =>
+              h(
+                'button',
+                {
+                  'data-test': 'reading',
+                  onClick: async () => {
+                    activity(true)
+                    const before = props.library
+                    props.library = arrangeSource(
+                      before,
+                      prepared.source.id,
+                      prepared.source.mediaId,
+                      { type: 'archive' },
+                      now,
+                    )
+                    operation = operationFor(
+                      before,
+                      props.library,
+                      props.scope,
+                      '阅读安排',
+                      'reading',
+                    )!
+                    props.readingUndoId = operation.id
+                    await nextTick()
+                    done(true)
+                    activity(false)
+                  },
+                },
+                'Reading',
+              ),
+          },
+        ),
+    })
+    app.use(createPinia()).mount(host)
+    const flush = async () => {
+      for (let index = 0; index < 4; index++) await nextTick()
+    }
+    try {
+      host
+        .querySelector<HTMLButtonElement>(
+          kind === 'card' ? '[data-test=grade]' : '[data-test=reading]',
+        )!
+        .click()
+      await flush()
+      expect(host.querySelector('[role=status]')!.textContent).toContain(
+        kind === 'card' ? '已复习 1 次' : '已处理 1 篇',
+      )
+      if (kind === 'card') await component.value!.undoCard()
+      else await component.value!.undoReading()
+      await flush()
+      expect(host.querySelector('[role=status]')!.textContent).toContain(
+        kind === 'card' ? '已复习 0 次' : '已处理 0 篇',
+      )
+      props.library = replayOperation(props.library, operation!)
+      await flush()
+      await component.value!.reconcileRedo(operation!)
+      await flush()
+      const status = host.querySelector('[role=status]')!.textContent
+      expect(status).toContain(kind === 'card' ? '已复习 1 次' : '已处理 1 篇')
+      await component.value!.reconcileRedo(operation!)
+      await flush()
+      expect(host.querySelector('[role=status]')!.textContent).toBe(status)
+      if (kind === 'card') expect(host.querySelector('[data-test=reading]')).not.toBeNull()
+      else expect(host.querySelector('[data-test=reading]')).toBeNull()
+    } finally {
+      app.unmount()
       host.remove()
     }
   },

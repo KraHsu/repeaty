@@ -16,12 +16,7 @@ import type {
   SourceBatchUpdate,
 } from '../core/source-data'
 import { arrangeSource } from '../core/source-queue'
-import {
-  arrangeSources,
-  readingUndoFor,
-  canUndoReading,
-  undoReading,
-} from '../core/reading-operations'
+import { arrangeSources, readingUndoFor } from '../core/reading-operations'
 import type { LibraryContext } from './library-context'
 export function createReadingCommands(context: LibraryContext) {
   return {
@@ -136,15 +131,7 @@ export function createReadingCommands(context: LibraryContext) {
         undo !== context.readingUndo.value
       )
         throw new LocalizedError(msg('材料或阅读安排已变化，请重新选择。'))
-      const previous = context.operations.value.find(
-        (entry) => entry.id === undo.id,
-      )?.previousReadingUndo
-      const next = undoReading(context.library.value, undo)
-      await context.commit(() => next, { reason: '撤销阅读安排前', undoLabel: false })
-      context.forgetOperation(undo.id)
-      if (context.readingUndo.value === undo)
-        context.readingUndo.value =
-          previous && canUndoReading(context.library.value, previous) ? previous : undefined
+      await context.undoRecordedOperation(undo.id)
     },
     async editSourceDetails(update: SourceDetailsUpdate) {
       const target = context.repository

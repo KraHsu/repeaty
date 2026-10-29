@@ -1,5 +1,6 @@
 import { LocalizedError, msg, type MessageKey } from '../i18n'
 import { recordSchemas, type Library } from './model'
+import { hasAttemptBody, summarizeAttempt, type AttemptRecord } from './practice-data'
 
 export type Store = keyof typeof recordSchemas
 type RecordValue = Library[Store][number]
@@ -13,6 +14,7 @@ export interface OperationChange {
 }
 export interface Operation {
   id: string
+  createdAt: string
   scope: string
   label: MessageKey
   kind: 'change' | 'reading' | 'review'
@@ -53,6 +55,7 @@ export function operationFor(
   if (before === after) return
   const operation: Operation = {
     id: crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
     scope,
     label,
     kind,
@@ -62,12 +65,25 @@ export function operationFor(
   if (kind === 'review') {
     const review = after.reviews.at(-1)
     if (!review || before.reviews.at(-1)?.id === review.id) return
-    return { ...operation, cardId: review.cardId, reviewId: review.id }
+    operation.cardId = review.cardId
+    operation.reviewId = review.id
   }
   for (const store of Object.keys(recordSchemas) as Store[]) {
     // A committed command receipt survives undo, so a delayed retry cannot recreate deleted data.
     if (store === 'materialReceipts') continue
     if (before[store] === after[store]) continue
+    // A rating only appends one review. Never diff the complete persisted history.
+    if (kind === 'review' && store === 'reviews') {
+      const review = after.reviews.at(-1)!
+      operation.changes.push({
+        store,
+        id: review.id,
+        index: after.reviews.length - 1,
+        after: review,
+        keys: Object.keys(review),
+      })
+      continue
+    }
     const next = new Map(after[store].map((value) => [value.id, value]))
     const old = new Set(before[store].map((value) => value.id))
     before[store].forEach((value, index) => {
@@ -102,7 +118,7 @@ export function operationFor(
   operation.noteIds = operation.changes
     .filter((change) => change.store === 'notes')
     .map((change) => change.id)
-  operation.cardId =
+  operation.cardId ??=
     operation.changes.find((change) => change.store === 'cards' && change.before)?.id ??
     before.cards.find((card) => operation.noteIds.includes(card.noteId))?.id
   return operation
@@ -110,7 +126,6 @@ export function operationFor(
 
 /** Revert touched fields atomically while retaining later autosaves and unrelated records. */
 export function revertOperation(library: Library, operation: Operation): Library {
-  if (operation.kind === 'review') throw stale()
   const next = { ...library }
   for (const store of Object.keys(recordSchemas) as Store[]) {
     const changes = operation.changes.filter((change) => change.store === store)
@@ -122,9 +137,13 @@ export function revertOperation(library: Library, operation: Operation): Library
         if (current) throw stale()
         rows.set(change.id, change.before!)
       } else {
+        const expected =
+          change.store === 'attempts' && current && !hasAttemptBody(current as AttemptRecord)
+            ? summarizeAttempt(change.after as AttemptRecord)
+            : change.after
         if (
           !current ||
-          change.keys.some((key) => !same(fields(current)?.[key], fields(change.after)?.[key]))
+          change.keys.some((key) => !same(fields(current)?.[key], fields(expected)?.[key]))
         )
           throw stale()
         if (!change.before) rows.delete(change.id)
@@ -147,4 +166,16 @@ export function revertOperation(library: Library, operation: Operation): Library
     ;(next[store] as RecordValue[]) = ordered
   }
   return next
+}
+
+/** Replay stored results. IDs, rating timestamps and schedules are never recomputed. */
+export function replayOperation(library: Library, operation: Operation): Library {
+  return revertOperation(library, {
+    ...operation,
+    changes: operation.changes.map((change) => ({
+      ...change,
+      before: change.after,
+      after: change.before,
+    })),
+  })
 }

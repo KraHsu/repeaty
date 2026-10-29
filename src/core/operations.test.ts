@@ -4,7 +4,7 @@ import { librarySchema, removeNotes, saveNote } from './model'
 import { reviewCard } from './scheduler'
 import { addSource, prepareSource, saveReadingPosition } from './sources'
 import { arrangeSource } from './source-queue'
-import { operationFor, revertOperation } from './operations'
+import { operationFor, revertOperation, replayOperation } from './operations'
 
 it('undoes create, edit, type changes and deletion with original IDs, ordering and reviews', () => {
   const first = fixture({ type: 'reversed' })
@@ -66,12 +66,14 @@ it('refuses stale or reused records without changing any part of the library', (
   expect(() => revertOperation(before, deletion)).toThrow('已变化')
 })
 
-it('stores only rating identity on the fast review path, leaving judge-aware reversal to the scheduler', () => {
+it('stores the bounded rating delta and replays the exact ID, time and schedule', () => {
   const before = fixture()
   const after = reviewCard(before, before.cards[0]!.id, 3, now)
   const operation = operationFor(before, after, 'local:test', '评分', 'review')!
-  expect(operation.changes).toEqual([])
+  expect(operation.changes.map((change) => change.store)).toEqual(['cards', 'reviews'])
   expect(operation.reviewId).toBe(after.reviews[0]!.id)
-  expect(JSON.stringify(operation).length).toBeLessThan(500)
-  expect(() => revertOperation(after, operation)).toThrow('已变化')
+  expect(JSON.stringify(operation).length).toBeLessThan(4000)
+  expect(revertOperation(after, operation)).toEqual(before)
+  expect(replayOperation(before, operation)).toEqual(after)
+  expect(() => replayOperation(after, operation)).toThrow('已变化')
 })

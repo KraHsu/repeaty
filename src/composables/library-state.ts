@@ -16,5 +16,6 @@ export function createLibraryState() {
     backups: shallowRef<BackupSummary[]>([]),
     readingUndo: shallowRef<ReadingUndo>(),
     operations: shallowRef<UndoEntry[]>([]),
+    redoOperations: shallowRef<UndoEntry[]>([]),
   } satisfies LibraryState
 }

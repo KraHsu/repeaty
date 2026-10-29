@@ -41,10 +41,23 @@ export function createBrowserRepository(
   const scope = `local:web-workspace:${crypto.randomUUID()}`
   const original = source.snapshot.library
   const baselineMedia = new Map(original.media.map((item) => [item.id, item]))
+  // A read-only trial can also undo a deletion saved by the desktop app.
+  for (const entry of [
+    ...(source.snapshot.operationHistory?.undo ?? []),
+    ...(source.snapshot.operationHistory?.redo ?? []),
+  ])
+    for (const change of entry.changes)
+      if (change.store === 'media')
+        for (const value of [change.before, change.after])
+          if (value) baselineMedia.set(value.id, value as Library['media'][number])
   let bodies = new WeakMap<AttemptRecord, Attempt>()
   const blobs = new Map<string, Blob>()
   const backups: AutoBackup[] = []
-  let current: Snapshot = { revision: source.snapshot.revision, library: original }
+  let current: Snapshot = {
+    revision: source.snapshot.revision,
+    library: original,
+    operationHistory: source.snapshot.operationHistory,
+  }
   let closed = false
   const check = (revision?: number) => {
     if (closed) throw new WorkspaceReadError('closed')
@@ -96,9 +109,18 @@ export function createBrowserRepository(
     async save(
       library: Library,
       expectedRevision: number,
-      options: { assets?: MediaUpload[]; reason?: string; consumeCardDraft?: string } = {},
+      options: {
+        assets?: MediaUpload[]
+        reason?: string
+        consumeCardDraft?: string
+        operationHistory?: OperationHistory
+      } = {},
     ): Promise<Snapshot> {
       check(expectedRevision)
+      const operationHistory =
+        options.operationHistory === undefined
+          ? current.operationHistory
+          : parseOperationHistory(options.operationHistory)
       if (options.consumeCardDraft) throw new WorkspaceReadError('invalid')
       const before = current.library
       validateMaterialChanges(before, library)
@@ -217,7 +239,7 @@ export function createBrowserRepository(
       check(expectedRevision)
       backup(options.reason ?? '自动备份', Boolean(options.reason))
       for (const [id, blob] of uploads) blobs.set(id, blob)
-      current = { revision: expectedRevision + 1, library: next }
+      current = { revision: expectedRevision + 1, library: next, operationHistory }
       onChange()
       return current
     },
@@ -294,3 +316,4 @@ export function createBrowserRepository(
     },
   }
 }
+import { parseOperationHistory, type OperationHistory } from '../core/operation-history'

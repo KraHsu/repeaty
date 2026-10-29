@@ -108,7 +108,14 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
     async load(): Promise<Snapshot> {
       const result = await read<Snapshot>({ type: 'load' })
       if (!Number.isSafeInteger(result.revision) || result.revision < 0) throw changed()
-      cached = { revision: result.revision, library: workspaceLibrarySchema.parse(result.library) }
+      cached = {
+        revision: result.revision,
+        library: workspaceLibrarySchema.parse(result.library),
+        operationHistory:
+          result.operationHistory === undefined
+            ? undefined
+            : parseOperationHistory(result.operationHistory),
+      }
       return cached
     },
     async save(
@@ -121,9 +128,14 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
         externalDocuments?: DocumentWrite[]
         scanHash?: string
         assetObservations?: { path: string; hash: string }[]
+        operationHistory?: OperationHistory
       } = {},
     ): Promise<Snapshot> {
       if (!cached) await repository.load()
+      const operationHistory =
+        options.operationHistory === undefined
+          ? cached!.operationHistory
+          : parseOperationHistory(options.operationHistory)
       if (cached!.revision !== expectedRevision) throw changed()
       const previous = cached!.library
       const structural = !(
@@ -325,12 +337,14 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
           consumeCardDraft: options.consumeCardDraft ?? null,
           scanHash: options.scanHash ?? null,
           assetObservations: options.assetObservations ?? [],
+          operationHistory: options.operationHistory,
         },
       })
       if (result.revision !== expectedRevision + 1) throw changed()
       workspaceAttention.value = result.attention
       cached = {
         revision: result.revision,
+        operationHistory,
         library: library.attempts.some(hasAttemptBody)
           ? {
               ...library,
@@ -516,3 +530,4 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
   }
   return repository
 }
+import { parseOperationHistory, type OperationHistory } from '../core/operation-history'
