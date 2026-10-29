@@ -2,8 +2,8 @@
 import UInput from '@nuxt/ui/components/Input.vue'
 import USelect from '@nuxt/ui/components/Select.vue'
 import UPagination from '@nuxt/ui/components/Pagination.vue'
-import UFormField from '@nuxt/ui/components/FormField.vue'
 import { UiButton } from './ui'
+import AppPage from './AppPage.vue'
 import { computed, ref, watch } from 'vue'
 import { t } from '../i18n'
 import type { Library } from '../core/model'
@@ -98,15 +98,13 @@ watch(questions, (entries) => {
 })
 </script>
 <template>
-  <section class="page practice-history-page">
-    <header class="page-heading">
-      <div>
-        <h1>{{ t('练习历史') }}</h1>
-        <p>{{ t('按题目查看历次代码、判题结果和复习评分。') }}</p>
-      </div>
-    </header>
+  <AppPage
+    class="practice-history-page"
+    :title="t('练习历史')"
+    :description="t('按题目查看历次代码、判题结果和复习评分。')"
+  >
     <div class="history-filters">
-      <UFormField class="history-search" :label="t('搜索练习历史')">
+      <div class="history-search">
         <UInput
           v-model="query"
           icon="i-lucide-search"
@@ -114,31 +112,34 @@ watch(questions, (entries) => {
           :placeholder="t('搜索题目')"
           maxlength="1000"
         />
-      </UFormField>
-      <UFormField :label="t('题目')">
+      </div>
+      <div>
         <USelect
           v-model="cardFilter"
           :aria-label="t('筛选题目')"
+          :placeholder="t('全部题目')"
           :items="[
             { value: null, label: t('全部题目') },
             ...questions.map(([value, label]) => ({ value, label })),
           ]"
         />
-      </UFormField>
-      <UFormField :label="t('卡组')">
+      </div>
+      <div>
         <USelect
           v-model="deckFilter"
           :aria-label="t('筛选卡组')"
+          :placeholder="t('全部卡组')"
           :items="[
             { value: null, label: t('全部卡组') },
             ...library.decks.map((deck) => ({ value: deck.id, label: deck.name })),
           ]"
         />
-      </UFormField>
-      <UFormField :label="t('判题结果')">
+      </div>
+      <div>
         <USelect
           v-model="outcome"
           :aria-label="t('判题结果')"
+          :placeholder="t('全部结果')"
           :items="[
             { value: 'all', label: t('全部结果') },
             { value: 'accepted', label: t('通过') },
@@ -146,7 +147,7 @@ watch(questions, (entries) => {
             { value: 'unconfirmed', label: t('尚未确认') },
           ]"
         />
-      </UFormField>
+      </div>
     </div>
     <p class="form-note" role="status">{{ t('{count} 次练习', { count: filtered.length }) }}</p>
     <p v-if="library.practices.some((entry) => !entry.completedAt)" class="form-note">
@@ -191,7 +192,7 @@ watch(questions, (entries) => {
       </UPagination>
       <span role="status">{{ t('第 {page} / {pages} 页', { page, pages }) }}</span>
     </nav>
-  </section>
+  </AppPage>
 </template>
 <style scoped>
 .history-filters {

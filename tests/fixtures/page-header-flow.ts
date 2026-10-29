@@ -1,4 +1,6 @@
 import { expect, type Page, type TestInfo } from '@playwright/test'
+import { practiceHistoryFixture } from './practice-history'
+import { selectUiValue } from './ui-flow'
 
 async function navigate(page: Page, name: string, heading = name) {
   await page.locator('.main-nav').getByRole('button', { name, exact: true }).click()
@@ -13,11 +15,15 @@ export async function pageHeaderFlow(
   edition: 'web' | 'desktop',
 ) {
   await page.setViewportSize({ width: 1440, height: 1000 })
-  await navigate(page, '学习概览')
-  if (!(await page.locator('.b-deck-tile').count())) {
-    await page.getByRole('button', { name: '添加入门卡组', exact: true }).click()
-    await expect(page.locator('.b-deck-tile').first()).toBeVisible()
-  }
+  // Use the public restore flow so history is available in both editions without store injection.
+  await navigate(page, '数据与备份')
+  await page.getByLabel('导入备份文件').setInputFiles({
+    name: 'page-header-history.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(practiceHistoryFixture(3))),
+  })
+  await page.getByRole('button', { name: '替换并恢复', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
   for (const dismiss of await page.getByRole('button', { name: '关闭提示', exact: true }).all()) {
     await dismiss.click()
   }
@@ -25,6 +31,7 @@ export async function pageHeaderFlow(
     ['学习概览', 'overview'],
     ['全部卡片', 'cards'],
     ['学习材料', 'sources'],
+    ['练习历史', 'history'],
     ['设置', 'settings'],
     ['插件', 'plugins'],
     ['工作目录', 'workspace'],
@@ -115,7 +122,7 @@ export async function pageHeaderFlow(
       expect(metrics.titleInset).toBeLessThanOrEqual(1)
       expect(metrics.descriptionInset).toBeLessThanOrEqual(1)
       if (metrics.descriptionGap !== undefined) expect(metrics.descriptionGap).toBe(6 * scale)
-      expect(metrics.hasActions).toBe(!['settings', 'backup'].includes(id))
+      expect(metrics.hasActions).toBe(!['history', 'settings', 'backup'].includes(id))
       if (metrics.hasActions) {
         expect(metrics.actionAlignment).toBeLessThanOrEqual(1)
         expect(metrics.actionEdge).toBeLessThanOrEqual(1)
@@ -131,6 +138,27 @@ export async function pageHeaderFlow(
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
       )
+      if (id === 'history') {
+        const filters = page.locator('.history-filters')
+        const search = filters.getByRole('textbox', { name: '搜索练习历史', exact: true })
+        const question = filters.getByRole('combobox', { name: '筛选题目', exact: true })
+        const deck = filters.getByRole('combobox', { name: '筛选卡组', exact: true })
+        const result = filters.getByRole('combobox', { name: '判题结果', exact: true })
+        await expect(search).toHaveAttribute('placeholder', '搜索题目')
+        await expect(question).toContainText('全部题目')
+        await expect(deck).toContainText('全部卡组')
+        await expect(result).toContainText('全部结果')
+        for (const control of [search, question, deck, result]) {
+          await expect(control).toBeVisible()
+          const fits = await control.evaluate((element) => {
+            const bounds = element.closest('.history-filters')!.getBoundingClientRect()
+            const box = element.getBoundingClientRect()
+            return box.left >= bounds.left - 1 && box.right <= bounds.right + 1
+          })
+          expect(fits).toBe(true)
+        }
+        await expect(page.locator('.practice-history')).toHaveCount(3)
+      }
       await page.screenshot({
         path: info.outputPath(`page-header-${id}-${width}-${scale}.png`),
         animations: 'disabled',
@@ -148,6 +176,19 @@ export async function pageHeaderFlow(
   await page.evaluate(() => {
     document.documentElement.style.fontSize = '100%'
   })
+  await navigate(page, '练习历史')
+  const search = page.getByRole('textbox', { name: '搜索练习历史', exact: true })
+  await search.fill('Second problem')
+  await expect(page.locator('.practice-history')).toHaveCount(1)
+  await search.fill('no matching question')
+  await expect(page.getByText('没有符合筛选条件的练习。', { exact: true })).toBeVisible()
+  await search.clear()
+  await expect(page.locator('.practice-history')).toHaveCount(3)
+  const result = page.getByRole('combobox', { name: '判题结果', exact: true })
+  await selectUiValue(result, { label: '通过' })
+  await expect(page.locator('.practice-history')).toHaveCount(1)
+  await selectUiValue(result, { label: '全部结果' })
+  await expect(page.locator('.practice-history')).toHaveCount(3)
   for (const [name, action, dialog] of [
     ['学习概览', '添加卡片', '添加卡片'],
     ['全部卡片', '添加卡片', '添加卡片'],
