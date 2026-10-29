@@ -206,4 +206,113 @@ impl Sessions {
         active.library.guard(token)?;
         active.library.write(request)
     }
+    pub fn backup(&self, token: &str, target: &Path) -> Result<crate::backup::Summary> {
+        self.backup_with_cancel(token, target, &std::sync::atomic::AtomicBool::new(false))
+    }
+    pub fn backup_with_cancel(
+        &self,
+        token: &str,
+        target: &Path,
+        cancel: &std::sync::atomic::AtomicBool,
+    ) -> Result<crate::backup::Summary> {
+        let active = self.active.as_ref().ok_or(Error("workspace-not-open"))?;
+        active.library.guard(token)?;
+        crate::backup::create(&active.library, target, cancel)
+    }
+    pub fn inspect_backup(path: &Path) -> Result<crate::backup::Summary> {
+        crate::backup::inspect(path)
+    }
+    pub fn search_backup(
+        path: &Path,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<crate::backup::SearchHit>> {
+        crate::backup::search(path, query, limit)
+    }
+    pub fn restore_backup(
+        &mut self,
+        epoch: &str,
+        archive: &Path,
+        target: &Path,
+        expected_digest: &str,
+    ) -> Result<Value> {
+        self.restore_backup_with_cancel(
+            epoch,
+            archive,
+            target,
+            expected_digest,
+            &std::sync::atomic::AtomicBool::new(false),
+        )
+    }
+    pub fn search_backup_checked(
+        path: &Path,
+        query: &str,
+        limit: usize,
+        expected_digest: &str,
+    ) -> Result<Vec<crate::backup::SearchHit>> {
+        crate::backup::search_checked(path, query, limit, Some(expected_digest))
+    }
+    pub fn restore_backup_items_with_cancel(
+        archive: &Path,
+        target: &Path,
+        expected_digest: &str,
+        paths: &[String],
+        cancel: &std::sync::atomic::AtomicBool,
+    ) -> Result<Value> {
+        crate::backup::restore_items_with_cancel(archive, target, expected_digest, paths, cancel)
+    }
+    pub fn restore_backup_with_cancel(
+        &mut self,
+        epoch: &str,
+        archive: &Path,
+        target: &Path,
+        expected_digest: &str,
+        cancel: &std::sync::atomic::AtomicBool,
+    ) -> Result<Value> {
+        self.check_epoch(epoch)?;
+        if let Some(active) = &self.active
+            && fs::canonicalize(target.parent().ok_or(Error("invalid-path"))?)?
+                .starts_with(active.library.path())
+        {
+            return Err(Error("backup-target-in-workspace"));
+        }
+        let restored = crate::backup::restore(archive, target, expected_digest, cancel)?;
+        let active = self.open_library(&restored, None, false)?;
+        self.index.execute("INSERT INTO recent VALUES(?1,?2,?3) ON CONFLICT(path) DO UPDATE SET id=excluded.id,used=excluded.used",params![restored.to_str().ok_or(Error("invalid-path"))?,active.library.id,chrono::Utc::now().timestamp_millis()])?;
+        self.index.execute("DELETE FROM recent WHERE path NOT IN (SELECT path FROM recent ORDER BY used DESC,path LIMIT 8)",[])?;
+        let result = json!({"restoredPath":restored.to_str().ok_or(Error("invalid-path"))?,"newWorkspaceId":active.library.id,"status":self.status()?});
+        drop(active);
+        Ok(result)
+    }
+    pub fn restore_backup_items(
+        archive: &Path,
+        target: &Path,
+        expected_digest: &str,
+        paths: &[String],
+    ) -> Result<Value> {
+        crate::backup::restore_items(archive, target, expected_digest, paths)
+    }
+    pub fn maintenance(&mut self, token: &str, vacuum: bool) -> Result<Value> {
+        let active = self.active.as_mut().ok_or(Error("workspace-not-open"))?;
+        active.library.guard(token)?;
+        let db = &active.library.db.connection;
+        let integrity: String = db.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
+        if integrity != "ok" {
+            return Err(Error("workspace-corrupt"));
+        }
+        if vacuum {
+            let busy: i64 = db.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| r.get(0))?;
+            if busy != 0 {
+                return Err(Error("workspace-busy"));
+            }
+            db.execute_batch("VACUUM; PRAGMA optimize;")?;
+            db.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))?;
+        }
+        let pages: i64 = db.pragma_query_value(None, "page_count", |r| r.get(0))?;
+        let free: i64 = db.pragma_query_value(None, "freelist_count", |r| r.get(0))?;
+        let size: i64 = db.pragma_query_value(None, "page_size", |r| r.get(0))?;
+        Ok(
+            json!({"integrity":integrity,"pages":pages,"freePages":free,"pageSize":size,"databaseBytes":pages*size,"reclaimableBytes":free*size,"compacted":vacuum}),
+        )
+    }
 }

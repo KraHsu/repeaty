@@ -3,6 +3,7 @@ mod exports;
 mod mcp;
 mod plugins;
 mod window_frame;
+mod workspace_backups;
 mod workspaces;
 use plugins::Plugins;
 use std::sync::Arc;
@@ -221,6 +222,7 @@ fn main() {
                 plugins: Plugins::new(&directory)?,
             });
             app.manage(workspaces::Workspaces::new(&directory));
+            app.manage(workspace_backups::Backups::new(&directory));
             let window =
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                     .title("Repeaty")
@@ -247,6 +249,7 @@ fn main() {
                         if payload.event() == tauri::webview::PageLoadEvent::Started {
                             window_frame::page_started(&window);
                             window.state::<Desktop>().mcp.detach();
+                            window.state::<workspace_backups::Backups>().cancel_all();
                             window
                                 .state::<workspaces::Workspaces>()
                                 .invalidate_watches();
@@ -281,6 +284,8 @@ fn main() {
             workspaces::workspace_write,
             workspaces::workspace_watch,
             workspaces::workspace_unwatch,
+            workspace_backups::workspace_backups,
+            workspace_backups::workspace_backup_cancel,
             open_external
         ])
         .run(tauri::generate_context!())

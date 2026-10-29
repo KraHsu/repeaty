@@ -141,7 +141,7 @@ pub async fn workspace_unwatch(
     .await
     .map_err(|_| "storage-error".to_owned())?
 }
-async fn run<T: Send + 'static>(
+pub(crate) async fn run<T: Send + 'static>(
     state: &Workspaces,
     task: impl FnOnce(&mut Sessions) -> StoreResult<T> + Send + 'static,
 ) -> Result<T, String> {

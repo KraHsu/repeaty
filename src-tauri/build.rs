@@ -25,6 +25,8 @@ fn main() {
             "workspace_write",
             "workspace_watch",
             "workspace_unwatch",
+            "workspace_backups",
+            "workspace_backup_cancel",
             "open_external",
         ]),
     ))

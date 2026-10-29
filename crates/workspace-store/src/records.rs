@@ -32,6 +32,8 @@ pub struct Commit {
     pub expected_revision: i64,
     pub patches: Vec<Patch>,
     pub reason: Option<String>,
+    #[serde(default)]
+    pub operation_history: Option<Value>,
 }
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -75,7 +77,7 @@ impl Database {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         let version: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 11 {
+        if version > 12 {
             return Err(Error::invalid());
         }
         let tx = connection.transaction()?;
@@ -83,7 +85,8 @@ impl Database {
             CREATE TABLE IF NOT EXISTS assets (id TEXT PRIMARY KEY, mime TEXT NOT NULL, path TEXT NOT NULL, size INTEGER NOT NULL, created INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS checkpoints (id TEXT PRIMARY KEY, revision INTEGER NOT NULL UNIQUE, created_at TEXT NOT NULL, reason TEXT NOT NULL, cards INTEGER NOT NULL, notes INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS history (revision INTEGER NOT NULL, store TEXT NOT NULL, id TEXT NOT NULL, position INTEGER, data TEXT, PRIMARY KEY(revision,store,id));
-            CREATE INDEX IF NOT EXISTS history_store ON history(store,id);")?;
+            CREATE INDEX IF NOT EXISTS history_store ON history(store,id);
+            CREATE TABLE IF NOT EXISTS operation_history (id INTEGER PRIMARY KEY CHECK(id=1),data TEXT NOT NULL);")?;
         for store in STORES {
             let relation = match store {
                 "notes" => {
@@ -135,6 +138,7 @@ impl Database {
                 ))
             })
             .collect::<Result<_>>()?;
+        crate::attachments::schema(&connection)?;
         Ok(Self {
             connection,
             validators,
@@ -152,8 +156,19 @@ impl Database {
         let current = revision(&tx)?;
         Self::checkpoint(&tx, "自动备份", false)?;
         let library = Self::library_history(&tx, summary)?;
+        let history = tx
+            .query_row("SELECT data FROM operation_history WHERE id=1", [], |r| {
+                r.get::<_, String>(0)
+            })
+            .optional()?;
+        let operation_history: Option<Value> =
+            history.map(|raw| serde_json::from_str(&raw)).transpose()?;
         tx.commit()?;
-        Ok(json!({"revision":current,"library":library}))
+        let mut snapshot = json!({"revision":current,"library":library});
+        if let Some(history) = operation_history {
+            snapshot["operationHistory"] = history;
+        }
+        Ok(snapshot)
     }
     fn library_history(db: &Connection, summary: bool) -> Result<Value> {
         let mut library = json!({"version":14});
@@ -410,6 +425,26 @@ impl Database {
             }
         }
         finish(&tx)?;
+        if let Some(history) = &commit.operation_history {
+            if history["schemaVersion"] != 1
+                || ["undo", "redo"].iter().any(|key| {
+                    history[*key]
+                        .as_array()
+                        .is_none_or(|stack| stack.len() > 20)
+                })
+                || history["mediaIds"].as_array().is_none_or(|ids| {
+                    ids.len() > 100_000
+                        || ids
+                            .iter()
+                            .any(|id| id.as_str().is_none_or(|id| !valid_id(id)))
+                })
+                || serde_json::to_vec(history)?.len() > 64 * 1024 * 1024
+            {
+                return Err(Error::invalid());
+            }
+            tx.execute("INSERT INTO operation_history VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET data=excluded.data",[history.to_string()])?;
+            tx.pragma_update(None, "user_version", 12)?;
+        }
         // This reader gate commits with the new records: a failed import cannot upgrade
         // the library, and an old application cannot strip unknown material metadata.
         if commit.patches.iter().any(|patch| {
@@ -428,7 +463,8 @@ impl Database {
                     })
             })
         }) {
-            tx.pragma_update(None, "user_version", 11)?;
+            let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+            tx.pragma_update(None, "user_version", version.max(11))?;
         }
         tx.execute("UPDATE workspace SET revision=?1 WHERE id=1", [current + 1])?;
         Self::collect_assets(&tx)?;
@@ -910,9 +946,9 @@ impl Database {
         )?;
         Ok(())
     }
-    fn collect_assets(tx: &Transaction<'_>) -> Result<()> {
-        // Unreferenced uploads are staged for a day, so an interrupted import can retry.
-        tx.execute("DELETE FROM assets WHERE created < unixepoch()-86400 AND id NOT IN (SELECT id FROM media) AND id NOT IN (SELECT id FROM history WHERE store='media' AND data IS NOT NULL) AND id NOT IN (SELECT id FROM retired_media) AND id NOT IN (SELECT json_extract(u.value,'$.meta.id') FROM card_drafts d,json_each(json_extract(d.data,'$.uploads')) u)", [])?;
+    fn collect_assets(_tx: &Transaction<'_>) -> Result<()> {
+        // Deletion is an explicit attachment-management operation. Ordinary grading
+        // must neither load plugin/private JSON nor discard media kept by durable undo.
         Ok(())
     }
     pub fn backup_now(&mut self, force: bool) -> Result<()> {
