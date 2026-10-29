@@ -10,6 +10,58 @@ const fixtureRoot = resolve(
   '../../test-results/plugin-readme-build',
 )
 const projects = []
+
+test('material registrations and service ports are supplied by the activating host without bundling host logic', async () => {
+  const directory = await project()
+  await writeFile(
+    join(directory, 'src/index.ts'),
+    `
+import { registerImporter, registerReader, registerCommand, registerSearchProvider, materials, tasks } from '@repeaty/plugin-api'
+export default () => {
+  registerImporter({ id: 'plain', title: 'Plain', extensions: ['.txt'], parse: async file => [{ key: 'text', title: file.name, text: await file.text(), format: 'plain', documentFormat: 'text' }] })
+  registerReader({ id: 'plain', title: 'Plain', formats: ['text'], component: { render: () => null } })
+  registerCommand({ id: 'inspect', title: 'Inspect', run: async () => { materials.snapshot() } })
+  registerSearchProvider({ id: 'search', title: 'Search', search: async () => ({ hits: [] }) })
+  return { id: 'readme-example', kind: 'frontend', type: 'extension', label: 'Materials', version: 1 }
+}
+export const inspect = () => tasks.run({ id: 'inspect', title: 'Inspect' }, async () => materials.snapshot())
+`,
+  )
+  const { main } = await buildPlugin(directory)
+  assert.doesNotMatch(main, /src\/application|src\/core|PluginTaskScheduler|@nuxt\/ui/)
+  const registered = { importers: [], readers: [], commands: [], search: [] }
+  const previous = globalThis.__REPEATY_PLUGIN_HOST__
+  const current = {
+    registerImporter: (value) => registered.importers.push(value),
+    registerReader: (value) => registered.readers.push(value),
+    registerCommand: (value) => registered.commands.push(value),
+    registerSearchProvider: (value) => registered.search.push(value),
+    materials: { snapshot: () => ({ workspaceScope: 'original-library', revision: 7 }) },
+    tasks: { run: async (_options, run) => run({}) },
+  }
+  globalThis.__REPEATY_PLUGIN_HOST__ = { current, vue: {} }
+  try {
+    const module = await import(
+      'data:text/javascript;base64,' + Buffer.from(main).toString('base64')
+    )
+    globalThis.__REPEATY_PLUGIN_HOST__.current = {
+      materials: { snapshot: () => ({ revision: 999 }) },
+    }
+    assert.equal(module.default().type, 'extension')
+    assert.deepEqual(
+      Object.values(registered).map((values) => values.length),
+      [1, 1, 1, 1],
+    )
+    assert.deepEqual(await module.inspect(), { workspaceScope: 'original-library', revision: 7 })
+    assert.equal(
+      (await registered.importers[0].parse(new File(['Portable'], 'test.txt')))[0].text,
+      'Portable',
+    )
+  } finally {
+    if (previous === undefined) delete globalThis.__REPEATY_PLUGIN_HOST__
+    else globalThis.__REPEATY_PLUGIN_HOST__ = previous
+  }
+})
 async function project() {
   await mkdir(fixtureRoot, { recursive: true })
   const directory = await mkdtemp(join(fixtureRoot, 'project-'))

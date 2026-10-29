@@ -17,8 +17,146 @@ import { useApplicationLifecycle } from '../app/useApplicationLifecycle'
 import type { useLibrary } from '../composables/useLibrary'
 import type { createPluginApi } from './sdk'
 import AppPage from '../components/AppPage.vue'
+import type { MaterialHostApi, MaterialSearchPage } from '@repeaty/plugin-api'
 
 const managers: PluginManager[] = []
+
+it('runs command orchestration separately from parsers, rejects stale revisions and clears facades on disable', async () => {
+  let api!: ReturnType<typeof createPluginApi>
+  const executions: string[] = []
+  const env = environment([{ id: 'sample', bundle: bundle(), trusted: true }], (value) => {
+    api = value
+    value.registerCommand({
+      id: 'import-now',
+      title: 'Import',
+      async run(ctx) {
+        const plan = await value.materials.prepareImport(
+          { importerId: 'study', files: [] },
+          ctx.signal,
+        )
+        executions.push(plan.id)
+      },
+    })
+  })
+  env.manager.setMaterialHost(
+    (plugin) =>
+      ({
+        capabilities: () => ({ available: true }),
+        snapshot: () => ({ workspaceScope: plugin.scope, revision: 1, sources: [], decks: [] }),
+        prepareImport: async () =>
+          plugin.runTask({ id: 'child-import', title: 'Parse' }, async (ctx) => {
+            await ctx.yield()
+            return { id: 'plan', revision: 1, candidates: [] }
+          }),
+      }) as unknown as MaterialHostApi,
+  )
+  await env.manager.initializePlugins()
+  await expect(
+    env.manager.executeMaterialCommand('sample', 'import-now', {
+      expectedRevision: 0,
+      operationId: 'stale',
+    }),
+  ).rejects.toThrow('学习库已更新')
+  await Promise.all([
+    env.manager.executeMaterialCommand('sample', 'import-now', {
+      expectedRevision: 1,
+      operationId: 'first',
+    }),
+    env.manager.executeMaterialCommand('sample', 'import-now', {
+      expectedRevision: 1,
+      operationId: 'second',
+    }),
+  ])
+  expect(executions).toEqual(['plan', 'plan'])
+  expect(env.manager.materialApiFor('sample')).toBe(api.materials)
+  await env.manager.enablePlugin('sample', false)
+  expect(env.manager.materialApiFor('sample')).toBeUndefined()
+  await expect(
+    env.manager.executeMaterialCommand('sample', 'import-now', {
+      expectedRevision: 1,
+      operationId: 'late',
+    }),
+  ).rejects.toThrow('插件已卸载')
+})
+
+it('validates paged provider results against library identity and invalidates callbacks after a library switch', async () => {
+  let result: MaterialSearchPage = {
+    hits: [{ sourceId: 'source', versionId: 'version', title: 'Source', snippet: 'Found' }],
+  }
+  const callbacks: ((query: { text: string; limit: number }) => Promise<MaterialSearchPage>)[] = []
+  const env = environment([{ id: 'sample', bundle: bundle(), trusted: true }], (api) => {
+    api.registerSearchProvider({
+      id: 'lookup',
+      title: 'Lookup',
+      async search() {
+        return result
+      },
+    })
+  })
+  env.manager.setMaterialHost(
+    (plugin) =>
+      ({
+        capabilities: () => ({ available: true }),
+        snapshot: () => ({
+          workspaceScope: plugin.scope,
+          revision: 1,
+          sources: [{ id: 'source', versionId: 'version' }],
+          decks: [],
+        }),
+      }) as unknown as MaterialHostApi,
+  )
+  await env.manager.initializePlugins()
+  const old = env.manager.pluginRuntime.installations[0]!.searchProviders![0]!
+  callbacks.push((query) =>
+    old.search(query, {
+      signal: new AbortController().signal,
+      progress: () => {},
+      onCleanup: () => {},
+      yield: async () => {},
+    }),
+  )
+  expect(
+    (await env.manager.searchMaterialProvider('sample', 'lookup', { text: 'word', limit: 1 })).hits,
+  ).toHaveLength(1)
+  result = {
+    hits: [{ sourceId: 'other-library', versionId: 'version', title: 'Wrong', snippet: 'Wrong' }],
+  }
+  await expect(
+    env.manager.searchMaterialProvider('sample', 'lookup', { text: 'word', limit: 1 }),
+  ).rejects.toThrow('搜索结果无效')
+  result = {
+    hits: [{ sourceId: 'source', versionId: 'invented-version', title: 'Wrong', snippet: '' }],
+  }
+  await expect(
+    env.manager.searchMaterialProvider('sample', 'lookup', { text: 'word', limit: 1 }),
+  ).rejects.toThrow('搜索结果无效')
+  result = {
+    hits: [
+      {
+        sourceId: 'source',
+        versionId: 'version',
+        title: 'Wrong',
+        snippet: '',
+        locator: {
+          schemaVersion: 1,
+          sourceId: 'source',
+          versionId: 'version',
+          kind: 'image',
+          x: 0,
+          y: 0,
+          width: 1,
+          height: 1,
+        },
+      },
+    ],
+  }
+  await expect(
+    env.manager.searchMaterialProvider('sample', 'lookup', { text: 'word', limit: 1 }),
+  ).rejects.toThrow('搜索结果无效')
+  env.switchScope('local:second')
+  await env.manager.initializePlugins('local:second')
+  await expect(callbacks[0]!({ text: 'word', limit: 1 })).rejects.toThrow('插件已卸载')
+})
 afterEach(async () => {
   await Promise.all(managers.splice(0).map((manager) => manager.dispose()))
 })
@@ -285,6 +423,40 @@ it('rolls back a failed replacement without trusting the previously unapproved p
   await manager.reloadPlugins()
   expect(manager.pluginPackages[0]!.trusted).toBe(false)
   expect(manager.pluginRuntime.installations).toHaveLength(0)
+})
+it('restores plain persisted bytes after a failed browser package update and keeps the old activation', async () => {
+  const settings = new Map<string, string>()
+  const manager = createPluginManager({
+    // Bypass setup-external-plugins' shared in-memory adapter; exercise structured-clone IDB.
+    storage: undefined,
+    seedOfficial: false,
+    readSetting: (key) => settings.get(key) ?? null,
+    writeSetting: (key, value) => {
+      settings.set(key, value)
+    },
+    evaluate: async (main) => {
+      if (main === 'broken') throw new Error('broken-update')
+      return {
+        default: {
+          id: 'sample',
+          kind: 'frontend',
+          label: main,
+          version: 1,
+          reviewPanel: { render: () => null },
+        },
+      }
+    },
+  })
+  managers.push(manager)
+  await manager.initializePlugins(`local:rollback-${crypto.randomUUID()}`)
+  await manager.installPlugin(bundle('before-update'))
+  const old = manager.pluginRuntime.installations[0]
+  await expect(manager.installPlugin(bundle('broken'))).rejects.toThrow('broken-update')
+  expect(manager.pluginRuntime.installations[0]).toBe(old)
+  await manager.reloadPlugins()
+  expect(manager.pluginPackages[0]!.bundle!.main).toBe('before-update')
+  expect(manager.pluginRuntime.installations[0]!.plugin.label).toBe('before-update')
+  await manager.removePlugin('sample')
 })
 it('removes failed first installations instead of hiding a trusted package until restart', async () => {
   const { manager, records } = environment()

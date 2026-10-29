@@ -1,5 +1,6 @@
 import { markRaw, shallowReactive } from 'vue'
 import type { PluginInstallation, PluginDefinition } from './types'
+import { createMaterialRegistrations, type MaterialRegistrations } from './materials'
 import { bundleSchema, type PluginBundle } from './package'
 import {
   validateSettingsContribution,
@@ -53,6 +54,7 @@ export class PluginRuntime {
       registerSettings: RegisterPluginSettings,
       registerPage: RegisterPluginPage,
       registerWidget: RegisterPluginWidget,
+      materials: MaterialRegistrations,
     ) => Promise<PluginModule>,
   ) {
     const bundle = bundleSchema.parse(raw)
@@ -77,6 +79,7 @@ export class PluginRuntime {
       (published
         ? this.active.get(bundle.manifest.id)?.installation === installation
         : this.loading.get(bundle.manifest.id) === activation)
+    const materials = createMaterialRegistrations(current)
     const registerSettings: RegisterPluginSettings = (contribution) => {
       if (!current()) throw new Error('插件已卸载或学习库已切换。')
       validateSettingsContribution(contribution)
@@ -105,6 +108,7 @@ export class PluginRuntime {
       settings.splice(0)
       pages.splice(0)
       widgets.splice(0)
+      materials.dispose()
       if (this.loading.get(bundle.manifest.id) === activation)
         this.loading.delete(bundle.manifest.id)
       styles?.remove()
@@ -185,6 +189,7 @@ export class PluginRuntime {
         registerSettings,
         registerPage,
         registerWidget,
+        materials.registrations,
       )
       const exported =
         typeof module.default === 'function' ? await module.default() : module.default
@@ -200,7 +205,12 @@ export class PluginRuntime {
           ('reviewPanel' in definition && definition.reviewPanel) ||
           ('type' in definition &&
             definition.type === 'extension' &&
-            (pages.length > 0 || widgets.length > 0))
+            (pages.length > 0 ||
+              widgets.length > 0 ||
+              materials.importers.length > 0 ||
+              materials.readers.length > 0 ||
+              materials.commands.length > 0 ||
+              materials.searchProviders.length > 0))
         )
       )
         throw new Error('插件定义与清单不一致。')
@@ -226,9 +236,14 @@ export class PluginRuntime {
       }
       installation = {
         plugin: markRaw(definition),
+        instanceId: crypto.randomUUID(),
         settings,
         pages,
         widgets,
+        importers: materials.importers,
+        readers: materials.readers,
+        commands: materials.commands,
+        searchProviders: materials.searchProviders,
         enabledByDefault: true,
       }
       const previous = this.active.get(definition.id)

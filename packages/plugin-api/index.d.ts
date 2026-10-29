@@ -8,6 +8,8 @@ import type {
   TextareaHTMLAttributes,
   HTMLAttributes,
 } from 'vue'
+export * from './materials'
+import type { MaterialLocator } from './materials'
 
 export type Grade = 1 | 2 | 3 | 4
 export interface PluginData {
@@ -25,7 +27,14 @@ export interface NoteInput {
   frontMedia: string[]
   backMedia: string[]
   plugin?: PluginData
-  excerpt?: { sourceId: string; mediaId: string; start: number; end: number; quote: string }
+  excerpt?: {
+    sourceId: string
+    mediaId: string
+    start: number
+    end: number
+    quote: string
+    locator?: MaterialLocator
+  }
 }
 export interface CardView extends Omit<NoteInput, 'format'> {
   id: string
