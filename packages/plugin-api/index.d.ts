@@ -156,7 +156,54 @@ export interface ReviewPanelPlugin {
   settings?: Component
   dispose?: () => void | Promise<void>
 }
-export type FrontendPlugin = (QuestionPlugin | ReviewPanelPlugin) & { kind: 'frontend' }
+/** A plugin that provides pages or widgets without creating a question type or review panel. */
+export interface ExtensionPlugin {
+  id: string
+  kind: 'frontend' | 'local'
+  type: 'extension'
+  label: string
+  version: number
+  description?: string
+  dispose?: () => void | Promise<void>
+}
+export type FrontendPlugin = (QuestionPlugin | ReviewPanelPlugin | ExtensionPlugin) & {
+  kind: 'frontend'
+}
+/** The active learning-library scope. It changes by remounting the page, not by reusing its state. */
+export interface PluginPageProps {
+  workspaceScope: string
+}
+/** Every registered page gets a sidebar entry; IDs are local to the contributing plugin. */
+export interface PluginPageContribution {
+  id: string
+  /** Labels may be reactive getters, for example to follow the interface language. */
+  title: string
+  description?: string
+  icon?: Component
+  component: Component
+}
+/** Register during activation; the returned idempotent function removes this registration only. */
+export declare function registerPage(contribution: PluginPageContribution): () => void
+export type PluginWidgetPlacement = 'overview.after-decks' | 'overview.bottom'
+export interface PluginWidgetProps {
+  workspaceScope: string
+  /** Read-only rating summaries from the current library, without card bodies or attempts. */
+  reviews: readonly Readonly<Review>[]
+}
+export interface PluginWidgetContribution {
+  id: string
+  title: string
+  placement: PluginWidgetPlacement
+  component: Component
+}
+/** Widgets use stable plugin load order, then registration order within each plugin. */
+export declare function registerWidget(contribution: PluginWidgetContribution): () => void
+export interface AppPageProps {
+  title?: string
+  description?: string
+}
+/** Optional shared page container. Slots: default (content), description, and actions. */
+export declare const AppPage: DefineComponent<AppPageProps & HTMLAttributes>
 export interface PluginManifest {
   id: string
   name: string

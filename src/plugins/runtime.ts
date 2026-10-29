@@ -1,11 +1,21 @@
 import { markRaw, shallowReactive } from 'vue'
-import type { PluginInstallation, QuestionPlugin, ReviewPanelPlugin } from './types'
+import type { PluginInstallation, PluginDefinition } from './types'
 import { bundleSchema, type PluginBundle } from './package'
 import {
   validateSettingsContribution,
   type PluginSettingsContribution,
   type RegisterPluginSettings,
 } from './settings'
+import {
+  validatePageContribution,
+  type PluginPageContribution,
+  type RegisterPluginPage,
+} from './pages'
+import {
+  validateWidgetContribution,
+  type PluginWidgetContribution,
+  type RegisterPluginWidget,
+} from './widgets'
 
 export interface ActivePlugin {
   bundle: PluginBundle
@@ -13,6 +23,23 @@ export interface ActivePlugin {
   dispose: () => Promise<void>
 }
 export type PluginModule = { default: unknown }
+function validViewValue(key: PropertyKey, value: unknown): boolean {
+  switch (key) {
+    case 'title':
+      return typeof value === 'string' && !!value.trim()
+    case 'description':
+      return value === undefined || typeof value === 'string'
+    case 'icon':
+      if (value === undefined) return true
+    // Icons and view components share the supported Vue component forms.
+    case 'component':
+      return !!value && !Array.isArray(value) && ['object', 'function'].includes(typeof value)
+    case 'placement':
+      return value === 'overview.after-decks' || value === 'overview.bottom'
+    default:
+      return false
+  }
+}
 export class PluginRuntime {
   readonly installations = shallowReactive<PluginInstallation[]>([])
   private active = new Map<string, ActivePlugin>()
@@ -24,6 +51,8 @@ export class PluginRuntime {
       code: string,
       disposers: (() => void)[],
       registerSettings: RegisterPluginSettings,
+      registerPage: RegisterPluginPage,
+      registerWidget: RegisterPluginWidget,
     ) => Promise<PluginModule>,
   ) {
     const bundle = bundleSchema.parse(raw)
@@ -34,8 +63,10 @@ export class PluginRuntime {
     this.loading.set(bundle.manifest.id, activation)
     const disposers: (() => void)[] = []
     const settings = shallowReactive<PluginSettingsContribution[]>([])
+    const pages = shallowReactive<PluginPageContribution[]>([])
+    const widgets = shallowReactive<PluginWidgetContribution[]>([])
     let styles: HTMLStyleElement | undefined
-    let definition: QuestionPlugin | ReviewPanelPlugin | undefined
+    let definition: PluginDefinition | undefined
     let installation: PluginInstallation | undefined
     let published = false
     let explicitSettings = false
@@ -72,6 +103,8 @@ export class PluginRuntime {
       if (disposed) return
       disposed = true
       settings.splice(0)
+      pages.splice(0)
+      widgets.splice(0)
       if (this.loading.get(bundle.manifest.id) === activation)
         this.loading.delete(bundle.manifest.id)
       styles?.remove()
@@ -84,12 +117,79 @@ export class PluginRuntime {
       }
       await definition?.dispose?.()
     }
+    function registerView<T extends { id: string }>(
+      entries: T[],
+      contribution: T,
+      validate: (value: T) => void,
+      duplicateMessage: string,
+      keys: readonly (keyof T)[],
+    ) {
+      if (!current()) throw new Error('插件已卸载或学习库已切换。')
+      validate(contribution)
+      const id = contribution.id
+      if (entries.some((entry) => entry.id === id)) throw new Error(duplicateMessage)
+      const values = new Map(keys.map((key) => [key, Reflect.get(contribution, key, contribution)]))
+      // Validate the captured snapshot too: a getter may change or throw between reads.
+      validate({ id, ...Object.fromEntries(values) } as T)
+      // Route identity belongs to this registration. Reactive titles and views still
+      // read from their source, but changing the source ID cannot move a live route.
+      const registration = markRaw(
+        Object.defineProperties(
+          { id },
+          Object.fromEntries(
+            keys.map((key) => [
+              key,
+              {
+                enumerable: true,
+                get: () => {
+                  try {
+                    const next = Reflect.get(contribution, key, contribution)
+                    if (validViewValue(key, next)) values.set(key, next)
+                  } catch {
+                    // The shell reads metadata outside the plugin render boundary.
+                    // Preserve its last valid value while tracking reactive reads.
+                  }
+                  return values.get(key)
+                },
+              },
+            ]),
+          ),
+        ) as T,
+      )
+      entries.push(registration)
+      let registered = true
+      return () => {
+        if (!registered) return
+        registered = false
+        const index = entries.indexOf(registration)
+        if (index !== -1) entries.splice(index, 1)
+      }
+    }
+    const registerPage: RegisterPluginPage = (contribution) =>
+      registerView(pages, contribution, validatePageContribution, '插件页面标识重复。', [
+        'title',
+        'description',
+        'icon',
+        'component',
+      ])
+    const registerWidget: RegisterPluginWidget = (contribution) =>
+      registerView(widgets, contribution, validateWidgetContribution, '插件组件标识重复。', [
+        'title',
+        'placement',
+        'component',
+      ])
     try {
-      const module = await evaluate(bundle.main, disposers, registerSettings)
+      const module = await evaluate(
+        bundle.main,
+        disposers,
+        registerSettings,
+        registerPage,
+        registerWidget,
+      )
       const exported =
         typeof module.default === 'function' ? await module.default() : module.default
       if (!exported || typeof exported !== 'object') throw new Error('插件入口必须导出插件定义。')
-      definition = exported as QuestionPlugin | ReviewPanelPlugin
+      definition = exported as PluginDefinition
       if (
         definition.id !== bundle.manifest.id ||
         definition.kind !== bundle.manifest.kind ||
@@ -97,12 +197,15 @@ export class PluginRuntime {
         !definition.label ||
         !(
           ('showQuestion' in definition && definition.showQuestion && definition.showAnswer) ||
-          ('reviewPanel' in definition && definition.reviewPanel)
+          ('reviewPanel' in definition && definition.reviewPanel) ||
+          ('type' in definition &&
+            definition.type === 'extension' &&
+            (pages.length > 0 || widgets.length > 0))
         )
       )
         throw new Error('插件定义与清单不一致。')
       if (!current()) throw new Error('学习库已切换，插件加载已取消。')
-      if (!explicitSettings && definition.settings) {
+      if (!explicitSettings && 'settings' in definition && definition.settings) {
         const plugin = definition
         registerSettings({
           id: 'legacy',
@@ -124,6 +227,8 @@ export class PluginRuntime {
       installation = {
         plugin: markRaw(definition),
         settings,
+        pages,
+        widgets,
         enabledByDefault: true,
       }
       const previous = this.active.get(definition.id)

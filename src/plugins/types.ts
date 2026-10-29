@@ -3,6 +3,14 @@ import type { CardView, Grade, Media, Review } from '../core/model'
 import type { Assessment } from './data'
 import type { Practice, Attempt, AttemptRecord } from '../core/practice-data'
 import type { PluginSettingsContribution } from './settings'
+import type { PluginPageContribution } from './pages'
+export type { PluginPageContribution, RegisterPluginPage } from './pages'
+import type { PluginWidgetContribution } from './widgets'
+export type {
+  PluginWidgetContribution,
+  PluginWidgetPlacement,
+  RegisterPluginWidget,
+} from './widgets'
 export type {
   PluginSettingField,
   PluginSettingsContribution,
@@ -72,22 +80,33 @@ export interface ReviewPanelPlugin {
   settings?: Component
   dispose?: () => void | Promise<void>
 }
-export function isQuestionPlugin(
-  plugin: QuestionPlugin | ReviewPanelPlugin,
-): plugin is QuestionPlugin {
+/** An extension plugin registers at least one page or widget during activation. */
+export interface ExtensionPlugin {
+  type: 'extension'
+  id: string
+  kind: 'frontend' | 'local'
+  label: string
+  version: number
+  description?: string
+  dispose?: () => void | Promise<void>
+}
+export type PluginDefinition = QuestionPlugin | ReviewPanelPlugin | ExtensionPlugin
+export function isQuestionPlugin(plugin: PluginDefinition): plugin is QuestionPlugin {
   return 'showQuestion' in plugin
 }
 
 /** Installed by the deployment, then optionally enabled by each browser. */
 export interface PluginInstallation {
-  plugin: QuestionPlugin | ReviewPanelPlugin
+  plugin: PluginDefinition
   settings?: readonly PluginSettingsContribution[]
+  pages?: readonly PluginPageContribution[]
+  widgets?: readonly PluginWidgetContribution[]
   enabledByDefault?: boolean
   builtin?: boolean
 }
 
 /** Browser editions cannot install desktop local plugins. */
-export type FrontendPlugin = (QuestionPlugin | ReviewPanelPlugin) & { kind: 'frontend' }
+export type FrontendPlugin = PluginDefinition & { kind: 'frontend' }
 export type FrontendPluginInstallation = Omit<PluginInstallation, 'plugin'> & {
   plugin: FrontendPlugin
 }

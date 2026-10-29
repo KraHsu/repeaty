@@ -16,6 +16,7 @@ import { packageHash, type PluginBundle } from './package'
 import { useApplicationLifecycle } from '../app/useApplicationLifecycle'
 import type { useLibrary } from '../composables/useLibrary'
 import type { createPluginApi } from './sdk'
+import AppPage from '../components/AppPage.vue'
 
 const managers: PluginManager[] = []
 afterEach(async () => {
@@ -143,6 +144,62 @@ it('isolates registered settings per manager and revokes the old API on disable 
   expect(a.manager.pluginRuntime.installations[0]!.settings).toHaveLength(1)
   expect(() => previousScopeApi.registerSettings(contribution())).toThrow('已卸载')
   expect(other.settings).toHaveLength(1)
+})
+it('isolates SDK pages and widgets per app and clears them on disable, scope changes and removal', async () => {
+  const apis: ReturnType<typeof createPluginApi>[] = []
+  const page = () => ({ id: 'page', title: 'Independent page', component: { render: () => null } })
+  const register = (api: ReturnType<typeof createPluginApi>) => {
+    apis.push(api)
+    expect(api.AppPage).toBe(AppPage)
+    api.registerPage(page())
+    api.registerWidget({ ...page(), placement: 'overview.bottom' })
+  }
+  const entries = [{ id: 'sample', bundle: bundle(), trusted: true }]
+  const a = environment(entries, register),
+    b = environment(entries, register)
+  await a.manager.initializePlugins()
+  const firstApi = apis[0]!
+  const oldA = a.manager.pluginRuntime.installations[0]!
+  await b.manager.initializePlugins()
+  const other = b.manager.pluginRuntime.installations[0]!
+  expect(oldA.pages).toHaveLength(1)
+  expect(other.pages).toHaveLength(1)
+  expect(oldA.widgets).toHaveLength(1)
+  expect(other.widgets).toHaveLength(1)
+  expect(oldA.pages).not.toBe(other.pages)
+  expect(oldA.widgets).not.toBe(other.widgets)
+  await a.manager.enablePlugin('sample', false)
+  expect(oldA.pages).toHaveLength(0)
+  expect(oldA.widgets).toHaveLength(0)
+  expect(() => firstApi.registerPage(page())).toThrow('已卸载')
+  expect(() => firstApi.registerWidget({ ...page(), placement: 'overview.bottom' })).toThrow(
+    '已卸载',
+  )
+  await a.manager.enablePlugin('sample', true)
+  const previousApi = apis.at(-1)!
+  const previousScope = a.manager.pluginRuntime.installations[0]!
+  a.switchScope('local:next-library')
+  await a.manager.initializePlugins('local:next-library')
+  expect(previousScope.pages).toHaveLength(0)
+  expect(previousScope.widgets).toHaveLength(0)
+  expect(() => previousApi.registerPage(page())).toThrow('已卸载')
+  expect(() => previousApi.registerWidget({ ...page(), placement: 'overview.bottom' })).toThrow(
+    '已卸载',
+  )
+  expect(a.manager.pluginRuntime.installations[0]!.pages).toHaveLength(1)
+  expect(a.manager.pluginRuntime.installations[0]!.widgets).toHaveLength(1)
+  expect(other.pages).toHaveLength(1)
+  const removed = a.manager.pluginRuntime.installations[0]!
+  const removedApi = apis.at(-1)!
+  await a.manager.removePlugin('sample')
+  expect(removed.pages).toHaveLength(0)
+  expect(removed.widgets).toHaveLength(0)
+  expect(() => removedApi.registerPage(page())).toThrow('已卸载')
+  expect(() => removedApi.registerWidget({ ...page(), placement: 'overview.bottom' })).toThrow(
+    '已卸载',
+  )
+  expect(other.pages).toHaveLength(1)
+  expect(other.widgets).toHaveLength(1)
 })
 it('keeps app-owned registries, module instances, preferences and disposal independent', async () => {
   const a = environment([{ id: 'sample', bundle: bundle(), trusted: true }]),

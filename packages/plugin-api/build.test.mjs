@@ -115,3 +115,65 @@ test('public controls compile as host references without bundling a UI or Vue ru
     else globalThis.__REPEATY_PLUGIN_HOST__ = previous
   }
 })
+
+test('page and widget exports compile independently and retain their own host container after evaluation', async () => {
+  const directory = await project()
+  await writeFile(
+    join(directory, 'src/index.ts'),
+    `import { h } from 'vue'
+import { registerPage, registerWidget, AppPage, UiButton } from '@repeaty/plugin-api'
+export default () => {
+  registerPage({ id: 'summary', title: 'Summary', component: {
+    render: () => h(AppPage, { title: 'Summary', description: 'Details' }, {
+      actions: () => h(UiButton, { variant: 'primary' }, 'Refresh'),
+      default: () => h('p', null, 'Content'),
+    }),
+  } })
+  registerWidget({ id: 'activity', title: 'Activity', placement: 'overview.after-decks', component: {
+    render: () => h('p', null, 'Widget'),
+  } })
+  return { id: 'readme-example', kind: 'frontend', type: 'extension', label: 'Example', version: 1 }
+}
+`,
+  )
+  const { main } = await buildPlugin(directory)
+  assert.doesNotMatch(main, /@nuxt\/ui|reka-ui|__VUE_OPTIONS_API__|src\/components\/AppPage/)
+  const pages = [],
+    widgets = []
+  const current = {
+    AppPage: { name: 'HostAppPage' },
+    UiButton: { name: 'HostUiButton' },
+    registerPage: (page) => {
+      pages.push(page)
+      return () => {}
+    },
+    registerWidget: (widget) => {
+      widgets.push(widget)
+      return () => {}
+    },
+  }
+  const previous = globalThis.__REPEATY_PLUGIN_HOST__
+  globalThis.__REPEATY_PLUGIN_HOST__ = {
+    current,
+    vue: { h: (type, props, children) => ({ type, props, children }) },
+  }
+  try {
+    const { default: activate } = await import(
+      'data:text/javascript;base64,' + Buffer.from(main).toString('base64')
+    )
+    globalThis.__REPEATY_PLUGIN_HOST__.current = { AppPage: { name: 'DifferentPluginContext' } }
+    assert.equal(activate().type, 'extension')
+    assert.equal(pages.length, 1)
+    assert.equal(widgets.length, 1)
+    const page = pages[0].component.render()
+    assert.equal(page.type, current.AppPage)
+    assert.deepEqual(page.props, { title: 'Summary', description: 'Details' })
+    assert.equal(page.children.actions().type, current.UiButton)
+    assert.equal(page.children.default().children, 'Content')
+    assert.equal(widgets[0].placement, 'overview.after-decks')
+    assert.equal(widgets[0].component.render().children, 'Widget')
+  } finally {
+    if (previous === undefined) delete globalThis.__REPEATY_PLUGIN_HOST__
+    else globalThis.__REPEATY_PLUGIN_HOST__ = previous
+  }
+})

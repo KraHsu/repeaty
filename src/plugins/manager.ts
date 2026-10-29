@@ -240,33 +240,38 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
     if (requireMutable) mutable()
     const bundle = entry.bundle,
       scope = pluginScope.value
-    await pluginRuntime.load(bundle, async (code, disposers, registerSettings) => {
-      check(generation)
-      const api = createPluginApi(
-        bundle.manifest,
-        scope,
-        disposers,
-        () => current(generation),
-        registerSettings,
-      )
-      const module = await (environment.evaluate ?? evaluatePlugin)(code, api)
-      check(generation)
-      if (requireMutable) mutable()
-      // A plugin factory may itself await; check view/scope ownership before Runtime publishes it.
-      if (typeof module.default === 'function') {
-        const factory = module.default as () => unknown
-        return {
-          default: async () => {
-            check(generation)
-            const definition = await factory()
-            check(generation)
-            if (requireMutable) mutable()
-            return definition
-          },
+    await pluginRuntime.load(
+      bundle,
+      async (code, disposers, registerSettings, registerPage, registerWidget) => {
+        check(generation)
+        const api = createPluginApi(
+          bundle.manifest,
+          scope,
+          disposers,
+          () => current(generation),
+          registerSettings,
+          registerPage,
+          registerWidget,
+        )
+        const module = await (environment.evaluate ?? evaluatePlugin)(code, api)
+        check(generation)
+        if (requireMutable) mutable()
+        // A plugin factory may itself await; check view/scope ownership before Runtime publishes it.
+        if (typeof module.default === 'function') {
+          const factory = module.default as () => unknown
+          return {
+            default: async () => {
+              check(generation)
+              const definition = await factory()
+              check(generation)
+              if (requireMutable) mutable()
+              return definition
+            },
+          }
         }
-      }
-      return module
-    })
+        return module
+      },
+    )
     check(generation)
     entry.error = undefined
   }

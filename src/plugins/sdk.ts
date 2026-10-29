@@ -7,6 +7,9 @@ import { callPluginHost, readPluginData, writePluginData } from '@repeaty-plugin
 import type { PluginManifest } from './package'
 import type { PluginModule } from './runtime'
 import type { PluginSettingsContribution, RegisterPluginSettings } from './settings'
+import type { PluginPageContribution, RegisterPluginPage } from './pages'
+import type { PluginWidgetContribution, RegisterPluginWidget } from './widgets'
+import AppPage from '../components/AppPage.vue'
 import {
   SettingGroup,
   SettingSection,
@@ -44,6 +47,8 @@ export function createPluginApi(
   disposers: (() => void)[],
   isCurrent: () => boolean = () => true,
   registerContribution?: RegisterPluginSettings,
+  registerPageContribution?: RegisterPluginPage,
+  registerWidgetContribution?: RegisterPluginWidget,
 ) {
   let alive = true
   disposers.push(() => {
@@ -78,6 +83,7 @@ export function createPluginApi(
     CardContent,
     PracticeHistory,
     AttemptBody,
+    AppPage,
     SettingGroup,
     SettingSection,
     SettingField,
@@ -99,6 +105,20 @@ export function createPluginApi(
       guard()
       if (!registerContribution) throw new Error('当前宿主不支持插件设置注册。')
       const remove = registerContribution(contribution)
+      disposers.push(remove)
+      return remove
+    },
+    registerPage(contribution: PluginPageContribution) {
+      guard()
+      if (!registerPageContribution) throw new Error('当前宿主不支持插件页面注册。')
+      const remove = registerPageContribution(contribution)
+      disposers.push(remove)
+      return remove
+    },
+    registerWidget(contribution: PluginWidgetContribution) {
+      guard()
+      if (!registerWidgetContribution) throw new Error('当前宿主不支持插件组件注册。')
+      const remove = registerWidgetContribution(contribution)
       disposers.push(remove)
       return remove
     },

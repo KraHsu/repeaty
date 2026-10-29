@@ -14,9 +14,9 @@ Repeaty 在运行时加载外置插件。官方答题历史、LeetCode 和第三
 
 ## 页面与界面扩展边界
 
-当前 SDK 没有注册独立页面、路由或主侧栏入口的接口。插件可以提供题目、答案、编辑器、复习面板和历史记录渲染，并通过 `registerSettings()` 向共享分类注册设置字段或复杂设置组件。「练习历史」是软件提供的页面，插件的 `history` 只负责其中的记录内容，不是独立页面。
+SDK 1.7.0 支持通过 `registerPage()` 注册独立页面及对应主侧栏入口，通过 `registerWidget()` 在学习概览的指定位置嵌入组件。题目插件、复习面板插件都可注册；只提供页面或嵌入组件的插件导出 `type: 'extension'` 的 `ExtensionPlugin`，激活时至少注册一项页面或组件。现有题目、答案、编辑器、历史记录渲染以及 `registerSettings()` 保持原接口。
 
-软件的八个主导航页面统一使用 `AppPage` 容器，负责标题、说明、页面宽度和操作区；插件设置、详情及历史内容由相应宿主页面承载，不需要再嵌套页面容器。`AppPage` 目前未通过公开 SDK 导出，不应从软件内部路径导入。建议插件优先使用公开 SDK 的共享控件与主题变量，允许按自身内容设计布局，不强制第三方插件使用某种容器。
+软件的八个主导航页面使用共享 `AppPage`，同一实现通过公开 SDK 导出。建议插件独立页面使用它统一标题、说明、宽度、留白和操作区，也允许完全自定义布局；宿主不会在插件页面外强制再包一个 `AppPage`。插件设置、详情、历史记录及概览组件已经由相应宿主页面承载，不应再嵌套页面容器。可运行用例见[独立页面与热力图示例](examples/page-plugin/README.md)。
 
 ## 安装与管理
 
@@ -92,7 +92,7 @@ README用于功能简介、使用步骤、配置教程和数据说明，具体�
 
 ## 独立开发与构建
 
-公开 SDK 位于 [packages/plugin-api](../packages/plugin-api)。它提供类型和独立构建命令 `repeaty-plugin`，运行时实现由 Repeaty 提供。插件作者只需要 SDK、Vue 和自己使用的依赖，不需要复制或导入主程序源码。当前 SDK、LeetCode 与 typed-answer 为1.6.0，答题历史为1.6.1；官方插件的 `apiVersion` / `dataVersion` 仍为1。已有学习库需在侧栏「插件」主动更新官方插件代码。
+公开 SDK 位于 [packages/plugin-api](../packages/plugin-api)。它提供类型和独立构建命令 `repeaty-plugin`，运行时实现由 Repeaty 提供。插件作者只需要 SDK、Vue 和自己使用的依赖，不需要复制或导入主程序源码。当前 SDK 为1.7.0，LeetCode 与 typed-answer 为1.6.0，答题历史为1.6.1；官方插件的 `apiVersion` / `dataVersion` 仍为1。新增页面和概览组件接口需要配套宿主，SDK 版本不会隐式更新已安装的软件。已有学习库需在侧栏「插件」主动更新官方插件代码。
 
 软件与插件共用浅色、深色主题，默认跟随系统，在「设置 → 通用 → 界面 → 颜色模式」修改。SDK 控件自动跟随宿主；插件自定义绘图使用 `--ui-text`、`--ui-bg`、`--ui-border` 及语义色变量，避免固定白底或深色文字。答题历史1.6.1将评分圆点和圆环改为主题变量，已有库需更新该插件包；题目、调度、历史与设置不变。
 
@@ -104,7 +104,7 @@ npm pack --workspace @repeaty/plugin-api
 
 # 独立插件仓库；将路径替换为实际生成的 SDK 包
 npm install vue
-npm install --save-dev /path/to/repeaty-plugin-api-1.6.0.tgz typescript vue-tsc
+npm install --save-dev /path/to/repeaty-plugin-api-1.7.0.tgz typescript vue-tsc
 ```
 
 类型从已安装的 SDK 包解析，不设置指向 Repeaty 仓库的 TypeScript `paths`，也不导入应用源码。插件的 package.json 可配置：
@@ -186,6 +186,63 @@ const count = computed(
 历史数据可能只有提交摘要。用 `hasAttemptBody()` 判断，需要正文时调用 `getAttempt()`，关闭视图时取消并释放读取。通用 `PracticeHistory`、`AttemptBody`、`CardContent` 和 `MediaList` 由 SDK 提供，不需要导入宿主组件文件。
 
 未知、关闭或数据版本不匹配的插件数据仍会保存、备份和导出；对应题目不进入复习队列，也不占每日额度。备份保存学习内容，不隐式安装或执行代码。
+
+## 独立页面、侧栏入口与概览组件
+
+在插件入口或激活工厂中注册页面：
+
+```ts
+import { locale, registerPage, registerWidget, type ExtensionPlugin } from '@repeaty/plugin-api'
+import Dashboard from './Dashboard.vue'
+import Heatmap from './Heatmap.vue'
+
+export default () => {
+  registerPage({
+    id: 'dashboard',
+    get title() {
+      return locale.value === 'zh-CN' ? '学习看板' : 'Learning dashboard'
+    },
+    component: Dashboard,
+  })
+  registerWidget({
+    id: 'activity',
+    title: 'Review activity',
+    placement: 'overview.after-decks',
+    component: Heatmap,
+  })
+  return {
+    id: 'learning-dashboard',
+    kind: 'frontend',
+    type: 'extension',
+    label: 'Learning dashboard',
+    version: 1,
+  } satisfies ExtensionPlugin
+}
+```
+
+页面声明包含插件内唯一的 `id`、非空 `title`、Vue `component`，以及可选 `description` 和 Vue 图标组件 `icon`。每个注册页面自动获得侧栏入口，标题可用 getter 跟随语言；未提供图标时使用宿主默认图标。页面标识按插件命名空间隔离，不会覆盖内置页面或其他插件的同名页面。当前接口不接受任意 URL、路由路径或自定义侧栏注入。
+
+页面组件收到 `PluginPageProps.workspaceScope`，可通过既有 SDK 读写当前插件的设置或数据。推荐的页面结构为：
+
+```vue
+<script setup lang="ts">
+import { AppPage, UiButton, type PluginPageProps } from '@repeaty/plugin-api'
+defineProps<PluginPageProps>()
+</script>
+
+<template>
+  <AppPage title="Learning dashboard" description="Your plugin's own content.">
+    <template #actions><UiButton>Refresh</UiButton></template>
+    <p>Page content</p>
+  </AppPage>
+</template>
+```
+
+`AppPage` 提供可选 `title` / `description` 属性、`#description` 富文本说明槽、`#actions` 操作槽和默认内容槽。它与软件使用同一实现，操作区在窄窗口整组换行，没有操作时不保留空列；容器本身不负责注册、存储或导航。自定义页面可不使用容器，但应保留标题语义、主题兼容和可访问操作名称。
+
+`registerWidget()` 接受 `id`、`title`、Vue `component` 和 `placement`。当前开放 `overview.after-decks`（卡组区域之后）与 `overview.bottom`（概览底部）两处插槽。同一插槽采用稳定的插件安装/加载顺序，再按各插件内部的注册顺序展示；动态增加组件不会改变其他插件的相对位置。组件收到 `PluginWidgetProps.workspaceScope` 及只读 `reviews`；每条评分只提供既有 SDK `Review` 的 `id`、`cardId`、`rating`、`reviewedAt`，不包含题目正文或代码提交。可据此绘制复习热力图；日期应按用户本地日历归组，跨夏令时使用日历加减，不能把一天固定为24小时。这里不提供任意页面的DOM插入或完整学习库写权限。
+
+两种注册均返回幂等注销函数，插件主动调用只移除对应注册。宿主在关闭、卸载、切库或成功替换插件时撤销旧入口并卸载视图；加载或更新失败不发布新注册。页面临时状态按注册实例和学习库隔离，旧作用域的延迟注册会被拒绝，当前页面失效时返回内置页面。注销不删除插件的持久设置或数据。组件的监听器、计时器和异步请求应在 `onUnmounted()` 中清理，插件级资源使用 `onDispose()`；宿主不能替插件释放其自行创建而未注册清理的资源。
 
 ## 设置、存储与清理
 

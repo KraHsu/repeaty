@@ -1,6 +1,6 @@
 {
   "name": "@repeaty/plugin-api",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "scripts": {
     "test": "node --test build.test.mjs"
   },
