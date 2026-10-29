@@ -130,7 +130,7 @@ export const content: Record<Locale, { name: string; description: string; entrie
       {
         topic: 'repeaty',
         front: '想把这组卡片快速看一遍，又不改下次复习时间，应该用什么模式？',
-        back: '在卡片列表展开「高级搜索、常用筛选与专项练习」，选择**只练习，不改进度**。\n\n练习当前筛选结果，按提示翻面和评分；结束后原来的复习安排不变。',
+        back: '在卡片列表点击「专项练习」，选择**只练习，不改进度**。\n\n练习当前筛选结果，按提示翻面和评分；结束后原来的复习安排不变。',
       },
       {
         topic: 'repeaty',
@@ -296,7 +296,7 @@ export const content: Record<Locale, { name: string; description: string; entrie
       {
         topic: 'repeaty',
         front: 'How can you browse these cards without changing their next review dates?',
-        back: 'In the card list, expand “Advanced search, saved filters & focused practice” and choose **practice without updating the review schedule**.\n\nPractice the matching cards, reveal answers and rate them. Their existing review schedules stay unchanged.',
+        back: 'In the card list, open “Focused practice” and choose **practice without updating the review schedule**.\n\nPractice the matching cards, reveal answers and rate them. Their existing review schedules stay unchanged.',
       },
       {
         topic: 'repeaty',

@@ -32,7 +32,9 @@ test('128 MiB of image/audio and long text survive archive restore, offline revi
   await expect(page.getByRole('dialog')).toContainText('2 张卡片', { timeout: 30_000 })
   await page.getByRole('button', { name: '替换并恢复', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 30_000 })
-  await expect(page.getByRole('heading', { name: '离线已就绪', exact: true })).toBeVisible()
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready
+  })
   // A corrupt import must not replace the now-persisted media collection.
   await page.getByLabel('导入备份文件').setInputFiles({
     name: 'broken.repeaty',
@@ -55,8 +57,8 @@ test('128 MiB of image/audio and long text survive archive restore, offline revi
   await page.getByText('将生成 1 张卡片 · 预览', { exact: true }).click()
   await expect(page.locator('.note-preview .card-content').first()).toHaveText(front)
   await page.getByRole('button', { name: '取消', exact: true }).click()
-  await page.getByText('高级搜索、常用筛选与专项练习', { exact: true }).click()
-  await page.getByRole('textbox', { name: '搜索卡片' }).fill('长文本')
+  await page.getByRole('button', { name: '专项练习', exact: true }).click()
+  await page.getByLabel('搜索卡片', { exact: true }).fill('长文本')
   await page.getByRole('button', { name: '开始专项练习' }).click()
   await expect(page.locator('.card-question')).toHaveText(front)
   const image = page.getByRole('img', { name: 'pixel.png' })

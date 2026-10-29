@@ -9,7 +9,9 @@ test('a fresh workspace teaches FSRS with ordered cards, math, images and playab
   await page.goto('./')
   await expect(page.locator('.deck-title')).toHaveText('从这里开始：FSRS 与 Repeaty')
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '离线已就绪', exact: true })).toBeVisible()
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready
+  })
   await page.reload()
   await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller))
   await context.setOffline(true)

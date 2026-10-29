@@ -223,30 +223,6 @@ function bindUpload(instance: unknown) {
         {{ t('暂无快照。添加卡片后可手动创建，也会自动保存。') }}
       </p>
     </section>
-    <section class="storage-banner">
-      <ShieldCheck :size="24" />
-      <div>
-        <h2>{{ t(offline.status.value) }}</h2>
-        <p>
-          {{
-            t(
-              remoteWorkspace
-                ? '此版本需要连接服务才能读取和保存学习数据。需要离线使用时，可导出备份并导入静态版。'
-                : '首次联网加载完成后，可离线打开、制卡和复习。已保存的图片和音频也可离线使用。',
-            )
-          }}
-        </p>
-        <UiButton
-          variant="secondary"
-          type="submit"
-          v-if="offline.updateReady.value"
-          :disabled="busy"
-          @click="offline.applyUpdate"
-        >
-          {{ t('刷新以更新版本') }}
-        </UiButton>
-      </div>
-    </section>
     <div class="about-core">
       <Repeat2 :size="21" />
       <div>
@@ -262,6 +238,14 @@ function bindUpload(instance: unknown) {
         </p>
       </div>
       <span class="pill">v{{ version }}</span>
+      <UiButton
+        v-if="offline.updateReady.value"
+        variant="secondary"
+        :disabled="busy"
+        @click="offline.applyUpdate"
+      >
+        {{ t('刷新以更新版本') }}
+      </UiButton>
     </div>
   </div>
 </template>

@@ -245,7 +245,7 @@ export async function reviewActions027Flow(page: Page, read: () => Promise<Libra
   await expect(page.getByRole('dialog', { name: '快捷键', exact: true })).toBeVisible()
   await page.keyboard.press('Escape')
   await page.keyboard.press('/')
-  await expect(page.getByRole('textbox', { name: '搜索卡片', exact: true })).toBeFocused()
+  await expect(page.getByLabel('搜索卡片', { exact: true })).toBeFocused()
 }
 
 export async function readingUndo027Flow(page: Page, read: () => Promise<Library>) {
@@ -314,7 +314,7 @@ export async function practiceUndo027Flow(page: Page, read: () => Promise<Librar
   await seedPolish(page, saveNote(fixture(), { ...input, front: 'Second practice question' }))
   const original = await read()
   await page.getByRole('button', { name: /^全部卡片/ }).click()
-  await page.getByText('高级搜索、常用筛选与专项练习', { exact: true }).click()
+  await page.getByRole('button', { name: '专项练习', exact: true }).click()
   await page.getByRole('button', { name: '开始专项练习', exact: true }).click()
   const question = page.locator('.card-question')
   await expect(question).toHaveText(/^(?:Question|Second practice question)$/)

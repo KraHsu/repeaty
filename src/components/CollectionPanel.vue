@@ -4,7 +4,9 @@ import USeparator from '@nuxt/ui/components/Separator.vue'
 import { t, locale } from '../i18n'
 
 import { computed, ref, shallowRef, watch } from 'vue'
-import { History, Layers, Pause, Pencil, Play, Plus, Repeat2, Search, Trash2 } from '@lucide/vue'
+import { History, Layers, Pause, Pencil, Play, Plus, Repeat2, Trash2 } from '@lucide/vue'
+import CardSearchInput from './CardSearchInput.vue'
+import CollectionSearchTools from './CollectionSearchTools.vue'
 import {
   cardViews,
   filterStates,
@@ -102,7 +104,10 @@ const savedId = ref(''),
   studyLimit = ref(50)
 function applySaved() {
   const saved = props.library.savedSearches.find((entry) => entry.id === savedId.value)
-  if (!saved) return
+  if (!saved) {
+    savedName.value = ''
+    return
+  }
   query.value = saved.query
   state.value = saved.state
   deckId.value = saved.deckId
@@ -111,13 +116,17 @@ function applySaved() {
 async function saveFilter(update = false) {
   if (await props.saveSearch(filter.value, savedName.value, update ? savedId.value : undefined)) {
     if (!update) savedId.value = props.library.savedSearches.at(-1)?.id ?? ''
+    return true
   }
+  return false
 }
 async function removeFilter() {
   if (await props.deleteSearch(savedId.value)) {
     savedId.value = ''
     savedName.value = ''
+    return true
   }
+  return false
 }
 function startStudy() {
   if (
@@ -189,13 +198,7 @@ async function editSelected() {
 </script>
 <template>
   <div class="library-toolbar">
-    <label class="search-field"
-      ><Search :size="18" /><UiInput
-        v-model="query"
-        :aria-label="t('搜索卡片')"
-        maxlength="1000"
-        :placeholder="t('关键词、tag:英语、is:due、lapses:>=3…')"
-    /></label>
+    <CardSearchInput v-model="query" :library="library" />
     <UiSelect
       class="library-filter w-auto min-w-0"
       :items="[
@@ -226,112 +229,26 @@ async function editSelected() {
     </UiButton>
   </div>
   <p v-if="result.error" class="import-warning" role="alert">{{ t(result.error) }}</p>
-  <UiCollapsible
-    v-model:open="expanded"
-    :unmount-on-hide="false"
-    :ui="{ content: 'data-[state=open]:animate-none data-[state=closed]:animate-none' }"
-    class="search-options"
-  >
-    <template #default="{ open }"
-      ><UiButton type="button" variant="ghost" :aria-expanded="open">{{
-        t('高级搜索、常用筛选与专项练习')
-      }}</UiButton></template
-    ><template #content>
-      <p class="form-note">
-        {{ t('空格连接的条件需同时满足；双引号包围短语，减号排除条件。例如') }}
-        <code>{{ t('tag:英语 -is:suspended lapses:>=3') }}</code>
-      </p>
-      <p class="form-note">
-        {{
-          t(
-            '还支持 deck:"卡组名称"、type:cloze、is:leech、due:<=7（距今天的日历天数，负数表示逾期）。is:due 包含所有已到期卡片，不考虑额度。',
-          )
-        }}
-      </p>
-      <div class="batch-fields">
-        <label
-          >{{ t('常用筛选')
-          }}<UiSelect
-            :items="[
-              { label: t('选择已保存筛选'), value: '' },
-              ...library.savedSearches.map((saved) => ({ label: saved.name, value: saved.id })),
-            ]"
-            v-model="savedId"
-            :aria-label="t('常用筛选')"
-            @change="applySaved"
-          ></UiSelect
-        ></label>
-        <label
-          >{{ t('筛选名称')
-          }}<UiInput v-model="savedName" maxlength="80" :placeholder="t('例如：英语易忘卡')"
-        /></label>
-      </div>
-      <div class="batch-actions">
-        <UiButton
-          variant="secondary"
-          type="submit"
-          :disabled="busy || !!result.error || !savedName.trim()"
-          @click="saveFilter()"
-        >
-          {{ t('另存筛选') }}
-        </UiButton>
-        <UiButton
-          variant="secondary"
-          type="submit"
-          v-if="savedId"
-          :disabled="busy || !!result.error || !savedName.trim()"
-          @click="saveFilter(true)"
-        >
-          {{ t('更新筛选') }}
-        </UiButton>
-        <UiButton
-          variant="danger"
-          type="submit"
-          v-if="savedId"
-          class="danger-text"
-          :disabled="busy"
-          @click="removeFilter"
-        >
-          {{ t('删除筛选') }}
-        </UiButton>
-      </div>
-      <form class="study-form" @submit.prevent="startStudy">
-        <label
-          >{{ t('练习模式')
-          }}<UiSelect
-            :items="[
-              { label: t('只练习，不改进度'), value: false },
-              { label: t('评分并更新进度'), value: true },
-            ]"
-            v-model="reschedule"
-          ></UiSelect
-        ></label>
-        <label
-          >{{ t('卡片数量上限')
-          }}<UiInput v-model.number="studyLimit" type="number" min="1" max="500" step="1" required
-        /></label>
-        <UiButton
-          variant="primary"
-          type="submit"
-          :disabled="busy || loading || !!result.error || !result.eligible"
-        >
-          {{ t('开始专项练习') }}
-        </UiButton>
-      </form>
-      <p class="form-note">
-        {{
-          t('可练习 {p0} 张，已排除暂停和今日暂缓的卡片。每张卡片练习一次。{p1}', {
-            p0: result.eligible,
-            p1: reschedule
-              ? t('包含未到期卡片，不受每日上限限制。评分会更新下次复习时间，并计入今日学习。')
-              : t('评分仅用于本轮练习，不改变到期时间、每日用量或统计。'),
-          })
-        }}
-      </p>
-    </template></UiCollapsible
-  >
+  <CollectionSearchTools
+    v-model:saved-id="savedId"
+    v-model:saved-name="savedName"
+    v-model:reschedule="reschedule"
+    v-model:study-limit="studyLimit"
+    v-model:study-open="expanded"
+    :saved-searches="library.savedSearches"
+    :filter="filter"
+    :deck-name="library.decks.find((deck) => deck.id === deckId)?.name ?? t('全部卡组')"
+    :busy="busy"
+    :loading="loading"
+    :error="!!result.error"
+    :eligible="result.eligible"
+    :save-filter="saveFilter"
+    :remove-filter="removeFilter"
+    @apply-saved="applySaved"
+    @study="startStudy"
+  />
   <div class="library-count" :aria-busy="loading">
-    {{ t('{p0} 张卡片 · {p1} 条笔记', { p0: result.total, p1: library.notes.length }) }}
+    {{ t('{p0} 张卡片 · 全库 {p1} 条笔记', { p0: result.total, p1: library.notes.length }) }}
   </div>
   <section v-if="selected.length" class="batch-panel">
     <strong>{{

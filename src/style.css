@@ -2205,31 +2205,6 @@
   .card-question .markdown-content p {
     font-size: inherit;
   }
-  .search-options {
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 16px 20px;
-    margin: 16px 0;
-    background: var(--app-surface-subtle);
-  }
-
-  .search-options .batch-fields {
-    margin-top: 16px;
-  }
-  .study-form {
-    display: flex;
-    gap: 12px;
-    align-items: end;
-    margin: 20px 0 10px;
-    flex-wrap: wrap;
-  }
-  .study-form label {
-    display: flex;
-    flex-direction: column;
-    gap: 7px;
-    font-size: var(--font-size-body);
-  }
-
   .study-banner {
     border-radius: 12px;
     background: var(--sage);
@@ -2251,13 +2226,6 @@
     margin: 14px 0;
   }
   @media (max-width: 600px) {
-    .search-options {
-      padding: 14px;
-    }
-    .study-form label,
-    .study-form button {
-      width: 100%;
-    }
     .editor-fields .form-actions {
       flex-wrap: wrap;
     }

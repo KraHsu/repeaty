@@ -94,11 +94,11 @@ test('backup export and confirmed restore retain cards, and malformed imports do
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.reload()
   await page.getByRole('button', { name: '全部卡片' }).click()
-  await page.getByRole('textbox', { name: '搜索卡片' }).fill('study')
+  await page.getByLabel('搜索卡片', { exact: true }).fill('study')
   await expect(
     page.getByRole('button', { name: 'What is active recall?', exact: true }),
   ).toBeVisible()
-  await page.getByRole('textbox', { name: '搜索卡片' }).fill('no match')
+  await page.getByLabel('搜索卡片', { exact: true }).fill('no match')
   await expect(page.getByRole('heading', { name: '没有匹配的卡片' })).toBeVisible()
 })
 
@@ -215,7 +215,7 @@ test('CSV preview, duplicate handling and batch tag editing', async ({ page }) =
   await page.getByLabel('添加标签', { exact: true }).fill('batch')
   await page.getByRole('button', { name: '应用笔记修改', exact: true }).click()
   await expect(page.locator('tbody').getByText('batch', { exact: true })).toHaveCount(4)
-  await page.getByRole('textbox', { name: '搜索卡片' }).fill('batch')
+  await page.getByLabel('搜索卡片', { exact: true }).fill('batch')
   await expect(page.locator('tbody tr')).toHaveCount(4)
 })
 
@@ -267,7 +267,6 @@ test('image/audio survive backup, deletion and automatic snapshot recovery', asy
 test('production shell reopens offline with persisted content', async ({ page, context }) => {
   await createCard(page)
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '离线已就绪', exact: true })).toBeVisible()
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready
   })
@@ -361,12 +360,14 @@ test('continuous authoring, selected cloze, Markdown, formulas and image paste p
   await expect(page.locator('.note-preview .katex')).toHaveCount(2)
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '离线已就绪', exact: true })).toBeVisible()
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready
+  })
   await context.setOffline(true)
   await page.reload()
   await page.getByRole('button', { name: '全部卡片' }).click()
-  await page.getByRole('textbox', { name: '搜索卡片' }).fill('Formula')
-  await page.getByText('高级搜索、常用筛选与专项练习', { exact: true }).click()
+  await page.getByLabel('搜索卡片', { exact: true }).fill('Formula')
+  await page.getByRole('button', { name: '专项练习', exact: true }).click()
   await page.getByRole('button', { name: '开始专项练习' }).click()
   await expect(page.locator('.card-question strong')).toHaveText('Formula')
   await expect(page.locator('.card-question .katex')).toHaveCount(1)
@@ -379,16 +380,16 @@ test('continuous authoring, selected cloze, Markdown, formulas and image paste p
 
 test('saved filters persist and practice mode never changes durable progress', async ({ page }) => {
   await createCard(page)
-  await page.getByRole('textbox', { name: '搜索卡片' }).fill('tag:study is:new lapses:0')
-  await page.getByText('高级搜索、常用筛选与专项练习', { exact: true }).click()
+  await page.getByLabel('搜索卡片', { exact: true }).fill('tag:study is:new lapses:0')
+  await page.getByRole('button', { name: '保存筛选', exact: true }).click()
   await page.getByLabel('筛选名称').fill('New study cards')
   await page.getByRole('button', { name: '另存筛选', exact: true }).click()
   await expect(page.getByRole('status')).toContainText('常用筛选已保存')
   await page.reload()
   await page.getByRole('button', { name: '全部卡片' }).click()
-  await page.getByText('高级搜索、常用筛选与专项练习', { exact: true }).click()
+  await page.getByRole('button', { name: '专项练习', exact: true }).click()
   await selectUiValue(page.getByLabel('常用筛选', { exact: true }), { label: 'New study cards' })
-  await expect(page.getByRole('textbox', { name: '搜索卡片' })).toHaveValue(
+  await expect(page.getByLabel('搜索卡片', { exact: true })).toHaveValue(
     'tag:study is:new lapses:0',
   )
   const original = await readWorkspace(page)
@@ -401,11 +402,11 @@ test('saved filters persist and practice mode never changes durable progress', a
   await expect(page.locator('.card-question')).toBeVisible()
   expect(await readWorkspace(page)).toEqual(original)
   await page.getByRole('button', { name: '结束专项练习' }).click()
-  await page.getByText('高级搜索、常用筛选与专项练习', { exact: true }).click()
+  await page.getByRole('button', { name: '专项练习', exact: true }).click()
   await page.getByLabel('练习模式').click()
   // Opening a menu while its form expands must keep every option in view after
   // layout settles, including when the select has already locked body scrolling.
-  await page.locator('.search-options [data-slot=content]').evaluate(async (element) => {
+  await page.locator('.search-tools-panel').evaluate(async (element) => {
     await Promise.all(
       element.getAnimations().map((animation) => animation.finished.catch(() => {})),
     )

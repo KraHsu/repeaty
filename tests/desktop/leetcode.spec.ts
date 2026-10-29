@@ -615,7 +615,7 @@ test('practice-only sessions keep code without changing review progress', async 
   await page.getByRole('button', { name: '结束复习' }).click()
   await page.getByRole('button', { name: '全部卡片' }).click()
   const before = await storedLibrary(page)
-  await page.getByText('高级搜索、常用筛选与专项练习', { exact: true }).click()
+  await page.getByRole('button', { name: '专项练习', exact: true }).click()
   await page.getByRole('button', { name: '开始专项练习' }).click()
   await page.getByLabel('代码', { exact: true }).fill('def solve(value): return value')
   await page.getByRole('button', { name: '提交到 LeetCode' }).click()
