@@ -2300,8 +2300,8 @@ async function download() {
     background-color 160ms;
 }
 .source-list-item:hover {
-  border-color: #97b29c;
-  background: #fcfdfb;
+  border-color: color-mix(in srgb, var(--green) 50%, var(--ui-border));
+  background: var(--ui-bg-muted);
 }
 .source-list-item.selected {
   border-color: var(--green);
@@ -2400,8 +2400,8 @@ async function download() {
   bottom: -1.25rem;
   margin: 0 -1.75rem -1.25rem;
   padding: 1rem 1.75rem;
-  background: #fff;
-  box-shadow: 0 -4px 12px #293d3308;
+  background: var(--ui-bg);
+  box-shadow: 0 -4px 12px color-mix(in srgb, var(--ui-text) 4%, transparent);
 }
 .source-import-form .attachment-button {
   justify-self: start;

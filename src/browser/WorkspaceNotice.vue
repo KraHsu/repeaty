@@ -43,7 +43,7 @@ useEventListener(window, 'beforeunload', beforeUnload)
   margin: 1rem 2.5rem 0;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: #f3f6ef;
+  background: var(--app-surface-subtle);
   font-size: var(--font-size-meta);
 }
 .workspace-trial-notice > svg {

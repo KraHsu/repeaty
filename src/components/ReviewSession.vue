@@ -440,11 +440,16 @@ onUnmounted(() => {
       >
         <ArrowLeft :size="17" /> {{ study ? t('结束专项练习') : t('结束复习') }}
       </UiButton>
-      <span v-if="deck || deckId" class="b-review-deck"
-        ><Layers :size="18" aria-hidden="true" />{{
-          deck?.name ?? library.decks.find((entry) => entry.id === deckId)?.name
-        }}</span
+      <span
+        v-if="deck || deckId"
+        class="b-review-deck"
+        :title="deck?.name ?? library.decks.find((entry) => entry.id === deckId)?.name"
       >
+        <Layers :size="18" aria-hidden="true" />
+        <span class="b-review-deck-name">{{
+          deck?.name ?? library.decks.find((entry) => entry.id === deckId)?.name
+        }}</span>
+      </span>
       <span class="muted">{{
         t('已复习 {p0} 次 · 当前待学 {p1} 张', { p0: completed, p1: queue.length })
       }}</span>
@@ -462,7 +467,7 @@ onUnmounted(() => {
       v-if="!mixedCardId"
       class="b-review-progress"
       :ui="{
-        base: 'h-[3px] rounded-sm bg-[#e1e8dc]',
+        base: 'h-[3px] rounded-sm bg-[var(--ui-bg-elevated)]',
         indicator:
           'bg-[var(--green)] transition-transform duration-160 ease-out motion-reduce:transition-none',
       }"
@@ -705,7 +710,7 @@ kbd {
   margin-left: auto;
   font: inherit;
   font-size: var(--font-size-meta);
-  color: #65785f;
+  color: var(--ui-text-muted);
   white-space: nowrap;
 }
 </style>

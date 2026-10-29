@@ -48,6 +48,7 @@ it('keeps builtin declarations reactive and writes only the existing preference 
   expect(appearance.contribution.category![0]!.title).toBe('General')
   info.onChange(false)
   expect(JSON.parse(values.get(PREFERENCES_KEY)!)).toEqual({
+    theme: 'system',
     popupInfo: false,
     popupWarning: true,
     popupError: true,
@@ -89,4 +90,29 @@ it('provides individual desktop configuration views without registering plugin m
   expect(
     entries.some(({ contribution }) => contribution.category?.some(({ id }) => id === 'plugins')),
   ).toBe(false)
+})
+
+it('registers translated theme choices in Appearance and guards changes from an inactive library', () => {
+  let scope = 'first-library'
+  const appearance = createApplicationSettings({ scope: () => scope }).find(
+    ({ contribution }) => contribution.id === 'appearance',
+  )!
+  const theme = appearance.contribution.fields!.find(({ key }) => key === 'theme')!
+  expect(theme.modelValue).toBe('system')
+  expect(theme.options).toEqual([
+    { value: 'system', label: '跟随系统' },
+    { value: 'light', label: '浅色' },
+    { value: 'dark', label: '深色' },
+  ])
+  theme.onChange('dark')
+  expect(theme.modelValue).toBe('dark')
+  expect(JSON.parse(values.get(PREFERENCES_KEY)!)).toMatchObject({ theme: 'dark' })
+  setLocale('en')
+  expect(theme.label).toBe('Color mode')
+  expect(theme.options?.[0]?.label).toBe('Follow system')
+  theme.onChange('sepia')
+  expect(theme.modelValue).toBe('dark')
+  scope = 'second-library'
+  theme.onChange('light')
+  expect(theme.modelValue).toBe('dark')
 })

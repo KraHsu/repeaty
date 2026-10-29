@@ -419,8 +419,8 @@ function downloadReport() {
 }
 .anki-card-impact {
   padding: 1rem;
-  background: #faf6e9;
-  border: 1px solid #dfd1a9;
+  background: color-mix(in srgb, var(--ui-warning) 12%, var(--ui-bg));
+  border: 1px solid color-mix(in srgb, var(--ui-warning) 35%, var(--ui-border));
   border-radius: 10px;
 }
 .anki-progress progress {

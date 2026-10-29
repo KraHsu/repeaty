@@ -1036,6 +1036,21 @@ export const en = {
   'type,front,back,tags\nbasic,hello,你好,英语|问候':
     'type,front,back,tags\nbasic,bonjour,hello,French|greetings',
   界面语言: 'Interface language',
+  颜色模式: 'Color mode',
+  跟随系统: 'Follow system',
+  浅色: 'Light',
+  深色: 'Dark',
+  '跟随系统时，外观会随设备的浅色或深色模式自动切换。':
+    'Follow system automatically matches your device’s light or dark appearance.',
+  文件检查: 'File review',
+  '{count} 项待处理': '{count} pending',
+  暂无待处理的文件: 'No pending files',
+  自动检测中: 'Watching for changes',
+  等待检查: 'Waiting for a scan',
+  没有匹配的文件: 'No matching files',
+  '选择左侧文件，查看工作文件与已接受版本。':
+    'Select a file to view its working and accepted versions.',
+  目录中暂无可检查的文件: 'There are no files to review in this workspace',
   '字段「{field}」格式不正确，请检查必填内容和取值范围。':
     'Invalid field “{field}”. Check required values and allowed ranges.',
   内容: 'Content',
@@ -1506,6 +1521,7 @@ export const en = {
   改名并修改: 'Renamed and modified',
   尚未接受: 'Not yet accepted',
   '普通 Markdown': 'Plain Markdown file',
+  '待添加 · Markdown': 'To add · Markdown',
   缺少身份: 'Missing identity',
   需要检查: 'Needs attention',
   存在冲突: 'Conflict',

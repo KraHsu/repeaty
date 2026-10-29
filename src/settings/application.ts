@@ -36,6 +36,9 @@ export function createApplicationSettings(options: ApplicationSettingsOptions): 
       get title() {
         return t('界面')
       },
+      get error() {
+        return preferenceError.value ? t(preferenceError.value) : undefined
+      },
       category: [category('general', '通用'), category('appearance', '界面')],
       fields: [
         {
@@ -54,6 +57,32 @@ export function createApplicationSettings(options: ApplicationSettingsOptions): 
           ],
           onChange(value) {
             if (isCurrent() && (value === 'en' || value === 'zh-CN')) setLocale(value)
+          },
+        },
+        {
+          key: 'theme',
+          id: 'settings-theme',
+          type: 'select',
+          get label() {
+            return t('颜色模式')
+          },
+          get description() {
+            return t('跟随系统时，外观会随设备的浅色或深色模式自动切换。')
+          },
+          get modelValue() {
+            return preferences.theme
+          },
+          get options() {
+            return [
+              { value: 'system', label: t('跟随系统') },
+              { value: 'light', label: t('浅色') },
+              { value: 'dark', label: t('深色') },
+            ]
+          },
+          onChange(value) {
+            if (isCurrent() && (value === 'system' || value === 'light' || value === 'dark')) {
+              setPreference('theme', value)
+            }
           },
         },
       ],

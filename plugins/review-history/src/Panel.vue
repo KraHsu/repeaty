@@ -54,26 +54,26 @@ const names = ['重来', '困难', '良好', '简单']
   height: 18px;
   flex: 0 0 18px;
   border-radius: 50%;
-  border: 2px solid #ffffffb3;
-  box-shadow: 0 0 0 1px #253d3426;
+  border: 2px solid color-mix(in srgb, var(--paper, #fff) 70%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-text, #253d34) 15%, transparent);
 }
 .rating-1 {
-  background: #ba5c4c;
+  background: var(--ui-error, #ba5c4c);
 }
 .rating-2 {
-  background: #c39437;
+  background: var(--ui-warning, #c39437);
 }
 .rating-3 {
-  background: #49765c;
+  background: var(--ui-success, #49765c);
 }
 .rating-4 {
-  background: #527ba8;
+  background: var(--ui-info, #527ba8);
 }
 .history-dot.current {
   width: 22px;
   height: 22px;
   flex-basis: 22px;
-  border: 2px dashed #728172;
+  border: 2px dashed var(--muted, #728172);
   box-shadow: none;
   background: transparent;
 }

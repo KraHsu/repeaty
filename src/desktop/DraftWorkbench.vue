@@ -333,7 +333,7 @@ async function discard(id: string) {
   margin: 1rem 0;
   padding: 1rem;
   border-left: 3px solid var(--green);
-  background: #f8f9f6;
+  background: var(--ui-bg-muted);
   max-height: 14rem;
   overflow: auto;
   white-space: pre-wrap;

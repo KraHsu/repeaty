@@ -74,7 +74,7 @@
   margin-top: 0.75rem;
 }
 .settings-categories .branched-menu__row:has(> [data-active]) {
-  background: #e5eddf;
+  background: var(--app-selected);
   border-radius: 0.5rem;
 }
 .settings-mobile-category label {
@@ -153,8 +153,8 @@
   white-space: normal;
 }
 .plugin-directory-item.selected {
-  background: #e5eddf;
-  border-color: #c5d4bc;
+  background: var(--app-selected);
+  border-color: var(--ui-border-accented);
 }
 .plugin-directory-item:not(.selected):hover {
   background: var(--app-rail);
@@ -178,7 +178,7 @@
   overflow-wrap: anywhere;
 }
 .plugin-directory-copy strong {
-  color: var(--text);
+  color: var(--ui-text);
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-semibold);
 }
@@ -192,13 +192,13 @@
   height: 0.5rem;
   margin-left: auto;
   border-radius: 50%;
-  background: #899586;
+  background: var(--ui-text-dimmed);
 }
 .plugin-directory-state.enabled {
   background: var(--ui-primary);
 }
 .plugin-directory-state.issue {
-  background: #976225;
+  background: var(--ui-warning);
 }
 .plugin-detail-pane {
   min-width: 0;
@@ -229,7 +229,7 @@
   border: 1px solid var(--line);
   border-radius: 0.8125rem;
   color: var(--green);
-  background: #edf2e9;
+  background: var(--ui-bg-elevated);
 }
 .plugin-detail-copy {
   min-width: 0;

@@ -86,7 +86,9 @@ README用于功能简介、使用步骤、配置教程和数据说明，具体�
 
 ## 独立开发与构建
 
-公开 SDK 位于 [packages/plugin-api](../packages/plugin-api)。它提供类型和独立构建命令 `repeaty-plugin`，运行时实现由 Repeaty 提供。插件作者只需要 SDK、Vue 和自己使用的依赖，不需要复制或导入主程序源码。当前 SDK 与官方预构建包为1.6.0；这是 API v1的加法更新，官方插件的 `apiVersion` / `dataVersion` 仍为1。已有学习库需在侧栏「插件」主动更新官方插件代码。
+公开 SDK 位于 [packages/plugin-api](../packages/plugin-api)。它提供类型和独立构建命令 `repeaty-plugin`，运行时实现由 Repeaty 提供。插件作者只需要 SDK、Vue 和自己使用的依赖，不需要复制或导入主程序源码。当前 SDK、LeetCode 与 typed-answer 为1.6.0，答题历史为1.6.1；官方插件的 `apiVersion` / `dataVersion` 仍为1。已有学习库需在侧栏「插件」主动更新官方插件代码。
+
+软件与插件共用浅色、深色主题，默认跟随系统，在「设置 → 通用 → 界面 → 颜色模式」修改。SDK 控件自动跟随宿主；插件自定义绘图使用 `--ui-text`、`--ui-bg`、`--ui-border` 及语义色变量，避免固定白底或深色文字。答题历史1.6.1将评分圆点和圆环改为主题变量，已有库需更新该插件包；题目、调度、历史与设置不变。
 
 SDK 当前是本地 workspace 包，尚未发布到 npm。可以在 Repeaty 仓库根目录将它打包，然后在另一个独立插件仓库中安装生成的 tarball：
 

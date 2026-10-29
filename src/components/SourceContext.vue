@@ -176,7 +176,7 @@ const matches = computed(
 }
 .source-context-path {
   padding-bottom: 0.75rem;
-  border-bottom: 1px solid #dfe5d8;
+  border-bottom: 1px solid var(--ui-border);
 }
 .source-context-path button {
   overflow-wrap: anywhere;
@@ -184,7 +184,7 @@ const matches = computed(
 }
 .source-context-path [aria-current] {
   font-weight: var(--font-weight-semibold);
-  color: #35573c;
+  color: var(--green);
 }
 .source-context > * {
   min-width: 0;
@@ -199,8 +199,8 @@ const matches = computed(
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   padding: 1rem;
-  border-left: 3px solid #66896b;
-  background: #f4f7ef;
+  border-left: 3px solid var(--green);
+  background: var(--ui-bg-muted);
 }
 .source-original {
   font-size: var(--font-size-reading);
@@ -209,7 +209,7 @@ const matches = computed(
   line-height: var(--line-height-reading);
 }
 .source-original mark {
-  background: #f2df9b;
+  background: color-mix(in srgb, var(--ui-warning) 25%, var(--ui-bg));
   color: inherit;
   border-radius: 2px;
 }

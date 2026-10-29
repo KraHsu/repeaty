@@ -54,7 +54,7 @@ defineProps<{ status: DeckStudyStatus; compact?: boolean }>()
 }
 .state-label {
   font-size: var(--font-size-meta);
-  color: #63735f;
+  color: var(--ui-text-muted);
   margin: 0 0 0.65rem;
 }
 dl {
@@ -79,17 +79,17 @@ dd {
   line-height: var(--line-height-heading);
 }
 .new {
-  color: #466e9b;
+  color: var(--ui-info);
 }
 .learning {
-  color: #9b633b;
+  color: var(--ui-warning);
 }
 .review {
-  color: #416c50;
+  color: var(--ui-success);
 }
 .state-detail {
   font-size: var(--font-size-meta);
-  color: #63735f;
+  color: var(--ui-text-muted);
   line-height: var(--line-height-ui);
   margin: 0.75rem 0 0;
 }

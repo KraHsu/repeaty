@@ -279,13 +279,13 @@ function variant(key: string) {
   color: var(--muted);
 }
 .anki-change-status.changed {
-  color: #836327;
+  color: var(--ui-warning);
 }
 .anki-change-status.new {
-  color: #35694e;
+  color: var(--ui-success);
 }
 .anki-change-status.unavailable {
-  color: #99513b;
+  color: var(--ui-error);
 }
 .anki-change-title {
   white-space: pre-wrap;
@@ -303,7 +303,7 @@ function variant(key: string) {
   max-height: 38rem;
   overflow: auto;
   padding: 1rem;
-  background: #f6f8f4;
+  background: var(--ui-bg-muted);
   border-radius: 8px;
 }
 .anki-compare-side h4 {

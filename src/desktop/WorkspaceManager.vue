@@ -1,7 +1,18 @@
 <script setup lang="ts">
-import { UiButton, UiInput, UiSelect } from '../components/ui'
+import { UiButton, UiInput, UiSelect, UiCollapsible } from '../components/ui'
 import { computed, onMounted, onUnmounted, ref, reactive, watch } from 'vue'
-import { FolderOpen, FolderPlus, RefreshCw, X, Check } from '@lucide/vue'
+import {
+  FolderOpen,
+  FolderPlus,
+  RefreshCw,
+  X,
+  Check,
+  CheckCircle2,
+  FileText,
+  ChevronDown,
+  ArchiveRestore,
+  History,
+} from '@lucide/vue'
 import { t, validationMessage, type DisplayMessage } from '../i18n'
 import type { useLibrary } from '../composables/useLibrary'
 import type { ChangeStatus, FileChange } from '../workspace/changes'
@@ -93,13 +104,21 @@ const filtered = computed(() =>
 )
 const pages = computed(() => Math.max(1, Math.ceil(filtered.value.length / 50)))
 const visible = computed(() => filtered.value.slice((page.value - 1) * 50, page.value * 50))
+const pendingCount = computed(
+  () => files.value.filter((file) => file.status !== 'unchanged').length,
+)
+const workspaceName = computed(() => {
+  const path = displayFilesystemPath(status.value?.active?.path ?? '')
+  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
+})
+const fileName = (path: string) => path.split('/').at(-1) ?? path
 const labels: Record<ChangeStatus, string> = {
   unchanged: '未变化',
   modified: '文件已修改',
   renamed: '文件已改名',
   'renamed-modified': '改名并修改',
   new: '尚未接受',
-  unmanaged: '普通 Markdown',
+  unmanaged: '待添加 · Markdown',
   unregistered: '缺少身份',
   pending: '需要检查',
   conflict: '存在冲突',
@@ -322,7 +341,6 @@ async function confirmSource() {
   emit('changed')
   await refresh()
 }
-const answerHint = computed(() => t('题面和答案之间请单独放一行 <!-- repeaty:answer -->。'))
 const canRemove = computed(
   () =>
     current.value?.status === 'missing' &&
@@ -505,7 +523,7 @@ onUnmounted(() => {
           <FolderOpen :size="18" />{{ t('打开目录') }}
         </UiButton>
         <UiButton
-          variant="primary"
+          :variant="status?.active ? 'secondary' : 'primary'"
           type="submit"
           :disabled="locked || !status"
           @click="run(() => chooseWorkspace('create'))"
@@ -518,12 +536,6 @@ onUnmounted(() => {
     <p v-if="workspaceMonitor?.error.value" class="import-warning" role="alert">
       {{ t(workspaceMonitor.error.value) }}
     </p>
-    <p v-if="workspaceMonitor?.available.value === false" class="form-note">
-      {{ t('自动检测暂不可用，可手动重新扫描；返回窗口时会补检。') }}
-    </p>
-    <p v-else-if="status?.active" class="form-note">
-      {{ t('外部修改会自动列出，确认接受后用于学习。') }}
-    </p>
     <p v-if="error" class="import-warning" role="alert">{{ t(error) }}</p>
     <div v-if="status?.error" class="workspace-card" role="alert">
       <p>{{ t(nativeError(status.error)) }}</p>
@@ -533,24 +545,16 @@ onUnmounted(() => {
     </div>
     <section v-if="status?.active" class="workspace-card workspace-active">
       <div class="workspace-identity">
-        <span class="workspace-identity-icon" aria-hidden="true"><FolderOpen :size="28" /></span>
+        <span class="workspace-identity-icon" aria-hidden="true"><FolderOpen :size="26" /></span>
         <div>
-          <h2>{{ t('当前学习库') }}</h2>
+          <p class="workspace-eyebrow">{{ t('当前学习库') }}</p>
+          <h2>{{ workspaceName }}</h2>
           <p class="workspace-path">{{ displayFilesystemPath(status.active.path) }}</p>
         </div>
       </div>
-      <div class="workspace-actions">
-        <UiButton variant="secondary" type="submit" :disabled="locked" @click="run(refresh)">
-          <RefreshCw :size="18" />{{ t('重新扫描') }}</UiButton
-        ><UiButton
-          variant="secondary"
-          type="submit"
-          :disabled="locked"
-          @click="run(closeWorkspace)"
-        >
-          <X :size="18" />{{ t('关闭目录') }}
-        </UiButton>
-      </div>
+      <UiButton variant="ghost" :disabled="locked" @click="run(closeWorkspace)">
+        <X :size="16" />{{ t('关闭目录') }}
+      </UiButton>
     </section>
     <section v-else-if="!workspaceLoading" class="workspace-card workspace-welcome">
       <h2>{{ t('打开文件夹，开始学习') }}</h2>
@@ -560,148 +564,245 @@ onUnmounted(() => {
     <p v-if="workspaceAttention.length" class="import-warning" role="status">
       {{ t('部分正文文件需要检查。已保存的学习进度仍保留在当前目录。') }}
     </p>
-    <section v-if="scan" class="workspace-inspector">
-      <div class="workspace-files">
-        <label for="workspace-file-search">{{ t('查找文件') }}</label
-        ><UiInput
-          id="workspace-file-search"
-          v-model="query"
-          :placeholder="t('文件路径')"
-          @input="page = 1"
-        />
-        <p class="form-note">{{ t('文件数：{count}', { count: filtered.length }) }}</p>
-        <UiButton
-          variant="ghost"
-          v-for="file in visible"
-          :key="file.path"
-          class="workspace-file"
-          :class="{ selected: selected === file.path }"
-          @click="selectFile(file.path)"
-        >
-          <strong>{{ file.path }}</strong
-          ><span class="workspace-file-status">{{ t(labels[file.status]) }}</span>
-        </UiButton>
-        <div v-if="pages > 1" class="workspace-actions">
-          <UiButton variant="secondary" type="submit" :disabled="page === 1" @click="page--">
-            {{ t('上一页') }}</UiButton
-          ><span>{{ page }} / {{ pages }}</span
-          ><UiButton variant="secondary" type="submit" :disabled="page === pages" @click="page++">
-            {{ t('下一页') }}
-          </UiButton>
-        </div>
-      </div>
-      <div class="workspace-document">
-        <h2>{{ current?.path ?? t('选择文件') }}</h2>
-        <div v-if="current" class="workspace-actions workspace-versions">
-          <UiButton
-            variant="secondary"
-            type="submit"
-            :class="{ selected: !showAccepted }"
-            :aria-pressed="!showAccepted"
-            @click="showAccepted = false"
-          >
-            {{ t('工作文件') }}</UiButton
-          ><UiButton
-            variant="secondary"
-            type="submit"
-            :class="{ selected: showAccepted }"
-            :aria-pressed="showAccepted"
-            @click="showAccepted = true"
-          >
-            {{ t('已接受版本') }}</UiButton
-          ><UiButton
-            variant="primary"
-            type="submit"
-            v-if="canAccept"
-            :disabled="locked"
-            @click="
-              run(() =>
-                current?.path.startsWith('sources/') ? prepareSourceFile() : prepare('accept'),
-              )
-            "
-          >
-            <Check :size="18" />{{ t('接受修改') }}
-          </UiButton>
-          <UiButton
-            variant="danger"
-            type="submit"
-            v-if="canRemove"
-            :disabled="locked"
-            @click="run(() => prepare('remove'))"
-          >
-            {{ t('移除这条笔记') }}
-          </UiButton>
-        </div>
-        <p
-          v-if="
-            canAccept &&
-            current?.path.startsWith('notes/') &&
-            ['unmanaged', 'unregistered'].includes(current!.status)
-          "
-          class="form-note"
-        >
-          {{ answerHint }}
-        </p>
-        <p v-if="current?.reason" class="form-note">{{ reasonText(current.reason) }}</p>
-        <p
-          v-if="current?.identity?.kind === 'source' && current.status !== 'unchanged'"
-          class="form-note"
-        >
-          {{ t('接受新版本后，已有摘录继续引用原版。阅读安排保持不变。') }}
-        </p>
-        <pre class="workspace-raw">{{ raw }}</pre>
-      </div>
-    </section>
-    <section v-if="scan?.retiredCount" class="workspace-card workspace-retired">
-      <h2>{{ t('已移除的笔记') }}</h2>
-      <p>{{ t('笔记和学习记录仍保存在目录中，可以恢复后继续学习。') }}</p>
-      <form
-        class="workspace-actions workspace-archive-search"
-        @submit.prevent="run(() => loadArchive())"
-      >
-        <label for="archive-search">{{ t('查找已移除的笔记') }}</label
-        ><UiInput id="archive-search" v-model="archiveQuery" :disabled="locked" /><UiButton
-          variant="secondary"
-          type="submit"
-          :disabled="locked"
-        >
-          {{ t('查找') }}
-        </UiButton>
-      </form>
-      <p>{{ t('共 {count} 条', { count: archived.total }) }}</p>
-      <div v-for="entry in archived.notes" :key="entry.id" class="workspace-retired-entry">
+    <section
+      v-if="status?.active"
+      class="workspace-review"
+      aria-labelledby="workspace-review-title"
+    >
+      <header class="workspace-review-heading">
         <div>
-          <strong>{{ entry.title }}</strong>
-          <p>{{ t('{count} 张卡片', { count: entry.cards }) }} · {{ entry.path }}</p>
+          <div class="workspace-review-title">
+            <h2 id="workspace-review-title">{{ t('文件检查') }}</h2>
+            <span
+              v-if="scan"
+              class="workspace-summary"
+              :class="{ 'has-pending': pendingCount > 0 }"
+            >
+              <CheckCircle2 v-if="!pendingCount" :size="15" aria-hidden="true" />
+              {{
+                pendingCount
+                  ? t('{count} 项待处理', { count: pendingCount })
+                  : t('暂无待处理的文件')
+              }}
+            </span>
+          </div>
+          <p v-if="workspaceMonitor?.available.value === false" class="form-note">
+            {{ t('自动检测暂不可用，可手动重新扫描；返回窗口时会补检。') }}
+          </p>
+          <p v-else class="form-note">
+            {{ t('外部修改会自动列出，确认接受后用于学习。') }}
+          </p>
         </div>
-        <UiButton
-          variant="secondary"
-          type="submit"
-          :disabled="locked"
-          @click="run(() => prepare('restore', entry.id))"
-        >
-          {{ t('恢复笔记') }}
-        </UiButton>
+        <div class="workspace-scan-action">
+          <span
+            v-if="workspaceMonitor?.available.value && !workspaceMonitor.error.value"
+            class="workspace-watch-status"
+          >
+            <span aria-hidden="true"></span>{{ t('自动检测中') }}
+          </span>
+          <UiButton variant="secondary" :disabled="locked" :busy="busy" @click="run(refresh)">
+            <RefreshCw :size="16" />{{ t('重新扫描') }}
+          </UiButton>
+        </div>
+      </header>
+      <div v-if="scan && files.length" class="workspace-inspector">
+        <div class="workspace-files">
+          <div class="workspace-file-search">
+            <label for="workspace-file-search">{{ t('查找文件') }}</label>
+            <span class="form-note">{{ t('文件数：{count}', { count: filtered.length }) }}</span>
+          </div>
+          <UiInput
+            id="workspace-file-search"
+            v-model="query"
+            :placeholder="t('文件路径')"
+            @input="page = 1"
+          />
+          <div class="workspace-file-list" :aria-label="t('文件检查')">
+            <UiButton
+              variant="ghost"
+              v-for="file in visible"
+              :key="file.path"
+              class="workspace-file"
+              :class="{ selected: selected === file.path }"
+              :aria-pressed="selected === file.path"
+              @click="selectFile(file.path)"
+            >
+              <FileText :size="18" aria-hidden="true" />
+              <span class="workspace-file-info">
+                <strong>{{ file.path }}</strong>
+                <span class="workspace-file-status" :data-state="file.status">{{
+                  t(labels[file.status])
+                }}</span>
+              </span>
+            </UiButton>
+            <p v-if="!visible.length" class="workspace-no-match form-note">
+              {{ t('没有匹配的文件') }}
+            </p>
+          </div>
+          <div v-if="pages > 1" class="workspace-actions">
+            <UiButton variant="secondary" type="submit" :disabled="page === 1" @click="page--">
+              {{ t('上一页') }}</UiButton
+            ><span>{{ page }} / {{ pages }}</span
+            ><UiButton variant="secondary" type="submit" :disabled="page === pages" @click="page++">
+              {{ t('下一页') }}
+            </UiButton>
+          </div>
+        </div>
+        <div class="workspace-document">
+          <header class="workspace-document-heading">
+            <div>
+              <h3>{{ current ? fileName(current.path) : t('选择文件') }}</h3>
+              <p v-if="current" class="workspace-document-path">{{ current.path }}</p>
+            </div>
+            <span v-if="current" class="workspace-document-status" :data-state="current.status">{{
+              t(labels[current.status])
+            }}</span>
+          </header>
+          <div v-if="current" class="workspace-document-toolbar">
+            <div class="workspace-versions" :aria-label="t('选择文件')">
+              <UiButton
+                variant="ghost"
+                type="submit"
+                :class="{ selected: !showAccepted }"
+                :aria-pressed="!showAccepted"
+                @click="showAccepted = false"
+              >
+                {{ t('工作文件') }}</UiButton
+              ><UiButton
+                variant="ghost"
+                type="submit"
+                :class="{ selected: showAccepted }"
+                :aria-pressed="showAccepted"
+                @click="showAccepted = true"
+              >
+                {{ t('已接受版本') }}</UiButton
+              >
+            </div>
+            <div class="workspace-actions">
+              <UiButton
+                variant="primary"
+                type="submit"
+                v-if="canAccept"
+                :disabled="locked"
+                @click="
+                  run(() =>
+                    current?.path.startsWith('sources/') ? prepareSourceFile() : prepare('accept'),
+                  )
+                "
+              >
+                <Check :size="18" />{{ t('接受修改') }}
+              </UiButton>
+              <UiButton
+                variant="danger"
+                type="submit"
+                v-if="canRemove"
+                :disabled="locked"
+                @click="run(() => prepare('remove'))"
+              >
+                {{ t('移除这条笔记') }}
+              </UiButton>
+            </div>
+          </div>
+          <div v-if="current" class="workspace-document-body">
+            <p v-if="current?.reason" class="workspace-reason" role="status">
+              {{ reasonText(current.reason) }}
+            </p>
+            <p
+              v-if="current?.identity?.kind === 'source' && current.status !== 'unchanged'"
+              class="form-note"
+            >
+              {{ t('接受新版本后，已有摘录继续引用原版。阅读安排保持不变。') }}
+            </p>
+            <pre
+              class="workspace-raw"
+              tabindex="0"
+              :aria-label="t(showAccepted ? '已接受版本' : '工作文件')"
+              >{{ raw }}</pre>
+          </div>
+          <div v-else class="workspace-empty">
+            <FileText :size="28" aria-hidden="true" />
+            <p>{{ t('选择左侧文件，查看工作文件与已接受版本。') }}</p>
+          </div>
+        </div>
       </div>
-      <div v-if="archived.total > 50" class="workspace-actions">
-        <UiButton
-          variant="secondary"
-          type="submit"
-          :disabled="locked || archivePage === 1"
-          @click="run(() => loadArchive(archivePage - 1))"
-        >
-          {{ t('上一页') }}</UiButton
-        ><span>{{ archivePage }} / {{ Math.ceil(archived.total / 50) }}</span
-        ><UiButton
-          variant="secondary"
-          type="submit"
-          :disabled="locked || archivePage * 50 >= archived.total"
-          @click="run(() => loadArchive(archivePage + 1))"
-        >
-          {{ t('下一页') }}
-        </UiButton>
+      <div v-else class="workspace-empty">
+        <CheckCircle2 :size="28" aria-hidden="true" />
+        <p>{{ t(scan ? '目录中暂无可检查的文件' : '等待检查') }}</p>
       </div>
     </section>
+    <UiCollapsible
+      v-if="scan?.retiredCount"
+      class="workspace-card workspace-retired workspace-management"
+      :default-open="true"
+      :unmount-on-hide="false"
+    >
+      <template #default="{ open }">
+        <UiButton variant="ghost" class="workspace-management-toggle">
+          <ArchiveRestore :size="20" aria-hidden="true" />
+          <span>{{ t('已移除的笔记') }}</span>
+          <span class="workspace-count">{{ scan.retiredCount }}</span>
+          <ChevronDown
+            :size="18"
+            class="workspace-disclosure"
+            :class="{ 'is-open': open }"
+            aria-hidden="true"
+          />
+        </UiButton>
+      </template>
+      <template #content>
+        <div class="workspace-management-content">
+          <p class="form-note">{{ t('笔记和学习记录仍保存在目录中，可以恢复后继续学习。') }}</p>
+          <form
+            class="workspace-actions workspace-archive-search"
+            @submit.prevent="run(() => loadArchive())"
+          >
+            <label for="archive-search">{{ t('查找已移除的笔记') }}</label
+            ><UiInput id="archive-search" v-model="archiveQuery" :disabled="locked" /><UiButton
+              variant="secondary"
+              type="submit"
+              :disabled="locked"
+            >
+              {{ t('查找') }}
+            </UiButton>
+          </form>
+          <p class="form-note">{{ t('共 {count} 条', { count: archived.total }) }}</p>
+          <div class="workspace-retired-list">
+            <div v-for="entry in archived.notes" :key="entry.id" class="workspace-retired-entry">
+              <div>
+                <strong>{{ entry.title }}</strong>
+                <p>{{ t('{count} 张卡片', { count: entry.cards }) }} · {{ entry.path }}</p>
+              </div>
+              <UiButton
+                variant="secondary"
+                type="submit"
+                :disabled="locked"
+                @click="run(() => prepare('restore', entry.id))"
+              >
+                {{ t('恢复笔记') }}
+              </UiButton>
+            </div>
+          </div>
+          <div v-if="archived.total > 50" class="workspace-actions">
+            <UiButton
+              variant="secondary"
+              type="submit"
+              :disabled="locked || archivePage === 1"
+              @click="run(() => loadArchive(archivePage - 1))"
+            >
+              {{ t('上一页') }}</UiButton
+            ><span>{{ archivePage }} / {{ Math.ceil(archived.total / 50) }}</span
+            ><UiButton
+              variant="secondary"
+              type="submit"
+              :disabled="locked || archivePage * 50 >= archived.total"
+              @click="run(() => loadArchive(archivePage + 1))"
+            >
+              {{ t('下一页') }}
+            </UiButton>
+          </div>
+        </div>
+      </template>
+    </UiCollapsible>
     <AppModal
       v-if="sourceAction"
       :title="t('接受材料修改')"
@@ -854,220 +955,41 @@ onUnmounted(() => {
         </UiButton>
       </div>
     </AppModal>
-    <section v-if="status?.recent.length" class="workspace-card">
-      <h2>{{ t('最近打开') }}</h2>
-      <UiButton
-        variant="secondary"
-        type="submit"
-        v-for="entry in status.recent"
-        :key="entry.path"
-        class="workspace-recent-entry"
-        :disabled="locked"
-        @click="run(() => recentWorkspace(entry.path, entry.id))"
-      >
-        <FolderOpen :size="18" /><span>{{ displayFilesystemPath(entry.path) }}</span>
-      </UiButton>
-    </section>
+    <UiCollapsible
+      v-if="status?.recent.length"
+      class="workspace-card workspace-management"
+      :default-open="true"
+      :unmount-on-hide="false"
+    >
+      <template #default="{ open }">
+        <UiButton variant="ghost" class="workspace-management-toggle">
+          <History :size="20" aria-hidden="true" />
+          <span>{{ t('最近打开') }}</span>
+          <span class="workspace-count">{{ status.recent.length }}</span>
+          <ChevronDown
+            :size="18"
+            class="workspace-disclosure"
+            :class="{ 'is-open': open }"
+            aria-hidden="true"
+          />
+        </UiButton>
+      </template>
+      <template #content>
+        <div class="workspace-management-content">
+          <UiButton
+            variant="secondary"
+            type="submit"
+            v-for="entry in status.recent"
+            :key="entry.path"
+            class="workspace-recent-entry"
+            :disabled="locked"
+            @click="run(() => recentWorkspace(entry.path, entry.id))"
+          >
+            <FolderOpen :size="18" /><span>{{ displayFilesystemPath(entry.path) }}</span>
+          </UiButton>
+        </div>
+      </template>
+    </UiCollapsible>
   </div>
 </template>
-<style scoped>
-.workspace-manager {
-  display: grid;
-  gap: 1.5rem;
-  min-width: 0;
-}
-.workspace-identity {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 1.25rem;
-}
-.workspace-identity > div {
-  min-width: 0;
-}
-.workspace-identity-icon {
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-  width: 3.75rem;
-  height: 3.75rem;
-  border-radius: 0.75rem;
-  color: var(--green);
-  background: var(--sage);
-}
-.workspace-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.6rem;
-}
-.workspace-card {
-  padding: 2rem;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--paper);
-}
-.workspace-card h2,
-.workspace-document h2 {
-  font-size: var(--font-size-section);
-  margin: 0 0 0.6rem;
-}
-.workspace-active {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-.workspace-path {
-  overflow-wrap: anywhere;
-  margin: 0.3rem 0;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-meta);
-}
-.workspace-welcome p {
-  line-height: var(--line-height-ui);
-}
-.workspace-inspector {
-  display: grid;
-  grid-template-columns: minmax(13rem, 18rem) minmax(0, 1fr);
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  overflow: hidden;
-}
-.workspace-files,
-.workspace-document {
-  padding: 1.75rem;
-  min-width: 0;
-}
-.workspace-files {
-  border-right: 1px solid var(--line);
-}
-.workspace-field {
-  display: grid;
-  gap: 0.6rem;
-  margin: 1rem 0;
-  font-size: var(--font-size-body);
-}
-.workspace-field input,
-.workspace-field select {
-  width: 100%;
-  font: inherit;
-  min-height: 44px;
-}
-.workspace-plan {
-  line-height: var(--line-height-ui);
-}
-.workspace-confirm {
-  justify-content: flex-end;
-  margin-top: 1.5rem;
-}
-.workspace-retired-entry {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  border-top: 1px solid var(--line);
-  padding: 1rem 0;
-  overflow-wrap: anywhere;
-}
-.workspace-retired-entry > div {
-  min-width: 0;
-}
-.workspace-retired-entry strong {
-  white-space: pre-wrap;
-}
-.workspace-retired-entry p {
-  font-size: var(--font-size-meta);
-}
-.workspace-files input {
-  width: 100%;
-  margin: 0.6rem 0;
-}
-.workspace-file {
-  display: grid;
-  gap: 0.5rem;
-  width: 100%;
-  text-align: left;
-  overflow-wrap: anywhere;
-  padding: 0.9rem;
-  margin: 0.4rem 0;
-  border: 1px solid transparent;
-  border-radius: 9px;
-  background: transparent;
-  cursor: pointer;
-  font: inherit;
-}
-.workspace-file.selected {
-  background: var(--sage);
-  border-color: var(--line);
-}
-.workspace-file strong {
-  font-weight: var(--font-weight-medium);
-}
-.workspace-file-status,
-.form-note {
-  font-size: var(--font-size-meta);
-  color: var(--muted);
-}
-.workspace-versions {
-  margin: 0.8rem 0 1.2rem;
-}
-.workspace-versions .selected {
-  background: var(--sage);
-  border-color: var(--green);
-}
-.workspace-raw {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-body);
-  line-height: var(--line-height-reading);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  text-align: left;
-  margin: 0;
-  min-width: 0;
-  tab-size: 2;
-}
-.workspace-recent-entry {
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-  border: 0;
-  background: none;
-  padding: 0.8rem 0;
-  font: inherit;
-  text-align: left;
-  overflow-wrap: anywhere;
-  width: 100%;
-  cursor: pointer;
-}
-@media (max-width: 1000px) {
-  .workspace-inspector {
-    grid-template-columns: 1fr;
-  }
-  .workspace-files {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-  }
-  .workspace-active {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-}
-@media (max-width: 720px) {
-  .workspace-card,
-  .workspace-files,
-  .workspace-document {
-    padding: 1.25rem;
-  }
-  .workspace-identity {
-    align-items: flex-start;
-    gap: 1rem;
-  }
-  .workspace-identity-icon {
-    width: 3rem;
-    height: 3rem;
-  }
-}
-</style>
+<style scoped src="../styles/workspace.css"></style>

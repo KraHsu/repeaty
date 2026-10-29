@@ -120,8 +120,8 @@ defineExpose({ showMatches })
   padding: 1rem;
 }
 .source-excerpt-list li.matched {
-  border-color: #67886d;
-  background: #f4f7ef;
+  border-color: var(--green);
+  background: var(--ui-bg-muted);
 }
 .source-excerpt-list h4 {
   font-size: var(--font-size-body);
@@ -143,7 +143,7 @@ defineExpose({ showMatches })
   font-size: var(--font-size-meta);
 }
 .source-excerpt-match {
-  color: #3c624b;
+  color: var(--green);
   font-weight: var(--font-weight-semibold);
 }
 .source-excerpt-buttons,

@@ -202,7 +202,7 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #a43d35;
+  color: var(--ui-error);
   font-size: var(--font-size-meta);
 }
 .desktop-window-controls {
@@ -221,11 +221,11 @@ onUnmounted(() => {
 }
 .desktop-window-button:hover,
 .desktop-window-button.is-native-hovered {
-  background: #dfe5d9;
+  background: var(--app-nav-hover);
 }
 .desktop-window-button:active,
 .desktop-window-button.is-native-pressed {
-  background: #d0dac8;
+  background: var(--app-nav-active);
 }
 .desktop-window-button:focus-visible {
   outline: 2px solid var(--green);
@@ -237,13 +237,13 @@ onUnmounted(() => {
   background: #c9473e;
 }
 .desktop-window-close:focus-visible {
-  outline-color: #a43d35;
+  outline-color: var(--ui-error);
 }
 .desktop-titlebar.is-unfocused {
-  color: #869080;
+  color: var(--ui-text-muted);
 }
 .desktop-titlebar.is-unfocused .desktop-window-button:hover {
-  color: #405940;
+  color: var(--ui-text);
 }
 .desktop-titlebar.is-unfocused .desktop-window-close:hover {
   color: #fff;

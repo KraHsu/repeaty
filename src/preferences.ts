@@ -3,9 +3,12 @@ import { reactive, readonly, ref } from 'vue'
 import { z } from 'zod'
 
 export const PREFERENCES_KEY = 'repeaty.preferences.v1'
+export const colorThemes = ['system', 'light', 'dark'] as const
+export type ColorTheme = (typeof colorThemes)[number]
 export const notificationLevels = ['info', 'warning', 'error'] as const
 export type NotificationLevel = (typeof notificationLevels)[number]
 const schema = z.object({
+  theme: z.enum(colorThemes).catch('system'),
   popupInfo: z.boolean().catch(true),
   popupWarning: z.boolean().catch(true),
   popupError: z.boolean().catch(true),

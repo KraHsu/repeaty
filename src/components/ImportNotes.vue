@@ -186,10 +186,10 @@ async function fileChanged(event: Event) {
 .import-notes :deep(.form-actions) {
   position: sticky;
   bottom: -20px;
-  background: #fff;
+  background: var(--ui-bg);
   padding: 16px 28px;
   margin-inline: -28px;
-  box-shadow: 0 -4px 12px #293d3308;
+  box-shadow: 0 -4px 12px color-mix(in srgb, var(--ui-text) 4%, transparent);
 }
 @media (max-width: 720px) {
   .import-notes {

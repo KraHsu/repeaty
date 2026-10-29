@@ -14,7 +14,7 @@
     background: var(--paper);
   }
   .cards-page .card-table th {
-    background: #edf1e9;
+    background: var(--app-table-heading);
     padding: 0.8125rem 1.5rem;
     font-size: var(--font-size-meta);
   }
@@ -155,7 +155,7 @@
     color: var(--green);
   }
   .data-page .backup-card .stat-icon.lavender {
-    background: #edf0e9;
+    background: var(--ui-bg-elevated);
     color: var(--muted);
   }
   .data-page .backup-card h2 {

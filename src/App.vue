@@ -28,6 +28,8 @@ import { createApplication } from './app/createApplication'
 import { provideApplication } from './app/context'
 import { PracticeHistoryPanel, SettingsPage } from './app/view-components'
 import { SIDEBAR_MIN_WIDTH, useSidebarLayout } from './app/useSidebarLayout'
+import { useColorTheme } from './app/useColorTheme'
+useColorTheme()
 const PluginPanel = defineAsyncComponent(() => import('./components/PluginPanel.vue'))
 const application = createApplication()
 provideApplication(application)
