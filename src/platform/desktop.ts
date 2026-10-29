@@ -18,6 +18,10 @@ export const WorkspaceBrowser = defineAsyncComponent(
   () => import('../desktop/WorkspaceManager.vue'),
 )
 export const PlatformSettings = defineAsyncComponent(() => import('../desktop/DesktopSettings.vue'))
+export const WorkspaceBackupTools = defineAsyncComponent(
+  () => import('../desktop/WorkspaceRecovery.vue'),
+)
+export { connectAutomaticBackups } from '../desktop/workspace-backups'
 export { workspaceAvailable } from '../desktop/workspaces'
 export async function initializePlatform() {
   installWorkspaceStores()

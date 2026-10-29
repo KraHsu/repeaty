@@ -1,5 +1,9 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
+import { recoveryMessages } from './recovery'
+import { attachmentMessages } from './attachments'
 export const en = {
+  ...recoveryMessages,
+  ...attachmentMessages,
   插件导入: 'Import with plugin',
   材料导入器: 'Material importer',
   导入预览: 'Import preview',

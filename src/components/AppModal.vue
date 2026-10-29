@@ -154,6 +154,7 @@ const modalContent = computed(() => ({
             :description="error"
           />
           <slot />
+          <template v-if="$slots.footer" #footer><slot name="footer" /></template>
         </UCard>
       </div>
     </template>
@@ -204,7 +205,8 @@ dialog:modal {
   max-height: inherit;
   overflow: hidden;
 }
-.app-modal-panel .modal-content > [data-slot='header'] {
+.app-modal-panel .modal-content > [data-slot='header'],
+.app-modal-panel .modal-content > [data-slot='footer'] {
   flex: 0 0 auto;
 }
 .app-modal-body {

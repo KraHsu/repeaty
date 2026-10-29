@@ -92,6 +92,12 @@ export function useStudyActions({
   const canUndoAction = computed(
     () => workspace.canUndoOperation.value || !!activeReview.value?.canUndoPractice,
   )
+  const canRedoAction = computed(() => workspace.canRedoOperation.value)
+  const redoTitle = computed(
+    () =>
+      t('重做：{action}', { action: msg(workspace.lastRedoOperation.value?.label ?? '评分') }) +
+      ' · Ctrl / ⌘ Shift Z',
+  )
   const undoTitle = computed(
     () =>
       t('撤销：{action}', {
@@ -167,9 +173,43 @@ export function useStudyActions({
       undoingAction.value = false
     }
   }
+  async function redoLastAction() {
+    if (shortcutLocked.value || !canRedoAction.value) return
+    undoingAction.value = true
+    const release = readingProgress.hold()
+    try {
+      if (mixedController.value && !(await mixedController.value.leave())) return
+      const entry = workspace.lastRedoOperation.value
+      let restored: Operation | undefined
+      const saved = await run(
+        async () => {
+          restored = await workspace.redoLastOperation()
+        },
+        msg('已重做：{action}', { action: msg(entry?.label ?? '评分') }),
+      )
+      if (saved && restored) {
+        await nextTick()
+        if (mixedController.value) await mixedController.value.reconcileRedo(restored)
+        else activeReview.value?.reconcileRedo(restored)
+      }
+    } finally {
+      release()
+      undoingAction.value = false
+    }
+  }
   function globalKeydown(event: KeyboardEvent) {
     if (shortcutBlocked(event) || shortcutLocked.value) return
     const primary = event.ctrlKey || event.metaKey
+    if (
+      primary &&
+      !event.altKey &&
+      ((event.shiftKey && event.key.toLowerCase() === 'z') ||
+        (!event.shiftKey && event.key.toLowerCase() === 'y'))
+    ) {
+      event.preventDefault()
+      void redoLastAction()
+      return
+    }
     if (primary && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'z') {
       event.preventDefault()
       void undoLastAction()
@@ -201,6 +241,7 @@ export function useStudyActions({
   }
   const shortcuts = [
     ['Ctrl / ⌘ Z', '撤销最近操作'],
+    ['Ctrl / ⌘ Shift Z', '重做最近操作'],
     ['Ctrl / ⌘ Enter', '保存当前表单'],
     ['A', '添加卡片 / 笔记'],
     ['E', '编辑当前卡片'],
@@ -263,6 +304,9 @@ export function useStudyActions({
     reviewBindings,
     shortcutLocked,
     canUndoAction,
+    canRedoAction,
+    redoTitle,
+    redoLastAction,
     undoTitle,
     startMixed,
     leaveMixedReading,

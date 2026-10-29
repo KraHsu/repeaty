@@ -78,7 +78,7 @@ export function useBackupActions({
         link.click()
         setTimeout(() => URL.revokeObjectURL(url), 60_000)
       }
-      notice.value = { text: '包含媒体的完整备份已生成', error: false }
+      notice.value = { text: '学习库与媒体已导出', error: false }
     } catch (error) {
       await writable?.abort().catch(() => {})
       notice.value =

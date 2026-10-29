@@ -23,4 +23,6 @@ export {
   connectWorkspaceMonitor,
   workspacePendingCount,
   workspaceDetectionError,
+  WorkspaceBackupTools,
+  connectAutomaticBackups,
 } from './static'

@@ -7,6 +7,7 @@ import { t, locale } from '../../i18n'
 import { ArrowDownToLine, ArrowUpFromLine, BookOpen, Repeat2, ShieldCheck } from '@lucide/vue'
 import { remoteWorkspace, desktopEdition } from '../../edition'
 import { useApplication } from '../context'
+import { WorkspaceBackupTools } from '@repeaty-platform'
 const {
   workspace,
   library,
@@ -72,6 +73,7 @@ function bindUpload(instance: unknown) {
         </div>
       </dl>
     </section>
+    <component :is="WorkspaceBackupTools" v-if="WorkspaceBackupTools" />
     <div v-if="transfer" class="transfer-status" role="status">
       <span>{{ t(transfer.label) }} {{ Math.floor(transfer.percent) }}%</span>
       <UiProgress :model-value="transfer.percent" :max="100" :aria-label="t(transfer.label)" />
@@ -82,10 +84,16 @@ function bindUpload(instance: unknown) {
     <div class="backup-grid">
       <section class="backup-card">
         <span class="stat-icon sage"><ArrowDownToLine :size="22" /></span>
-        <h2>{{ t('导出备份') }}</h2>
+        <h2>{{ t('导出学习库') }}</h2>
         <p>{{ t('导出全部学习数据，包含卡组、卡片、复习记录、图片和音频。') }}</p>
         <p v-if="library.sources.length" class="form-note">
-          {{ t('学习材料和原文快照也包含在完整备份中。') }}
+          {{
+            t(
+              desktopEdition
+                ? '包含学习材料和原文快照；完整工作目录请使用上方的备份。'
+                : '包含学习材料和原文快照。',
+            )
+          }}
         </p>
         <div class="backup-meta">
           {{
@@ -129,7 +137,7 @@ function bindUpload(instance: unknown) {
       </section>
       <section class="backup-card">
         <span class="stat-icon lavender"><ArrowUpFromLine :size="22" /></span>
-        <h2>{{ t('恢复备份') }}</h2>
+        <h2>{{ t('导入学习库') }}</h2>
         <p>{{ t('支持 .repeaty 备份包和旧版 JSON。检查完成并确认后才会替换当前数据。') }}</p>
         <div class="backup-meta">{{ t('.repeaty 最大 2 GB · 旧版 JSON 最大 100 MB') }}</div>
         <input
@@ -185,7 +193,9 @@ function bindUpload(instance: unknown) {
           t(
             remoteWorkspace
               ? '有数据变化时每 30 分钟保存快照；编辑、删除和恢复前也会保存。服务保留最近 10 份快照及其附件。'
-              : '有数据变化时，在打开应用及使用期间每 30 分钟保存快照；编辑、删除、批量操作和恢复前也会保存。保留最近 10 份及其图片和音频。清除网站数据也会删除快照。',
+              : desktopEdition
+                ? '库内快照保留最近 10 份学习数据及其附件。它们与当前库在同一目录，请另外保存完整备份。'
+                : '有数据变化时，在打开应用及使用期间每 30 分钟保存快照；编辑、删除、批量操作和恢复前也会保存。保留最近 10 份及其图片和音频。清除网站数据也会删除快照。',
           )
         }}
       </p>
@@ -225,7 +235,9 @@ function bindUpload(instance: unknown) {
             t(
               remoteWorkspace
                 ? '使用 FSRS 安排复习，数据保存在服务中。'
-                : '使用 FSRS 安排复习，数据保存在当前浏览器。',
+                : desktopEdition
+                  ? '使用 FSRS 安排复习，数据保存在工作目录中。'
+                  : '使用 FSRS 安排复习，数据保存在当前浏览器。',
             )
           }}
         </p>
