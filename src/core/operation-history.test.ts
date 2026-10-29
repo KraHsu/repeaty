@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest'
+import { reactive } from 'vue'
 import { fixture, input } from './test-fixtures'
 import { saveNote } from './model'
 import { operationFor } from './operations'
@@ -8,6 +9,21 @@ import {
   rebindOperationHistory,
 } from './operation-history'
 import { addSource, prepareSource, removeSource } from './sources'
+
+it('detaches nested editor proxies before writing a durable history record', () => {
+  const before = fixture()
+  const after = reactive(saveNote(before, { ...input, front: 'With image' }))
+  after.notes.at(-1)!.frontMedia = ['editor-image']
+  const history = parseOperationHistory(
+    operationHistory([operationFor(before, after, 'local:test', '修改')!]),
+  )
+  expect(structuredClone(history)).toEqual(history)
+  after.notes.at(-1)!.frontMedia!.push('later-image')
+  const note = history.undo[0]!.changes.find((change) => change.store === 'notes')!
+    .after as import('./model').Note
+  expect(note.frontMedia).toEqual(['editor-image'])
+  expect(history.mediaIds).toEqual(['editor-image'])
+})
 
 it('round-trips JSON without Blob values and rebinds only session ownership', () => {
   const prepared = prepareSource({ title: 'Original', url: '', format: 'plain', content: 'retain' })

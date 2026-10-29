@@ -19,7 +19,7 @@ const changeSchema = z
     after: z.unknown().optional(),
     keys: z.array(z.string().min(1).max(100)).max(100),
   })
-  .superRefine((change, context) => {
+  .transform((change, context) => {
     if (
       change.store === 'materialReceipts' ||
       (!change.before && !change.after) ||
@@ -27,18 +27,25 @@ const changeSchema = z
       change.keys.some((key) => ['__proto__', 'constructor', 'prototype'].includes(key))
     ) {
       context.addIssue({ code: 'custom', message: 'Invalid operation change' })
-      return
+      return z.NEVER
     }
     const schema =
       change.store === 'attempts'
         ? z.union([attemptSchema, attemptSummarySchema])
         : recordSchemas[change.store]
-    for (const value of [change.before, change.after]) {
+    const normalized = { ...change }
+    for (const key of ['before', 'after'] as const) {
+      const value = change[key]
       if (value === undefined) continue
       const result = schema.safeParse(value)
-      if (!result.success || result.data.id !== change.id)
+      if (!result.success || result.data.id !== change.id) {
         context.addIssue({ code: 'custom', message: 'Invalid operation record' })
+        return z.NEVER
+      }
+      // Persist schema-owned values, not editor proxies or mutable nested arrays.
+      normalized[key] = result.data
     }
+    return normalized
   })
 const operationSchema = z
   .object({
