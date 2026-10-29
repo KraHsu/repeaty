@@ -200,7 +200,7 @@ impl Catalog {
                     directory.join(format!("backup-{}.repeaty-workspace", uuid::Uuid::new_v4()));
                 let created = sessions.backup_with_cancel(token, &output, cancel)?;
                 // A failed or interrupted write must never license deletion of older copies.
-                let verified = Sessions::inspect_backup(&output)?;
+                let verified = Sessions::inspect_backup_with_cancel(&output, cancel)?;
                 if verified.sha256 != created.sha256 || verified.source_workspace_id != id {
                     return Err(Error::invalid());
                 }
@@ -220,6 +220,22 @@ impl Catalog {
                         })
                         .collect::<Result<Vec<_>>>()?;
                     let keep = retained(&times, &config.policy, Utc::now());
+                    // Header-only metadata cannot make a damaged representative
+                    // displace a healthy older copy in the same retention tier.
+                    // Verify every kept representative before deleting any candidate.
+                    for index in &keep {
+                        let entry = &entries[*index];
+                        let checked = Sessions::inspect_backup_with_cancel(
+                            Path::new(&entry.archive_path),
+                            cancel,
+                        )?;
+                        if !checked.verified
+                            || checked.manifest_sha256 != entry.manifest_sha256
+                            || checked.source_workspace_id != id
+                        {
+                            return Err(Error("working-file-changed"));
+                        }
+                    }
                     for (index, entry) in entries.iter().enumerate() {
                         if keep.contains(&index)
                             || entry.archive_path == output.to_string_lossy()
@@ -228,11 +244,26 @@ impl Catalog {
                             continue;
                         }
                         let path = Path::new(&entry.archive_path);
-                        // Revalidate both the parent and bytes immediately before unlinking.
+                        // Listing reads headers only. A candidate must pass a complete
+                        // inspection before deletion, and must still be the same file.
+                        let before = crate::files::regular_file(path)?;
+                        let before_metadata = before.metadata()?;
+                        let identity = same_file::Handle::from_file(before)?;
+                        let verified = Sessions::inspect_backup_with_cancel(path, cancel)?;
+                        let after = crate::files::regular_file(path)?;
+                        let after_metadata = after.metadata()?;
                         if checked_directory(&directory)? != directory
-                            || Sessions::inspect_backup(path)?.sha256 != entry.sha256
+                            || !verified.verified
+                            || verified.manifest_sha256 != entry.manifest_sha256
+                            || verified.source_workspace_id != id
+                            || same_file::Handle::from_file(after)? != identity
+                            || before_metadata.len() != after_metadata.len()
+                            || before_metadata.modified().ok() != after_metadata.modified().ok()
                         {
                             return Err(Error("working-file-changed"));
+                        }
+                        if cancel.load(Ordering::Acquire) {
+                            return Err(Error("backup-cancelled"));
                         }
                         std::fs::remove_file(path)?;
                         result.pruned += 1;
@@ -299,8 +330,9 @@ fn scan(directory: &Path, id: &str) -> Result<Vec<Summary>> {
         if found.len() >= 2000 {
             return Err(Error("workspace-limit"));
         }
-        // Corruption prevents pruning. It never makes a corrupt file disappear silently.
-        let summary = Sessions::inspect_backup(&entry.path())?;
+        // Headers are enough for a directory listing and retention selection. Payload
+        // verification belongs to explicit inspection and each deletion candidate.
+        let summary = Sessions::list_backup_summary(&entry.path())?;
         if summary.source_workspace_id != id {
             return Err(Error::invalid());
         }

@@ -222,6 +222,24 @@ impl Sessions {
     pub fn inspect_backup(path: &Path) -> Result<crate::backup::Summary> {
         crate::backup::inspect(path)
     }
+    pub fn list_backup_summary(path: &Path) -> Result<crate::backup::Summary> {
+        crate::backup::list_summary(path)
+    }
+    pub fn inspect_backup_with_cancel(
+        path: &Path,
+        cancel: &std::sync::atomic::AtomicBool,
+    ) -> Result<crate::backup::Summary> {
+        crate::backup::inspect_with_cancel(path, cancel)
+    }
+    pub fn search_backup_checked_with_cancel(
+        path: &Path,
+        query: &str,
+        limit: usize,
+        expected_digest: &str,
+        cancel: &std::sync::atomic::AtomicBool,
+    ) -> Result<Vec<crate::backup::SearchHit>> {
+        crate::backup::search_checked_with_cancel(path, query, limit, Some(expected_digest), cancel)
+    }
     pub fn search_backup(
         path: &Path,
         query: &str,

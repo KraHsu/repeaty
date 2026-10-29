@@ -7,8 +7,9 @@ use crate::{
     files,
     library::{Library, Marker},
 };
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use cap_std::fs::{Dir, OpenOptions};
-use rusqlite::{Connection, OpenFlags};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -68,6 +69,9 @@ pub struct Summary {
     pub file_count: usize,
     pub total_bytes: u64,
     pub sha256: String,
+    /// Header-only listings must never imply that payload checksums were verified.
+    pub verified: bool,
+    pub manifest_sha256: String,
     pub counts: BTreeMap<String, u64>,
 }
 #[derive(Debug, Serialize)]
@@ -79,6 +83,63 @@ pub struct SearchHit {
     pub excerpt: String,
     pub retired: bool,
     pub path: Option<String>,
+    pub restore_key: Option<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Resource {
+    kind: String,
+    id: String,
+    path: String,
+    hash: String,
+    retired: bool,
+}
+impl Resource {
+    fn key(&self) -> Result<String> {
+        Ok(format!(
+            "resource:{}",
+            URL_SAFE_NO_PAD.encode(serde_json::to_vec(self)?)
+        ))
+    }
+    fn validate(&self) -> Result<()> {
+        if !["note", "source"].contains(&self.kind.as_str())
+            || (self.retired && self.kind != "note")
+            || !hash_valid(&self.hash)
+            || !allowed(&self.path, false)
+            || !self.path.starts_with(if self.kind == "note" {
+                "notes/"
+            } else {
+                "sources/"
+            })
+        {
+            return Err(Error::invalid());
+        }
+        Ok(())
+    }
+}
+fn resource(db: &Connection, kind: &str, id: &str, retired: bool) -> Result<Option<Resource>> {
+    let pair = if retired {
+        db.query_row(
+            "SELECT path,hash FROM retired_documents WHERE id=?1",
+            [id],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+        )
+        .optional()?
+    } else {
+        db.query_row(
+            "SELECT path,hash FROM documents WHERE kind=?1 AND id=?2",
+            params![kind, id],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+        )
+        .optional()?
+    };
+    Ok(pair.map(|(path, hash)| Resource {
+        kind: kind.into(),
+        id: id.into(),
+        path,
+        hash,
+        retired,
+    }))
 }
 
 fn cancelled(cancel: &AtomicBool) -> Result<()> {
@@ -337,7 +398,9 @@ fn summary(path: &Path, manifest: &Manifest, digest: String) -> Result<Summary> 
         revision: manifest.revision,
         file_count: manifest.files.len(),
         total_bytes: manifest.total_bytes,
+        verified: !digest.is_empty(),
         sha256: digest,
+        manifest_sha256: files::digest(&serde_json::to_vec(manifest)?),
         counts: manifest.counts.clone(),
     })
 }
@@ -535,22 +598,7 @@ fn unpack(path: &Path, destination: &Path, cancel: &AtomicBool) -> Result<(Manif
         inner: file,
         hash: Sha256::new(),
     };
-    let mut header = [0u8; 24];
-    input.read_exact(&mut header).map_err(|_| corrupt())?;
-    if &header[..16] != MAGIC {
-        return Err(Error("backup-incompatible"));
-    }
-    let length = u64::from_le_bytes(header[16..].try_into().unwrap());
-    if length > MAX_MANIFEST {
-        return Err(Error("backup-limit"));
-    }
-    let mut raw = vec![0u8; length as usize];
-    input.read_exact(&mut raw).map_err(|_| corrupt())?;
-    let manifest: Manifest = serde_json::from_slice(&raw).map_err(|_| corrupt())?;
-    validate_manifest(&manifest)?;
-    if 24 + length + manifest.total_bytes != before.len() {
-        return Err(corrupt());
-    }
+    let manifest = read_manifest(&mut input, before.len())?;
     let mut dirs = manifest.directories.clone();
     dirs.sort_by_key(|dir| dir.split('/').count());
     for dir in dirs {
@@ -642,9 +690,43 @@ fn validate_database_at(root: &Path, database_path: &Path, manifest: &Manifest) 
     Ok(())
 }
 pub fn inspect(path: &Path) -> Result<Summary> {
+    inspect_with_cancel(path, &AtomicBool::new(false))
+}
+pub fn inspect_with_cancel(path: &Path, cancel: &AtomicBool) -> Result<Summary> {
     let scratch = Scratch::new(&std::env::temp_dir())?;
-    let (manifest, digest) = unpack(path, &scratch.0, &AtomicBool::new(false))?;
+    let (manifest, digest) = unpack(path, &scratch.0, cancel)?;
     summary(path, &manifest, digest)
+}
+fn read_manifest(input: &mut impl Read, total_length: u64) -> Result<Manifest> {
+    let mut header = [0u8; 24];
+    input.read_exact(&mut header).map_err(|_| corrupt())?;
+    if &header[..16] != MAGIC {
+        return Err(Error("backup-incompatible"));
+    }
+    let length = u64::from_le_bytes(header[16..].try_into().unwrap());
+    if length > MAX_MANIFEST {
+        return Err(Error("backup-limit"));
+    }
+    let mut raw = vec![0u8; length as usize];
+    input.read_exact(&mut raw).map_err(|_| corrupt())?;
+    let manifest: Manifest = serde_json::from_slice(&raw).map_err(|_| corrupt())?;
+    validate_manifest(&manifest)?;
+    if 24 + length + manifest.total_bytes != total_length {
+        return Err(corrupt());
+    }
+    Ok(manifest)
+}
+/// Catalogue metadata only: does not read, hash, unpack or validate payload bytes.
+pub fn list_summary(path: &Path) -> Result<Summary> {
+    let mut file = files::regular_file(path)?;
+    regular(&file)?;
+    let before = file.metadata()?;
+    let manifest = read_manifest(&mut file, before.len())?;
+    let after = file.metadata()?;
+    if before.len() != after.len() || before.modified().ok() != after.modified().ok() {
+        return Err(Error("backup-files-changed"));
+    }
+    summary(path, &manifest, String::new())
 }
 pub fn restore(
     archive: &Path,
@@ -739,6 +821,16 @@ pub fn search_checked(
     limit: usize,
     expected: Option<&str>,
 ) -> Result<Vec<SearchHit>> {
+    search_checked_with_cancel(path, query, limit, expected, &AtomicBool::new(false))
+}
+pub fn search_checked_with_cancel(
+    path: &Path,
+    query: &str,
+    limit: usize,
+    expected: Option<&str>,
+    cancel: &AtomicBool,
+) -> Result<Vec<SearchHit>> {
+    cancelled(cancel)?;
     if query.trim().is_empty() {
         return Ok(vec![]);
     }
@@ -746,7 +838,7 @@ pub fn search_checked(
         return Err(Error::invalid());
     }
     let scratch = Scratch::new(&std::env::temp_dir())?;
-    let (_, digest) = unpack(path, &scratch.0, &AtomicBool::new(false))?;
+    let (_, digest) = unpack(path, &scratch.0, cancel)?;
     if expected.is_some_and(|expected| expected != digest) {
         return Err(Error("backup-files-changed"));
     }
@@ -773,6 +865,7 @@ pub fn search_checked(
     ] {
         let mut stmt = db.prepare(sql)?;
         for row in stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+            cancelled(cancel)?;
             let (id, raw) = row?;
             let data: Value = serde_json::from_str(&raw)?;
             let mut text = String::new();
@@ -815,15 +908,22 @@ pub fn search_checked(
             let document = if store.starts_with("history.") {
                 None
             } else {
-                db.query_row("SELECT path FROM documents WHERE id=?1 UNION SELECT path FROM retired_documents WHERE id=?1 LIMIT 1",[&id],|r|r.get(0)).ok()
+                resource(
+                    &db,
+                    if store == "sources" { "source" } else { "note" },
+                    &id,
+                    retired,
+                )?
             };
+            let restore_key = document.as_ref().map(Resource::key).transpose()?;
             hits.push(SearchHit {
                 store: store.into(),
                 id,
                 title,
                 excerpt,
                 retired,
-                path: document,
+                path: document.map(|doc| doc.path),
+                restore_key,
             });
             if hits.len() >= limit {
                 return Ok(hits);
@@ -850,9 +950,7 @@ pub fn restore_items_with_cancel(
     if paths.is_empty()
         || paths.len() > 1000
         || !hash_valid(expected)
-        || paths
-            .iter()
-            .any(|p| !allowed(p, false) || !(p.starts_with("notes/") || p.starts_with("sources/")))
+        || paths.iter().any(|p| p.len() > 16 * 1024)
     {
         return Err(Error::invalid());
     }
@@ -868,16 +966,99 @@ pub fn restore_items_with_cancel(
         OpenFlags::SQLITE_OPEN_READ_ONLY,
     )?;
     let mut selected = BTreeMap::new();
-    for path in paths {
-        let hash:Option<String>=database.query_row("SELECT hash FROM documents WHERE path=?1 UNION SELECT hash FROM retired_documents WHERE path=?1 LIMIT 1",[path],|r|r.get(0)).ok();
-        let origin = if let Some(hash) = hash {
-            format!(".repeaty/objects/{hash}")
-        } else if manifest.files.iter().any(|e| e.path == *path) {
-            path.clone()
+    let mut accepted_assets = BTreeMap::<String, (String, String)>::new();
+    for key in paths {
+        let document = if let Some(encoded) = key.strip_prefix("resource:") {
+            let requested: Resource = serde_json::from_slice(
+                &URL_SAFE_NO_PAD
+                    .decode(encoded)
+                    .map_err(|_| Error::invalid())?,
+            )?;
+            requested.validate()?;
+            if resource(&database, &requested.kind, &requested.id, requested.retired)?.as_ref()
+                != Some(&requested)
+            {
+                return Err(Error("backup-resource-changed"));
+            }
+            Some(requested)
+        } else {
+            if !allowed(key, false) || !(key.starts_with("notes/") || key.starts_with("sources/")) {
+                return Err(Error::invalid());
+            }
+            let mut stmt=database.prepare("SELECT kind,id,path,hash,0 FROM documents WHERE path=?1 UNION ALL SELECT 'note',id,path,hash,1 FROM retired_documents WHERE path=?1")?;
+            let matches = stmt
+                .query_map([key], |r| {
+                    Ok(Resource {
+                        kind: r.get(0)?,
+                        id: r.get(1)?,
+                        path: r.get(2)?,
+                        hash: r.get(3)?,
+                        retired: r.get(4)?,
+                    })
+                })?
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            if matches.len() > 1 {
+                return Err(Error("backup-ambiguous-resource"));
+            }
+            matches.into_iter().next()
+        };
+        let (path, origin) = if let Some(document) = document {
+            document.validate()?;
+            let table = if document.retired {
+                "retired_notes"
+            } else if document.kind == "note" {
+                "notes"
+            } else {
+                "sources"
+            };
+            let raw: String = database.query_row(
+                &format!("SELECT data FROM {table} WHERE id=?1"),
+                [&document.id],
+                |r| r.get(0),
+            )?;
+            let data: Value = serde_json::from_str(&raw)?;
+            for binding in data["inlineMedia"].as_array().into_iter().flatten() {
+                let path = binding["path"].as_str().ok_or_else(corrupt)?;
+                let hash = binding["hash"].as_str().ok_or_else(corrupt)?;
+                let media = binding["mediaId"].as_str().ok_or_else(corrupt)?;
+                if !allowed(path, false) || !path.starts_with("assets/") || !hash_valid(hash) {
+                    return Err(corrupt());
+                }
+                let asset: String =
+                    database
+                        .query_row("SELECT path FROM assets WHERE id=?1", [media], |r| r.get(0))?;
+                let origin = format!(".repeaty/media/{asset}");
+                if !manifest
+                    .files
+                    .iter()
+                    .any(|entry| entry.path == origin && entry.sha256 == hash)
+                {
+                    return Err(corrupt());
+                }
+                if let Some((_, existing)) = accepted_assets.get(path)
+                    && existing != hash
+                {
+                    return Err(Error("backup-resource-asset-conflict"));
+                }
+                // Also reject cross-platform casing collisions in accepted bindings.
+                if accepted_assets.iter().any(|(prior, (_, existing))| {
+                    prior.to_lowercase() == path.to_lowercase()
+                        && (prior != path || existing != hash)
+                }) {
+                    return Err(Error("backup-resource-asset-conflict"));
+                }
+                accepted_assets.insert(path.into(), (origin, hash.into()));
+            }
+            (document.path, format!(".repeaty/objects/{}", document.hash))
+        } else if manifest.files.iter().any(|entry| entry.path == *key) {
+            (key.clone(), key.clone())
         } else {
             return Err(Error::missing());
         };
-        selected.insert(path.clone(), origin);
+        if selected.contains_key(&path) {
+            return Err(Error("backup-resource-path-conflict"));
+        }
+        selected.insert(path, origin);
     }
     drop(database);
     let mut copied = 0;
@@ -900,6 +1081,15 @@ pub fn restore_items_with_cancel(
         fs::copy(source.0.join(origin), &destination)?;
         files::sync_regular_file(&destination)?;
         copied += 1;
+    }
+    // The working assets may contain unaccepted external edits. Bind exported
+    // accepted markdown to its immutable accepted bytes inside the new copy.
+    for (path, (origin, _)) in accepted_assets {
+        cancelled(cancel)?;
+        let destination = output.0.join(path);
+        fs::create_dir_all(destination.parent().unwrap())?;
+        fs::copy(source.0.join(origin), &destination)?;
+        files::sync_regular_file(&destination)?;
     }
     cancelled(cancel)?;
     atomic::publish_new(&output.0, &target)?;
@@ -1293,6 +1483,182 @@ mod tests {
         assert!(target.join("assets/pictures/cover.png").exists());
         assert!(!target.join("workspace.json").exists());
         assert_eq!(fs::read(&archive).unwrap(), before);
+    }
+    #[test]
+    fn lightweight_listing_reads_only_the_manifest_and_never_claims_payload_validation() {
+        let (parent, library) = fixture();
+        let (archive, full) = saved(&library, parent.path());
+        let light = list_summary(&archive).unwrap();
+        assert!(!light.verified);
+        assert!(light.sha256.is_empty());
+        assert_eq!(light.manifest_sha256, full.manifest_sha256);
+        assert!(full.verified);
+        let mut bytes = fs::read(&archive).unwrap();
+        let header_end = 24 + u64::from_le_bytes(bytes[16..24].try_into().unwrap()) as usize;
+        let mut header_only = std::io::Cursor::new(&bytes[..header_end]);
+        read_manifest(&mut header_only, bytes.len() as u64).unwrap();
+        assert_eq!(header_only.position(), header_end as u64);
+        let last = bytes.len() - 1;
+        bytes[last] ^= 1;
+        fs::write(&archive, bytes).unwrap();
+        assert!(!list_summary(&archive).unwrap().verified);
+        assert!(inspect(&archive).is_err());
+        assert_eq!(
+            inspect_with_cancel(&archive, &AtomicBool::new(true))
+                .unwrap_err()
+                .0,
+            "backup-cancelled"
+        );
+    }
+    #[test]
+    fn resource_keys_disambiguate_active_retired_paths_and_note_source_ids() {
+        let (parent, library) = fixture();
+        let retired_body = b"retired accepted exact body";
+        let retired_hash = files::digest(retired_body);
+        files::write_new(
+            &library.path().join(".repeaty/objects").join(&retired_hash),
+            retired_body,
+        )
+        .unwrap();
+        library
+            .db
+            .connection
+            .execute(
+                "UPDATE retired_documents SET path='notes/note.md',hash=?1 WHERE id='retired'",
+                [retired_hash],
+            )
+            .unwrap();
+        let source_body = b"source accepted exact body";
+        let source_hash = files::digest(source_body);
+        files::write_new(
+            &library.path().join(".repeaty/objects").join(&source_hash),
+            source_body,
+        )
+        .unwrap();
+        library
+            .db
+            .connection
+            .execute(
+                "INSERT INTO sources(id,position,data) VALUES('note',1,?1)",
+                [json!({"id":"note","title":"Searchable separate source"}).to_string()],
+            )
+            .unwrap();
+        library
+            .db
+            .connection
+            .execute(
+                "INSERT INTO documents VALUES('source','note','sources/same-id.md',?1)",
+                [source_hash],
+            )
+            .unwrap();
+        let (archive, info) = saved(&library, parent.path());
+        let hits = search(&archive, "searchable", 30).unwrap();
+        for (store, expected, path) in [
+            (
+                "notes",
+                b"# Accepted content\nSearchable question\n".as_slice(),
+                "notes/note.md",
+            ),
+            ("retired_notes", retired_body.as_slice(), "notes/note.md"),
+            ("sources", source_body.as_slice(), "sources/same-id.md"),
+        ] {
+            let hit = hits
+                .iter()
+                .find(|hit| hit.store == store && hit.restore_key.is_some())
+                .unwrap();
+            let target = parent.path().join(format!("item-{store}"));
+            restore_items(
+                &archive,
+                &target,
+                &info.sha256,
+                &[hit.restore_key.clone().unwrap()],
+            )
+            .unwrap();
+            assert_eq!(fs::read(target.join(path)).unwrap(), expected);
+        }
+        assert_eq!(
+            restore_items(
+                &archive,
+                &parent.path().join("ambiguous"),
+                &info.sha256,
+                &["notes/note.md".into()]
+            )
+            .unwrap_err()
+            .0,
+            "backup-ambiguous-resource"
+        );
+        let keys = hits
+            .iter()
+            .filter(|hit| matches!(hit.store.as_str(), "notes" | "retired_notes"))
+            .filter_map(|hit| hit.restore_key.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            restore_items(
+                &archive,
+                &parent.path().join("collision"),
+                &info.sha256,
+                &keys
+            )
+            .unwrap_err()
+            .0,
+            "backup-resource-path-conflict"
+        );
+    }
+    #[test]
+    fn single_item_uses_accepted_attachment_bytes_and_rejects_conflicting_bindings() {
+        let (parent, mut library) = fixture();
+        let binding = json!([{ "path":"assets/pictures/cover.png","mediaId":"image","hash":files::digest(b"immutable media"),"url":"../assets/pictures/cover.png"}]);
+        library
+            .db
+            .connection
+            .execute(
+                "UPDATE notes SET data=json_set(data,'$.inlineMedia',json(?1)) WHERE id='note'",
+                [binding.to_string()],
+            )
+            .unwrap();
+        let (archive, info) = saved(&library, parent.path());
+        let key = search(&archive, "Searchable question", 30)
+            .unwrap()
+            .into_iter()
+            .find(|hit| hit.store == "notes")
+            .unwrap()
+            .restore_key
+            .unwrap();
+        let target = parent.path().join("accepted-assets");
+        restore_items(&archive, &target, &info.sha256, &[key]).unwrap();
+        assert_eq!(
+            fs::read(target.join("assets/pictures/cover.png")).unwrap(),
+            b"immutable media"
+        );
+        assert_eq!(
+            fs::read(library.path().join("assets/pictures/cover.png")).unwrap(),
+            b"external attachment"
+        );
+        library
+            .db
+            .put_media("other-image", "image/png", b"different immutable image")
+            .unwrap();
+        let other = json!([{ "path":"assets/pictures/cover.png","mediaId":"other-image","hash":files::digest(b"different immutable image"),"url":"../assets/pictures/cover.png"}]);
+        library.db.connection.execute("UPDATE retired_notes SET data=json_set(data,'$.inlineMedia',json(?1)) WHERE id='retired'",[other.to_string()]).unwrap();
+        let archive = parent.path().join("conflicting.repeaty-workspace");
+        let info = create(&library, &archive, &AtomicBool::new(false)).unwrap();
+        let keys = search(&archive, "searchable", 30)
+            .unwrap()
+            .into_iter()
+            .filter_map(|hit| hit.restore_key)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            restore_items(
+                &archive,
+                &parent.path().join("conflicting-copy"),
+                &info.sha256,
+                &keys
+            )
+            .unwrap_err()
+            .0,
+            "backup-resource-asset-conflict"
+        );
+        assert!(!parent.path().join("conflicting-copy").exists());
     }
     #[test]
     fn search_matches_material_text_beyond_one_mebibyte() {

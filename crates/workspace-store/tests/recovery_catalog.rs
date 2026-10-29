@@ -194,6 +194,119 @@ fn policy_destinations_and_successful_interval_survive_catalog_restart() {
     );
 }
 
+fn retime_archive(path: &str, time: DateTime<Utc>, damage_payload: bool) {
+    let bytes = fs::read(path).unwrap();
+    let length = u64::from_le_bytes(bytes[16..24].try_into().unwrap()) as usize;
+    let mut manifest: serde_json::Value = serde_json::from_slice(&bytes[24..24 + length]).unwrap();
+    manifest["createdAt"] = serde_json::json!(time.to_rfc3339());
+    let raw = serde_json::to_vec(&manifest).unwrap();
+    let mut rewritten = bytes[..16].to_vec();
+    rewritten.extend((raw.len() as u64).to_le_bytes());
+    rewritten.extend(raw);
+    rewritten.extend(&bytes[24 + length..]);
+    if damage_payload {
+        let last = rewritten.len() - 1;
+        rewritten[last] ^= 1;
+    }
+    fs::write(path, rewritten).unwrap();
+}
+
+#[test]
+fn listing_is_unverified_and_a_damaged_retention_representative_never_prunes_healthy_copies() {
+    let f = Fixture::new();
+    f.catalog.target(&f.id, &f.library, 1, None).unwrap();
+    let first = f
+        .catalog
+        .run(&f.sessions, &f.token, &f.id, false, &AtomicBool::new(false))
+        .unwrap();
+    let healthy = first[0].backup.as_ref().unwrap();
+    retime_archive(
+        &healthy.archive_path,
+        Utc::now() - chrono::Duration::days(2),
+        false,
+    );
+    let healthy_bytes = fs::read(&healthy.archive_path).unwrap();
+    let second = f
+        .catalog
+        .run(&f.sessions, &f.token, &f.id, false, &AtomicBool::new(false))
+        .unwrap();
+    let damaged = second[0].backup.as_ref().unwrap();
+    retime_archive(
+        &damaged.archive_path,
+        Utc::now() - chrono::Duration::days(1),
+        true,
+    );
+    let (entries, errors) = f.catalog.list(&f.id).unwrap();
+    assert!(errors.is_empty());
+    assert_eq!(entries.len(), 2);
+    assert!(entries.iter().all(|entry| !entry.verified
+        && entry.sha256.is_empty()
+        && !entry.manifest_sha256.is_empty()));
+    assert!(Sessions::inspect_backup(PathBuf::from(&damaged.archive_path).as_path()).is_err());
+    f.catalog
+        .set_policy(
+            &f.id,
+            Policy {
+                hourly: 0,
+                daily: 2,
+                weekly: 0,
+                monthly: 0,
+                ..Policy::default()
+            },
+        )
+        .unwrap();
+    let third = f
+        .catalog
+        .run(&f.sessions, &f.token, &f.id, false, &AtomicBool::new(false))
+        .unwrap();
+    assert!(third[0].backup.as_ref().unwrap().verified);
+    assert!(third[0].error.is_some());
+    assert_eq!(third[0].pruned, 0);
+    assert_eq!(fs::read(&healthy.archive_path).unwrap(), healthy_bytes);
+    assert!(PathBuf::from(&damaged.archive_path).exists());
+    assert!(
+        Sessions::inspect_backup(PathBuf::from(&healthy.archive_path).as_path())
+            .unwrap()
+            .verified
+    );
+}
+
+#[test]
+fn damaged_prune_candidate_is_preserved_after_header_only_selection() {
+    let f = Fixture::new();
+    f.catalog.target(&f.id, &f.library, 1, None).unwrap();
+    let first = f
+        .catalog
+        .run(&f.sessions, &f.token, &f.id, false, &AtomicBool::new(false))
+        .unwrap();
+    let damaged = first[0].backup.as_ref().unwrap();
+    retime_archive(
+        &damaged.archive_path,
+        Utc::now() - chrono::Duration::days(1),
+        true,
+    );
+    let before = fs::read(&damaged.archive_path).unwrap();
+    f.catalog
+        .set_policy(
+            &f.id,
+            Policy {
+                hourly: 0,
+                daily: 0,
+                weekly: 0,
+                monthly: 0,
+                ..Policy::default()
+            },
+        )
+        .unwrap();
+    let next = f
+        .catalog
+        .run(&f.sessions, &f.token, &f.id, false, &AtomicBool::new(false))
+        .unwrap();
+    assert!(next[0].error.is_some());
+    assert_eq!(next[0].pruned, 0);
+    assert_eq!(fs::read(&damaged.archive_path).unwrap(), before);
+}
+
 fn dt(value: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(value)
         .unwrap()

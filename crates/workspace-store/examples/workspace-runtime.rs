@@ -20,25 +20,37 @@ fn backups(
 ) -> Result<Value> {
     let token = args["token"].as_str().ok_or_else(Error::invalid)?;
     let status = sessions.status()?;
-    if status["active"]["token"].as_str() != Some(token) {
+    let request = &args["request"];
+    let epoch = status["epoch"].as_str().ok_or_else(Error::invalid)?;
+    let closed = status["active"].is_null();
+    if closed {
+        sessions.check_epoch(args["epoch"].as_str().ok_or_else(Error::invalid)?)?;
+        if !token.is_empty()
+            || !matches!(
+                request["type"].as_str(),
+                Some("inspect" | "search" | "restore")
+            )
+        {
+            return Err(Error("workspace-not-open"));
+        }
+    } else if status["active"]["token"].as_str() != Some(token) {
         return Err(Error("stale-workspace-session"));
     }
-    let id = status["active"]["id"].as_str().ok_or_else(Error::invalid)?;
-    let root = Path::new(
-        status["active"]["path"]
-            .as_str()
-            .ok_or_else(Error::invalid)?,
-    );
-    let epoch = status["epoch"].as_str().ok_or_else(Error::invalid)?;
-    let request = &args["request"];
+    let scope = if closed {
+        format!("closed:{epoch}")
+    } else {
+        token.into()
+    };
+    let id = status["active"]["id"].as_str().unwrap_or("");
+    let root = Path::new(status["active"]["path"].as_str().unwrap_or(""));
     let catalog = Catalog::open(directory)?;
-    previews.retain(|_, (scope, _)| scope == token);
+    previews.retain(|_, (prior, _)| prior == &scope);
     if previews.len() > 4000 {
         previews.clear();
     }
     let preview = |key: &str| -> Result<Summary> {
-        let (scope, value) = previews.get(key).ok_or_else(Error::missing)?;
-        if scope != token {
+        let (prior, value) = previews.get(key).ok_or_else(Error::missing)?;
+        if prior != &scope {
             return Err(Error("stale-workspace-session"));
         }
         Ok(value.clone())
@@ -75,7 +87,7 @@ fn backups(
                 .map(|summary| {
                     let key = uuid::Uuid::new_v4().to_string();
                     let view = json!({"key":key,"summary":summary});
-                    previews.insert(key, (token.into(), summary));
+                    previews.insert(key, (scope.clone(), summary));
                     view
                 })
                 .collect::<Vec<_>>();
@@ -97,7 +109,7 @@ fn backups(
             let summary = Sessions::inspect_backup(&path)?;
             let key = uuid::Uuid::new_v4().to_string();
             let view = json!({"key":key,"summary":summary});
-            previews.insert(key, (token.into(), summary));
+            previews.insert(key, (scope.clone(), summary));
             Ok(view)
         }
         "search" => {
@@ -111,7 +123,11 @@ fn backups(
         }
         "restore" => {
             let summary = preview(key()?)?;
-            let target = selected()?.join(format!("Repeaty-restored-{}", uuid::Uuid::new_v4()));
+            let parent = std::fs::canonicalize(selected()?)?;
+            if !closed && parent.starts_with(std::fs::canonicalize(root)?) {
+                return Err(Error("backup-target-in-workspace"));
+            }
+            let target = parent.join(format!("Repeaty-restored-{}", uuid::Uuid::new_v4()));
             let result = if request["paths"].is_array() {
                 Sessions::restore_backup_items(
                     Path::new(&summary.archive_path),

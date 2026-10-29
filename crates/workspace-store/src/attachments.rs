@@ -549,6 +549,10 @@ pub fn mutate(db: &mut Connection, root: &Dir, input: Mutation) -> Result<Value>
             }
         }
     }
+    // Older clients automatically garbage-collect assets without understanding
+    // trash or durable undo protection. Gate them only after a successful write.
+    let version: i64 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+    tx.pragma_update(None, "user_version", version.max(12))?;
     tx.commit()?;
     recover(db, root)?;
     inventory(db, root)
@@ -707,6 +711,11 @@ mod tests {
         let mut f = Fixture::new();
         f.asset("unclaimed", b"original");
         let view = snapshot(&f.db, &f.root).unwrap();
+        assert_eq!(
+            f.db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
         f.db.execute(
             "INSERT INTO card_drafts VALUES(?1)",
             [json!({"mediaId":"unclaimed"}).to_string()],
@@ -723,6 +732,11 @@ mod tests {
             "revision-conflict"
         );
         assert_eq!(
+            f.db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
             f.db.query_row("SELECT count(*) FROM attachment_trash", [], |r| r
                 .get::<_, i64>(0))
                 .unwrap(),
@@ -730,6 +744,11 @@ mod tests {
         );
         f.db.execute("DELETE FROM card_drafts", []).unwrap();
         f.perform(Action::Trash, &["unclaimed"]).unwrap();
+        assert_eq!(
+            f.db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+                .unwrap(),
+            12
+        );
         f.db.execute(
             "INSERT INTO operation_history VALUES(?1)",
             [json!({"mediaIds":["unclaimed"]}).to_string()],
