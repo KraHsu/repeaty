@@ -27,5 +27,5 @@ it('registers only an overview widget and follows the host language', () => {
   boundary.locale.value = 'en'
   expect(plugin.label).toBe('Review heatmap')
   expect(contribution.title).toBe('Review heatmap')
-  expect(plugin.description).toContain('28 local calendar days')
+  expect(plugin.description).toContain('365 local calendar days')
 })

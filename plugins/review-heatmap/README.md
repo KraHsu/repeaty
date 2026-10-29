@@ -1,12 +1,16 @@
 # 复习热力图 · Review heatmap
 
-在「学习概览」的卡组区域之后查看最近28天的正式复习次数。不同色阶表示当天评分次数；每格同时显示日期和次数，悬停或辅助技术可读取完整日期。界面跟随软件的语言、字体与深浅主题。
+在「学习概览」的卡组区域之后，用 GitHub 贡献图形式查看最近365天的正式复习次数。每列是一周，每行对应星期日到星期六；月份和星期标记帮助定位日期，绿色深浅表示当天评分次数。界面跟随软件的语言、字体与深浅主题。
 
 ## 安装与使用
 
 在主侧栏依次选择「插件 → 安装或更新官方插件 → 复习热力图 → 安装并启用」，或选择 `review-heatmap.repeaty-plugin` 文件安装。新建和已有学习库都需要主动安装，本插件不会默认预装。启用后进入「学习概览」即可查看，无需创建题目或添加页面。可随时在插件详情中关闭、重新启用或卸载。
 
-- 按设备当前本地日期统计，包含今天在内的28天，支持北京时间、UTC及夏令时切换。
+已安装1.0.0的学习库，在同一官方插件列表中选择1.1.0的「更新并启用」即可使用新版日历。插件不会自动更新；更新保留评分记录。
+
+- 按设备当前本地日期统计，包含今天在内的365天，支持北京时间、UTC及夏令时切换。日历前后的占位格不属于统计范围。
+- 悬停、键盘聚焦或轻点日期格，可查看完整日期与复习次数。方向键在日期间移动；窄窗口保留方格大小，在日历内部横向滚动，初始显示最近日期。
+- 五档色阶依次表示0次、1–2次、3–5次、6–9次和10次及以上，图例由浅到深排列。次数较少和没有复习的日期也保留。
 - 统计的是**正式评分次数**，不是不同卡片数：同一张卡片评分两次计为两次。专项练习中采用正式评分的记录也会计入；只练不改进度的练习、阅读与未提交的作答不计入。
 - 数据来自当前学习库保存的正式评分摘要。撤销评分、恢复备份或切换学习库后，显示随当前数据更新。
 - 页面打开期间跨午夜会更新日期；从后台或休眠恢复时也会重新检查。没有评分记录时保留空网格。
@@ -18,9 +22,13 @@
 
 ## English
 
-Review heatmap is an official external plugin for the Learning overview. It shows **formal rating counts** for the last 28 local calendar days, including today, below the deck section. The displayed dates, counts and interface follow the host language and theme.
+Review heatmap is an official external plugin for the Learning overview. It shows **formal rating counts** for the last 365 local calendar days, including today, below the deck section. The GitHub-style contribution calendar has one column per week and seven weekday rows, from Sunday to Saturday, with month and weekday labels. Dates, counts and the interface follow the host language and theme.
 
 Choose Plugins → Install or update official plugins → Review heatmap → Install and enable, or install the `review-heatmap.repeaty-plugin` file. Both new and existing libraries require an explicit installation; the plugin is not preinstalled. Enable, disable or uninstall it from the plugin details. No extra page or question type is created.
+
+If version 1.0.0 is already installed, choose Update and enable for version 1.1.0 in the same official plugin list. Updates are manual and preserve rating history.
+
+Hover, focus or tap a day to read its date and rating count. Use the arrow keys to move between dates. On narrow screens, scroll horizontally within the calendar; the most recent dates are initially visible. Five intensity levels represent 0, 1–2, 3–5, 6–9 and 10 or more ratings. Padding cells before and after the date range do not represent rating days.
 
 Each saved formal rating counts once, including repeated ratings of one card and practice sessions that use formal scheduling. Practice-only attempts, reading sessions and unsubmitted answers do not count. Undo, backup restoration and library changes are reflected in the current data. The calendar refreshes at local midnight and after focus or visibility restoration, including daylight-saving changes.
 
@@ -28,7 +36,7 @@ The plugin consumes only read-only rating summaries through the public SDK. It r
 
 ## 独立开发 / Development
 
-版本1.0.0，使用公开 SDK 1.7.0 的 `ExtensionPlugin` 与 `registerWidget()`。运行预构建包不需要 Node.js，也不需要重编译 Repeaty。开发时使用 Node.js 24.15+，安装依赖后在本目录执行：
+版本1.1.0，使用公开 SDK 1.7.0 的 `ExtensionPlugin` 与 `registerWidget()`。运行预构建包不需要 Node.js，也不需要重编译 Repeaty。开发时使用 Node.js 24.15+，安装依赖后在本目录执行：
 
 ```sh
 npm test

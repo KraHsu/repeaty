@@ -77,8 +77,9 @@ it.each([false, true])(
     )
     expect(heatmap.manifest).toMatchObject({
       id: 'review-heatmap',
-      version: '1.0.0',
+      version: '1.1.0',
       kind: 'frontend',
+      description: '在学习概览中以日历热力图展示最近 365 天的正式评分次数。',
     })
     expect(heatmap.manifest.permissions).toBeUndefined()
     expect(heatmap.readme).toContain('复习热力图')

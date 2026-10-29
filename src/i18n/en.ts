@@ -215,8 +215,8 @@ export const en = {
     'Disabling a question plugin pauses its questions; disabling a display plugin hides its interface. Content and progress stay intact. Switches apply to this browser.',
   答题历史: 'Review history',
   复习热力图: 'Review heatmap',
-  '在学习概览中展示最近 28 天的正式评分次数。':
-    'Show formal review counts from the last 28 days on the learning overview.',
+  '在学习概览中以日历热力图展示最近 365 天的正式评分次数。':
+    'Show formal review counts from the last 365 days in a calendar on the learning overview.',
   '在当前卡片上方显示最近的评分，虚线圆表示本次作答。':
     'Show recent ratings above the current card. A dashed circle marks this attempt.',
   当前卡片的答题历史: 'Review history for this card',
