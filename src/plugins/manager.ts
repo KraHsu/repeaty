@@ -392,7 +392,21 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
           registerSettings,
           registerPage,
           registerWidget,
-          { registrations, host: () => materialHost, scheduler: taskScheduler, commandScheduler },
+          {
+            registrations,
+            host: () => {
+              // Evaluation/factory code may register contributions, but cannot mutate or read
+              // the library until this exact activation has been published successfully.
+              const published = materialApis.get(bundle.manifest.id)
+              return published &&
+                published.api === materialApi &&
+                pluginRuntime.installations.includes(published.installation)
+                ? materialHost
+                : undefined
+            },
+            scheduler: taskScheduler,
+            commandScheduler,
+          },
         )
         materialApi = api
         const module = await (environment.evaluate ?? evaluatePlugin)(code, api)

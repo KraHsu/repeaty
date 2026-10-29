@@ -26,6 +26,10 @@ export interface MaterialTaskContext {
   progress(value: MaterialTaskProgress): void
   /** Cleanup runs exactly once on completion, cancellation, failure, or plugin unload. */
   onCleanup(dispose: () => void): void
+  /** Host-owned Blob Worker; UTF-8 source <= 1 MiB. Terminated/revoked on task completion or abort.
+   * Optional for older hosts and explicitly supplied contexts; check materials.capabilities().worker.
+   */
+  createWorker?(source: string, options?: { type?: 'classic' | 'module'; name?: string }): Worker
   /** Yield to the host between bounded batches; throws when the task is no longer current. */
   yield(): Promise<void>
 }

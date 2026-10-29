@@ -17,10 +17,17 @@ import {
   validateMaterialLocator,
   type MaterialReceipt,
 } from '../core/material-data'
-import { mediaSchema, noteSchema, saveNote, type Library, type MediaUpload } from '../core/model'
+import {
+  MAX_MEDIA_BYTES,
+  mediaSchema,
+  noteSchema,
+  saveNote,
+  type Library,
+  type MediaUpload,
+} from '../core/model'
 
 const MAX_FILES = 20
-const MAX_ORIGINAL_BYTES = 32 * 1024 * 1024
+const MAX_ORIGINAL_BYTES = MAX_MEDIA_BYTES
 const MAX_BATCH_BYTES = 64 * 1024 * 1024
 const MAX_CANDIDATES = 100
 const candidateSchema = z.strictObject({
@@ -240,7 +247,7 @@ export function createMaterialCommands(context: LibraryContext) {
             import: available,
             createNote: available,
             search: available,
-            worker: typeof Worker !== 'undefined',
+            worker: plugin.worker === true,
           }
         },
         snapshot() {
@@ -285,12 +292,13 @@ export function createMaterialCommands(context: LibraryContext) {
                 !(file instanceof Blob) ||
                 !('name' in file) ||
                 typeof file.name !== 'string' ||
+                !file.size ||
                 file.size > MAX_ORIGINAL_BYTES ||
                 !importer.extensions.some((ext) => (file as File).name.toLowerCase().endsWith(ext)),
             ) ||
             request.files.reduce((sum, file) => sum + file.size, 0) > MAX_BATCH_BYTES
           )
-            throw new Error('请选择受支持的文件；每批最多20个文件、64 MB，单文件最多32 MB。')
+            throw new Error('请选择非空的受支持文件；每批最多20个文件、64 MB，单文件最多10 MB。')
           const startRevision = context.revision
           const files = [...request.files]
           return plugin.runTask(

@@ -11,7 +11,7 @@ import type { PluginPageContribution, RegisterPluginPage } from './pages'
 import type { PluginWidgetContribution, RegisterPluginWidget } from './widgets'
 import type { MaterialHostApi, MaterialTaskContext, MaterialTaskOptions } from '@repeaty/plugin-api'
 import type { MaterialRegistrations, PluginMaterialHostFactory } from './materials'
-import { PluginTaskScheduler } from './tasks'
+import { PluginTaskScheduler, supportsPluginWorkers } from './tasks'
 import AppPage from '../components/AppPage.vue'
 import {
   SettingGroup,
@@ -98,6 +98,7 @@ export function createPluginApi(
       pluginId: manifest.id,
       scope,
       signal: lifetime.signal,
+      worker: supportsPluginWorkers(),
       assertCurrent: guard,
       runTask,
     })
@@ -118,7 +119,7 @@ export function createPluginApi(
           import: false,
           createNote: false,
           search: false,
-          worker: typeof Worker !== 'undefined',
+          worker: supportsPluginWorkers(),
         }
       return materialHost().capabilities()
     },
@@ -158,6 +159,12 @@ export function createPluginApi(
         guard()
         const result = await run({
           ...context,
+          createWorker: context.createWorker
+            ? (source, options) => {
+                guard()
+                return context.createWorker!(source, options)
+              }
+            : undefined,
           progress(value) {
             guard()
             context.progress(value)

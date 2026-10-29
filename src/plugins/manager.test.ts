@@ -160,6 +160,72 @@ it('validates paged provider results against library identity and invalidates ca
 afterEach(async () => {
   await Promise.all(managers.splice(0).map((manager) => manager.dispose()))
 })
+it('denies material access during a candidate factory and preserves the published host after a failed update', async () => {
+  let installed = bundle('published')
+  const apis: ReturnType<typeof createPluginApi>[] = []
+  const createNote = vi.fn(async () => ({ noteId: 'unexpected', revision: 1 }))
+  const host = vi.fn(
+    () =>
+      ({
+        capabilities: () => ({ available: true }),
+        snapshot: () => ({ workspaceScope: 'local:staging', revision: 1, sources: [], decks: [] }),
+        createNote,
+      }) as unknown as MaterialHostApi,
+  )
+  const manager = createPluginManager({
+    storage: {
+      scope: async () => 'local:staging',
+      list: async () => [{ id: 'sample', bundle: installed, trusted: true }],
+      save: async (value) => {
+        installed = value
+      },
+      remove: async () => {},
+    },
+    seedOfficial: false,
+    readSetting: () => null,
+    writeSetting: () => {},
+    materialHost: host,
+    evaluate: async (code, api) => {
+      apis.push(api)
+      expect(api.materials.capabilities().available).toBe(false)
+      expect(() => api.materials.snapshot()).toThrow('尚未提供材料服务')
+      api.registerImporter({
+        id: 'sample',
+        title: 'Sample',
+        extensions: ['.sample'],
+        parse: async () => [],
+      })
+      return {
+        default: async () => {
+          expect(api.materials.capabilities().available).toBe(false)
+          if (code === 'broken-candidate') {
+            await expect(api.materials.createNote({} as never)).rejects.toThrow('尚未提供材料服务')
+            await expect(
+              api.materials.prepareImport({ importerId: 'sample', files: [] }),
+            ).rejects.toThrow('尚未提供材料服务')
+            throw new Error('candidate-factory-failed')
+          }
+          return { id: 'sample', kind: 'frontend', type: 'extension', label: 'Sample', version: 1 }
+        },
+      }
+    },
+  })
+  managers.push(manager)
+  await manager.initializePlugins()
+  const old = manager.pluginRuntime.installations[0]
+  expect(apis[0]!.materials.capabilities().available).toBe(true)
+  host.mockClear()
+  await expect(manager.installPlugin(bundle('broken-candidate'))).rejects.toThrow(
+    'candidate-factory-failed',
+  )
+  expect(createNote).not.toHaveBeenCalled()
+  expect(host).not.toHaveBeenCalled()
+  expect(manager.pluginRuntime.installations[0]).toBe(old)
+  expect(manager.materialApiFor('sample')).toBe(apis[0]!.materials)
+  expect(apis[0]!.materials.snapshot().revision).toBe(1)
+  expect(installed.main).toBe('published')
+  await expect(apis[1]!.materials.list()).rejects.toThrow('插件已卸载')
+})
 function bundle(main = 'first'): PluginBundle {
   return {
     manifest: {

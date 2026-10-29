@@ -28,6 +28,7 @@ export interface MaterialPluginIdentity {
   pluginId: string
   scope: string
   signal: AbortSignal
+  worker?: boolean
   assertCurrent(): void
   runTask<T>(
     options: MaterialTaskOptions,
@@ -123,6 +124,12 @@ export function createMaterialRegistrations(current: () => boolean) {
     const scoped = {
       ...context,
       signal: controller.signal,
+      createWorker: context.createWorker
+        ? (source: string, options?: { type?: 'classic' | 'module'; name?: string }) => {
+            checkCall()
+            return context.createWorker!(source, options)
+          }
+        : undefined,
       onCleanup(stop: () => void) {
         if (finished || controller.signal.aborted) {
           stop()

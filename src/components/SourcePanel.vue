@@ -442,6 +442,10 @@ async function openSearchResult(hit: MaterialSearchHit) {
   const scope = props.scope
   resetFilters()
   view.value = 'all'
+  page.value = Math.max(
+    0,
+    Math.floor(filteredSources.value.findIndex((item) => item.id === hit.sourceId) / pageSize),
+  )
   openSource(entry.id)
   await nextTick()
   await readingLoad

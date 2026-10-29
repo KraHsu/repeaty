@@ -132,6 +132,22 @@ function select(sourceId: string, versionId: string): MaterialSelection {
 }
 
 describe('library-owned material transactions', () => {
+  it('rejects originals larger than the shared native media limit before invoking a parser', async () => {
+    const test = await setup(),
+      parse = vi.spyOn(test.importer, 'parse')
+    await expect(
+      test.prepare([
+        new File([new Uint8Array(10 * 1024 * 1024 + 1)], 'large.study.json', {
+          type: 'application/json',
+        }),
+      ]),
+    ).rejects.toThrow('单文件最多10 MB')
+    await expect(
+      test.prepare([new File([], 'empty.study.json', { type: 'application/json' })]),
+    ).rejects.toThrow('非空')
+    expect(parse).not.toHaveBeenCalled()
+    expect((await test.repo.load()).library.sources).toEqual([])
+  })
   it('previews without writes, then saves hierarchy, projection and exact original in one transaction', async () => {
     const test = await setup(),
       save = vi.spyOn(test.repo, 'save'),

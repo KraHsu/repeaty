@@ -39,8 +39,8 @@ export const en = {
   '待确认的导入过多，请先确认或取消。':
     'Too many imports are pending. Confirm or cancel them first.',
   '材料导入器已不可用。': 'The material importer is no longer available.',
-  '请选择受支持的文件；每批最多20个文件、64 MB，单文件最多32 MB。':
-    'Choose supported files: up to 20 files and 64 MB per batch, with 32 MB per file.',
+  '请选择非空的受支持文件；每批最多20个文件、64 MB，单文件最多10 MB。':
+    'Choose non-empty supported files: up to 20 files and 64 MB per batch, with 10 MB per file.',
   '材料导入器已变化。': 'The material importer has changed.',
   '每批应包含1至100份材料。': 'Each batch must contain 1 to 100 materials.',
   '导入预览已过期，请重新选择文件。': 'The import preview has expired. Choose the files again.',
@@ -58,6 +58,17 @@ export const en = {
   '材料阅读器定义无效。': 'Invalid material reader definition.',
   '插件命令定义无效。': 'Invalid plugin command definition.',
   '材料搜索扩展定义无效。': 'Invalid material search provider definition.',
+  '当前学习库尚未提供材料服务。': 'Material services are not available yet for this library.',
+  '当前宿主不支持材料扩展。': 'This app version does not support material extensions.',
+  '材料导入器不可用。': 'The material importer is unavailable.',
+  '插件命令不可用。': 'The plugin command is unavailable.',
+  '插件命令请求无效。': 'Invalid plugin command request.',
+  '学习库已更新，请重新打开命令。': 'The library has changed. Open the command again.',
+  '材料搜索扩展不可用。': 'The material search provider is unavailable.',
+  '材料搜索请求无效。': 'Invalid material search request.',
+  '材料搜索结果无效。': 'Invalid material search result.',
+  '当前环境不支持插件后台解析。': 'Plugin background parsing is not supported in this environment.',
+  '插件 Worker 定义无效或超过1 MB。': 'Invalid plugin Worker definition or source exceeds 1 MB.',
   展开侧栏: 'Expand sidebar',
   收起侧栏: 'Collapse sidebar',
   学习与管理: 'Study and management',

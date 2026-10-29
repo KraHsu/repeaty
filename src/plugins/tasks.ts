@@ -7,6 +7,14 @@ import type {
 export function cancelledTask(): Error {
   return new DOMException('插件任务已取消。', 'AbortError')
 }
+export function supportsPluginWorkers(): boolean {
+  return (
+    typeof Worker === 'function' &&
+    typeof Blob === 'function' &&
+    typeof URL.createObjectURL === 'function' &&
+    typeof URL.revokeObjectURL === 'function'
+  )
+}
 const retainPendingWork = Symbol('plugin-task-pending-work')
 /** Internal wrappers can reject a cancelled call early while retaining its actual queue slot. */
 export function retainTaskWork(context: MaterialTaskContext, work: Promise<unknown>) {
@@ -110,6 +118,41 @@ export class PluginTaskScheduler {
             return
           }
           cleanups.add(stop)
+        },
+        createWorker(source, options = {}) {
+          check()
+          if (!supportsPluginWorkers()) throw new Error('当前环境不支持插件后台解析。')
+          if (
+            typeof source !== 'string' ||
+            !source.trim() ||
+            source.length > 1024 * 1024 ||
+            new TextEncoder().encode(source).byteLength > 1024 * 1024 ||
+            !options ||
+            (options.type !== undefined && !['classic', 'module'].includes(options.type)) ||
+            (options.name !== undefined &&
+              (typeof options.name !== 'string' || options.name.length > 100))
+          )
+            throw new Error('插件 Worker 定义无效或超过1 MB。')
+          const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
+          let worker: Worker
+          try {
+            worker = new Worker(url, { type: options.type ?? 'classic', name: options.name })
+          } catch (error) {
+            URL.revokeObjectURL(url)
+            throw error
+          }
+          let disposed = false
+          context.onCleanup(() => {
+            if (disposed) return
+            disposed = true
+            try {
+              worker.terminate()
+            } finally {
+              URL.revokeObjectURL(url)
+            }
+          })
+          check()
+          return worker
         },
         async yield() {
           check()

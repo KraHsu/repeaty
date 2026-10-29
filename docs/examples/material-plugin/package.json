@@ -1,0 +1,20 @@
+{
+  "name": "@repeaty/example-materials",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "repeaty-plugin .",
+    "dev": "repeaty-plugin . --watch",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "node --test test/*.test.mjs"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@repeaty/plugin-api": "file:../../../packages/plugin-api",
+    "typescript": "~5.9.3",
+    "vue-tsc": "^3.3.13"
+  }
+}

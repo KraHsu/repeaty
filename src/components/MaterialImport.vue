@@ -214,6 +214,6 @@ async function confirm() {
   justify-content: space-between;
   gap: 0.5rem;
   padding: 0.65rem 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line);
 }
 </style>
