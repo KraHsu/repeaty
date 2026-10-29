@@ -447,6 +447,11 @@ async function editSelected() {
               <USeparator />
               <p class="card-row-answer">{{ card.back }}</p>
             </div>
+          </td>
+          <td class="card-row-deck">
+            <div class="card-row-deck-name">
+              {{ library.decks.find((deck) => deck.id === card.deckId)?.name }}
+            </div>
             <div class="tag-list">
               <span class="tag">
                 {{
@@ -467,7 +472,6 @@ async function editSelected() {
               ><span v-for="tag in card.tags" :key="tag" class="tag">{{ tag }}</span>
             </div>
           </td>
-          <td>{{ library.decks.find((deck) => deck.id === card.deckId)?.name }}</td>
           <td>
             <span :class="['status-chip', { fresh: card.schedule.state === 0 }]">{{
               t(cardStatus(card, now))
