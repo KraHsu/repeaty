@@ -89,6 +89,42 @@ it('acknowledges only the position included in a queue action while retaining ne
   expect(progress.pending.size).toBe(0)
 })
 
+it('retains a detached versioned locator and saves page changes at the same text offset', async () => {
+  const { progress, update, workspace, save } = setup()
+  workspace.library.value = {
+    ...workspace.library.value,
+    sources: workspace.library.value.sources.map((source) => ({
+      ...source,
+      document: {
+        schemaVersion: 1,
+        providerId: 'pdf-test',
+        format: 'pdf',
+        originalMediaId: source.mediaId,
+      },
+    })),
+  }
+  const input = reactive(update(400))
+  input.position.locator = {
+    schemaVersion: 1,
+    sourceId: input.sourceId,
+    versionId: input.mediaId,
+    kind: 'pdf',
+    regions: [{ page: 2, x: 0, y: 0, width: 0.5, height: 0.2 }],
+  }
+  progress.record(input)
+  input.position.locator.regions[0]!.page = 3
+  await vi.advanceTimersByTimeAsync(700)
+  expect(workspace.library.value.sources[0]!.reading?.locator).toMatchObject({
+    regions: [{ page: 2 }],
+  })
+  progress.record(input)
+  await vi.advanceTimersByTimeAsync(700)
+  expect(save).toHaveBeenCalledTimes(2)
+  expect(workspace.library.value.sources[0]!.reading?.locator).toMatchObject({
+    regions: [{ page: 3 }],
+  })
+})
+
 it('coalesces scrolling, waits for a formal save and preserves the newest position while a write is pending', async () => {
   const { workspace, save, progress, update } = setup()
   const cards = workspace.library.value.cards,

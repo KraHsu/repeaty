@@ -27,13 +27,18 @@ export function useReadingProgress(workspace: ReturnType<typeof useLibrary>) {
         ))
     )
       return
-    const { offset, fraction, view } = update.position
+    const { offset, fraction, view, locator } = update.position
     pending.set(source.id, {
       update: {
         sourceId: update.sourceId,
         mediaId: update.mediaId,
         scope: update.scope,
-        position: { offset, fraction, view },
+        position: {
+          offset,
+          fraction,
+          view,
+          ...(locator ? { locator: JSON.parse(JSON.stringify(locator)) } : {}),
+        },
       },
       at: new Date(),
       token: ++token,

@@ -51,6 +51,10 @@ import { createExportFile } from '@repeaty-platform'
 import AppModal from './AppModal.vue'
 import AppPage from './AppPage.vue'
 import SourceReader from './SourceReader.vue'
+import MaterialImport from './MaterialImport.vue'
+import MaterialSearch from './MaterialSearch.vue'
+import type { MaterialSearchHit } from '@repeaty/plugin-api'
+import type { MaterialLocator } from '../core/material-data'
 import SourceContext from './SourceContext.vue'
 import SourceExcerptList from './SourceExcerptList.vue'
 import { excerptsForSource, matchingExcerpts } from '../core/source-navigation'
@@ -361,10 +365,11 @@ async function readSelected() {
     if (controller === current) loading.value = false
   }
 }
-function select(sourceId: string, start: number, end: number) {
+function select(sourceId: string, start: number, end: number, locator?: MaterialLocator) {
   if (!source.value || source.value.id !== sourceId) return
   try {
     excerpt.value = sourceExcerpt(source.value, text.value, start, end)
+    if (locator) excerpt.value.locator = locator
   } catch {
     excerpt.value = undefined
   }
@@ -428,6 +433,39 @@ function openSource(id: string) {
       { sourceId: id, mediaId: entry.mediaId, scope: props.scope, position: entry.reading },
       true,
     )
+}
+async function openSearchResult(hit: MaterialSearchHit) {
+  const entry = props.library.sources.find(
+    (item) => item.id === hit.sourceId && item.mediaId === hit.versionId,
+  )
+  if (!entry || props.busy || inRound.value) return
+  const scope = props.scope
+  resetFilters()
+  view.value = 'all'
+  openSource(entry.id)
+  await nextTick()
+  await readingLoad
+  await nextTick()
+  if (
+    !alive ||
+    scope !== props.scope ||
+    source.value?.id !== hit.sourceId ||
+    source.value.mediaId !== hit.versionId
+  )
+    return
+  if (hit.locator?.kind === 'text') {
+    try {
+      await reader.value?.locate({
+        sourceId: hit.sourceId,
+        mediaId: hit.versionId,
+        start: hit.locator.start,
+        end: hit.locator.end,
+        locator: hit.locator,
+      })
+    } catch (issue) {
+      if (alive && scope === props.scope) navigationError.value = issue as Error
+    }
+  }
 }
 function remember() {
   const update = reader.value?.capture()
@@ -932,6 +970,19 @@ async function download() {
     :description="t('保存原文，选取摘录制作卡片。')"
   >
     <template #actions>
+      <MaterialImport
+        v-if="!session"
+        :scope="scope"
+        :busy="busy || moving || inRound"
+        @imported="
+          (ids) => {
+            resetFilters()
+            view = 'ready'
+            page = 0
+            selectedId = ids[0] ?? ''
+          }
+        "
+      />
       <UiButton
         variant="secondary"
         type="submit"
@@ -1095,6 +1146,7 @@ async function download() {
           </p>
         </div>
       </section>
+      <MaterialSearch v-if="!inRound" :scope="scope" :busy="busy" @open="openSearchResult" />
       <section
         v-if="!inRound && filteredSources.length"
         class="source-selection-toolbar"
@@ -1466,6 +1518,9 @@ async function download() {
               :source="source"
               :text="text"
               :scope="scope"
+              :original-name="
+                library.media.find((item) => item.id === source?.document?.originalMediaId)?.name
+              "
               @select="select"
               @position="reading.record($event)"
             />
