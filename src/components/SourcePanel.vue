@@ -1281,7 +1281,7 @@ async function download() {
       <UiButton
         v-if="collection && !session"
         variant="primary"
-        :disabled="busy || moving || inRound"
+        :disabled="moving || inRound"
         @click="openCollection"
       >
         <Plus :size="18" />{{ t('收集材料') }}

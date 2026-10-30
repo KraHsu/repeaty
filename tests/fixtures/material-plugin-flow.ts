@@ -148,6 +148,7 @@ export async function materialPluginFlow(page: Page, info: TestInfo) {
   await page.getByLabel('正面 · 问题', { exact: true }).fill('如何保留第二处引用的出处？')
   await expect(page.getByLabel('背面 · 答案', { exact: true })).toHaveValue(quote)
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '添加卡片', exact: true })).toHaveCount(0)
   const withCard = await localLibrary(page)
   expect(withCard.notes).toHaveLength(1)
   expect(withCard.notes[0]!.excerpt).toMatchObject({
