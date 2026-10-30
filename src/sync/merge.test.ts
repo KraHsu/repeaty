@@ -239,7 +239,7 @@ describe('causal planning and content conflict resolution', () => {
       back: 'right',
     })
   })
-  it('produces direction-independent conflict identity and blocks the entire apply until chosen', () => {
+  it('binds stable conflict identity to the ordered alternatives and blocks until chosen', () => {
     const base = fixture(),
       left = changeNote(base, { front: 'left' }),
       right = changeNote(base, { front: 'right' })
@@ -249,7 +249,8 @@ describe('causal planning and content conflict resolution', () => {
     const input = { snapshot, events: [b], appliedClock: { a: 1 } }
     const plan = planSync(input)
     const reverse = run(snapshotFromLibrary(right), [a], { b: 1 })
-    expect(plan.conflicts[0]!.id).toBe(reverse.conflicts[0]!.id)
+    expect(plan.conflicts[0]!.id).toBe(planSync(input).conflicts[0]!.id)
+    expect(plan.conflicts[0]!.id).not.toBe(reverse.conflicts[0]!.id)
     expect(plan.blocked).toBe(true)
     expect(plan.snapshot).toEqual(snapshot)
     expect(plan.clock).toEqual({ a: 1 })
@@ -259,6 +260,37 @@ describe('causal planning and content conflict resolution', () => {
     expect(resolved.clock).toEqual({ a: 1, b: 1 })
     expect(libraryFromSnapshot(resolved.snapshot).notes[0]!.front).toBe('right')
     expect(() => planSync(input, { obsolete: 'remote' })).toThrow('sync-stale-choice')
+  })
+  it('does not reuse a remote choice when a later conflict reverses the exact alternatives', () => {
+    const snapshot = snapshotFromLibrary(emptyLibrary())
+    snapshot.values['plugin:reader'] = { key: { value: 'A', position: 0 } }
+    const changes = (after: string): SyncChange[] => [
+      { store: 'values:plugin:reader', id: 'key', before: 'original', after },
+    ]
+    const events = [event('b', 1, changes('B')), event('c', 1, changes('A'))]
+    const input = { snapshot, events, appliedClock: {} }
+    const initial = planSync(input)
+    expect(initial.conflicts).toHaveLength(1)
+    const first = initial.conflicts[0]!
+    const choices = { [first.id]: 'remote' as const }
+    const selected = planSync(input, choices)
+    expect(selected.conflicts).toHaveLength(2)
+    const reversed = selected.conflicts[1]!
+    expect(reversed).toMatchObject({
+      local: { present: true, value: 'B' },
+      remote: { present: true, value: 'A' },
+    })
+    expect(reversed.id).not.toBe(first.id)
+    expect(reversed.choice).toBeUndefined()
+    expect(selected.blocked).toBe(true)
+    expect(selected.snapshot).toEqual(snapshot)
+    expect(selected.appliedIds).toEqual([])
+    expect(selected.proposedSnapshot.values['plugin:reader']!.key!.value).toBe('B')
+    const resolved = planSync(input, { ...choices, [reversed.id]: 'local' })
+    expect(resolved.blocked).toBe(false)
+    expect(resolved.snapshot.values['plugin:reader']!.key!.value).toBe('B')
+    const reordered = planSync({ ...input, events: [...events].reverse() }, choices)
+    expect(reordered.conflicts.map(({ id }) => id)).toEqual(selected.conflicts.map(({ id }) => id))
   })
   it.each(['local', 'remote'] as const)(
     'propagates a %s choice through a causal resolution event to the other branch',

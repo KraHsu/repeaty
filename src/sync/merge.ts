@@ -155,12 +155,17 @@ export function planSync(input: SyncPlanInput, choices: Record<string, SyncChoic
     remote: Field,
     resolvable = true,
   ): Field {
-    const alternatives = [exposed(local), exposed(remote)].sort((a, b) => {
-      const x = canonicalSyncValue(a),
-        y = canonicalSyncValue(b)
-      return x < y ? -1 : x > y ? 1 : 0
-    })
-    const identity = { store, recordId, path, kind, base: exposed(base), alternatives }
+    // Choices are directional. Reversing the same two versions must require a
+    // fresh choice instead of silently selecting the opposite content.
+    const identity = {
+      store,
+      recordId,
+      path,
+      kind,
+      base: exposed(base),
+      local: exposed(local),
+      remote: exposed(remote),
+    }
     const content = canonicalSyncValue(identity)
     const id = `sync-conflict:${syncFingerprint(identity)}`
     if (conflictContents.has(id) && conflictContents.get(id) !== content)

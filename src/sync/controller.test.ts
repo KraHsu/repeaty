@@ -165,6 +165,37 @@ it('drops outdated conflict choices when a fresh preview has different local con
   expect(test.apply).not.toHaveBeenCalled()
 })
 
+it('allows choosing concurrent conflicts in reverse order when an earlier choice changes a later conflict', async () => {
+  const first = event(1, 'original', 'remote one')
+  const second = {
+    ...event(1, 'original', 'remote two'),
+    deviceId: 'third',
+    id: 'third:1',
+    clock: { third: 0 },
+  }
+  const test = harness([first, second])
+  const source = snapshotFromLibrary(emptyLibrary())
+  source.values['plugin:reader'] = { 'key-1': { value: 'local', position: 0 } }
+  test.setSnapshot(source)
+  await test.controller.run({ type: 'preview' })
+  const initial = [...test.controller.state.value.conflicts]
+  expect(initial).toHaveLength(2)
+  await test.controller.run({ type: 'resolve', id: initial[1]!.id, choice: 'remote' })
+  await test.controller.run({ type: 'resolve', id: initial[0]!.id, choice: 'remote' })
+  expect(test.controller.state.value.error).toBeNull()
+  expect(test.controller.state.value.conflicts).toHaveLength(1)
+  expect(test.controller.state.value.conflicts[0]!.local).toBe('remote one')
+  await test.controller.run({ type: 'preview' })
+  expect(test.controller.state.value.error).toBeNull()
+  await test.controller.run({
+    type: 'resolve',
+    id: test.controller.state.value.conflicts[0]!.id,
+    choice: 'remote',
+  })
+  expect(test.controller.state.value.preview?.events).toBe(2)
+  expect(test.apply).not.toHaveBeenCalled()
+})
+
 it('does not keep an earlier success message when a new action fails', async () => {
   const test = harness([event(1)])
   await test.controller.run({ type: 'preview' })

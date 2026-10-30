@@ -651,8 +651,8 @@ mod tests {
         let group = uuid::Uuid::new_v4().to_string();
         begin(&mut lib, &group);
         let event = json!({"protocol":1,"groupId":group,"id":"remote:1","deviceId":"remote","sequence":1,"clock":{"remote":0},"changes":[{"store":"values:plugin:sample","id":"a","before":null,"after":"remote","position":0}]});
-        receive(&mut lib.db.connection, &[event.clone()]).unwrap();
-        receive(&mut lib.db.connection, &[event.clone()]).unwrap();
+        receive(&mut lib.db.connection, std::slice::from_ref(&event)).unwrap();
+        receive(&mut lib.db.connection, std::slice::from_ref(&event)).unwrap();
         assert_eq!(status(&lib.db.connection).unwrap()["pending"], 1);
         assert!(
             snapshot(&lib.db.connection).unwrap()["values"]

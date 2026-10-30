@@ -2,7 +2,13 @@ import { computed, shallowRef } from 'vue'
 import { z } from 'zod'
 import type { Library } from '../core/model'
 import type { RetiredNote } from '../desktop/retirement'
-import { planSync, type SyncChoice, type SyncConflict, type SyncPlan } from './merge'
+import {
+  planSync,
+  type SyncChoice,
+  type SyncConflict,
+  type SyncPlan,
+  type SyncPlanInput,
+} from './merge'
 import { libraryFromSnapshot, snapshotToRetired, syncRow, validateSyncSnapshot } from './projection'
 import {
   canonicalSyncValue,
@@ -247,7 +253,7 @@ export function createSyncController(
       if (collected.length > SYNC_LIMITS.events) throw new Error('sync-batch-limit')
     }
   }
-  function showPlan(plan: SyncPlan) {
+  function showPlan(plan: SyncPlan, changedChoices = false) {
     const conflicts = plan.conflicts.filter((entry) => !entry.choice && !entry.supersededBy)
     const applied = new Set(plan.appliedIds)
     const value = (entry: unknown) => {
@@ -275,8 +281,40 @@ export function createSyncController(
                 ) ?? 0,
               events: plan.appliedIds.length,
             },
-      message: plan.pending.length ? syncErrorMessage('sync-dependency-missing') : null,
+      message:
+        [
+          changedChoices ? '关联冲突已变化，请重新检查剩余的版本选择。' : null,
+          plan.pending.length ? syncErrorMessage('sync-dependency-missing') : null,
+        ]
+          .filter(Boolean)
+          .join('\n') || null,
     })
+  }
+  function planWithChoices(input: SyncPlanInput) {
+    try {
+      return { plan: planSync(input, choices), changedChoices: false }
+    } catch (issue) {
+      if (!(issue instanceof Error) || issue.message !== 'sync-stale-choice') throw issue
+    }
+    const previous = choices
+    const retained: Record<string, SyncChoice> = Object.create(null)
+    let plan = planSync(input)
+    // A choice can change a later conflict on the same record. Rebuild in causal order,
+    // retaining only choices whose exact alternatives still exist after earlier choices.
+    while (true) {
+      const next = plan.conflicts.find(
+        (entry) =>
+          entry.resolvable &&
+          !entry.supersededBy &&
+          Object.hasOwn(previous, entry.id) &&
+          !Object.hasOwn(retained, entry.id),
+      )
+      if (!next) break
+      retained[next.id] = previous[next.id]!
+      plan = planSync(input, retained)
+    }
+    choices = retained
+    return { plan, changedChoices: Object.keys(retained).length !== Object.keys(previous).length }
   }
   function conflictLabel(entry: SyncConflict, next: SyncSnapshot): string {
     const row = (store: string, id: string) => {
@@ -326,16 +364,9 @@ export function createSyncController(
       appliedClock: base.clock,
       groupId: base.groupId,
     }
-    let plan = planSync(input)
-    const remaining = new Set(
-      plan.conflicts
-        .filter((entry) => entry.resolvable && !entry.supersededBy)
-        .map((entry) => entry.id),
-    )
-    choices = Object.fromEntries(Object.entries(choices).filter(([id]) => remaining.has(id)))
-    if (Object.keys(choices).length) plan = planSync(input, choices)
+    const { plan, changedChoices } = planWithChoices(input)
     preview = { ...base, groupId: base.groupId, events: pending, plan }
-    showPlan(plan)
+    showPlan(plan, changedChoices)
   }
   async function transferObjects(source: SyncRequest, destination: SyncRequest) {
     const { objects } = inventorySchema.parse(await source('objects/info'))
@@ -581,16 +612,14 @@ export function createSyncController(
         if (!conflict || !preview) throw new Error('sync-preview-stale')
         if (!conflict.resolvable) throw new Error('sync-structure-conflict')
         choices[action.id] = action.choice
-        preview.plan = planSync(
-          {
-            snapshot: preview.source,
-            events: preview.events,
-            appliedClock: preview.clock,
-            groupId: data.value.groupId ?? undefined,
-          },
-          choices,
-        )
-        showPlan(preview.plan)
+        const result = planWithChoices({
+          snapshot: preview.source,
+          events: preview.events,
+          appliedClock: preview.clock,
+          groupId: data.value.groupId ?? undefined,
+        })
+        preview.plan = result.plan
+        showPlan(preview.plan, result.changedChoices)
         break
       }
       case 'apply':

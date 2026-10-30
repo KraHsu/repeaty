@@ -202,6 +202,30 @@ it('requires confirmation before revoking a paired device and dispatches approva
   expect(run).toHaveBeenLastCalledWith({ type: 'revoke', id: 'device-other' })
 })
 
+it('summarizes a schedule choice while keeping both review histories and hiding technical details', async () => {
+  const { run } = await mount({
+    conflicts: [
+      {
+        id: 'schedule-choice',
+        store: 'cards',
+        recordId: 'card-one',
+        label: 'A question',
+        fields: ['schedule'],
+        local: { due: '2026-11-01T10:00:00Z', reps: 5, lapses: 1 },
+        remote: { due: '2026-11-02T10:00:00Z', reps: 6, lapses: 2 },
+      },
+    ],
+  })
+  await click('查看并处理')
+  await vi.waitFor(() => expect(document.body.textContent).toContain('两边的评分历史都会保留'))
+  expect(document.body.textContent).toContain('下次复习时间')
+  expect(document.body.textContent).toContain('复习次数')
+  expect(document.body.textContent).toContain('遗忘次数')
+  expect(document.body.textContent).not.toContain('"due"')
+  await click('使用本机版本')
+  expect(run).toHaveBeenLastCalledWith({ type: 'resolve', id: 'schedule-choice', choice: 'local' })
+})
+
 it('clears invitation input on a workspace change and ignores late failures', async () => {
   let reject!: (reason: Error) => void
   const { host, state } = await mount(

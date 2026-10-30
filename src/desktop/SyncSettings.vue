@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, onUnmounted, ref, watch } from 'vue'
-import { t } from '../i18n'
+import { locale, t } from '../i18n'
 import { SettingField, SettingGroup, UiButton, UiCollapsible, UiNotice } from '../components/ui'
 import { ChevronDown } from '@lucide/vue'
 import AppModal from '../components/AppModal.vue'
@@ -33,6 +33,39 @@ const scope = computed(
 const peer = computed(() => state.value?.peers.find((entry) => entry.id === removing.value))
 const conflict = computed(() =>
   state.value?.conflicts.find((entry) => entry.id === resolving.value),
+)
+function scheduleSummary(value: unknown) {
+  if (!conflict.value?.fields.includes('schedule') || !value || typeof value !== 'object')
+    return null
+  const schedule = value as { due?: unknown; reps?: unknown; lapses?: unknown }
+  if (
+    typeof schedule.due !== 'string' ||
+    !Number.isFinite(Date.parse(schedule.due)) ||
+    typeof schedule.reps !== 'number' ||
+    typeof schedule.lapses !== 'number'
+  )
+    return null
+  return {
+    due: new Date(schedule.due).toLocaleString(locale.value),
+    reps: schedule.reps,
+    lapses: schedule.lapses,
+  }
+}
+const versions = computed(() =>
+  [
+    {
+      choice: 'local' as const,
+      title: '本机版本',
+      button: '使用本机版本',
+      value: conflict.value?.local,
+    },
+    {
+      choice: 'remote' as const,
+      title: '远端版本',
+      button: '使用远端版本',
+      value: conflict.value?.remote,
+    },
+  ].map((entry) => ({ ...entry, schedule: scheduleSummary(entry.value) })),
 )
 const statusLabel = computed(() => {
   if (!state.value?.available) return '请先打开桌面工作目录。'
@@ -311,7 +344,7 @@ function fieldLabel(field: string) {
         </li>
       </ul>
       <p v-if="state?.preview" class="sync-preview" role="status">
-        {{ t('将合入 {changes} 项内容与 {events} 条学习事件。', state.preview) }}
+        {{ t('将合入 {changes} 项内容与 {events} 条变更记录。', state.preview) }}
       </p>
       <div class="sync-actions">
         <UiButton
@@ -508,19 +541,37 @@ function fieldLabel(field: string) {
         >
       </UiCollapsible>
       <p class="sync-help">{{ t('选择要使用的版本，再预览并确认合入。') }}</p>
+      <UiNotice v-if="versions.some((entry) => entry.schedule)" tone="info">{{
+        t('两边的评分历史都会保留。这里只选择之后使用的复习安排。')
+      }}</UiNotice>
       <div class="sync-versions">
-        <section>
-          <h3>{{ t('本机版本') }}</h3>
-          <pre>{{ display(conflict.local) }}</pre>
-          <UiButton :disabled="unavailable" @click="resolve('local')">{{
-            t('使用本机版本')
-          }}</UiButton>
-        </section>
-        <section>
-          <h3>{{ t('远端版本') }}</h3>
-          <pre>{{ display(conflict.remote) }}</pre>
-          <UiButton :disabled="unavailable" @click="resolve('remote')">{{
-            t('使用远端版本')
+        <section v-for="version in versions" :key="version.choice">
+          <h3>{{ t(version.title) }}</h3>
+          <template v-if="version.schedule">
+            <dl class="sync-schedule">
+              <div>
+                <dt>{{ t('下次复习时间') }}</dt>
+                <dd>{{ version.schedule.due }}</dd>
+              </div>
+              <div>
+                <dt>{{ t('复习次数') }}</dt>
+                <dd>{{ version.schedule.reps }}</dd>
+              </div>
+              <div>
+                <dt>{{ t('遗忘次数') }}</dt>
+                <dd>{{ version.schedule.lapses }}</dd>
+              </div>
+            </dl>
+            <UiCollapsible
+              ><UiButton variant="ghost">{{ t('查看完整复习安排') }}</UiButton>
+              <template #content>
+                <pre>{{ display(version.value) }}</pre>
+              </template>
+            </UiCollapsible>
+          </template>
+          <pre v-else>{{ display(version.value) }}</pre>
+          <UiButton :disabled="unavailable" @click="resolve(version.choice)">{{
+            t(version.button)
           }}</UiButton>
         </section>
       </div>
@@ -647,6 +698,19 @@ function fieldLabel(field: string) {
 .sync-versions h3 {
   font-size: var(--font-size-body);
   font-weight: 600;
+}
+.sync-schedule {
+  display: grid;
+  gap: 0.75rem;
+}
+.sync-schedule > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  justify-content: space-between;
+}
+.sync-schedule dt {
+  color: var(--ui-text-muted);
 }
 .sync-versions pre {
   max-height: 24rem;

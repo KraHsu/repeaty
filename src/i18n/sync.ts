@@ -4,6 +4,14 @@ export const syncMessages = {
   查看记录标识: 'View record identifier',
   此字段不存在: 'This field is absent',
   此记录已删除: 'This record was deleted',
+  下次复习时间: 'Next review',
+  复习次数: 'Review count',
+  遗忘次数: 'Lapse count',
+  查看完整复习安排: 'View full schedule',
+  '两边的评分历史都会保留。这里只选择之后使用的复习安排。':
+    'Review history from both devices is kept. This choice only sets the schedule used from now on.',
+  '关联冲突已变化，请重新检查剩余的版本选择。':
+    'Related conflicts have changed. Review the remaining version choices again.',
   笔记: 'Note',
   卡片: 'Card',
   卡组: 'Deck',
@@ -81,8 +89,8 @@ export const syncMessages = {
   待处理冲突: 'Conflicts to resolve',
   整个记录: 'Entire record',
   查看并处理: 'Review conflict',
-  '将合入 {changes} 项内容与 {events} 条学习事件。':
-    '{changes} content changes and {events} learning events will be applied.',
+  '将合入 {changes} 项内容与 {events} 条变更记录。':
+    '{changes} content changes and {events} change records will be applied.',
   预览合入: 'Preview changes',
   确认合入学习库: 'Apply to library',
   设备与配对: 'Devices and pairing',
