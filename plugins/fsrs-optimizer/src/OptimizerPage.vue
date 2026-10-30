@@ -22,6 +22,9 @@ const models = computed(() =>
     : [],
 )
 const active = computed(() => models.value.find((model) => model.id === state.value?.activeModelId))
+const freshCandidate = computed(() =>
+  message.value === 'candidate' && !error.value ? models.value.at(-1)?.id : undefined,
+)
 const choices = computed(() => [
   { value: '', label: text('library') },
   ...(state.value?.decks ?? []).map((deck) => ({ value: deck.id, label: deck.name })),
@@ -53,7 +56,7 @@ onMounted(() => {
       <UiButton v-else-if="busy" @click="optimizer.cancel()">{{ text('cancel') }}</UiButton>
       <UiButton
         v-else
-        variant="primary"
+        :variant="freshCandidate ? 'secondary' : 'primary'"
         :disabled="loading || !scopeMatches || (state?.reviewCount ?? 0) < 1024"
         @click="optimizer.train()"
         >{{ text('train') }}</UiButton
@@ -161,9 +164,13 @@ onMounted(() => {
                   <UiStatus v-if="model.id === state?.activeModelId" tone="success">{{
                     text('active')
                   }}</UiStatus
-                  ><UiButton v-else :disabled="busy" @click="optimizer.activate(model.id)">{{
-                    text('adopt')
-                  }}</UiButton>
+                  ><UiButton
+                    v-else
+                    :variant="model.id === freshCandidate ? 'primary' : 'secondary'"
+                    :disabled="busy"
+                    @click="optimizer.activate(model.id)"
+                    >{{ text('adopt') }}</UiButton
+                  >
                 </td>
               </tr>
             </tbody>

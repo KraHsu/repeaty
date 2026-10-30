@@ -67,4 +67,4 @@ for (const name of notices) {
     license += '\n' + (await readFile(join(directory, 'CopyrightNotice.txt'), 'utf8'))
   licenses += `\n\n${name}\n${'='.repeat(name.length)}\n${license}`
 }
-await writeFile(join(assets, 'LICENSE.runtime.txt'), licenses.trimStart())
+await writeFile(join(assets, 'LICENSE.runtime.txt'), licenses.replace(/\r\n/g, '\n').trim() + '\n')
