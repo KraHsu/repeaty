@@ -12,7 +12,9 @@
     "plugins/format-cleanup",
     "plugins/pdf-reader",
     "plugins/document-reader",
-    "plugins/visual-occlusion"
+    "plugins/visual-occlusion",
+    "plugins/obsidian",
+    "plugins/readwise"
   ],
   "description": "Desktop flashcards and spaced repetition, with your learning library in one folder.",
   "engines": {

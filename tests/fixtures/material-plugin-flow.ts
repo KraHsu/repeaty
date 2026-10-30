@@ -1,3 +1,9 @@
+import {
+  openCollection,
+  previewCollection,
+  commitCollection,
+  cancelCollection,
+} from './collection-controls'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
@@ -54,13 +60,13 @@ async function prepare(page: Page, info: TestInfo) {
 
 async function preview(page: Page, content = studyDocument) {
   await nav(page, '学习材料').click()
-  await page.getByRole('button', { name: '插件导入', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: '导入材料', exact: true })
-  await dialog.getByTestId('material-import-files').setInputFiles({
+  const dialog = await openCollection(page)
+  await dialog.getByTestId('collection-files').setInputFiles({
     name: 'chapters.study.json',
     mimeType: 'application/json',
     buffer: Buffer.from(content),
   })
+  await previewCollection(dialog)
   return dialog
 }
 
@@ -107,7 +113,7 @@ export async function materialPluginFlow(page: Page, info: TestInfo) {
   const dialog = await preview(page)
   await expect(dialog).toContainText(title)
   expect((await localLibrary(page)).sources).toHaveLength(0)
-  await dialog.getByRole('button', { name: '确认导入', exact: true }).click()
+  await commitCollection(dialog)
   await expect(dialog).toHaveCount(0)
   const imported = await localLibrary(page)
   expect(imported.sources).toHaveLength(2)
@@ -142,6 +148,7 @@ export async function materialPluginFlow(page: Page, info: TestInfo) {
   await page.getByLabel('正面 · 问题', { exact: true }).fill('如何保留第二处引用的出处？')
   await expect(page.getByLabel('背面 · 答案', { exact: true })).toHaveValue(quote)
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '添加卡片', exact: true })).toHaveCount(0)
   const withCard = await localLibrary(page)
   expect(withCard.notes).toHaveLength(1)
   expect(withCard.notes[0]!.excerpt).toMatchObject({
@@ -169,8 +176,8 @@ export async function materialPluginFlow(page: Page, info: TestInfo) {
 
   // A repeated file is detected by the host, not a plugin-local cache.
   const repeated = await preview(page)
-  await expect(repeated).toContainText(/重复|已导入/)
-  await repeated.getByRole('button', { name: '确认导入', exact: true }).click()
+  await expect(repeated).toContainText('已收集')
+  await commitCollection(repeated)
   await expect(repeated).toHaveCount(0)
   expect((await localLibrary(page)).sources.map((item) => item.id)).toEqual(
     imported.sources.map((item) => item.id),
@@ -249,10 +256,10 @@ export async function materialPluginInvalidImportFlow(page: Page, info: TestInfo
   const dialog = await preview(page, broken)
   await expect(dialog.getByRole('alert')).toBeVisible()
   expect((await localLibrary(page)).sources).toHaveLength(0)
-  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await cancelCollection(dialog)
   const next = await preview(page)
   await expect(next).toContainText(title)
-  await next.getByRole('button', { name: '取消', exact: true }).click()
+  await cancelCollection(next)
   expect((await localLibrary(page)).sources).toHaveLength(0)
 }
 
@@ -357,7 +364,7 @@ export async function materialPluginWorkerFlow(page: Page, info: TestInfo) {
       )
     })
     .toBe(true)
-  await completed.getByRole('button', { name: '取消', exact: true }).click()
+  await cancelCollection(completed)
   await page.evaluate(() => {
     ;(
       window as unknown as { __repeatyMaterialWorkers: MaterialWorkerProbe }
@@ -370,7 +377,7 @@ export async function materialPluginWorkerFlow(page: Page, info: TestInfo) {
       return !!worker && worker.ready && worker.held && worker.terminations === 0
     })
     .toBe(true)
-  await pending.getByRole('button', { name: '取消', exact: true }).click()
+  await cancelCollection(pending)
   await expect(pending).toHaveCount(0)
   await expect
     .poll(async () => {

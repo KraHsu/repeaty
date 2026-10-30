@@ -5,7 +5,11 @@ import { organizationMessages } from './organization'
 import { workbenchMessages } from './workbench'
 import { materialSearchMessages } from './material-search'
 import { readingWorkbenchMessages } from './reading-workbench'
+import { collectionMessages } from './collection'
+import { captureMessages } from './capture'
 export const en = {
+  ...captureMessages,
+  ...collectionMessages,
   调整章节阅读安排: 'Change chapter reading order',
   保存材料批注: 'Save material annotation',
   删除材料批注: 'Delete material annotation',

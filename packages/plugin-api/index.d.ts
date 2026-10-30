@@ -9,6 +9,7 @@ import type {
   HTMLAttributes,
 } from 'vue'
 export * from './materials'
+export * from './collection'
 import type { MaterialLocator } from './materials'
 
 export type Grade = 1 | 2 | 3 | 4

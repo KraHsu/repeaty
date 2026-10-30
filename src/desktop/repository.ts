@@ -152,6 +152,8 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
           'sources',
           'materialReceipts',
           'materialFolders',
+          'sourceConnections',
+          'sourceCandidates',
         ] as const
       ).every((key) => previous[key] === library[key])
       if (structural) workspaceLibrarySchema.parse(library)

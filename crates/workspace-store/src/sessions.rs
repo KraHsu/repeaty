@@ -29,6 +29,12 @@ pub struct Sessions {
     restore_error: Option<String>,
 }
 impl Sessions {
+    /// Identity only: native peripheral services must not scan library content to bind a session.
+    pub fn active_identity(&self) -> Option<(&str, &str)> {
+        self.active
+            .as_ref()
+            .map(|active| (active.library.id.as_str(), active.library.token.as_str()))
+    }
     pub fn open(directory: &Path) -> Result<Self> {
         fs::create_dir_all(directory)?;
         let index = Connection::open(directory.join("workspaces.sqlite3"))?;

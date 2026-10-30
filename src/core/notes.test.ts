@@ -68,7 +68,7 @@ describe('note generation and migration', () => {
   it('migrates old content without changing card identity or schedule', () => {
     const legacy = legacyFixture()
     const migrated = migrateLibrary(legacy)
-    expect(migrated.version).toBe(16)
+    expect(migrated.version).toBe(17)
     expect(migrated.notes[0]).toMatchObject({
       front: 'Legacy question',
       type: 'basic',

@@ -38,6 +38,7 @@ export function sourceQueueState(
   today: string,
   sources: readonly Source[] = [],
 ): SourceQueueState {
+  if (source.inbox) return 'archived'
   if (source.queue?.state === 'archived') return 'archived'
   if (source.studySequence?.completed) return 'archived'
   if (source.document?.container || materialLocked(source, sources)) return 'deferred'
@@ -53,7 +54,10 @@ export function queuedSources(
 ) {
   const ranks = { ready: 0, deferred: 1, archived: 2 }
   const priorities = { high: 0, normal: 1, low: 2 }
-  return filterSources(sources, filter)
+  return filterSources(
+    sources.filter((source) => !source.inbox),
+    filter,
+  )
     .filter(
       (source) =>
         view === 'all' ||

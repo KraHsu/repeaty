@@ -1,4 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod collection;
 mod exports;
 mod mcp;
 mod plugins;
@@ -223,6 +224,22 @@ fn main() {
             });
             app.manage(workspaces::Workspaces::new(&directory));
             app.manage(workspace_backups::Backups::new(&directory));
+            let collection = collection::Collection::new(&directory)?;
+            collection.attach_workspace(app.state::<workspaces::Workspaces>().active_identity());
+            app.manage(collection);
+            app.manage(collection::Capture::new(&directory)?);
+            // Some Wayland environments do not expose a global-hotkey backend. Collection
+            // and the rest of the application must remain available there.
+            let shortcut_available = app
+                .handle()
+                .plugin(
+                    tauri_plugin_global_shortcut::Builder::new()
+                        .with_handler(collection::capture_shortcut)
+                        .build(),
+                )
+                .is_ok();
+            app.state::<collection::Capture>()
+                .set_shortcut_available(shortcut_available);
             let window =
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                     .title("Repeaty")
@@ -250,6 +267,8 @@ fn main() {
                             window_frame::page_started(&window);
                             window.state::<Desktop>().mcp.detach();
                             window.state::<workspace_backups::Backups>().cancel_all();
+                            window.state::<collection::Collection>().invalidate();
+                            window.state::<collection::Capture>().invalidate();
                             window
                                 .state::<workspaces::Workspaces>()
                                 .invalidate_watches();
@@ -257,6 +276,7 @@ fn main() {
                     })
                     .build()?;
             window_frame::install(&window);
+            collection::start_capture(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -286,6 +306,20 @@ fn main() {
             workspaces::workspace_unwatch,
             workspace_backups::workspace_backups,
             workspace_backups::workspace_backup_cancel,
+            collection::collection_bind_scope,
+            collection::collection_directories,
+            collection::collection_directory_choose,
+            collection::collection_directory_list,
+            collection::collection_directory_read,
+            collection::collection_directory_disconnect,
+            collection::collection_directory_cancel,
+            collection::collection_directory_index,
+            collection::collection_directory_search,
+            collection::collection_download,
+            collection::collection_capture_status,
+            collection::collection_capture_configure,
+            collection::collection_capture_clipboard,
+            collection::collection_capture_take,
             open_external
         ])
         .run(tauri::generate_context!())

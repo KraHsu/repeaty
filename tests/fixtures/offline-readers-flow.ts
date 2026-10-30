@@ -3,7 +3,12 @@ import { readFile } from 'node:fs/promises'
 import { fixture } from '../../src/core/test-fixtures'
 import { archive, epubFiles } from '../../plugins/document-reader/test/fixtures'
 import { confirmPluginAction, openPluginManager, selectPlugin } from './settings-flow'
-import { selectUiValue } from './ui-flow'
+import {
+  openCollection,
+  previewCollection,
+  commitCollection,
+  selectCollectionImporter,
+} from './collection-controls'
 import { localLibrary } from './source-excerpt-flow'
 
 const nav = (page: Page, name: string) =>
@@ -36,15 +41,22 @@ async function importFile(
   buffer: Buffer,
 ) {
   await nav(page, '学习材料').click()
-  await page.getByRole('button', { name: '插件导入', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: '导入材料', exact: true })
-  await selectUiValue(dialog.getByRole('combobox', { name: '材料导入器' }), importer)
-  await dialog.getByTestId('material-import-files').setInputFiles({ name, mimeType, buffer })
-  await expect(dialog.getByRole('button', { name: '确认导入', exact: true })).toBeEnabled({
+  const dialog = await openCollection(page)
+  await dialog.getByTestId('collection-files').setInputFiles({ name, mimeType, buffer })
+  await selectCollectionImporter(dialog, importer)
+  await previewCollection(dialog)
+  await expect(dialog.getByRole('button', { name: '保存到阅读材料', exact: true })).toBeEnabled({
     timeout: 30000,
   })
-  await dialog.getByRole('button', { name: '确认导入', exact: true }).click()
-  await expect(dialog).toHaveCount(0)
+  await commitCollection(dialog)
+  // Automatic format recognition must still select the intended independently installed reader.
+  expect(
+    (await localLibrary(page)).sources.some((source) =>
+      `${source.document?.providerId}:${source.document?.readerId}`.startsWith(
+        importer.split(':')[0] + ':',
+      ),
+    ),
+  ).toBe(true)
 }
 async function originalEquals(page: Page, buffer: Buffer) {
   const download = page.waitForEvent('download')

@@ -17,6 +17,7 @@ const runtimeExports = [
   'registerSettings',
   'registerPage',
   'registerWidget',
+  'registerSourceConnector',
   'registerImporter',
   'registerReader',
   'registerCommand',

@@ -52,7 +52,7 @@ pub(crate) fn document(tx: &Transaction<'_>, snapshot: &Value) -> Result<()> {
     }
     Ok(())
 }
-fn material_path(path: &str) -> bool {
+pub(crate) fn material_path(path: &str) -> bool {
     !path.is_empty()
         && path.encode_utf16().count() <= 2048
         && !path.contains(['\\', ':'])
@@ -405,7 +405,7 @@ mod tests {
         let mut db = Database::open(&path, assets.clone()).unwrap();
         assert_eq!(version(&db), 11);
         let library = db.load().unwrap()["library"].clone();
-        assert_eq!(library["version"], 16);
+        assert_eq!(library["version"], 17);
         assert!(library["sources"].as_array().unwrap().contains(&imported));
         assert_eq!(library["materialReceipts"][0], receipt);
         assert_eq!(
@@ -424,7 +424,7 @@ mod tests {
         );
         assert_eq!(db.load().unwrap()["revision"], 2);
         db.connection
-            .pragma_update(None, "user_version", 15)
+            .pragma_update(None, "user_version", 16)
             .unwrap();
         drop(db);
         assert!(Database::open(&path, assets).is_err());

@@ -1,3 +1,5 @@
+import { useNativeCollection } from './useNativeCollection'
+import { useSourceConnections } from './useSourceConnections'
 import { computed, onScopeDispose, watch } from 'vue'
 import { t } from '../i18n'
 import { useLibrary } from '../composables/useLibrary'
@@ -37,7 +39,33 @@ export function createApplication() {
   const readingProgress = useReadingProgress(workspace)
   const offline = useOffline()
   const { library, ready, busy, loadError, backups, backupError } = workspace
+  const collection = computed(() => {
+    const scope = workspace.scope.value
+    if (!ready.value || !scope) return undefined
+    return workspace.collectionApi(() =>
+      plugins.pluginRuntime.installations.flatMap((installation) =>
+        (installation.importers ?? []).map((importer) => ({
+          pluginId: installation.plugin.id,
+          id: importer.id,
+          title: importer.title,
+          extensions: importer.extensions,
+          current: () =>
+            workspace.scope.value === scope &&
+            plugins.pluginRuntime.installations.some(
+              (entry) =>
+                entry.instanceId === installation.instanceId && entry.importers?.includes(importer),
+            ),
+          parse: (file, files, signal) =>
+            plugins.parseMaterialFile(installation.plugin.id, importer.id, file, { signal, files }),
+        })),
+      ),
+    )
+  })
+  const sourceConnections = useSourceConnections(workspace, plugins)
+  const capture = useNativeCollection(workspace, collection)
   const base = {
+    sourceConnections,
+    capture,
     workspace,
     readingProgress,
     offline,
@@ -47,6 +75,7 @@ export function createApplication() {
     loadError,
     backups,
     backupError,
+    collection,
   }
   const clock = useStudyClock()
   const views = useStudyViews()

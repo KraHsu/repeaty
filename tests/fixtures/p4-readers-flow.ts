@@ -1,3 +1,4 @@
+import { openCollection, previewCollection, commitCollection } from './collection-controls'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
@@ -177,13 +178,13 @@ export async function imageOcclusionFlow(page: Page, info: TestInfo) {
     }),
     bytes = Buffer.from(encoded, 'base64')
   await nav(page, '学习材料').click()
-  await page.getByRole('button', { name: '插件导入', exact: true }).click()
-  const imported = page.getByRole('dialog', { name: '导入材料', exact: true })
+  const imported = await openCollection(page)
   await imported
-    .getByTestId('material-import-files')
+    .getByTestId('collection-files')
     .setInputFiles({ name: 'p4-regions.png', mimeType: 'image/png', buffer: bytes })
   await expect(imported).toContainText('p4-regions.png')
-  await imported.getByRole('button', { name: '确认导入', exact: true }).click()
+  await previewCollection(imported)
+  await commitCollection(imported)
   await expect(imported).toHaveCount(0)
   await page.locator('.source-list-title').filter({ hasText: 'p4-regions.png' }).click()
   const reader = page.locator('.vo-reader')

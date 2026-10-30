@@ -4,8 +4,9 @@ import { t } from '../i18n'
 import { workspaceStatus } from './workspaces'
 import { displayFilesystemPath } from './display-path'
 import McpSettings from './McpSettings.vue'
+import CaptureSettings from './CaptureSettings.vue'
 import { SettingGroup } from '../components/ui'
-defineProps<{ section?: 'workspace' | 'mcp' }>()
+defineProps<{ section?: 'workspace' | 'mcp' | 'capture' }>()
 const path = computed(() => workspaceStatus.value?.active?.path)
 </script>
 <template>
@@ -17,6 +18,7 @@ const path = computed(() => workspaceStatus.value?.active?.path)
   <div v-if="!section || section === 'mcp'" :aria-label="t('桌面设置')" role="region">
     <McpSettings />
   </div>
+  <CaptureSettings v-if="section === 'capture'" />
 </template>
 <style scoped>
 .workspace-setting-path {

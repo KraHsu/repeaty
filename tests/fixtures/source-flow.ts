@@ -1,3 +1,9 @@
+import {
+  openCollection,
+  fillCollectionText,
+  previewCollection,
+  commitCollection,
+} from './collection-controls'
 import { expect, type Page } from '@playwright/test'
 import type { Library } from '../../src/core/model'
 import { showSourceText } from './source-controls'
@@ -33,21 +39,23 @@ export async function createSourceDeck(page: Page) {
 }
 export async function previewSource(page: Page) {
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
-  await page.getByRole('button', { name: '导入材料', exact: true }).click()
-  await page.getByLabel('选择材料文件').setInputFiles({
-    name: '学习笔记.md',
-    mimeType: 'text/markdown',
-    buffer: Buffer.from(sourceText),
+  const dialog = await openCollection(page)
+  await fillCollectionText(dialog, {
+    title: '学习笔记',
+    text: sourceText,
+    format: 'markdown',
+    url: 'https://example.invalid/article',
   })
-  await expect(page.getByLabel('材料标题')).toHaveValue('学习笔记')
-  await page.getByLabel('来源链接（可选）').fill('https://example.invalid/article')
 }
 export async function saveSource(page: Page) {
-  await page.getByRole('button', { name: '保存材料', exact: true }).click()
-  await expect(page.getByRole('dialog')).toHaveCount(0)
+  const dialog = page.getByRole('dialog', { name: '收集材料', exact: true })
+  if (await dialog.getByRole('button', { name: '预览材料', exact: true }).count())
+    await previewCollection(dialog)
+  await commitCollection(dialog)
   await page.getByRole('button', { name: '查看 Markdown 原文', exact: true }).click()
   await expect(page.getByRole('textbox', { name: '材料正文', exact: true })).toHaveValue(sourceText)
 }
+
 export async function selectSourceExcerpt(page: Page) {
   await showSourceText(page)
   const start = sourceText.lastIndexOf(sourceQuote)

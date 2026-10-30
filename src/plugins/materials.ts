@@ -1,5 +1,7 @@
+import { z } from 'zod'
 import { markRaw, shallowReactive } from 'vue'
 import type {
+  SourceConnectorContribution,
   MaterialImporterContribution,
   MaterialReaderContribution,
   MaterialCommandContribution,
@@ -11,6 +13,7 @@ import type {
 import { cancelledTask, retainTaskWork } from './tasks'
 
 export type {
+  SourceConnectorContribution,
   MaterialImporterContribution,
   MaterialReaderContribution,
   MaterialCommandContribution,
@@ -19,6 +22,7 @@ export type {
 } from '@repeaty/plugin-api'
 
 export interface MaterialRegistrations {
+  registerSourceConnector(contribution: SourceConnectorContribution): () => void
   registerImporter(contribution: MaterialImporterContribution): () => void
   registerReader(contribution: MaterialReaderContribution): () => void
   registerCommand(contribution: MaterialCommandContribution): () => void
@@ -58,6 +62,7 @@ function strings(values: readonly string[], validate: (value: string) => boolean
 
 /** Registrations are published only with their containing successful plugin activation. */
 export function createMaterialRegistrations(current: () => boolean) {
+  const connectors = shallowReactive<SourceConnectorContribution[]>([])
   const importers = shallowReactive<MaterialImporterContribution[]>([])
   const readers = shallowReactive<MaterialReaderContribution[]>([])
   const commands = shallowReactive<MaterialCommandContribution[]>([])
@@ -169,6 +174,57 @@ export function createMaterialRegistrations(current: () => boolean) {
     }
   }
   const registrations: MaterialRegistrations = {
+    registerSourceConnector(contribution) {
+      identity(contribution)
+      const { id, title, kind, scan } = contribution
+      const fields =
+        contribution.fields &&
+        z
+          .array(
+            z.strictObject({
+              key: z
+                .string()
+                .regex(/^[a-z][a-zA-Z0-9-]{0,63}$/)
+                .refine((k) => !['input', 'directoryId'].includes(k)),
+              title: z.string().min(1).max(160),
+              type: z.enum(['select', 'text']),
+              options: z
+                .array(
+                  z.strictObject({ value: z.string().max(200), label: z.string().min(1).max(160) }),
+                )
+                .min(1)
+                .max(50)
+                .optional(),
+              default: z.string().max(200).optional(),
+            }),
+          )
+          .max(20)
+          .parse(contribution.fields)
+      const credentialHint = z.string().max(500).optional().parse(contribution.credentialHint)
+      if (
+        fields &&
+        (new Set(fields.map((f) => f.key)).size !== fields.length ||
+          fields.some(
+            (f) =>
+              f.type === 'select' &&
+              (!f.options ||
+                new Set(f.options.map((o) => o.value)).size !== f.options.length ||
+                (f.default !== undefined && !f.options.some((o) => o.value === f.default))),
+          ))
+      )
+        throw new Error('来源配置字段无效。')
+      if (!['directory', 'remote', 'hybrid'].includes(kind) || typeof scan !== 'function')
+        throw new Error('来源连接器定义无效。')
+      return register(connectors, contribution, (signal) => ({
+        id,
+        title,
+        kind,
+        fields,
+        credentialHint,
+        scan: (request, context) =>
+          invoke(context, signal, (scoped) => scan.call(contribution, request, scoped)),
+      }))
+    },
     registerImporter(contribution) {
       identity(contribution)
       const { id, title, parse } = contribution
@@ -242,6 +298,7 @@ export function createMaterialRegistrations(current: () => boolean) {
     },
   }
   return {
+    connectors,
     importers,
     readers,
     commands,
@@ -250,6 +307,7 @@ export function createMaterialRegistrations(current: () => boolean) {
     dispose() {
       for (const controller of controllers) controller.abort()
       controllers.clear()
+      connectors.splice(0)
       importers.splice(0)
       readers.splice(0)
       commands.splice(0)

@@ -39,6 +39,7 @@ const packageSchema = z.object({
     z.literal(14),
     z.literal(15),
     z.literal(16),
+    z.literal(17),
   ]),
   library: z.unknown().transform((value) => migrateLibrary(value)),
   retired: retiredBackupSchema.optional(),
@@ -78,7 +79,7 @@ export async function exportBackup(
   }
   const result = JSON.stringify({
     format: 'repeaty-backup',
-    version: 16,
+    version: 17,
     library,
     assets,
     ...(retired.length ? { retired } : {}),
@@ -152,9 +153,23 @@ export function rekeyBackup(data: BackupData): BackupData {
       ...data.library,
       // A restore/import assigns a new operation scope; old retry keys must not affect it.
       materialReceipts: [],
+      sourceConnections: data.library.sourceConnections.map((c) => ({
+        ...c,
+        status: 'disconnected' as const,
+        generation: c.generation + 1,
+      })),
+      sourceCandidates: data.library.sourceCandidates.map((c) => ({
+        ...c,
+        mediaId: c.mediaId ? ids.get(c.mediaId)! : undefined,
+        baseMediaId: c.baseMediaId ? ids.get(c.baseMediaId)! : undefined,
+        resources: c.resources?.map((r) => ({ ...r, mediaId: ids.get(r.mediaId)! })),
+      })),
       sources: data.library.sources.map((source) => ({
         ...source,
         mediaId: ids.get(source.mediaId)!,
+        binding: source.binding
+          ? { ...source.binding, acceptedMediaId: ids.get(source.binding.acceptedMediaId)! }
+          : undefined,
         annotations: source.annotations?.map((annotation) => ({
           ...annotation,
           mediaId: ids.get(annotation.mediaId)!,

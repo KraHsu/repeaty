@@ -1,3 +1,4 @@
+import { sourceConnectionSchema, sourceCandidateSchema } from './collection-data'
 import { msg, LocalizedError } from '../i18n'
 import { retiredNoteSchema, type RetiredNote } from '../desktop/retirement'
 import {
@@ -68,6 +69,8 @@ export const recordStores = [
   'sources',
   'materialReceipts',
   'materialFolders',
+  'sourceConnections',
+  'sourceCandidates',
 ] as const
 export type RecordStore = (typeof recordStores)[number]
 type Entity = Library[RecordStore][number]
@@ -117,6 +120,8 @@ interface RepeatyDB extends DBSchema {
   attemptSummaries: RecordTable
   sources: RecordTable
   materialReceipts: RecordTable
+  sourceConnections: RecordTable
+  sourceCandidates: RecordTable
   materialFolders: RecordTable
   cardDrafts: { key: string; value: CardDraft }
   sourceDrafts: { key: string; value: SourceDraft }
@@ -153,6 +158,8 @@ type Transaction = IDBPTransaction<RepeatyDB, typeof stores, 'readwrite'>
 const schemas = {
   sources: sourceSchema,
   materialReceipts: materialReceiptSchema,
+  sourceConnections: sourceConnectionSchema,
+  sourceCandidates: sourceCandidateSchema,
   materialFolders: materialFolderSchema,
   decks: deckSchema,
   notes: noteSchema,
@@ -184,7 +191,7 @@ export function createRepository(
 ) {
   // save() shadows `options` with its own parameter, so keep the repository setting here.
   const compactHistory = Boolean(options.compactHistory)
-  const database = openDB<RepeatyDB>(name, 20, {
+  const database = openDB<RepeatyDB>(name, 21, {
     async upgrade(db, _oldVersion, _newVersion, tx) {
       try {
         for (const store of stores)
@@ -369,6 +376,8 @@ export function createRepository(
       meta.counts.attempts ??= 0
       meta.counts.materialReceipts ??= 0
       meta.counts.materialFolders ??= 0
+      meta.counts.sourceConnections ??= 0
+      meta.counts.sourceCandidates ??= 0
       return meta
     }
     const old = await tx.objectStore('workspace').get('main')
@@ -610,6 +619,8 @@ export function createRepository(
           'sources',
           'materialReceipts',
           'materialFolders',
+          'sourceConnections',
+          'sourceCandidates',
         ].every((key) => previous[key as RecordStore] === library[key as RecordStore]) &&
         library.cards.length === previous.cards.length &&
         library.cards.every((card) => {

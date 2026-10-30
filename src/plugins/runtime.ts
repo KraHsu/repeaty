@@ -208,6 +208,7 @@ export class PluginRuntime {
             (pages.length > 0 ||
               widgets.length > 0 ||
               materials.importers.length > 0 ||
+              materials.connectors.length > 0 ||
               materials.readers.length > 0 ||
               materials.commands.length > 0 ||
               materials.searchProviders.length > 0))
@@ -241,6 +242,7 @@ export class PluginRuntime {
         pages,
         widgets,
         importers: materials.importers,
+        connectors: materials.connectors,
         readers: materials.readers,
         commands: materials.commands,
         searchProviders: materials.searchProviders,

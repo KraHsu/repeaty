@@ -16,6 +16,8 @@ try {
     sources: 'sourceSchema',
     materialReceipts: 'materialReceiptSchema',
     materialFolders: 'materialFolderSchema',
+    sourceConnections: 'sourceConnectionSchema',
+    sourceCandidates: 'sourceCandidateSchema',
     decks: 'deckSchema',
     notes: 'noteSchema',
     cards: 'cardSchema',
