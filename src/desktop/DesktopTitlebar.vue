@@ -6,6 +6,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useEventListener } from '@vueuse/core'
 import { t } from '../i18n'
 import { createWindowControls } from './window-controls'
+import { windowCloseFailed } from './window-close-guard'
 import { createSnapRegionController, nativeSnapDriver, snapRegion } from './snap-layout'
 
 const appWindow = getCurrentWindow()
@@ -117,7 +118,7 @@ onUnmounted(() => {
       <div class="desktop-titlebar-drag" data-tauri-drag-region>
         <Repeat2 :size="16" :stroke-width="2" aria-hidden="true" />
         <span class="desktop-titlebar-name">Repeaty</span>
-        <span v-if="failed" class="desktop-titlebar-error" role="alert">
+        <span v-if="failed || windowCloseFailed" class="desktop-titlebar-error" role="alert">
           {{ t('窗口操作失败，请重试。') }}
         </span>
       </div>
