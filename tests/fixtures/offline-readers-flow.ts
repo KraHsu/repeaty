@@ -2,7 +2,12 @@ import { expect, type Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { fixture } from '../../src/core/test-fixtures'
 import { archive, epubFiles } from '../../plugins/document-reader/test/fixtures'
-import { confirmPluginAction, openPluginManager, selectPlugin } from './settings-flow'
+import {
+  confirmPluginAction,
+  enableInstalledPlugin,
+  openPluginManager,
+  selectPlugin,
+} from './settings-flow'
 import {
   openCollection,
   previewCollection,
@@ -29,9 +34,10 @@ async function prepare(page: Page, plugin: string) {
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await openPluginManager(page)
   await page
-    .locator('.plugin-actions input[type=file]')
+    .locator('.plugins-page input[type=file]')
     .setInputFiles(`plugins/packages/${plugin}.repeaty-plugin`)
   await confirmPluginAction(page)
+  await enableInstalledPlugin(page, plugin)
 }
 async function importFile(
   page: Page,

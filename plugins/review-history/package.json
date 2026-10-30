@@ -1,6 +1,6 @@
 {
   "name": "@repeaty/plugin-review-history",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "private": true,
   "type": "module",
   "description": "Display recent saved review ratings without changing scheduling.",

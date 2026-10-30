@@ -1,9 +1,10 @@
 {
   "id": "document-reader",
   "name": "EPUB 与 HTML 阅读",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "apiVersion": 1,
   "dataVersion": 1,
   "kind": "frontend",
-  "description": "离线阅读 EPUB 章节与 HTML 材料，保留原件、图片、目录和精确出处。"
+  "description": "离线阅读 EPUB 章节与 HTML 材料，保留原件、图片、目录和精确出处。",
+  "author": "repeaty"
 }

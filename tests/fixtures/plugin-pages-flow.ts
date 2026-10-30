@@ -4,7 +4,12 @@ import { buildPlugin } from '../../packages/plugin-api/build.mjs'
 import { fixture } from '../../src/core/test-fixtures'
 import type { PluginBundle } from '../../src/plugins/package'
 import { storedLibrary } from './stored-library'
-import { confirmPluginAction, openPluginManager, selectPlugin } from './settings-flow'
+import {
+  confirmPluginAction,
+  enableInstalledPlugin,
+  openPluginManager,
+  selectPlugin,
+} from './settings-flow'
 
 const pluginId = 'page-lifecycle-check'
 const nav = (page: Page, title: string) =>
@@ -12,13 +17,13 @@ const nav = (page: Page, title: string) =>
 
 async function install(page: Page, bundle: PluginBundle) {
   await openPluginManager(page)
-  await page.locator('.plugin-actions input[type=file]').setInputFiles({
+  await page.locator('.plugins-page input[type=file]').setInputFiles({
     name: `${pluginId}.repeaty-plugin`,
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(bundle)),
   })
   await confirmPluginAction(page)
-  await selectPlugin(page, pluginId)
+  await enableInstalledPlugin(page, pluginId)
   await expect(nav(page, 'Plugin notebook')).toBeVisible()
 }
 

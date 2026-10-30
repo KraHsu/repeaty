@@ -4,7 +4,12 @@ import { fixture } from '../../src/core/test-fixtures'
 import { emptyLibrary, serializeSchedule, type Library } from '../../src/core/model'
 import { previewReview } from '../../src/core/scheduler'
 import { storedLibrary } from './stored-library'
-import { confirmPluginAction, openPluginManager, selectPlugin } from './settings-flow'
+import {
+  confirmPluginAction,
+  installOfficialPlugin,
+  openPluginManager,
+  selectPlugin,
+} from './settings-flow'
 
 const pluginId = 'fsrs-optimizer'
 const nav = (page: Page, title: string) =>
@@ -64,16 +69,11 @@ async function readLibrary(page: Page): Promise<Library> {
 }
 async function install(page: Page) {
   await openPluginManager(page)
-  await page.getByRole('button', { name: '安装或更新官方插件', exact: true }).click()
-  const picker = page.getByRole('dialog', { name: '安装或更新官方插件', exact: true })
-  await picker
-    .locator(`[data-official-plugin="${pluginId}"]`)
-    .getByRole('button', { name: '安装并启用', exact: true })
-    .click()
-  await expect(picker).toHaveCount(0)
-  await expect(
-    details(page).getByRole('switch', { name: '启用 个人 FSRS 参数', exact: true }),
-  ).toBeChecked()
+  await installOfficialPlugin(page, pluginId)
+  const enabled = details(page).getByRole('switch', { name: '启用 个人 FSRS 参数', exact: true })
+  await expect(enabled).not.toBeChecked()
+  await enabled.click()
+  await expect(enabled).toBeChecked()
 }
 async function open(page: Page) {
   await nav(page, '个人 FSRS 参数').click()

@@ -4,6 +4,7 @@ import { studySettingsSchema } from '../../src/core/study-settings'
 import { storedLibrary } from './stored-library'
 import {
   confirmPluginAction,
+  installOfficialPlugin,
   openPluginManager,
   selectPlugin,
   selectUiValue,
@@ -19,13 +20,9 @@ const enabled = (page: Page) =>
   details(page).getByRole('switch', { name: '启用 学习统计', exact: true })
 async function install(page: Page) {
   await openPluginManager(page)
-  await page.getByRole('button', { name: '安装或更新官方插件', exact: true }).click()
-  const picker = page.getByRole('dialog', { name: '安装或更新官方插件', exact: true })
-  await picker
-    .locator(`[data-official-plugin="${pluginId}"]`)
-    .getByRole('button', { name: '安装并启用', exact: true })
-    .click()
-  await expect(picker).toHaveCount(0)
+  await installOfficialPlugin(page, pluginId)
+  await expect(enabled(page)).not.toBeChecked()
+  await enabled(page).click()
   await expect(enabled(page)).toBeChecked()
   await expect(details(page).locator('.plugin-readme')).toContainText('前台使用')
 }

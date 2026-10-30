@@ -226,6 +226,8 @@ export declare const AppPage: DefineComponent<AppPageProps & HTMLAttributes>
 export interface PluginManifest {
   id: string
   name: string
+  /** Publisher or maintainer name, shown after the plugin name. Required when building/installing. */
+  author: string
   version: string
   apiVersion: 1
   dataVersion: number

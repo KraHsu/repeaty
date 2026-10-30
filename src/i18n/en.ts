@@ -1367,6 +1367,35 @@ export const en = {
   '外部工具可预览并应用整库修改，包括恢复快照。每次修改需携带预览和当前修订号，并保留恢复点。只向你信任的本机工具开放。':
     'External tools may preview and apply changes across the library, including snapshot restores. Each change requires a preview and the current revision, and retains a recovery point. Enable only for local tools you trust.',
   无原生能力: 'No native capabilities',
+  全部插件: 'All',
+  可更新: 'Updates',
+  插件目录: 'Plugin catalog',
+  搜索插件: 'Search plugins',
+  搜索插件名称或功能: 'Search plugins by name or feature',
+  '正在加载插件目录…': 'Loading plugin catalog…',
+  '正在加载插件详情…': 'Loading plugin details…',
+  '没有找到匹配的插件。': 'No matching plugins.',
+  '所有插件均已是目录中的最新版本。': 'All plugins match or exceed the catalog version.',
+  选择一个插件: 'Select a plugin',
+  '查看介绍与权限，安装后可单独启用。':
+    'Read its documentation and permissions. Enable it separately after installing.',
+  '确认安装 {name}？新插件默认关闭，更新保留原启停状态。':
+    'Install {name}? New plugins start disabled. Updates keep their enabled state.',
+  安装: 'Install',
+  更新: 'Update',
+  '无法保存插件启停状态。': 'Unable to save the plugin enabled state.',
+  '插件包必须提供作者（author），长度为 1–100 个字符。':
+    'Plugin packages must declare an author of 1–100 characters.',
+  未声明作者: 'Author not specified',
+  作者: 'Author',
+  启用: 'Enable',
+  '目录版本 {version}': 'Catalog version {version}',
+  官方插件: 'Official plugin',
+  尚未安装: 'Not installed',
+  尚未信任: 'Not trusted',
+  加载失败: 'Failed to load',
+  '官方插件包与目录信息不一致，请刷新后重试。':
+    'The plugin package does not match the catalog. Refresh and try again.',
   安装或更新官方插件: 'Install or update official plugins',
   重新扫描插件: 'Rescan plugins',
   '请先结束复习或关闭编辑器，再修改插件。':

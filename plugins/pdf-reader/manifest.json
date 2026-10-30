@@ -1,10 +1,11 @@
 {
   "id": "pdf-reader",
   "name": "PDF 阅读器",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "apiVersion": 1,
   "dataVersion": 1,
   "kind": "frontend",
   "description": "离线阅读 PDF，搜索、缩放、旋转并从精确选区制卡。",
-  "main": "main.js"
+  "main": "main.js",
+  "author": "repeaty"
 }

@@ -1,6 +1,6 @@
 {
   "name": "@repeaty/plugin-fsrs-optimizer",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "type": "module",
   "description": "Train and validate personal FSRS-6 parameters locally in an isolated WebAssembly worker.",

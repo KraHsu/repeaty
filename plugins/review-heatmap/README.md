@@ -4,9 +4,9 @@
 
 ## 安装与使用
 
-在主侧栏依次选择「插件 → 安装或更新官方插件 → 复习热力图 → 安装并启用」，或选择 `review-heatmap.repeaty-plugin` 文件安装。新建和已有学习库都需要主动安装，本插件不会默认预装。启用后进入「学习概览」即可查看，无需创建题目或添加页面。可随时在插件详情中关闭、重新启用或卸载。
+在主侧栏打开「插件」，搜索「复习热力图」，点击目录行内的「安装」；也可通过页头「安装插件包」选择 `review-heatmap.repeaty-plugin` 文件。安装完成后插件保持关闭，通过详情右上角的开关单独启用。新建和已有学习库都需要主动安装，本插件不会默认预装。启用后进入「学习概览」即可查看，无需创建题目或添加页面。可随时在插件详情中关闭、重新启用或卸载。
 
-已安装1.0.0的学习库，在同一官方插件列表中选择1.1.0的「更新并启用」即可使用新版日历。插件不会自动更新；更新保留评分记录。
+已有旧版本时，在同一目录中找到热力图并点击「更新」，也可使用「可更新」筛选。插件不会自动更新；更新保留原启用状态和评分记录，关闭的插件不会因更新而启用。1.1.2 更新了本使用说明，日历与评分统计保持原有行为。
 
 - 按设备当前本地日期统计，包含今天在内的365天，支持北京时间、UTC及夏令时切换。日历前后的占位格不属于统计范围。
 - 悬停、键盘聚焦或轻点日期格，可查看完整日期与复习次数。方向键在日期间移动；窄窗口保留方格大小，在日历内部横向滚动，初始显示最近日期。
@@ -24,9 +24,9 @@
 
 Review heatmap is an official external plugin for the Learning overview. It shows **formal rating counts** for the last 365 local calendar days, including today, below the deck section. The GitHub-style contribution calendar has one column per week and seven weekday rows, from Sunday to Saturday, with month and weekday labels. Dates, counts and the interface follow the host language and theme.
 
-Choose Plugins → Install or update official plugins → Review heatmap → Install and enable, or install the `review-heatmap.repeaty-plugin` file. Both new and existing libraries require an explicit installation; the plugin is not preinstalled. Enable, disable or uninstall it from the plugin details. No extra page or question type is created.
+Open Plugins, search for Review heatmap, and choose Install on its directory row. You can also choose Install plugin package in the page header and select the `review-heatmap.repeaty-plugin` file. A new installation stays disabled; turn it on separately using the switch at the top right of its details. Both new and existing libraries require an explicit installation; the plugin is not preinstalled. You can later disable, enable or uninstall it from the same details. No extra page or question type is created.
 
-If version 1.0.0 is already installed, choose Update and enable for version 1.1.0 in the same official plugin list. Updates are manual and preserve rating history.
+For an older installation, choose Update on its directory row, or find it through the Updates filter. Updates are manual and preserve its enabled or disabled state and rating history. Updating a disabled plugin does not enable it. Version 1.1.2 refreshes these instructions without changing the calendar or rating calculations.
 
 Hover, focus or tap a day to read its date and rating count. Use the arrow keys to move between dates. On narrow screens, scroll horizontally within the calendar; the most recent dates are initially visible. Five intensity levels represent 0, 1–2, 3–5, 6–9 and 10 or more ratings. Padding cells before and after the date range do not represent rating days.
 
@@ -36,7 +36,7 @@ The plugin consumes only read-only rating summaries through the public SDK. It r
 
 ## 独立开发 / Development
 
-版本1.1.0，使用公开 SDK 1.7.0 的 `ExtensionPlugin` 与 `registerWidget()`。运行预构建包不需要 Node.js，也不需要重编译 Repeaty。开发时使用 Node.js 24.15+，安装依赖后在本目录执行：
+版本1.1.2，使用公开 SDK 1.7.0 的 `ExtensionPlugin` 与 `registerWidget()`。运行预构建包不需要 Node.js，也不需要重编译 Repeaty。开发时使用 Node.js 24.15+，安装依赖后在本目录执行：
 
 ```sh
 npm test
