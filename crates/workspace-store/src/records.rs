@@ -79,6 +79,7 @@ pub enum ReadAttempts {
 }
 pub struct Database {
     pub(crate) connection: Connection,
+    pub(crate) sync_device: Option<String>,
     assets: Arc<Dir>,
     validators: HashMap<String, jsonschema::Validator>,
 }
@@ -103,7 +104,7 @@ impl Database {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         let version: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 17 {
+        if version > 18 {
             return Err(Error::invalid());
         }
         let tx = connection.transaction()?;
@@ -170,8 +171,10 @@ impl Database {
             .collect::<Result<_>>()?;
         crate::attachments::schema(&connection)?;
         crate::retirement::history_schema(&connection)?;
+        crate::sync::schema(&connection)?;
         Ok(Self {
             connection,
+            sync_device: None,
             validators,
             assets,
         })
@@ -606,6 +609,7 @@ impl Database {
         }
         tx.execute("UPDATE workspace SET revision=?1 WHERE id=1", [current + 1])?;
         Self::collect_assets(&tx)?;
+        crate::sync::flush(&tx, self.sync_device.as_deref())?;
         tx.commit()?;
         Ok(current + 1)
     }

@@ -281,7 +281,7 @@ fn future_reader_gate_is_rejected_by_library_open_and_complete_backup() {
     library
         .db
         .connection
-        .pragma_update(None, "user_version", 18)
+        .pragma_update(None, "user_version", 19)
         .unwrap();
     let archive = directory.path().join("future.repeaty-workspace");
     assert!(backup::create(&library, &archive, &AtomicBool::new(false)).is_err());

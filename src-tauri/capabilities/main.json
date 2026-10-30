@@ -30,6 +30,7 @@
     "allow-desktop-update-cancel",
     "allow-desktop-update-install",
     "allow-desktop-diagnostics",
+    "allow-device-sync-request",
     "allow-workspace-status",
     "allow-workspace-choose",
     "allow-workspace-recent",

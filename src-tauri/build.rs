@@ -26,6 +26,7 @@ fn main() {
             "desktop_update_cancel",
             "desktop_update_install",
             "desktop_diagnostics",
+            "device_sync_request",
             "workspace_status",
             "workspace_choose",
             "workspace_recent",
