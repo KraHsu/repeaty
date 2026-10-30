@@ -118,10 +118,28 @@ export function createCollectionCommands(context: LibraryContext) {
                 format: z.enum(['plain', 'markdown']).optional(),
               })
               .parse(request.text)
-            const name = `${text.title || text.text.split('\n')[0]!.slice(0, 60)}.${text.format === 'plain' ? 'txt' : 'md'}`
-            const file = new File([text.text], name.replace(/[\\/:\u0000-\u001f]/g, '_'), {
-              type: text.format === 'plain' ? 'text/plain' : 'text/markdown',
-            })
+            const firstLine = text.text
+              .split(/\r?\n/)
+              .find((line) => line.trim())
+              ?.trim()
+              .slice(0, 60)
+            const name = `${text.title || firstLine || '收集的文字'}.${text.format === 'plain' ? 'txt' : 'md'}`
+            request.text = {
+              ...text,
+              url: text.url || undefined,
+              title: text.title || firstLine || '收集的文字',
+            }
+            const safeName = name.replace(/[<>:\x22/\\|?*\u0000-\u001f]/g, '_')
+            const file = new File(
+              [text.text],
+              'reason' in inspectCollectionPath(safeName) ||
+                /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(safeName)
+                ? `_${safeName}`
+                : safeName,
+              {
+                type: text.format === 'plain' ? 'text/plain' : 'text/markdown',
+              },
+            )
             files.unshift(file)
           }
           const accepted = new Set<string>()

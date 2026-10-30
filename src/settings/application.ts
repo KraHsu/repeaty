@@ -163,18 +163,23 @@ export function createApplicationSettings(options: ApplicationSettingsOptions): 
   }
   if (options.platformSettings) {
     const PlatformSettings = options.platformSettings
-    for (const section of ['workspace', 'mcp'] as const) {
+    for (const section of ['workspace', 'mcp', 'capture'] as const) {
       entries.push(
         entry(
           {
             id: section,
             get title() {
-              return t(section === 'workspace' ? '工作目录' : 'MCP 连接')
+              return section === 'capture'
+                ? '快捷收集'
+                : t(section === 'workspace' ? '工作目录' : 'MCP 连接')
             },
             category:
               section === 'workspace'
                 ? [category('workspace', '工作目录')]
-                : [category('connections', '连接'), category('mcp', 'MCP 连接')],
+                : [
+                    category('connections', '连接'),
+                    { id: section, title: section === 'capture' ? '快捷收集' : t('MCP 连接') },
+                  ],
             component: markRaw(
               defineComponent({
                 name: section === 'workspace' ? 'WorkspaceSettingsEntry' : 'McpSettingsEntry',

@@ -1,4 +1,9 @@
-import { selectUiValue } from './ui-flow'
+import {
+  openCollection,
+  fillCollectionText,
+  previewCollection,
+  commitCollection,
+} from './collection-controls'
 import { setInterfaceLanguage } from './settings-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
@@ -23,12 +28,17 @@ export async function importReading(
   text: string,
 ) {
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
-  await page.getByRole('button', { name: '导入材料', exact: true }).click()
-  await page.getByLabel('材料标题').fill(title)
-  await selectUiValue(page.getByLabel('内容格式'), format)
-  await page.getByLabel('粘贴正文').fill(text)
-  await page.getByRole('button', { name: '保存材料', exact: true }).click()
-  await expect(page.getByRole('dialog')).toHaveCount(0)
+  const dialog = await openCollection(page)
+  await fillCollectionText(dialog, { title, format, text })
+  await previewCollection(dialog)
+  await commitCollection(dialog)
+  // Collection shows all saved documents. Queue scenarios explicitly enter the
+  // ready queue that the former reading-import entry selected automatically.
+  await page
+    .getByRole('navigation', { name: '阅读队列', exact: true })
+    .getByRole('button', { name: /^待阅读/ })
+    .click()
+  await page.locator('.source-list-title').filter({ hasText: title }).click()
   if (format === 'markdown')
     await page.getByRole('button', { name: '查看 Markdown 原文', exact: true }).click()
   await expect(page.locator('.source-text')).toHaveValue(text)
@@ -119,9 +129,11 @@ export async function readingFlow(page: Page, read: () => Promise<Library>, info
   await page.locator('.source-list-title').filter({ hasText: markdown.title }).click()
   // Capture the state being exported after focus and layout changes settle.
   await saveReading(page)
-  const backedUp = (await read()).sources.find((source) => source.id === markdown.id)!.reading!
-
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
+  // Leaving the reader flushes its latest position. Compare the backup to that
+  // persisted state, including the exact timestamp, rather than the pre-flush state.
+  await expect(page.getByRole('heading', { name: '数据与备份', exact: true })).toBeVisible()
+  const backedUp = (await read()).sources.find((source) => source.id === markdown.id)!.reading!
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: '导出 .repeaty', exact: true }).click()
   const bytes = await readFile((await (await download).path())!)

@@ -63,6 +63,10 @@ export async function storedLibrary(page: Page) {
         'practices',
         'attempts',
         'sources',
+        'materialReceipts',
+        'materialFolders',
+        'sourceConnections',
+        'sourceCandidates',
       ]) {
         result[key] = await new Promise((resolve, reject) => {
           const r = db.transaction(key).objectStore(key).getAll()

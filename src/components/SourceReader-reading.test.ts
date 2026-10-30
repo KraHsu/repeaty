@@ -14,6 +14,41 @@ afterEach(() => {
   document.body.replaceChildren()
   vi.restoreAllMocks()
 })
+it('uses text locator offsets for read-only highlights when no separate projection was supplied', async () => {
+  const text = '**same**\n\n**same**',
+    { source } = prepareSource({ title: 'Reader', content: text, format: 'markdown', url: '' }),
+    start = text.lastIndexOf('same'),
+    host = document.createElement('div')
+  document.body.append(host)
+  app = createApp({
+    render: () =>
+      h(SourceReader, {
+        source,
+        text,
+        scope: 'readonly-source-context',
+        readOnly: true,
+        initialSelection: {
+          text: 'same',
+          locator: {
+            schemaVersion: 1,
+            kind: 'text',
+            sourceId: source.id,
+            versionId: source.mediaId,
+            start,
+            end: start + 4,
+            quote: 'same',
+          },
+        },
+      }),
+  })
+  app.mount(host)
+  await nextTick()
+  expect(host.querySelector('.source-original mark')?.textContent).toBe('same')
+  expect(host.querySelector('.source-original mark')?.previousSibling?.textContent).toBe(
+    text.slice(0, start),
+  )
+  expect(host.querySelector('.source-markdown-preview')).toBeNull()
+})
 it('selects the second rendered occurrence and emits version-scoped edits and internal links', async () => {
   const text = '**same**\n\n**same**\n\n- [ ] Task\n\n[[source:stable|Guide]]'
   const { source } = prepareSource({ title: 'Reader', content: text, format: 'markdown', url: '' })

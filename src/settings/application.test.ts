@@ -87,6 +87,7 @@ it('provides individual desktop configuration views without registering plugin m
     'material-reading',
     'workspace',
     'mcp',
+    'capture',
     'ai',
   ])
   expect(

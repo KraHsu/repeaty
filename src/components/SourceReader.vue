@@ -14,6 +14,8 @@ import { useInlineMedia } from '../composables/useInlineMedia'
 import type { Source, SourceOrigin, ReadingPosition, ReadingUpdate } from '../core/source-data'
 import { sourceExcerpt } from '../core/sources'
 import { renderReadingMarkdown } from '../core/content'
+import { useSourceContentLinks } from '../composables/useSourceContentLinks'
+import type { InlineMediaReference } from '../composables/useInlineMedia'
 import { readingSelection } from './reading-selection'
 import {
   TextareaPosition,
@@ -43,7 +45,11 @@ const emit = defineEmits<{
   wikiPreview: [target: string]
   open: [sourceId: string, locator?: MaterialLocator]
 }>()
-const preview = ref(props.source.format === 'markdown' && props.source.reading?.view !== 'source')
+const preview = ref(
+  props.source.format === 'markdown' &&
+    props.source.reading?.view !== 'source' &&
+    !(props.readOnly && props.initialSelection),
+)
 const selectionError = ref('')
 const plugins = usePluginManager()
 const textOnly = ref(false),
@@ -53,6 +59,11 @@ const textOnly = ref(false),
   commandBusy = ref(false)
 const original = shallowRef<Blob>()
 const currentSelection = shallowRef<MaterialSelection | undefined>(props.initialSelection)
+const initialSelectionRange = computed(() =>
+  props.initialSelection?.locator.kind === 'text'
+    ? props.initialSelection.locator
+    : props.initialSelection?.projection,
+)
 const fallbackHighlight = ref<HTMLElement>()
 watch(fallbackHighlight, (element) => element?.scrollIntoView({ block: 'center' }), {
   flush: 'post',
@@ -336,12 +347,20 @@ async function runCommand(pluginId: string, commandId: string) {
 }
 const reader = ref<{ textareaRef?: HTMLTextAreaElement }>(),
   rendered = ref<HTMLElement>()
+const contentLinks = useSourceContentLinks(() => ({
+  source: props.source,
+  sources: props.sources,
+  text: props.text,
+  scope: props.scope,
+  read: props.getMedia,
+  open: (id, locator) => emit('open', id, locator),
+}))
 type ReaderMediaInput = {
   scope: string
   sourceId: string
   versionId: string
   text: string
-  media?: Source['inlineMedia']
+  media?: readonly InlineMediaReference[]
   read?: (id: string) => Promise<Blob | undefined>
 }
 const mediaInput = computed<ReaderMediaInput>((previous) => {
@@ -350,7 +369,15 @@ const mediaInput = computed<ReaderMediaInput>((previous) => {
     sourceId: props.source.id,
     versionId: props.source.mediaId,
     text: props.text,
-    media: preview.value ? props.source.inlineMedia : undefined,
+    media: preview.value
+      ? [
+          ...(props.source.inlineMedia ?? []),
+          ...[...contentLinks.targets.value.resources].map(([url, item]) => ({
+            url,
+            mediaId: item.mediaId,
+          })),
+        ]
+      : undefined,
     read: props.getMedia,
   }
   // Position/metadata saves replace Source objects, but not their accepted media.
@@ -365,12 +392,7 @@ const mediaInput = computed<ReaderMediaInput>((previous) => {
     previous.media?.length === next.media?.length &&
     (next.media ?? []).every((entry, index) => {
       const before = previous.media![index]!
-      return (
-        before.url === entry.url &&
-        before.mediaId === entry.mediaId &&
-        before.path === entry.path &&
-        before.hash === entry.hash
-      )
+      return before.url === entry.url && before.mediaId === entry.mediaId
     })
   )
     return previous
@@ -380,6 +402,8 @@ const media = useInlineMedia(mediaInput)
 const html = computed(() =>
   renderReadingMarkdown(props.text, media.urls.value, {
     editableTasks: props.editable,
+    sourceLinks: new Set(contentLinks.targets.value.links.keys()),
+    resourceLinks: new Set(contentLinks.targets.value.resources.keys()),
   }),
 )
 watch(
@@ -491,12 +515,16 @@ function previewCurrent() {
 }
 function previewControl(event: MouseEvent | KeyboardEvent) {
   const target = (event.target as Element | null)?.closest<HTMLElement>(
-    '[data-wiki-target], [data-reading-task]',
+    '[data-wiki-target], [data-reading-task], [data-source-reference], [data-source-resource]',
   )
   if (!target || !previewCurrent() || !rendered.value?.contains(target)) return
   if (event instanceof KeyboardEvent && !['Enter', ' '].includes(event.key)) return
   event.preventDefault()
   event.stopPropagation()
+  if (target.dataset.sourceReference || target.dataset.sourceResource) {
+    void contentLinks.activate(target.dataset.sourceReference, target.dataset.sourceResource)
+    return
+  }
   if (target.dataset.wikiTarget) {
     emit('wiki', target.dataset.wikiTarget)
     return
@@ -665,7 +693,7 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
       <UiButton variant="secondary" :disabled="exportingOriginal" @click="exportOriginal">{{
         t('导出原件')
       }}</UiButton>
-      <span v-if="!contributed" class="form-note">{{
+      <span v-if="source.document.readerId && !contributed" class="form-note">{{
         t('阅读器插件未启用，显示保留的文本副本。')
       }}</span>
     </template>
@@ -689,6 +717,9 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
     </UiButton>
   </div>
   <p v-if="materialError" class="form-note" role="alert">{{ materialError }}</p>
+  <p v-if="contentLinks.error.value" class="form-note" role="alert">
+    {{ t(contentLinks.error.value as Error) }}
+  </p>
   <p v-if="selectionError" class="form-note" role="status">{{ selectionError }}</p>
   <p v-if="customReader && originalLoading" role="status">{{ t('正在读取原始文件…') }}</p>
   <MaterialReaderView
@@ -721,13 +752,13 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
   <div v-else-if="readOnly" class="source-original" tabindex="0" :aria-label="t('原文快照')">
     <template
       v-if="
-        initialSelection?.projection &&
-        text.slice(initialSelection.projection.start, initialSelection.projection.end) ===
-          initialSelection.text
+        initialSelection &&
+        initialSelectionRange &&
+        text.slice(initialSelectionRange.start, initialSelectionRange.end) === initialSelection.text
       "
-      >{{ text.slice(0, initialSelection.projection.start)
+      >{{ text.slice(0, initialSelectionRange.start)
       }}<mark ref="fallbackHighlight">{{ initialSelection.text }}</mark
-      >{{ text.slice(initialSelection.projection.end) }}</template
+      >{{ text.slice(initialSelectionRange.end) }}</template
     >
     <template v-else>{{ text }}</template>
   </div>

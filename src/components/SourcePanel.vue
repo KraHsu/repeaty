@@ -59,14 +59,18 @@ import SourceAnnotations from './SourceAnnotations.vue'
 import type { MaterialWorkbenchActions } from './material-workbench-actions'
 import { useReadingPanels } from '../composables/useReadingPanels'
 import MaterialImport from './MaterialImport.vue'
+import CollectionImport from './CollectionImport.vue'
+import InboxPanel from './InboxPanel.vue'
+import MaterialSections from './MaterialSections.vue'
 import MaterialSearch from './MaterialSearch.vue'
 import SourceLinks from './SourceLinks.vue'
 import { createMaterialKnowledge } from '../composables/material-knowledge'
-import type { MaterialSearchHit } from '@repeaty/plugin-api'
+import type { MaterialSearchHit, CollectionHostApi } from '@repeaty/plugin-api'
 import type { MaterialLocator } from '../core/material-data'
 import SourceContext from './SourceContext.vue'
 import SourceExcerptList from './SourceExcerptList.vue'
 import { excerptsForSource, matchingExcerpts } from '../core/source-navigation'
+import type { CollectionInput } from '../core/collection-input'
 
 const props = defineProps<{
   library: Library
@@ -92,6 +96,8 @@ const props = defineProps<{
   saveReading: (update: ReadingUpdate) => Promise<boolean>
   workbench?: MaterialWorkbenchActions
   readProperties?: (id: string) => Promise<string>
+  collection?: CollectionHostApi
+  readClipboard?: () => Promise<CollectionInput>
 }>()
 const emit = defineEmits<{
   create: [excerpt: SourceExcerpt, format: 'plain' | 'markdown', type?: 'cloze']
@@ -123,6 +129,44 @@ watch(
 )
 onUnmounted(() => knowledge.value.dispose())
 const today = computed(() => localDay(props.now))
+const section = ref<'library' | 'inbox' | 'connections'>('library')
+const collectionImport = ref<InstanceType<typeof CollectionImport>>()
+const collecting = ref(false)
+const inboxCount = computed(
+  () => props.library.sources.filter((source) => source.inbox?.state === 'new').length,
+)
+async function changeSection(value: 'library' | 'inbox' | 'connections') {
+  if (value === section.value || props.busy || moving.value || inRound.value) return
+  const scope = props.scope
+  if (section.value === 'library') {
+    if (!(await flushEditor()) || (reader.value?.ready && !(await savePosition()))) return
+    if (!alive || scope !== props.scope) return
+  }
+  section.value = value
+}
+async function openCollection() {
+  const scope = props.scope
+  if (!(await flushEditor()) || (reader.value?.ready && !(await savePosition()))) return
+  if (!alive || scope !== props.scope) return
+  collectionImport.value?.show()
+}
+function collected(ids: readonly string[], destination: 'inbox' | 'library') {
+  if (destination === 'inbox') section.value = 'inbox'
+  else {
+    section.value = 'library'
+    resetFilters()
+    view.value = 'all'
+    page.value = 0
+    selectedId.value = ids[0] ?? ''
+  }
+}
+async function filed(id: string) {
+  section.value = 'library'
+  resetFilters()
+  view.value = 'all'
+  await nextTick()
+  await openSource(id)
+}
 const editingContent = ref(false)
 const contentEditor = ref<InstanceType<typeof SourceContentEditor>>()
 const annotations = ref<InstanceType<typeof SourceAnnotations>>()
@@ -434,6 +478,7 @@ watch(
   () => props.scope,
   () => {
     editingContent.value = false
+    section.value = 'library'
     navigationGeneration++
   },
   { flush: 'sync' },
@@ -656,6 +701,7 @@ let releaseReading: (() => void) | undefined
 watch(
   () =>
     importing.value ||
+    collecting.value ||
     deleting.value ||
     deferring.value ||
     schedulingRead.value ||
@@ -1201,7 +1247,7 @@ async function download() {
   >
     <template #actions>
       <MaterialImport
-        v-if="!session"
+        v-if="!session && !collection"
         :scope="scope"
         :busy="busy || moving || inRound || editingContent || !!annotations?.dirty"
         @imported="
@@ -1226,13 +1272,22 @@ async function download() {
       <UiButton
         variant="secondary"
         type="submit"
-        v-if="!inRound"
+        v-if="!inRound && section === 'library'"
         :disabled="busy || moving || arranging || !readyCount || (!!source && !canMove)"
         @click="beginRound()"
       >
         {{ t('开始一轮阅读') }}
       </UiButton>
       <UiButton
+        v-if="collection && !session"
+        variant="primary"
+        :disabled="busy || moving || inRound"
+        @click="openCollection"
+      >
+        <Plus :size="18" />{{ t('收集材料') }}
+      </UiButton>
+      <UiButton
+        v-else
         variant="primary"
         type="submit"
         :disabled="busy || moving || inRound"
@@ -1241,7 +1296,28 @@ async function download() {
         <Plus :size="18" />{{ t('导入材料') }}
       </UiButton>
     </template>
-    <div v-if="!library.sources.length && !workbench && !inRound" class="empty-state">
+    <MaterialSections
+      v-if="collection && !session && !inRound"
+      :model-value="section"
+      :inbox-count="inboxCount"
+      :connections="!!$slots.connections"
+      :disabled="busy || moving"
+      @update:model-value="changeSection"
+    />
+    <InboxPanel
+      v-if="collection && section === 'inbox' && !inRound"
+      :api="collection"
+      :scope="scope"
+      :sources="library.sources"
+      :busy="busy"
+      :read="read"
+      :get-media="getMedia"
+      @collect="openCollection"
+      @filed="filed"
+      @create="(excerpt, format) => emit('create', excerpt, format)"
+    />
+    <slot v-else-if="section === 'connections' && !inRound" name="connections" />
+    <div v-else-if="!library.sources.length && !workbench && !inRound" class="empty-state">
       <FileText :size="36" />
       <h2>{{ t('还没有学习材料') }}</h2>
       <p>{{ t('导入文本或 Markdown，也可以直接粘贴。原文会保存在当前学习库中。') }}</p>
@@ -2091,6 +2167,16 @@ async function download() {
         </aside>
       </div>
     </template>
+    <CollectionImport
+      v-if="collection && !session"
+      ref="collectionImport"
+      :api="collection"
+      :scope="scope"
+      :busy="busy || moving || inRound"
+      :read-clipboard="readClipboard"
+      @collected="collected"
+      @activity="collecting = $event"
+    />
     <SourceBatchDialog
       v-if="batchDraft"
       :titles="batchDraft.entries.map((entry) => entry.title)"

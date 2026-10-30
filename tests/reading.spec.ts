@@ -14,6 +14,8 @@ import { emptyLibrary } from '../src/core/model'
 import { addSource, prepareSource } from '../src/core/sources'
 import { exportArchive } from '../src/core/archive'
 import { readingRoundFlow, startRound } from './fixtures/reading-round-flow'
+// Multi-material scenarios now include the public collection preview/confirmation.
+test.setTimeout(60_000)
 
 async function read(page: Parameters<typeof storedLibrary>[0]) {
   const rows = await storedLibrary(page)

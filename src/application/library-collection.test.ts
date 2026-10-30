@@ -499,3 +499,20 @@ describe('reviewable source connection snapshots', () => {
     ).rejects.toThrow('学习库')
   })
 })
+
+it('captures text with a leading blank line without changing its bytes or requiring a title', async () => {
+  const test = await setup()
+  const text = '\n\n  ...What? <A> | B*\n保留末尾空行\n\n'
+  const plan = await test.api.prepareCollection({
+    text: { text, format: 'plain' },
+    destination: 'inbox',
+  })
+  expect(plan.candidates[0]!.title).toBe('...What? <A> | B*')
+  const result = await test.api.commitCollection({
+    planId: plan.id,
+    expectedRevision: plan.revision,
+    operationId: 'leading-newline',
+  })
+  const source = test.state.library.value.sources.find((s) => s.id === result.sourceIds[0])!
+  expect(await (await test.repo.getMedia(source.mediaId))!.text()).toBe(text)
+})

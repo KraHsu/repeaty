@@ -1,3 +1,9 @@
+import {
+  openCollection,
+  fillCollectionText,
+  previewCollection,
+  commitCollection,
+} from './collection-controls'
 import { expect, type Locator, type Page, type TestInfo } from '@playwright/test'
 import { addSource, prepareSource } from '../../src/core/sources'
 import { exportArchive } from '../../src/core/archive'
@@ -5,7 +11,6 @@ import type { MediaUpload } from '../../src/core/model'
 import { readBrowserLibrary } from './adaptive-mixed-flow'
 import { setResponsiveViewport } from './viewport-flow'
 import { showSourceFilters } from './source-controls'
-import { selectUiValue } from './settings-flow'
 
 async function dismissNotices(page: Page) {
   const close = page.getByRole('button', { name: '关闭提示', exact: true })
@@ -140,16 +145,20 @@ export async function fullUiFlow(page: Page, info: TestInfo) {
   await sourcePages(page)
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await dismissNotices(page)
-  await page.getByRole('button', { name: '导入材料', exact: true }).click()
-  dialog = page.getByRole('dialog', { name: '导入材料', exact: true })
-  await sharedControls(dialog)
-  await dialog.getByLabel('材料标题', { exact: true }).fill('Unified reading source')
-  await selectUiValue(page, dialog.getByLabel('内容格式', { exact: true }), 'plain')
+  dialog = await openCollection(page)
   const content = 'A readable paragraph 中文🙂 with the shared GUI.\n\n'.repeat(80)
-  await dialog.getByLabel('粘贴正文', { exact: true }).fill(content)
-  await expect(dialog.locator('button[type="submit"]')).toHaveAttribute('data-variant', 'primary')
-  await dialog.getByRole('button', { name: '保存材料', exact: true }).click()
-  await expect(dialog).toHaveCount(0)
+  await fillCollectionText(dialog, {
+    title: 'Unified reading source',
+    format: 'plain',
+    text: content,
+  })
+  await sharedControls(dialog)
+  await expect(dialog.getByRole('button', { name: '预览材料', exact: true })).toHaveAttribute(
+    'data-variant',
+    'primary',
+  )
+  await previewCollection(dialog)
+  await commitCollection(dialog)
   const reader = page.getByRole('textbox', { name: '材料正文', exact: true })
   await expect(reader).toHaveAttribute('aria-busy', 'false')
   await expect(reader).toHaveAttribute('data-slot', 'base')

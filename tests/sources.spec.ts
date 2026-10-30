@@ -1,4 +1,9 @@
-import { selectUiValue } from './fixtures/ui-flow'
+import {
+  openCollection,
+  fillCollectionText,
+  previewCollection,
+  commitCollection,
+} from './fixtures/collection-controls'
 import { setInterfaceLanguage } from './fixtures/settings-flow'
 import { test, expect } from './fixtures/empty-workspace'
 import { storedLibrary } from './fixtures/stored-library'
@@ -21,6 +26,7 @@ test('imports a lazy source, anchors an excerpt, reviews offline and preserves s
   page,
   context,
 }, testInfo) => {
+  test.setTimeout(60_000)
   const errors: string[] = [],
     external: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
@@ -116,24 +122,28 @@ test('imports a lazy source, anchors an excerpt, reviews offline and preserves s
 test('rejects invalid files, supports pasted text and keeps an existing snapshot when the same source is imported again', async ({
   page,
 }) => {
+  test.setTimeout(60_000)
   await createSourceDeck(page)
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
-  await page.getByRole('button', { name: '导入材料', exact: true }).click()
-  await page
-    .getByLabel('选择材料文件')
+  const invalid = await openCollection(page)
+  await invalid
+    .getByTestId('collection-files')
     .setInputFiles({ name: 'invalid.txt', mimeType: 'text/plain', buffer: Buffer.from([255, 255]) })
-  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('UTF-8')
-  await page.getByRole('button', { name: '取消', exact: true }).click()
+  await previewCollection(invalid)
+  await expect(invalid.getByRole('alert')).toContainText(/UTF-8/i)
+  await invalid.getByRole('button', { name: '关闭弹窗', exact: true }).click()
   await previewSource(page)
   await saveSource(page)
   await createExcerptCard(page)
   // Selecting an excerpt scrolls the reader; let that position finish autosaving.
   await expect(page.locator('.reading-progress')).toHaveAttribute('data-reading-status', 'saved')
   const before = await storedLibrary(page)
-  await page.getByRole('button', { name: '导入材料', exact: true }).click()
-  await page.getByLabel('材料标题').fill('学习笔记')
-  await selectUiValue(page.getByLabel('内容格式'), 'plain')
-  await page.getByLabel('粘贴正文').fill('A new snapshot of the source.')
+  const importing = await openCollection(page)
+  await fillCollectionText(importing, {
+    title: '学习笔记',
+    format: 'plain',
+    text: 'A new snapshot of the source.',
+  })
   const original = ((await storedLibrary(page)).sources as { value: Source }[])[0]!.value
   // A layout change can scroll the underlying reader while the dialog is open.
   // Its 700 ms autosave must not disable the form between pointer down and up.
@@ -148,8 +158,9 @@ test('rejects invalid files, supports pasted text and keeps an existing snapshot
   expect(whileImporting.find(({ value }) => value.id === original.id)!.value.reading).toEqual(
     original.reading,
   )
-  await expect(page.getByRole('button', { name: '保存材料', exact: true })).toBeEnabled()
-  await page.getByRole('button', { name: '保存材料', exact: true }).click()
+  await expect(importing.getByRole('button', { name: '预览材料', exact: true })).toBeEnabled()
+  await previewCollection(importing)
+  await commitCollection(importing)
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.getByRole('textbox', { name: '材料正文', exact: true })).toHaveValue(
     'A new snapshot of the source.',

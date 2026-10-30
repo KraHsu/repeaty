@@ -3,6 +3,8 @@ import { readingFlow } from '../fixtures/reading-flow'
 import type { Library } from '../../src/core/model'
 import { readingQueueFlow } from '../fixtures/reading-queue-flow'
 import { readingRoundFlow } from '../fixtures/reading-round-flow'
+// These scenarios import several materials through the public two-step preview.
+test.setTimeout(60_000)
 test('desktop reading rounds keep their order and save all positions through defer, archive and restart', async ({
   page,
 }, info) => {
