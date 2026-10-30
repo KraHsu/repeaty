@@ -180,6 +180,7 @@ it('keeps drafts and revealed answers while translating authoring, statuses, and
     { timeout: 5000 },
   )
   button('Show answer').click()
+  await vi.dynamicImportSettled()
   await vi.waitFor(() =>
     expect(host.querySelector('.card-answer')!.textContent).toContain('中文答案'),
   )

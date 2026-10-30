@@ -6,8 +6,23 @@ import type { Plugin } from 'vite'
 export function externalPlugins(desktop: boolean): Plugin {
   function resources() {
     const ids = desktop
-      ? ['review-history', 'leetcode', 'review-heatmap', 'format-cleanup']
-      : ['review-history', 'review-heatmap', 'format-cleanup']
+      ? [
+          'review-history',
+          'leetcode',
+          'review-heatmap',
+          'format-cleanup',
+          'pdf-reader',
+          'document-reader',
+          'visual-occlusion',
+        ]
+      : [
+          'review-history',
+          'review-heatmap',
+          'format-cleanup',
+          'pdf-reader',
+          'document-reader',
+          'visual-occlusion',
+        ]
     const files = new Map<string, string>()
     const catalog = ids.map((id) => {
       const bundle = JSON.parse(

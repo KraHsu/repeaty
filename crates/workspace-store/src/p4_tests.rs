@@ -367,3 +367,47 @@ fn portable_retired_document_and_exclusive_media_restore_in_one_revision() {
     );
     assert_eq!(reopened.db.media("image").unwrap().1, bytes);
 }
+
+#[test]
+fn portable_unversioned_retired_excerpts_resolve_the_original_snapshot() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut library = Library::create(directory.path()).unwrap();
+    library
+        .db
+        .put_media("first-text", "text/plain", b"original passage")
+        .unwrap();
+    library
+        .db
+        .put_media("new-text", "text/plain", b"new text")
+        .unwrap();
+    let first = source("book", "first-text", "original passage");
+    let mut archived = note("retired");
+    archived["excerpt"] = json!({"sourceId":"book","start":0,"end":8,"quote":"original"});
+    let retired = json!({"revision":0,"note":archived,"document":null,"cards":[card("old-card","retired","plugin:region-a")],"reviews":[],"practices":[],"attempts":[],"media":[]});
+    let mut initial = commit(
+        0,
+        vec![
+            patch("media", media("first-text", "text/plain", 16), 0),
+            patch("sources", first.clone(), 0),
+        ],
+    );
+    initial.retired = Some(vec![retired.clone()]);
+    library.db.commit(initial).unwrap();
+    let mut current = source("book", "new-text", "new text");
+    current["versions"] = json!([{"title":"book","url":"","format":"plain","mediaId":"first-text","characters":16,"acceptedAt":DATE}]);
+    let mut updated = commit(
+        1,
+        vec![
+            patch("media", media("new-text", "text/plain", 8), 1),
+            patch("sources", current, 0),
+        ],
+    );
+    updated.retired = Some(vec![retired.clone()]);
+    library.db.commit(updated).unwrap();
+    let mut wrong = retired;
+    wrong["note"]["excerpt"]["quote"] = json!("new text");
+    let mut changed = commit(2, vec![]);
+    changed.retired = Some(vec![wrong]);
+    assert!(library.db.commit(changed).is_err());
+    assert_eq!(library.db.load().unwrap()["revision"], 2);
+}

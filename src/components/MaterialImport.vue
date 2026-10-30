@@ -24,6 +24,11 @@ const open = ref(false),
   committing = ref(false),
   error = ref('')
 const plan = shallowRef<MaterialImportPlan>()
+const chosenFiles = shallowRef<File[]>([]),
+  relatedFiles = shallowRef<File[]>([])
+const supportsRelated = computed(() =>
+  selected.value?.importer.extensions.some((ext) => ['.html', '.htm', '.xhtml'].includes(ext)),
+)
 const selected = computed(() => importers.value.find((entry) => entry.key === choice.value))
 let controller: AbortController | undefined,
   api: MaterialHostApi | undefined,
@@ -49,6 +54,8 @@ function close() {
   clear()
   open.value = false
   error.value = ''
+  chosenFiles.value = []
+  relatedFiles.value = []
 }
 function show() {
   clear()
@@ -59,6 +66,8 @@ function show() {
 watch(choice, () => {
   clear()
   error.value = ''
+  chosenFiles.value = []
+  relatedFiles.value = []
 })
 watch(
   () => props.scope,
@@ -66,6 +75,8 @@ watch(
     clear()
     open.value = false
     error.value = ''
+    chosenFiles.value = []
+    relatedFiles.value = []
   },
 )
 watch(importers, () => {
@@ -82,6 +93,17 @@ async function chooseFiles(event: Event) {
   const input = event.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
   input.value = ''
+  chosenFiles.value = files
+  await parseFiles()
+}
+async function chooseRelated(event: Event) {
+  const input = event.target as HTMLInputElement
+  relatedFiles.value = Array.from(input.files ?? [])
+  input.value = ''
+  await parseFiles()
+}
+async function parseFiles() {
+  const files = chosenFiles.value
   clear()
   error.value = ''
   const entry = selected.value
@@ -95,7 +117,11 @@ async function chooseFiles(event: Event) {
   parsing.value = true
   try {
     const result = await bound.prepareImport(
-      { importerId: entry.importer.id, files },
+      {
+        importerId: entry.importer.id,
+        files,
+        relatedFiles: supportsRelated.value ? relatedFiles.value : undefined,
+      },
       controller.signal,
     )
     if (!alive || sequence !== current || scope !== props.scope) {
@@ -149,11 +175,12 @@ async function confirm() {
   <AppModal v-if="open" :title="t('导入材料')" :busy="committing" :error="error" @close="close">
     <div class="material-import-form">
       <label for="material-importer">{{ t('材料导入器') }}</label>
-      <UiSelect id="material-importer" v-model="choice" :disabled="parsing || committing">
-        <option v-for="entry in importers" :key="entry.key" :value="entry.key">
-          {{ entry.importer.title }}
-        </option>
-      </UiSelect>
+      <UiSelect
+        id="material-importer"
+        v-model="choice"
+        :disabled="parsing || committing"
+        :items="importers.map((entry) => ({ label: entry.importer.title, value: entry.key }))"
+      />
       <label for="material-import-files">{{ t('选择材料文件') }}</label>
       <input
         id="material-import-files"
@@ -164,6 +191,24 @@ async function confirm() {
         :disabled="parsing || committing || !selected"
         @change="chooseFiles"
       />
+      <template v-if="supportsRelated">
+        <label for="material-related-files">{{ t('本地资源文件夹（可选）') }}</label>
+        <input
+          id="material-related-files"
+          data-testid="material-related-files"
+          type="file"
+          webkitdirectory
+          multiple
+          :disabled="parsing || committing"
+          @change="chooseRelated"
+        />
+        <p class="form-note">
+          {{ t('选择 HTML 旁的资源文件夹以保留本地图片；网页中的远程资源不会自动下载。') }}
+        </p>
+        <p v-if="relatedFiles.length" class="form-note">
+          {{ t('已选择 {count} 个关联文件', { count: relatedFiles.length }) }}
+        </p>
+      </template>
       <p class="form-note">
         {{ t('解析后先预览，再一次保存所选文件。原始文件和文本副本一起保留。') }}
       </p>

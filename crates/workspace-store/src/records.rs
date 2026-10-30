@@ -12,6 +12,10 @@ use std::{
 };
 use std::{io::Write, sync::Arc};
 
+#[cfg(test)]
+#[path = "records_snapshot_tests.rs"]
+mod snapshot_tests;
+
 pub const STORES: [&str; 11] = [
     "decks",
     "notes",
@@ -464,7 +468,7 @@ impl Database {
         }
         for (patch, previous) in &changed {
             if !patch.position_only {
-                Self::validate_patch(&tx, patch, previous.as_ref())?;
+                Self::validate_patch(&tx, patch, previous.as_ref(), commit.retired.is_some())?;
             }
         }
         finish(&tx)?;
@@ -552,10 +556,15 @@ impl Database {
     /// foreign keys cannot express. Unchanged rows were already validated when they were
     /// written; rescanning all of them made every save scale with the whole library, and a
     /// reading-position save happens every few hundred milliseconds while scrolling.
-    fn validate_patch(tx: &Transaction<'_>, patch: &Patch, previous: Option<&Value>) -> Result<()> {
+    fn validate_patch(
+        tx: &Transaction<'_>,
+        patch: &Patch,
+        previous: Option<&Value>,
+        portable_replacement: bool,
+    ) -> Result<()> {
         match patch.store.as_str() {
             "sources" => {
-                Self::validate_source(tx, patch, previous)?;
+                Self::validate_source(tx, patch, previous, portable_replacement)?;
                 if let Some(value) = &patch.value {
                     if previous.is_none_or(|old| {
                         old["folderId"] != value["folderId"]
@@ -847,6 +856,7 @@ impl Database {
         tx: &Transaction<'_>,
         patch: &Patch,
         previous: Option<&Value>,
+        portable_replacement: bool,
     ) -> Result<()> {
         let Some(value) = patch.value.as_ref() else {
             let referenced: bool = tx.query_row(
@@ -1010,6 +1020,18 @@ impl Database {
                 "excerpt"
             }];
             let parent = Self::source_snapshot(value, reference)?;
+            // Legacy references without mediaId mean the original first snapshot.
+            // Keeping the quote text is not enough: deleting/reordering versions
+            // must not silently bind active or retired records to a different one.
+            // Explicit portable replacement validates the supplied whole collection
+            // and may legitimately rekey every media identity during restoration.
+            if !portable_replacement
+                && reference["mediaId"].as_str().is_none()
+                && let Some(before) = previous
+                && Self::source_snapshot(before, reference)?["mediaId"] != parent["mediaId"]
+            {
+                return Err(Error::invalid());
+            }
             let text = Self::source_body(tx, &parent)?;
             crate::materials::reference(&parent, reference, &text)?;
             let start = reference["start"].as_u64().unwrap_or(0) as usize;

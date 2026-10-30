@@ -3,6 +3,20 @@ import type { Source } from './source-data'
 
 const id = z.string().min(1).max(100)
 const contributor = z.string().regex(/^[a-z0-9][a-z0-9._-]{0,79}$/)
+export const materialPathSchema = z
+  .string()
+  .min(1)
+  .max(2048)
+  .refine(
+    (value) =>
+      !/[\\\u0000-\u001f]/.test(value) &&
+      !value.startsWith('/') &&
+      !value.includes(':') &&
+      value.split('/').every((part) => !!part && part !== '.' && part !== '..'),
+  )
+export const materialMetadataSchema = z
+  .record(z.string().max(100), z.json())
+  .refine((value) => new TextEncoder().encode(JSON.stringify(value)).length <= 16 * 1024)
 /** The text projection remains readable without the independently installed reader. */
 export const materialDocumentSchema = z.strictObject({
   schemaVersion: z.literal(1),
@@ -10,6 +24,14 @@ export const materialDocumentSchema = z.strictObject({
   readerId: contributor.optional(),
   format: z.string().regex(/^[a-z0-9][a-z0-9.+_-]{0,63}$/),
   originalMediaId: id,
+  path: materialPathSchema.optional(),
+  data: materialMetadataSchema.optional(),
+  container: z.boolean().optional(),
+  resources: z
+    .array(z.strictObject({ path: materialPathSchema, mediaId: id }))
+    .max(2000)
+    .refine((entries) => new Set(entries.map((entry) => entry.path)).size === entries.length)
+    .optional(),
   importKey: z
     .string()
     .regex(/^[a-f0-9]{64}$/)
@@ -75,6 +97,20 @@ export const materialLocatorSchema = z.discriminatedUnion('kind', [
         (value.start !== undefined && value.end !== undefined && value.end > value.start),
     ),
   rectangle.safeExtend({ ...binding, kind: z.literal('image') }),
+  z
+    .strictObject({
+      ...binding,
+      kind: z.literal('formula'),
+      start: z.number().int().nonnegative().max(250_000),
+      end: z.number().int().positive().max(250_000),
+      latex: z.string().trim().min(1).max(10_000),
+      leaves: z
+        .array(z.number().int().nonnegative().max(100_000))
+        .min(1)
+        .max(1000)
+        .refine((values) => new Set(values).size === values.length),
+    })
+    .refine((value) => value.end > value.start),
 ])
 export type MaterialLocator = z.infer<typeof materialLocatorSchema>
 export type SourceLocator = MaterialLocator
@@ -82,12 +118,21 @@ export const materialReceiptSchema = z.strictObject({
   id: z.string().min(1).max(150),
   pluginId: contributor,
   operationId: z.string().min(1).max(150),
-  kind: z.enum(['import', 'create-note', 'create-excerpt', 'edit-content']),
+  kind: z.enum([
+    'import',
+    'create-note',
+    'create-excerpt',
+    'edit-content',
+    'set-sequence',
+    'annotate',
+    'remove-annotation',
+  ]),
   fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
   result: z.strictObject({
     sourceIds: z.array(id).max(1000),
     noteIds: z.array(z.string().min(1).max(150)).max(1000),
     versionId: id.optional(),
+    annotationId: z.uuid().optional(),
   }),
   createdAt: z.iso.datetime(),
 })
@@ -132,12 +177,22 @@ export function validateMaterialChanges(
   }
 }
 
-type Snapshot = { id: string; mediaId: string; characters: number; document?: MaterialDocument }
+type Snapshot = {
+  id: string
+  mediaId: string
+  characters: number
+  format?: string
+  document?: MaterialDocument
+}
 export function materialLocatorMatches(source: Snapshot, locator: MaterialLocator): boolean {
   const parsed = materialLocatorSchema.safeParse(locator)
   if (!parsed.success || locator.sourceId !== source.id || locator.versionId !== source.mediaId)
     return false
   if (locator.kind === 'text') return locator.end <= source.characters
+  if (locator.kind === 'formula')
+    return source.format === 'markdown' && locator.end <= source.characters
+  if (locator.kind === 'epub' && source.document?.path && locator.href !== source.document.path)
+    return false
   return source.document?.format === locator.kind
 }
 export function validateMaterialLocator(source: Snapshot, value: unknown): MaterialLocator {
@@ -153,9 +208,28 @@ export function locatorMatchesReference(
   return (
     reference.sourceId === locator.sourceId &&
     reference.mediaId === locator.versionId &&
+    (locator.kind !== 'formula' ||
+      (locator.start === reference.start &&
+        locator.end === reference.end &&
+        (reference.quote === undefined || formulaQuoteMatches(reference.quote, locator.latex)))) &&
     (locator.kind !== 'text' ||
       (locator.start === reference.start &&
         locator.end === reference.end &&
         (reference.quote === undefined || locator.quote === reference.quote)))
+  )
+}
+export function formulaQuoteMatches(quote: string, latex: string) {
+  const delimiters = [
+    ['$$', '$$'],
+    ['\\[', '\\]'],
+    ['\\(', '\\)'],
+    ['$', '$'],
+  ]
+  return delimiters.some(
+    ([open, close]) =>
+      quote.startsWith(open!) &&
+      quote.endsWith(close!) &&
+      quote.length > open!.length + close!.length &&
+      quote.slice(open!.length, -close!.length).trim() === latex.trim(),
   )
 }

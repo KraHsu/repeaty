@@ -86,6 +86,7 @@ export function operationHistory(undo: Operation[] = [], redo: Operation[] = [])
           for (const version of [source, ...(source.versions ?? [])]) {
             mediaIds.add(version.mediaId)
             if (version.document) mediaIds.add(version.document.originalMediaId)
+            for (const resource of version.document?.resources ?? []) mediaIds.add(resource.mediaId)
             for (const ref of version.inlineMedia ?? []) mediaIds.add(ref.mediaId)
           }
         } else if (change.store === 'notes') {

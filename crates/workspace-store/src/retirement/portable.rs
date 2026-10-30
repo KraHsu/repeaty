@@ -315,9 +315,19 @@ pub fn validate(
                 )
                 .map_err(|_| Error::invalid())?;
             let source: Value = serde_json::from_str(&raw)?;
+            let media_id = excerpt["mediaId"]
+                .as_str()
+                .or_else(|| {
+                    source["versions"]
+                        .as_array()
+                        .and_then(|versions| versions.first())
+                        .and_then(|version| version["mediaId"].as_str())
+                })
+                .or_else(|| source["mediaId"].as_str())
+                .ok_or_else(Error::invalid)?;
             let snapshot = std::iter::once(&source)
                 .chain(source["versions"].as_array().into_iter().flatten())
-                .find(|snapshot| snapshot["mediaId"] == excerpt["mediaId"])
+                .find(|snapshot| snapshot["mediaId"] == media_id)
                 .ok_or_else(Error::invalid)?;
             let bytes: Vec<u8> = tx.query_row(
                 "SELECT asset_bytes(path) FROM assets WHERE id=?1",
@@ -340,13 +350,15 @@ pub fn validate(
             {
                 return Err(Error::invalid());
             }
-            crate::materials::reference(snapshot, excerpt, &text)?;
+            let mut bound_reference = excerpt.clone();
+            bound_reference["mediaId"] = json!(media_id);
+            crate::materials::reference(snapshot, &bound_reference, &text)?;
             for locator in note["plugin"]["variantLocators"]
                 .as_object()
                 .into_iter()
                 .flat_map(|map| map.values())
             {
-                let mut reference = excerpt.clone();
+                let mut reference = bound_reference.clone();
                 reference["locator"] = locator.clone();
                 crate::materials::reference(snapshot, &reference, &text)?;
             }

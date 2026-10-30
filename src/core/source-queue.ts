@@ -1,6 +1,7 @@
 import { LocalizedError, msg } from '../i18n'
 import { localDay, type Library } from './model'
 import { adaptiveReadingPlan, nextAdaptiveReading } from './adaptive-reading'
+import { materialLocked } from './material-sequence'
 import {
   sourceQueueActionSchema,
   sourceSchema,
@@ -32,8 +33,14 @@ export function filterSources(sources: Source[], filter: SourceFilter = {}) {
   )
 }
 
-export function sourceQueueState(source: Source, today: string): SourceQueueState {
+export function sourceQueueState(
+  source: Source,
+  today: string,
+  sources: readonly Source[] = [],
+): SourceQueueState {
   if (source.queue?.state === 'archived') return 'archived'
+  if (source.studySequence?.completed) return 'archived'
+  if (source.document?.container || materialLocked(source, sources)) return 'deferred'
   return source.queue && source.queue.availableOn > today ? 'deferred' : 'ready'
 }
 
@@ -47,12 +54,18 @@ export function queuedSources(
   const ranks = { ready: 0, deferred: 1, archived: 2 }
   const priorities = { high: 0, normal: 1, low: 2 }
   return filterSources(sources, filter)
-    .filter((source) => view === 'all' || sourceQueueState(source, today) === view)
+    .filter(
+      (source) =>
+        view === 'all' ||
+        (!source.document?.container && sourceQueueState(source, today, sources) === view),
+    )
     .map((source) => ({
       source,
-      rank: ranks[sourceQueueState(source, today)],
+      rank: ranks[sourceQueueState(source, today, sources)],
       priority:
-        sourceQueueState(source, today) === 'ready' ? priorities[source.priority ?? 'normal'] : 0,
+        sourceQueueState(source, today, sources) === 'ready'
+          ? priorities[source.priority ?? 'normal']
+          : 0,
       date: source.queue?.availableOn ?? localDay(new Date(source.createdAt)),
     }))
     .sort(
@@ -96,6 +109,11 @@ export function arrangeSource(
   if (!parsed.success) throw new LocalizedError(msg('阅读安排无效，请重新选择。'))
   const action = parsed.data,
     today = localDay(now)
+  if (
+    (action.type === 'read' || action.type === 'read-adaptive') &&
+    (source.document?.container || materialLocked(source, library.sources))
+  )
+    throw new LocalizedError(msg('请先完成前面的章节，再安排此章节学习。'))
   if (action.type === 'priority') {
     if ((source.priority ?? 'normal') === action.priority) return library
     const next = sourceSchema.parse({ ...source, priority: action.priority })

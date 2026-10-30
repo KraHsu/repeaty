@@ -6,6 +6,9 @@ import { usePluginManager } from '../plugins/manager'
 import { validateMaterialLocator, type MaterialLocator } from '../core/material-data'
 import { createExportFile } from '@repeaty-platform'
 import MaterialReaderView from './MaterialReaderView.vue'
+import AppModal from './AppModal.vue'
+import PluginToolView from './PluginToolView.vue'
+import { materialLocked } from '../core/material-sequence'
 import { t } from '../i18n'
 import { useInlineMedia } from '../composables/useInlineMedia'
 import type { Source, SourceOrigin, ReadingPosition, ReadingUpdate } from '../core/source-data'
@@ -27,6 +30,10 @@ const props = defineProps<{
   originalName?: string
   editable?: boolean
   busy?: boolean
+  readOnly?: boolean
+  sources?: Source[]
+  initialSelection?: MaterialSelection
+  holdReading?: () => Promise<() => void>
 }>()
 const emit = defineEmits<{
   select: [sourceId: string, start: number, end: number, locator?: MaterialLocator]
@@ -34,6 +41,7 @@ const emit = defineEmits<{
   changeText: [update: { sourceId: string; mediaId: string; scope: string; content: string }]
   wiki: [target: string]
   wikiPreview: [target: string]
+  open: [sourceId: string, locator?: MaterialLocator]
 }>()
 const preview = ref(props.source.format === 'markdown' && props.source.reading?.view !== 'source')
 const selectionError = ref('')
@@ -44,21 +52,80 @@ const textOnly = ref(false),
   exportingOriginal = ref(false),
   commandBusy = ref(false)
 const original = shallowRef<Blob>()
-const currentSelection = shallowRef<MaterialSelection>()
+const currentSelection = shallowRef<MaterialSelection | undefined>(props.initialSelection)
+const fallbackHighlight = ref<HTMLElement>()
+watch(fallbackHighlight, (element) => element?.scrollIntoView({ block: 'center' }), {
+  flush: 'post',
+})
+const tool = shallowRef<ReturnType<typeof plugins.openMaterialTool>>()
+let releaseToolReading: (() => void) | undefined,
+  commandGeneration = 0
+const commands = computed(() =>
+  props.readOnly
+    ? []
+    : plugins.pluginRuntime.installations.flatMap((owner) =>
+        (owner.commands ?? [])
+          .filter((command) =>
+            command.formats
+              ? command.formats.includes(props.source.document?.format ?? props.source.format)
+              : owner === installation.value,
+          )
+          .map((command) => ({ owner, command })),
+      ),
+)
+function closeTool() {
+  commandGeneration++
+  commandBusy.value = false
+  tool.value?.dispose()
+  tool.value = undefined
+  releaseToolReading?.()
+  releaseToolReading = undefined
+}
+watch([() => props.scope, () => props.source.id, () => props.source.mediaId], closeTool)
 const requestedPosition = shallowRef<ReadingPosition | undefined>(props.source.reading)
+// This is a navigation command, not an echo of source metadata or the reader's autosave.
+const readerPosition = computed<MaterialReaderProps['position']>(() =>
+  requestedPosition.value
+    ? {
+        locator: requestedPosition.value.locator,
+        projectionOffset: requestedPosition.value.offset,
+      }
+    : undefined,
+)
 const installation = computed(() =>
-  plugins.pluginRuntime.installations.find(
-    (item) => item.plugin.id === props.source.document?.providerId,
+  plugins.pluginRuntime.installations.find((item) =>
+    props.initialSelection?.locator.kind === 'formula'
+      ? item.readers?.some((reader) => reader.formats.includes('formula'))
+      : item.plugin.id === props.source.document?.providerId,
   ),
 )
 const contributed = computed(() =>
-  installation.value?.readers?.find(
-    (reader) =>
-      reader.id === props.source.document?.readerId &&
-      reader.formats.includes(props.source.document?.format ?? ''),
+  installation.value?.readers?.find((reader) =>
+    props.initialSelection?.locator.kind === 'formula'
+      ? reader.formats.includes('formula')
+      : reader.id === props.source.document?.readerId &&
+        reader.formats.includes(props.source.document?.format ?? ''),
   ),
 )
-const customReader = computed(() => !!contributed.value && !textOnly.value)
+const readerCanLocate = computed(
+  () =>
+    !(
+      props.readOnly &&
+      props.initialSelection?.locator.kind === 'text' &&
+      !contributed.value?.supportsTextLocation
+    ),
+)
+const customReader = computed(() => !!contributed.value && !textOnly.value && readerCanLocate.value)
+// Watching a computed value evaluates it immediately; its installation dependency must exist first.
+watch(commands, (entries) => {
+  if (
+    tool.value &&
+    !entries.some(
+      (entry) => entry.owner === tool.value!.installation && entry.command === tool.value!.command,
+    )
+  )
+    closeTool()
+})
 originalLoading.value = customReader.value
 let originalSequence = 0
 async function originalBytes() {
@@ -89,7 +156,7 @@ watch(customReader, async (enabled) => {
   }
   originalLoading.value = true
   try {
-    const blob = await originalBytes()
+    const blob = props.source.document ? await originalBytes() : undefined
     if (alive && sequence === originalSequence) original.value = blob
   } catch (issue) {
     if (alive && sequence === originalSequence) {
@@ -161,27 +228,45 @@ const readerProps = computed<MaterialReaderProps>(() => {
       format: props.source.format,
       document: props.source.document && structuredClone(props.source.document),
       parentSourceId: props.source.parentSourceId,
+      studySequence: props.source.studySequence && structuredClone(props.source.studySequence),
+      locked: materialLocked(props.source, props.sources ?? [props.source]),
     },
     text: props.text,
     original: original.value,
+    readOnly: props.readOnly,
+    resource: async (path) => {
+      if (!current()) throw new Error('学习库已变化，请重新操作。')
+      const ref = props.source.document?.resources?.find((entry) => entry.path === path)
+      if (!ref || !props.getMedia) return undefined
+      const blob = await props.getMedia(ref.mediaId)
+      if (!current()) throw new Error('学习库已变化，请重新操作。')
+      return blob
+    },
+    onOpen: props.readOnly
+      ? undefined
+      : (id, locator) => {
+          if (current()) emit('open', id, locator)
+        },
     selection: currentSelection.value,
-    position: requestedPosition.value?.locator
-      ? {
-          locator: requestedPosition.value.locator,
-          projectionOffset: requestedPosition.value.offset,
-        }
-      : undefined,
+    workspaceScope: props.scope,
+    position: readerPosition.value,
     onSelect: (value) => {
       if (current()) materialSelected(value)
     },
-    onPosition: (value) => {
-      if (current()) materialPosition(value)
-    },
+    onPosition: props.readOnly
+      ? undefined
+      : (value) => {
+          if (current()) materialPosition(value)
+        },
   }
 })
 function readerFailed() {
   materialError.value = t('插件阅读器暂时无法显示，已切换到文本副本。')
   textOnly.value = true
+}
+function toolFailed() {
+  closeTool()
+  materialError.value = t('插件工具暂时无法显示，请重试或检查插件是否已启用。')
 }
 async function exportOriginal() {
   if (exportingOriginal.value) return
@@ -189,7 +274,8 @@ async function exportOriginal() {
   try {
     const blob = original.value ?? (await originalBytes())
     const name =
-      props.originalName ?? `${props.source.title}.${props.source.document?.format ?? 'bin'}`
+      props.originalName ??
+      `${props.source.title}.${({ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' } as Record<string, string>)[blob.type] ?? props.source.document?.format ?? 'bin'}`
     if (createExportFile) await blob.stream().pipeTo(await createExportFile(name))
     else {
       const url = URL.createObjectURL(blob),
@@ -206,24 +292,46 @@ async function exportOriginal() {
     if (alive) exportingOriginal.value = false
   }
 }
-async function runCommand(commandId: string) {
-  const owner = installation.value
-  if (!owner || commandBusy.value) return
+async function runCommand(pluginId: string, commandId: string) {
+  const owner = plugins.pluginRuntime.installations.find((entry) => entry.plugin.id === pluginId)
+  if (!owner || commandBusy.value || props.readOnly) return
   const api = plugins.materialApiFor(owner.plugin.id)
   if (!api) return
+  closeTool()
+  const generation = commandGeneration,
+    sourceId = props.source.id,
+    versionId = props.source.mediaId,
+    scope = props.scope
   commandBusy.value = true
   materialError.value = ''
+  let release: (() => void) | undefined
   try {
-    await plugins.executeMaterialCommand(owner.plugin.id, commandId, {
+    release = await props.holdReading?.()
+    if (
+      !alive ||
+      generation !== commandGeneration ||
+      sourceId !== props.source.id ||
+      versionId !== props.source.mediaId ||
+      scope !== props.scope ||
+      !commands.value.some((entry) => entry.owner === owner && entry.command.id === commandId)
+    )
+      return
+    const request = {
       expectedRevision: api.snapshot().revision,
       operationId: crypto.randomUUID(),
       sourceId: props.source.id,
       selection: currentSelection.value,
-    })
+    }
+    if (owner.commands?.find((command) => command.id === commandId)?.component) {
+      tool.value = plugins.openMaterialTool(owner.plugin.id, commandId, request)
+      releaseToolReading = release
+      release = undefined
+    } else await plugins.executeMaterialCommand(owner.plugin.id, commandId, request)
   } catch (issue) {
-    if (alive) materialError.value = t(issue as Error)
+    if (alive && generation === commandGeneration) materialError.value = t(issue as Error)
   } finally {
-    if (alive) commandBusy.value = false
+    release?.()
+    if (alive && generation === commandGeneration) commandBusy.value = false
   }
 }
 const reader = ref<{ textareaRef?: HTMLTextAreaElement }>(),
@@ -422,6 +530,7 @@ async function restore(position: ReadingPosition, focus = false) {
   await nextTick()
   if (!alive || sequence !== restoreSequence) return
   if (customReader.value) {
+    if (focus) currentSelection.value = undefined
     last = position
     requestedPosition.value = position
   }
@@ -468,6 +577,27 @@ async function restart() {
 async function locate(origin: SourceOrigin) {
   if (!alive || origin.sourceId !== props.source.id) return false
   const selection = sourceExcerpt(props.source, props.text, origin.start, origin.end)
+  const locator = origin.locator ?? {
+    schemaVersion: 1 as const,
+    kind: 'text' as const,
+    sourceId: props.source.id,
+    versionId: props.source.mediaId,
+    start: selection.start,
+    end: selection.end,
+    quote: selection.quote,
+  }
+  if (contributed.value && (locator.kind !== 'text' || contributed.value.supportsTextLocation)) {
+    validateMaterialLocator(props.source, locator)
+    textOnly.value = false
+    await nextTick()
+    currentSelection.value = {
+      locator,
+      text: selection.quote,
+      projection: { start: selection.start, end: selection.end },
+    }
+    requestedPosition.value = { offset: selection.start, fraction: 0, view: 'source', locator }
+    return true
+  }
   // The host's text projection remains an exact, plugin-independent way back to the source.
   textOnly.value = true
   mirror?.dispose()
@@ -496,7 +626,7 @@ onMounted(async () => {
     const sequence = ++originalSequence
     originalLoading.value = true
     try {
-      const blob = await originalBytes()
+      const blob = props.source.document ? await originalBytes() : undefined
       if (alive && sequence === originalSequence) original.value = blob
     } catch (issue) {
       if (alive && sequence === originalSequence) {
@@ -517,6 +647,7 @@ onMounted(async () => {
   observeReader()
 })
 onUnmounted(() => {
+  closeTool()
   alive = false
   originalSequence++
   observer?.disconnect()
@@ -528,7 +659,7 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
 <template>
   <div class="source-selection-tools">
     <template v-if="source.document">
-      <UiButton v-if="contributed" variant="ghost" @click="textOnly = !textOnly">
+      <UiButton v-if="contributed && readerCanLocate" variant="ghost" @click="textOnly = !textOnly">
         {{ t(customReader ? '查看文本副本' : '使用插件阅读器') }}
       </UiButton>
       <UiButton variant="secondary" :disabled="exportingOriginal" @click="exportOriginal">{{
@@ -538,7 +669,7 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
         t('阅读器插件未启用，显示保留的文本副本。')
       }}</span>
     </template>
-    <p class="form-note">
+    <p v-if="!readOnly" class="form-note">
       {{
         t(
           source.kind === 'excerpt'
@@ -587,6 +718,19 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
     @focusin="previewWiki"
     v-html="html"
   />
+  <div v-else-if="readOnly" class="source-original" tabindex="0" :aria-label="t('原文快照')">
+    <template
+      v-if="
+        initialSelection?.projection &&
+        text.slice(initialSelection.projection.start, initialSelection.projection.end) ===
+          initialSelection.text
+      "
+      >{{ text.slice(0, initialSelection.projection.start)
+      }}<mark ref="fallbackHighlight">{{ initialSelection.text }}</mark
+      >{{ text.slice(initialSelection.projection.end) }}</template
+    >
+    <template v-else>{{ text }}</template>
+  </div>
   <UiTextarea
     :ui="{
       base: `source-text ${source.kind === 'excerpt' && text.length < 600 ? 'short-excerpt' : ''}`,
@@ -606,23 +750,38 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
   <p v-if="media.error.value" role="alert" class="form-note">
     {{ t('部分媒体无法读取，请从完整备份恢复。') }}
   </p>
-  <div
-    v-if="installation?.commands?.length"
-    class="source-selection-tools"
-    :aria-label="t('材料命令')"
-  >
+  <div v-if="commands.length" class="source-selection-tools" :aria-label="t('材料命令')">
     <UiButton
-      v-for="command in installation.commands"
-      :key="command.id"
+      v-for="{ owner, command } in commands"
+      :key="owner.plugin.id + ':' + command.id"
       variant="secondary"
       :disabled="commandBusy"
-      @click="runCommand(command.id)"
+      @click="runCommand(owner.plugin.id, command.id)"
       >{{ command.title }}</UiButton
     >
   </div>
+  <AppModal v-if="tool" wide :title="tool.command.title" @close="closeTool">
+    <PluginToolView
+      :component="tool.command.component!"
+      :context="tool.context"
+      :on-close="closeTool"
+      @failed="toolFailed"
+    />
+  </AppModal>
 </template>
 
 <style scoped>
+.source-original {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-reading);
+  line-height: var(--line-height-reading);
+}
+.source-original mark {
+  color: inherit;
+  background: color-mix(in srgb, var(--ui-warning) 25%, var(--ui-bg));
+  border-radius: 2px;
+}
 .source-selection-tools {
   display: flex;
   flex-wrap: wrap;

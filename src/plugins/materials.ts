@@ -188,22 +188,34 @@ export function createMaterialRegistrations(current: () => boolean) {
     },
     registerReader(contribution) {
       identity(contribution)
-      const { id, title, component } = contribution
+      const { id, title, component, supportsTextLocation } = contribution
       const formats = [...contribution.formats]
       if (
         !strings(formats, (value) => /^[a-z0-9][a-z0-9.+_-]{0,63}$/.test(value)) ||
+        (supportsTextLocation !== undefined && typeof supportsTextLocation !== 'boolean') ||
         !component ||
         Array.isArray(component) ||
         !['object', 'function'].includes(typeof component)
       )
         throw new Error('材料阅读器定义无效。')
-      return register(readers, contribution, () => ({ id, title, formats, component }))
+      return register(readers, contribution, () => ({
+        id,
+        title,
+        formats,
+        component,
+        supportsTextLocation,
+      }))
     },
     registerCommand(contribution) {
       identity(contribution)
-      const { id, title, run, shortcut } = contribution
+      const { id, title, run, shortcut, component } = contribution
+      const formats = contribution.formats && [...contribution.formats]
       if (
-        typeof run !== 'function' ||
+        (typeof run === 'function') === !!component ||
+        (run !== undefined && typeof run !== 'function') ||
+        (component &&
+          (Array.isArray(component) || !['object', 'function'].includes(typeof component))) ||
+        (formats && !strings(formats, (value) => /^[a-z0-9][a-z0-9.+_-]{0,63}$/.test(value))) ||
         (shortcut !== undefined && (typeof shortcut !== 'string' || shortcut.length > 100))
       )
         throw new Error('插件命令定义无效。')
@@ -211,7 +223,10 @@ export function createMaterialRegistrations(current: () => boolean) {
         id,
         title,
         shortcut,
-        run: (context) => invoke(context, signal, (scoped) => run.call(contribution, scoped)),
+        formats,
+        component: component && markRaw(component),
+        run:
+          run && ((context) => invoke(context, signal, (scoped) => run.call(contribution, scoped))),
       }))
     },
     registerSearchProvider(contribution) {

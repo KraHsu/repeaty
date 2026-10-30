@@ -196,7 +196,7 @@ const currentValid = computed(() => {
         (source) =>
           source.id === item.id &&
           source.mediaId === item.mediaId &&
-          sourceQueueState(source, localDay(props.now)) === 'ready',
+          sourceQueueState(source, localDay(props.now), props.library.sources) === 'ready',
       )
 })
 watch([currentValid, locked], ([valid, busy]) => {

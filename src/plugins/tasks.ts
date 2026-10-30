@@ -125,14 +125,14 @@ export class PluginTaskScheduler {
           if (
             typeof source !== 'string' ||
             !source.trim() ||
-            source.length > 1024 * 1024 ||
-            new TextEncoder().encode(source).byteLength > 1024 * 1024 ||
+            source.length > 4 * 1024 * 1024 ||
+            new TextEncoder().encode(source).byteLength > 4 * 1024 * 1024 ||
             !options ||
             (options.type !== undefined && !['classic', 'module'].includes(options.type)) ||
             (options.name !== undefined &&
               (typeof options.name !== 'string' || options.name.length > 100))
           )
-            throw new Error('插件 Worker 定义无效或超过1 MB。')
+            throw new Error('插件 Worker 定义无效或超过4 MB。')
           const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
           let worker: Worker
           try {

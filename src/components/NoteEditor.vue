@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { UiSelect, UiButton, UiTextarea, UiInput, UiCheckbox, UiCollapsible } from './ui'
-import { desktopEdition } from '../edition'
+import { serverEdition } from '../edition'
 import { t, msg, LocalizedError, type DisplayMessage } from '../i18n'
 
 import { computed, defineAsyncComponent, nextTick, reactive, ref } from 'vue'
@@ -445,7 +445,7 @@ async function keepDraft() {
         <label v-if="removed.length" class="check-line import-warning">
           <UiCheckbox name="confirm-removed-cards" v-model="allowRemove" required />{{
             t(
-              desktopEdition
+              !serverEdition
                 ? '确认让不再生成的 {p0} 张卡片暂不复习，记录保留，重新添加后恢复。'
                 : '确认移除不再生成的 {p0} 张卡片及其复习记录（会先保存快照）。',
               {

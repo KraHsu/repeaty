@@ -21,5 +21,7 @@ crates/*/target/
 crates/*/Cargo.lock
 playwright-report-desktop/
 plugins/*/dist/
+plugins/document-reader/assets/
+plugins/pdf-reader/assets/
 plugins/packages/
 docs/designs/b-prototype/site/

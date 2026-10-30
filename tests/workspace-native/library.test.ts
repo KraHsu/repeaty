@@ -25,6 +25,7 @@ import {
 } from '../../src/core/sources'
 import { sourceAtVersion } from '../../src/core/source-data'
 import { exportBackup, parseBackup, rekeyBackup } from '../../src/core/backups'
+import { prepareBackupRestore } from '../../src/core/backup-restore'
 import { readWorkspaceMarkdown, registerWorkspaceNote } from '../../src/workspace/markdown'
 import { sha256 } from '../../src/workspace/source-revisions'
 import type { CardDraft } from '../../src/core/card-draft-data'
@@ -104,9 +105,10 @@ function host(device: string) {
   const api: NativeApi = <T>(command: string, args: Record<string, unknown> = {}) =>
     new Promise<T>((resolve, reject) => {
       const id = ++next
+      const caller = new Error(`Native call: ${command}`)
       waiting.set(id, {
         resolve: resolve as (value: unknown) => void,
-        reject: (error) => reject(new Error(`${command}: ${error.message}`)),
+        reject: (error) => reject(new Error(`${command}: ${error.message}`, { cause: caller })),
       })
       child.stdin.write(JSON.stringify({ id, command, args }) + '\n')
     })
@@ -1174,6 +1176,118 @@ describe('native note file lifecycle', () => {
 })
 
 describe('bounded retirement work', () => {
+  it('exports exact retired checkpoints and restores keyed plugin variants through a portable backup in another native workspace', async () => {
+    const env = await workspace()
+    await env.repo.load()
+    const plugin = { id: 'visual-occlusion', version: 1, variants: ['a', 'b'], data: {} }
+    let library = fixture({ type: 'plugin', plugin, format: 'markdown' })
+    library.decks[0]!.burySiblings = false
+    const note = library.notes[0]!,
+      removed = library.cards[1]!
+    const image = {
+      id: crypto.randomUUID(),
+      name: 'diagram.png',
+      type: 'image/png' as const,
+      size: 4,
+      createdAt: now.toISOString(),
+    }
+    library.media = [image]
+    note.frontMedia = [image.id]
+    library = reviewCard(library, removed.id, 3, now)
+    library.practices = [
+      {
+        id: 'portable-practice',
+        cardId: removed.id,
+        contentRevision: 'p4',
+        startedAt: now.toISOString(),
+        question: { front: 'diagram', back: '', format: 'markdown', plugin },
+      },
+    ]
+    library.attempts = [
+      {
+        id: 'portable-attempt',
+        practiceId: 'portable-practice',
+        submittedAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+        language: 'typescript',
+        code: '// complete archived body 中文🙂',
+        elapsedMs: 20,
+        status: 'completed',
+        submissionId: '401',
+        result: {
+          outcome: 'accepted',
+          status: 'ok',
+          runtime: '1',
+          memory: '2',
+          detail: 'full archived diagnostics',
+        },
+      },
+    ]
+    let saved = await env.repo.save(library, 0, {
+      assets: [
+        { meta: image, blob: new Blob([new Uint8Array([1, 2, 3, 4])], { type: image.type }) },
+      ],
+    })
+    await env.repo.backupNow(true)
+    const before = (await env.repo.listBackups())[0]!.id
+    saved = await env.repo.save(
+      saveNote(saved.library, { ...note, plugin: { ...plugin, variants: ['a'] } }, note.id, true),
+      saved.revision,
+    )
+    const archived = await env.repo.retiredNotes()
+    expect(archived).toHaveLength(1)
+    expect(archived[0]!.cards[0]!.variant).toBe('plugin:b')
+    expect(archived[0]!.attempts[0]).toEqual(library.attempts[0])
+    expect(archived[0]!.document?.raw).toContain(image.id)
+    expect(await env.repo.retiredNotes(before)).toEqual([])
+    await env.repo.backupNow(true)
+    const checkpoint = (await env.repo.listBackups())[0]!.id
+    saved = await env.repo.save(
+      reviewCard(saved.library, saved.library.cards[0]!.id, 3, new Date(now.getTime() + 1000)),
+      saved.revision,
+    )
+    expect((await env.repo.retiredNotes(checkpoint))[0]!.attempts).toEqual(archived[0]!.attempts)
+    const parsed = parseBackup(
+      await exportBackup(saved.library, env.repo.getMedia, await env.repo.retiredNotes()),
+    )
+    const portable = await prepareBackupRestore(parsed)
+    const target = await workspace()
+    await target.repo.load()
+    const restored = await target.repo.save(portable.library, 0, {
+      assets: portable.assets,
+      retired: portable.retired,
+    })
+    const retired = await target.repo.retiredNotes()
+    expect(retired[0]!.cards).toEqual(archived[0]!.cards)
+    expect(retired[0]!.attempts).toEqual(archived[0]!.attempts)
+    expect(restored.library.notes[0]!.frontMedia[0]).not.toBe(image.id)
+    expect(retired[0]!.document!.raw).toContain(restored.library.notes[0]!.frontMedia[0]!)
+    expect(retired[0]!.document!.raw).not.toContain(image.id)
+    expect(await sha256(new TextEncoder().encode(retired[0]!.document!.raw))).toBe(
+      retired[0]!.document!.hash,
+    )
+    const bytes = await target.repo.getMedia(restored.library.notes[0]!.frontMedia[0]!)
+    expect(new Uint8Array(await bytes!.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3, 4]))
+    const reinstated = noteLifecycle(
+      restored.library,
+      { ...restored.library.notes[0]!, plugin },
+      note.id,
+      retired[0]!,
+      true,
+    ).library
+    const final = await target.repo.save(reinstated, restored.revision)
+    expect(final.library.cards.find((card) => card.id === removed.id)).toEqual(
+      archived[0]!.cards[0],
+    )
+    expect((await target.repo.getAttempt('portable-attempt')).code).toBe(library.attempts[0]!.code)
+    expect(await target.repo.retiredNotes()).toEqual([])
+    await expect(
+      target.runtime.api('workspace_read', {
+        token: env.active.token,
+        request: { type: 'retired-notes', revision: final.revision },
+      }),
+    ).rejects.toThrow()
+  })
   it('reindexes surviving long submissions in SQLite without reading or publishing their bodies', async () => {
     const env = await workspace()
     const calls: {

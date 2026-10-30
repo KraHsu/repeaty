@@ -12,16 +12,24 @@ import type { MaterialPluginIdentity } from '../plugins/materials'
 import type { LibraryContext } from './library-context'
 import { addSource, prepareSource, prepareSourceExcerpt, sourceExcerpt } from '../core/sources'
 import { sourceAtVersion, sourceSchema, type Source } from '../core/source-data'
-import { editSourceContent } from '../core/source-workbench'
+import {
+  editSourceContent,
+  upsertSourceAnnotation,
+  removeSourceAnnotation,
+} from '../core/source-workbench'
+import { materialLocked } from '../core/material-sequence'
 import { operationFor } from '../core/operations'
 import { MAX_OPERATION_HISTORY, operationHistory } from '../core/operation-history'
 import {
   materialLocatorSchema,
   validateMaterialLocator,
   type MaterialReceipt,
+  materialPathSchema,
+  materialMetadataSchema,
 } from '../core/material-data'
 import {
   MAX_MEDIA_BYTES,
+  MAX_DOCUMENT_BYTES,
   mediaSchema,
   noteSchema,
   saveNote,
@@ -30,9 +38,9 @@ import {
 } from '../core/model'
 
 const MAX_FILES = 20
-const MAX_ORIGINAL_BYTES = MAX_MEDIA_BYTES
-const MAX_BATCH_BYTES = 64 * 1024 * 1024
-const MAX_CANDIDATES = 100
+const MAX_ORIGINAL_BYTES = MAX_DOCUMENT_BYTES
+const MAX_BATCH_BYTES = 128 * 1024 * 1024
+const MAX_CANDIDATES = 1000
 const candidateSchema = z.strictObject({
   key: z.string().min(1).max(200),
   title: z.string().trim().min(1).max(160),
@@ -44,6 +52,29 @@ const candidateSchema = z.strictObject({
     .regex(/^[a-z][a-z0-9-]{0,63}$/)
     .optional(),
   parentKey: z.string().min(1).max(200).optional(),
+  documentPath: materialPathSchema.optional(),
+  documentData: materialMetadataSchema.optional(),
+  container: z.boolean().optional(),
+  url: z
+    .string()
+    .max(2048)
+    .regex(/^https?:\/\/[^\s]+$/)
+    .optional(),
+  resources: z
+    .array(z.strictObject({ path: materialPathSchema, blob: z.instanceof(Blob) }))
+    .max(2000)
+    .refine(
+      (entries) => new Set(entries.map((entry) => entry.path)).size === entries.length,
+      '文档资源路径重复。',
+    )
+    .optional(),
+  studySequence: z
+    .strictObject({
+      groupKey: z.string().min(1).max(200),
+      index: z.number().int().nonnegative().max(999),
+      mode: z.enum(['free', 'sequential']),
+    })
+    .optional(),
 })
 const mutationSchema = z.object({
   expectedRevision: z.number().int().nonnegative(),
@@ -96,7 +127,7 @@ async function digest(value: string | Blob): Promise<string> {
     .map((v) => v.toString(16).padStart(2, '0'))
     .join('')
 }
-function record(source: Source): MaterialRecord {
+function record(source: Source, sources: readonly Source[]): MaterialRecord {
   return structuredClone({
     id: source.id,
     title: source.title,
@@ -104,12 +135,30 @@ function record(source: Source): MaterialRecord {
     format: source.format,
     document: source.document,
     parentSourceId: source.parentSourceId,
+    studySequence: source.studySequence,
+    locked: materialLocked(source, sources),
   })
 }
 function validateTree(candidates: readonly MaterialImportCandidate[]) {
   const keys = new Map(candidates.map((candidate) => [candidate.key, candidate]))
   if (keys.size !== candidates.length) throw new Error('导入材料的标识重复。')
+  const groups = new Map<string, { mode: 'free' | 'sequential'; indices: Set<number> }>()
   for (const candidate of candidates) {
+    const sequence = candidate.studySequence
+    if (sequence) {
+      const root = keys.get(sequence.groupKey),
+        group = groups.get(sequence.groupKey)
+      if (
+        !root?.container ||
+        root.studySequence ||
+        candidate.parentKey !== sequence.groupKey ||
+        (group && (group.mode !== sequence.mode || group.indices.has(sequence.index)))
+      )
+        throw new Error('章节分组、顺序或阅读模式不一致。')
+      const entry = group ?? { mode: sequence.mode, indices: new Set<number>() }
+      entry.indices.add(sequence.index)
+      groups.set(sequence.groupKey, entry)
+    }
     const visited = new Set<string>([candidate.key])
     let parent = candidate.parentKey
     while (parent) {
@@ -120,10 +169,25 @@ function validateTree(candidates: readonly MaterialImportCandidate[]) {
     }
   }
 }
+function originalType(file: File): string {
+  const extension = file.name.toLowerCase().split('.').at(-1) ?? ''
+  const inferred = (
+    {
+      pdf: 'application/pdf',
+      epub: 'application/epub+zip',
+      html: 'text/html',
+      htm: 'text/html',
+      xhtml: 'text/html',
+    } as Record<string, string>
+  )[extension]
+  // Browser/OS file pickers frequently leave MIME empty or report ZIP/XHTML for these containers.
+  return inferred ?? (file.type || 'application/octet-stream')
+}
 type PlannedSource = {
   source: Source
   asset: MediaUpload
   original: MediaUpload
+  resources: MediaUpload[]
   key: string
   importKey: string
   duplicateId?: string
@@ -268,17 +332,21 @@ export function createMaterialCommands(context: LibraryContext) {
           return {
             workspaceScope: plugin.scope,
             revision: context.revision,
-            sources: context.library.value.sources.map(record),
+            sources: context.library.value.sources.map((source) =>
+              record(source, context.library.value.sources),
+            ),
             decks: context.library.value.decks.map(({ id, name }) => ({ id, name })),
           }
         },
         async list() {
           assertCurrent()
-          return context.library.value.sources.map(record)
+          return context.library.value.sources.map((source) =>
+            record(source, context.library.value.sources),
+          )
         },
         async get(sourceId, versionId) {
           const { snapshot, text } = await read(sourceId, versionId)
-          return { material: record(snapshot), text }
+          return { material: record(snapshot, context.library.value.sources), text }
         },
         async original(sourceId, versionId) {
           const snapshot = locate(sourceId, versionId)
@@ -288,6 +356,144 @@ export function createMaterialCommands(context: LibraryContext) {
           locate(sourceId, snapshot.mediaId)
           if (!blob) throw new Error('原始文件缺失，请从备份恢复。')
           return blob
+        },
+        async resource(sourceId, path, versionId) {
+          materialPathSchema.parse(path)
+          const snapshot = locate(sourceId, versionId)
+          const ref = snapshot.document?.resources?.find((entry) => entry.path === path)
+          if (!ref) return undefined
+          const blob = await context.repository.getMedia(ref.mediaId)
+          assertCurrent()
+          locate(sourceId, snapshot.mediaId)
+          if (!blob) throw new Error('文档资源缺失，请从备份恢复。')
+          return blob
+        },
+        async setSequence(input) {
+          const request = mutationSchema
+            .extend({
+              sourceId: z.string().min(1),
+              mode: z.enum(['free', 'sequential']).optional(),
+              completed: z.boolean().optional(),
+            })
+            .parse(input)
+          const fingerprint = await digest(
+            canonical({ ...request, expectedRevision: undefined, operationId: undefined }),
+          )
+          const id = await receiptId(request.operationId)
+          if (prior(id, fingerprint, 'set-sequence')) return { revision: context.revision }
+          revision(request.expectedRevision)
+          await context.commit(
+            (current) => {
+              revision(request.expectedRevision)
+              const source = locate(request.sourceId)
+              const groupId =
+                source.studySequence?.groupId ??
+                (source.document?.container ? source.id : undefined)
+              if (
+                !groupId ||
+                (request.completed !== undefined && !source.studySequence) ||
+                (request.mode === undefined && request.completed === undefined)
+              )
+                throw new Error('此材料没有章节阅读安排。')
+              if (request.completed === true && materialLocked(source, current.sources))
+                throw new Error('请先完成前面的章节。')
+              const sources = current.sources.map((entry) =>
+                entry.studySequence?.groupId === groupId
+                  ? {
+                      ...entry,
+                      studySequence: {
+                        ...entry.studySequence,
+                        mode: request.mode ?? entry.studySequence.mode,
+                        completed:
+                          entry.id === source.id
+                            ? (request.completed ?? entry.studySequence.completed)
+                            : entry.studySequence.completed,
+                      },
+                    }
+                  : entry,
+              )
+              return withReceipt(
+                { ...current, sources },
+                id,
+                request,
+                fingerprint,
+                'set-sequence',
+                { sourceIds: [source.id], noteIds: [] },
+              )
+            },
+            { undoLabel: '调整章节阅读安排' },
+          )
+          assertCurrent()
+          return { revision: context.revision }
+        },
+        async annotate(input) {
+          const request = selectionMutationSchema
+            .extend({ body: z.string().trim().min(1).max(10_000), id: z.uuid().optional() })
+            .parse(input)
+          const fingerprint = await digest(
+            canonical({ ...request, expectedRevision: undefined, operationId: undefined }),
+          )
+          const receipt = await receiptId(request.operationId)
+          const completed = prior(receipt, fingerprint, 'annotate')
+          if (completed) return { id: completed.result.annotationId!, revision: context.revision }
+          revision(request.expectedRevision)
+          const selected = await selection(request.sourceId, request.selection)
+          let annotationId = ''
+          await context.commit(
+            (current) => {
+              revision(request.expectedRevision)
+              const next = upsertSourceAnnotation(
+                current,
+                {
+                  ...selected.excerpt,
+                  mediaId: selected.snapshot.mediaId,
+                  scope: plugin.scope,
+                  id: request.id,
+                  body: request.body,
+                },
+                selected.text,
+              )
+              annotationId =
+                request.id ??
+                next.sources.find((entry) => entry.id === request.sourceId)!.annotations!.at(-1)!.id
+              return withReceipt(next, receipt, request, fingerprint, 'annotate', {
+                sourceIds: [request.sourceId],
+                noteIds: [],
+                annotationId,
+              })
+            },
+            { undoLabel: '保存材料批注' },
+          )
+          assertCurrent()
+          return { id: annotationId, revision: context.revision }
+        },
+        async removeAnnotation(input) {
+          const request = mutationSchema
+            .extend({ sourceId: z.string().min(1), id: z.uuid() })
+            .parse(input)
+          const fingerprint = await digest(
+            canonical({ sourceId: request.sourceId, id: request.id }),
+          )
+          const receipt = await receiptId(request.operationId)
+          if (prior(receipt, fingerprint, 'remove-annotation'))
+            return { revision: context.revision }
+          revision(request.expectedRevision)
+          await context.commit(
+            (current) => {
+              revision(request.expectedRevision)
+              return withReceipt(
+                removeSourceAnnotation(current, request.sourceId, request.id),
+                receipt,
+                request,
+                fingerprint,
+                'remove-annotation',
+                { sourceIds: [request.sourceId], noteIds: [] },
+              )
+            },
+            { undoLabel: '删除材料批注' },
+          )
+          assertCurrent()
+          return { revision: context.revision }
         },
         async prepareImport(request, signal) {
           assertCurrent()
@@ -311,7 +517,21 @@ export function createMaterialCommands(context: LibraryContext) {
             ) ||
             request.files.reduce((sum, file) => sum + file.size, 0) > MAX_BATCH_BYTES
           )
-            throw new Error('请选择非空的受支持文件；每批最多20个文件、64 MB，单文件最多10 MB。')
+            throw new Error('请选择非空的受支持文件；每批最多20个文件、128 MB，原件最多64 MB。')
+          const relatedFiles = [...(request.relatedFiles ?? [])]
+          if (
+            relatedFiles.length > 2000 ||
+            relatedFiles.some(
+              (file) =>
+                !(file instanceof File) ||
+                !file.size ||
+                file.size > MAX_MEDIA_BYTES ||
+                !materialPathSchema.safeParse(file.webkitRelativePath || file.name).success,
+            ) ||
+            [...request.files, ...relatedFiles].reduce((sum, file) => sum + file.size, 0) >
+              MAX_BATCH_BYTES
+          )
+            throw new Error('关联文件路径或大小无效；每批总大小不得超过128 MB。')
           const startRevision = context.revision
           const files = [...request.files]
           return plugin.runTask(
@@ -319,6 +539,9 @@ export function createMaterialCommands(context: LibraryContext) {
             async (task) => {
               const prepared: PlannedSource[] = []
               const fingerprints: unknown[] = []
+              const resourceAssets = new Map<string, MediaUpload>()
+              const resourceDigests = new WeakMap<Blob, Promise<string>>()
+              let preparedBytes = files.reduce((sum, file) => sum + file.size, 0)
               const imported = new Map(
                 context.library.value.sources.flatMap((source) =>
                   source.document?.importKey
@@ -334,37 +557,77 @@ export function createMaterialCommands(context: LibraryContext) {
                 const candidates = z
                   .array(candidateSchema)
                   .max(MAX_CANDIDATES)
-                  .parse(await importer.parse(file, task))
+                  .parse(await importer.parse(file, { ...task, files: relatedFiles }))
                 assertCurrent()
                 task.signal.throwIfAborted()
                 if (importerFor(importerId) !== importer) throw new Error('材料导入器已变化。')
                 validateTree(candidates)
                 if (!candidates.length || prepared.length + candidates.length > MAX_CANDIDATES)
-                  throw new Error('每批应包含1至100份材料。')
+                  throw new Error('每批应包含1至1000份材料。')
                 const original: MediaUpload = {
-                  blob: new Blob([file], { type: file.type || 'application/octet-stream' }),
+                  blob: new Blob([file], { type: originalType(file) }),
                   meta: mediaSchema.parse({
                     id: crypto.randomUUID(),
                     name: file.name,
                     size: file.size,
-                    type: file.type || 'application/octet-stream',
+                    type: originalType(file),
                     createdAt: new Date().toISOString(),
                   }),
                 }
                 const group: PlannedSource[] = []
                 for (const candidate of candidates) {
+                  const resources: MediaUpload[] = []
+                  const resourceRefs: { path: string; mediaId: string }[] = []
+                  const resourceHashes: { path: string; hash: string; type: string }[] = []
+                  for (const resource of candidate.resources ?? []) {
+                    if (!resource.blob.size || resource.blob.size > MAX_MEDIA_BYTES)
+                      throw new Error('文档关联资源不能超过10 MB。')
+                    let hashing = resourceDigests.get(resource.blob)
+                    if (!hashing) {
+                      hashing = digest(resource.blob)
+                      resourceDigests.set(resource.blob, hashing)
+                    }
+                    const hash = await hashing
+                    const key = `${resource.blob.type}:${hash}`
+                    let asset = resourceAssets.get(key)
+                    if (!asset) {
+                      preparedBytes += resource.blob.size
+                      if (preparedBytes > MAX_BATCH_BYTES)
+                        throw new Error('文档原件与关联资源每批总大小不能超过128 MB。')
+                      asset = {
+                        blob: resource.blob,
+                        meta: mediaSchema.parse({
+                          id: crypto.randomUUID(),
+                          name: resource.path.split('/').at(-1),
+                          size: resource.blob.size,
+                          type: resource.blob.type,
+                          createdAt: new Date().toISOString(),
+                        }),
+                      }
+                      resourceAssets.set(key, asset)
+                    }
+                    resources.push(asset)
+                    resourceRefs.push({ path: resource.path, mediaId: asset.meta.id })
+                    resourceHashes.push({ path: resource.path, hash, type: resource.blob.type })
+                    await task.yield()
+                  }
                   const snapshot = prepareSource({
                     title: candidate.title,
-                    url: '',
+                    url: candidate.url ?? '',
                     format: candidate.format,
                     content: candidate.text,
                   })
                   const importKey = await digest(
                     canonical({
                       provider: plugin.pluginId,
-                      importer: importerId,
                       fileHash,
-                      candidate,
+                      candidate: {
+                        ...candidate,
+                        resources: resourceHashes.sort((a, b) => a.path.localeCompare(b.path)),
+                        studySequence: candidate.studySequence
+                          ? { ...candidate.studySequence, mode: undefined }
+                          : undefined,
+                      },
                     }),
                   )
                   const duplicateId = imported.get(importKey)
@@ -375,6 +638,10 @@ export function createMaterialCommands(context: LibraryContext) {
                     format: candidate.documentFormat,
                     originalMediaId: original.meta.id,
                     importKey,
+                    path: candidate.documentPath,
+                    data: candidate.documentData,
+                    container: candidate.container,
+                    resources: resourceRefs.length ? resourceRefs : undefined,
                   }
                   group.push({
                     ...snapshot,
@@ -382,16 +649,37 @@ export function createMaterialCommands(context: LibraryContext) {
                     importKey,
                     key: `${fileIndex}:${candidate.key}`,
                     duplicateId,
+                    resources,
                   })
                   if (!duplicateId) imported.set(importKey, snapshot.source.id)
                 }
                 candidates.forEach((candidate, index) => {
+                  if (candidate.studySequence) {
+                    const root =
+                      group[
+                        candidates.findIndex(
+                          (item) => item.key === candidate.studySequence!.groupKey,
+                        )
+                      ]
+                    if (
+                      !root ||
+                      !root.source.document?.container ||
+                      candidate.parentKey !== candidate.studySequence.groupKey
+                    )
+                      throw new Error('章节必须属于同批导入的书籍。')
+                    group[index]!.source.studySequence = {
+                      groupId: root.duplicateId ?? root.source.id,
+                      index: candidate.studySequence.index,
+                      mode: candidate.studySequence.mode,
+                      completed: false,
+                    }
+                  }
                   if (!candidate.parentKey) return
                   const parent =
                     group[candidates.findIndex((item) => item.key === candidate.parentKey)]!
                   group[index]!.source.parentSourceId = parent.duplicateId ?? parent.source.id
                 })
-                fingerprints.push({ fileHash, candidates })
+                fingerprints.push({ fileHash, candidates: group.map((entry) => entry.importKey) })
                 prepared.push(...group)
                 task.progress({ completed: fileIndex + 1, total: files.length })
                 await task.yield()
@@ -449,6 +737,7 @@ export function createMaterialCommands(context: LibraryContext) {
           for (const item of additions) {
             uploads.set(item.asset.meta.id, item.asset)
             uploads.set(item.original.meta.id, item.original)
+            for (const resource of item.resources) uploads.set(resource.meta.id, resource)
           }
           const sourceIds = plan.sources.map((item) => item.duplicateId ?? item.source.id)
           await context.commit(

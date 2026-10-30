@@ -16,6 +16,9 @@ export interface PluginData {
   id: string
   version: number
   data: Record<string, unknown>
+  /** Stable independent cards survive missing/disabled plugins and removed regions. */
+  variants?: string[]
+  variantLocators?: Record<string, MaterialLocator>
 }
 export interface NoteInput {
   deckId: string

@@ -82,6 +82,7 @@ export async function readBrowserWorkspace(
       snapshot,
       media: (id) => call<Blob | undefined>({ type: 'media', id }),
       attempts: (ids) => call({ type: 'attempts', ids }),
+      retiredNotes: (ids) => call({ type: 'retired-notes', ids }),
       close,
     }
   } catch (error) {
