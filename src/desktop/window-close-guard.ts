@@ -7,6 +7,10 @@ let active: { stop(): void } | undefined
 /** One owner per application window. Never bypass another session's pending save. */
 export async function connectWindowCloseGuard(
   beforeClose: () => boolean | Promise<boolean>,
+  options?: {
+    afterSave?(): Promise<'close' | 'handled'>
+    canceled?(): Promise<void>
+  },
 ): Promise<() => void> {
   active?.stop()
   const window = getCurrentWindow()
@@ -47,7 +51,12 @@ export async function connectWindowCloseGuard(
       .then(async () => {
         let releasing = false
         try {
-          if (!current() || !(await beforeClose()) || !current()) return
+          if (!current()) return
+          if (!(await beforeClose()) || !current()) {
+            await options?.canceled?.()
+            return
+          }
+          if ((await options?.afterSave?.()) === 'handled' || !current()) return
           releasing = true
           // Tauri's onCloseRequested calls destroy() when an event is not prevented.
           // Remove only our listeners, then request the existing native close path.
@@ -55,6 +64,7 @@ export async function connectWindowCloseGuard(
           if (!current()) return
           await window.close()
         } catch {
+          await options?.canceled?.().catch(() => {})
           // An uncertain unlisten outcome retains its cleanup handle. Rebinding is
           // safe: simultaneous callbacks still share this single pending promise.
           if (current() && releasing) {
