@@ -1,9 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod collection;
 mod desktop_experience;
+mod device_sync;
 mod exports;
 mod mcp;
 mod plugins;
+mod sync_host;
 mod window_frame;
 mod workspace_backups;
 mod workspaces;
@@ -242,6 +244,15 @@ fn main() {
                 plugins: Plugins::new(&directory)?,
             });
             app.manage(workspaces::Workspaces::new(&directory));
+            let sync = device_sync::SyncService::new(
+                &directory,
+                app.state::<workspaces::Workspaces>().sync_handler(),
+            )
+            .map_err(std::io::Error::other)?;
+            app.state::<workspaces::Workspaces>()
+                .attach_sync(&sync)
+                .map_err(std::io::Error::other)?;
+            app.manage(sync);
             app.manage(workspace_backups::Backups::new(&directory));
             let collection = collection::Collection::new(&directory)?;
             collection.attach_workspace(app.state::<workspaces::Workspaces>().active_identity());
@@ -311,6 +322,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            sync_host::device_sync_request,
             mcp_attach,
             mcp_workspace,
             mcp_reply,

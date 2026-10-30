@@ -95,6 +95,7 @@ it('provides individual desktop configuration views without registering plugin m
     'mcp',
     'capture',
     'experience',
+    'sync',
     'ai',
     'reading-appearance',
     'navigation',

@@ -14,6 +14,8 @@ struct Inner {
     directory: PathBuf,
     sessions: Option<Sessions>,
     subscription: Option<String>,
+    sync_device: Option<String>,
+    sync_service: Option<std::sync::Weak<crate::device_sync::SyncService>>,
 }
 pub type ActiveIdentity = Arc<Mutex<(String, String)>>;
 pub struct Workspaces(Arc<Mutex<Inner>>, Arc<AtomicU64>, ActiveIdentity);
@@ -24,6 +26,8 @@ impl Workspaces {
                 directory: directory.into(),
                 sessions: None,
                 subscription: None,
+                sync_device: None,
+                sync_service: None,
             })),
             Arc::new(AtomicU64::new(0)),
             Arc::new(Mutex::new((String::new(), String::new()))),
@@ -34,6 +38,36 @@ impl Workspaces {
     }
     pub fn active_identity(&self) -> ActiveIdentity {
         self.2.clone()
+    }
+    pub fn attach_sync(
+        &self,
+        service: &Arc<crate::device_sync::SyncService>,
+    ) -> Result<(), String> {
+        let mut guard = self.0.lock().map_err(|_| "storage-error")?;
+        guard.sync_device = Some(
+            service.status()?["deviceId"]
+                .as_str()
+                .ok_or("sync-device-required")?
+                .into(),
+        );
+        guard.sync_service = Some(Arc::downgrade(service));
+        Ok(())
+    }
+    pub fn sync_handler(&self) -> crate::device_sync::Handler {
+        let manager = self.0.clone();
+        Arc::new(move |scope, method, payload| {
+            let mut guard = manager.lock().map_err(|_| "storage-error".to_owned())?;
+            let sessions = guard.sessions.as_mut().ok_or("workspace-not-open")?;
+            let status = sessions
+                .sync_request(&scope.token, "journal/status", Value::Null)
+                .map_err(|e| e.0.to_owned())?;
+            if status["groupId"] != scope.group_id {
+                return Err("sync-wrong-group".into());
+            }
+            sessions
+                .sync_request(&scope.token, method, payload)
+                .map_err(|e| e.0.to_owned())
+        })
     }
 }
 /// Serialize plugin filesystem operations with workspace switching and use a held root capability.
@@ -150,6 +184,15 @@ pub(crate) async fn run<T: Send + 'static>(
     state: &Workspaces,
     task: impl FnOnce(&mut Sessions) -> StoreResult<T> + Send + 'static,
 ) -> Result<T, String> {
+    run_checked(state, move |sessions| {
+        task(sessions).map_err(|e| e.0.to_owned())
+    })
+    .await
+}
+pub(crate) async fn run_checked<T: Send + 'static>(
+    state: &Workspaces,
+    task: impl FnOnce(&mut Sessions) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
     let manager = state.0.clone();
     let identity = state.2.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -157,13 +200,36 @@ pub(crate) async fn run<T: Send + 'static>(
         if guard.sessions.is_none() {
             guard.sessions = Some(Sessions::open(&guard.directory).map_err(|e| e.0.to_owned())?);
         }
+        let device = guard.sync_device.clone();
         let sessions = guard.sessions.as_mut().ok_or("storage-error")?;
-        let result = task(sessions).map_err(|e| e.0.to_owned());
+        if let Some(device) = &device {
+            sessions
+                .sync_bind_device(device)
+                .map_err(|e| e.0.to_owned())?;
+        }
+        let previous = sessions
+            .active_identity()
+            .map(|(_, token)| token.to_owned());
+        let result = task(sessions);
+        if let Some(device) = &device {
+            // A successful learning commit remains successful. Publication of sync
+            // events rechecks and durably advances the device frontier before sending.
+            let _ = sessions.sync_bind_device(device);
+        }
         let active = sessions
             .active_identity()
             .map(|(id, token)| (format!("local:workspace:{id}"), token.to_owned()))
             .unwrap_or_default();
         *identity.lock().map_err(|_| "storage-error")? = active;
+        if previous
+            != guard
+                .sessions
+                .as_ref()
+                .and_then(|s| s.active_identity().map(|(_, token)| token.to_owned()))
+            && let Some(service) = guard.sync_service.as_ref().and_then(|s| s.upgrade())
+        {
+            service.deactivate();
+        }
         result
     })
     .await

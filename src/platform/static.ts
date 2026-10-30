@@ -4,6 +4,11 @@ import { createRepository } from '../core/storage'
 import type { LearningReader } from '../core/learning-reader'
 export const AccountControls: Component | undefined = undefined
 export const PlatformSettings: Component | undefined = undefined
+export const createDeviceSync:
+  | ((
+      options: import('../sync/controller').DeviceSyncOptions,
+    ) => Promise<import('../sync/controller').DeviceSyncController>)
+  | undefined = undefined
 export const DraftWorkbench: Component | undefined = undefined
 export const DesktopTitlebar: Component | undefined = undefined
 export const WorkspaceBackupTools: Component | undefined = undefined

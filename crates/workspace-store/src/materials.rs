@@ -424,7 +424,7 @@ mod tests {
         );
         assert_eq!(db.load().unwrap()["revision"], 2);
         db.connection
-            .pragma_update(None, "user_version", 18)
+            .pragma_update(None, "user_version", 19)
             .unwrap();
         drop(db);
         assert!(Database::open(&path, assets).is_err());
