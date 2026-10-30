@@ -17,7 +17,11 @@
     "plugins/readwise",
     "plugins/fsrs-optimizer",
     "plugins/study-statistics",
-    "plugins/assistant"
+    "plugins/assistant",
+    "packages/publishing-client",
+    "plugins/static-publish",
+    "plugins/wordpress-publish",
+    "plugins/discourse-publish"
   ],
   "description": "Desktop flashcards and spaced repetition, with your learning library in one folder.",
   "engines": {

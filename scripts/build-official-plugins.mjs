@@ -14,6 +14,9 @@ const ids = [
   'fsrs-optimizer',
   'study-statistics',
   'assistant',
+  'static-publish',
+  'wordpress-publish',
+  'discourse-publish',
 ]
 await mkdir('plugins/packages', { recursive: true })
 for (const id of ids) {
