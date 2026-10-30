@@ -23,3 +23,5 @@ mod working_media;
 
 mod detection;
 mod materials;
+#[cfg(test)]
+mod p4_tests;

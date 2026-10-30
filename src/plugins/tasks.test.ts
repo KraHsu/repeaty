@@ -111,7 +111,7 @@ it('reclaims constructor failures and refuses unsupported, oversized or invalid 
     Symbol(),
     { id: 'limits', title: 'Limits' },
     async (ctx) => {
-      for (const source of ['', ' '.repeat(3), '中'.repeat(400_000)]) {
+      for (const source of ['', ' '.repeat(3), '中'.repeat(1_400_000)]) {
         expect(() => ctx.createWorker!(source)).toThrow('定义无效')
       }
       expect(() => ctx.createWorker!('code', { type: 'invalid' as 'classic' })).toThrow('定义无效')

@@ -6,6 +6,7 @@ import type { Source, SourceExcerpt } from '../core/source-data'
 import { sourceContextPath } from '../core/source-tree'
 import AppModal from './AppModal.vue'
 import CardContent from './CardContent.vue'
+import SourceReader from './SourceReader.vue'
 
 const props = defineProps<{
   source: Source
@@ -125,9 +126,30 @@ const matches = computed(
           {{ t('摘录与原文不一致，请从备份恢复。') }}
         </p>
         <blockquote v-if="selected" class="source-quote">{{ selected.quote }}</blockquote>
+        <SourceReader
+          v-if="(shown.document || selected?.locator?.kind === 'formula') && (!selected || matches)"
+          :key="shown.id + ':' + shown.mediaId"
+          :source="shown"
+          :sources="sources"
+          :text="text"
+          scope="readonly-source-context"
+          :get-media="getMedia"
+          read-only
+          :initial-selection="
+            selected?.locator
+              ? {
+                  locator: selected.locator,
+                  text: selected.quote,
+                  projection: { start: selected.start, end: selected.end },
+                }
+              : undefined
+          "
+        />
         <UiButton
           variant="ghost"
-          v-if="shown.format === 'markdown'"
+          v-if="
+            !shown.document && selected?.locator?.kind !== 'formula' && shown.format === 'markdown'
+          "
           type="button"
           :aria-pressed="preview"
           @click="preview = !preview"
@@ -135,13 +157,20 @@ const matches = computed(
           {{ t(preview ? '显示原文与摘录位置' : '阅读 Markdown 预览') }}
         </UiButton>
         <CardContent
-          v-if="preview"
+          v-if="preview && !shown.document && selected?.locator?.kind !== 'formula'"
           :text="text"
           format="markdown"
           :inline-media="shown.inlineMedia"
           :get-media="getMedia"
         />
-        <div v-else class="source-original" tabindex="0" :aria-label="t('原文快照')">
+        <div
+          v-else-if="
+            (!shown.document && selected?.locator?.kind !== 'formula') || (selected && !matches)
+          "
+          class="source-original"
+          tabindex="0"
+          :aria-label="t('原文快照')"
+        >
           <template v-if="selected && matches"
             >{{ text.slice(0, selected.start)
             }}<mark ref="highlight">{{ text.slice(selected.start, selected.end) }}</mark

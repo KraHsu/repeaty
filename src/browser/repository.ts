@@ -18,6 +18,14 @@ import {
 } from '../core/practice-data'
 import type { Snapshot, AutoBackup, BackupSummary, CardPage } from '../core/storage'
 import { MAX_AUTO_BACKUPS } from '../core/storage'
+import { retiredNoteSchema, type RetiredNote } from '../desktop/retirement'
+import {
+  captureRetiredNote,
+  retiredNoteIds,
+  retiredSourceRisk,
+  validateRetiredSources,
+} from '../core/retired-updates'
+import { prepareRetiredDocument } from '../core/retired-document'
 import { compileSearch } from '../core/search'
 import { available } from '../core/scheduler'
 import { validateSourceOrigins } from '../core/sources'
@@ -35,6 +43,7 @@ export interface BrowserWorkspaceSource {
   snapshot: BrowserWorkspaceSnapshot
   media(id: string): Promise<Blob | undefined>
   attempts(ids: string[]): Promise<Attempt[]>
+  retiredNotes?(ids?: string[]): Promise<RetiredNote[]>
   close(): void
 }
 
@@ -64,6 +73,11 @@ export function createBrowserRepository(
     ]),
   )
   const backups: AutoBackup[] = []
+  const retiredBaseline = new Map<string, RetiredNote>()
+  const retiredLoaded = new Set<string>()
+  let allRetiredLoaded = false
+  const retired = new Map<string, RetiredNote | undefined>()
+  const backupRetired = new Map<string, Map<string, RetiredNote | undefined>>()
   let current: Snapshot = {
     revision: source.snapshot.revision,
     library: original,
@@ -99,6 +113,40 @@ export function createBrowserRepository(
       return value
     })
   }
+  async function loadRetired(ids?: string[]) {
+    check()
+    const missing = ids?.filter((id) => !retiredLoaded.has(id))
+    if (allRetiredLoaded || missing?.length === 0) return
+    const values: RetiredNote[] = []
+    if (missing) {
+      for (let offset = 0; offset < missing.length; offset += 128) {
+        values.push(...((await source.retiredNotes?.(missing.slice(offset, offset + 128))) ?? []))
+        check()
+      }
+    } else values.push(...((await source.retiredNotes?.()) ?? []))
+    check()
+    const seen = new Set<string>()
+    for (const raw of values) {
+      const value = retiredNoteSchema.parse(raw),
+        id = value.note?.id ?? value.cards[0]?.noteId
+      if (
+        !id ||
+        seen.has(id) ||
+        (missing && !missing.includes(id)) ||
+        value.attempts.some((attempt) => !hasAttemptBody(attempt))
+      )
+        throw new WorkspaceReadError('invalid')
+      seen.add(id)
+      retiredBaseline.set(id, value)
+      retiredLoaded.add(id)
+      for (const meta of value.media) baselineMedia.set(meta.id, meta)
+    }
+    for (const id of missing ?? []) retiredLoaded.add(id)
+    if (!ids) allRetiredLoaded = true
+  }
+  function retiredValue(id: string) {
+    return retired.has(id) ? retired.get(id) : retiredBaseline.get(id)
+  }
   function backup(reason: string, force: boolean, now = new Date()) {
     check()
     if (
@@ -108,11 +156,46 @@ export function createBrowserRepository(
         now.getTime() - new Date(backups[0].createdAt).getTime() < 30 * 60_000)
     )
       return
-    backups.unshift({ ...current, id: crypto.randomUUID(), createdAt: now.toISOString(), reason })
-    backups.splice(MAX_AUTO_BACKUPS)
+    const id = crypto.randomUUID()
+    backups.unshift({ ...current, id, createdAt: now.toISOString(), reason })
+    backupRetired.set(id, new Map(retired))
+    for (const removed of backups.splice(MAX_AUTO_BACKUPS)) backupRetired.delete(removed.id)
   }
   return {
     scope: () => scope,
+    async retiredNote(id: string): Promise<RetiredNote> {
+      const revision = current.revision
+      await loadRetired([id])
+      check(revision)
+      return retiredNoteSchema.parse({
+        ...(retiredValue(id) ?? {
+          note: null,
+          document: null,
+          cards: [],
+          reviews: [],
+          practices: [],
+          attempts: [],
+          media: [],
+        }),
+        revision,
+      })
+    },
+    async retiredNotes(backupId?: string): Promise<RetiredNote[]> {
+      const revision = current.revision
+      await loadRetired()
+      check(revision)
+      const snapshot = backupId ? backups.find((entry) => entry.id === backupId) : current
+      const overrides = backupId ? backupRetired.get(backupId) : retired
+      if (!snapshot || !overrides) throw new WorkspaceReadError('invalid')
+      const values = new Map(retiredBaseline)
+      for (const [id, value] of overrides) {
+        if (value) values.set(id, value)
+        else values.delete(id)
+      }
+      return [...values.values()].map((value) =>
+        retiredNoteSchema.parse({ ...value, revision: snapshot.revision }),
+      )
+    },
     async load(): Promise<Snapshot> {
       check()
       return current
@@ -126,6 +209,7 @@ export function createBrowserRepository(
         consumeCardDraft?: string
         consumeSourceDraft?: string
         operationHistory?: OperationHistory
+        retired?: RetiredNote[]
       } = {},
     ): Promise<Snapshot> {
       check(expectedRevision)
@@ -156,6 +240,7 @@ export function createBrowserRepository(
         ).every((key) => library[key] === before[key]) &&
         library.cards.length === before.cards.length
       let next = library
+      const retiredUpdates = new Map<string, RetiredNote | undefined>()
       if (progressOnly) {
         const previous = new Map(before.cards.map((card) => [card.id, card]))
         const ids = new Set<string>()
@@ -192,9 +277,67 @@ export function createBrowserRepository(
           }
         }
       } else next = workspaceLibrarySchema.parse(library)
+      if (options.retired !== undefined) {
+        await loadRetired()
+        for (const id of new Set([...retiredBaseline.keys(), ...retired.keys()]))
+          retiredUpdates.set(id, undefined)
+        const incoming = new Set<string>()
+        for (const raw of options.retired) {
+          const value = retiredNoteSchema.parse(raw),
+            id = value.note?.id ?? value.cards[0]?.noteId
+          if (!id || incoming.has(id) || value.attempts.some((attempt) => !hasAttemptBody(attempt)))
+            throw new WorkspaceReadError('invalid')
+          incoming.add(id)
+          retiredUpdates.set(id, { ...value, revision: expectedRevision + 1 })
+        }
+      } else if (!progressOnly) {
+        const ids = [...retiredNoteIds(before, next)]
+        await loadRetired(ids)
+        for (const id of ids) {
+          const prior = retiredValue(id),
+            note = before.notes.find((entry) => entry.id === id),
+            document =
+              prior?.document && note
+                ? await prepareRetiredDocument(note, prior.document, media)
+                : undefined
+          retiredUpdates.set(
+            id,
+            await captureRetiredNote(
+              before,
+              next,
+              id,
+              prior,
+              expectedRevision + 1,
+              async (attemptId) => {
+                const record = before.attempts.find((attempt) => attempt.id === attemptId)
+                if (!record) throw new WorkspaceReadError('invalid')
+                return (await expand([record]))[0]!
+              },
+              document,
+            ),
+          )
+        }
+      }
+      if (options.retired === undefined && retiredSourceRisk(before, next)) {
+        await loadRetired()
+        const values = new Map(retiredBaseline)
+        for (const [id, value] of [...retired, ...retiredUpdates]) {
+          if (value) values.set(id, value)
+          else values.delete(id)
+        }
+        validateRetiredSources(before, next, [...values.values()])
+      }
       const uploads = new Map<string, Blob>()
+      const retainedMedia = new Map(next.media.map((meta) => [meta.id, meta]))
+      for (const value of retiredUpdates.values())
+        for (const meta of value?.media ?? []) {
+          const existing = retainedMedia.get(meta.id)
+          if (existing && (existing.type !== meta.type || existing.size !== meta.size))
+            throw new WorkspaceReadError('invalid')
+          retainedMedia.set(meta.id, meta)
+        }
       for (const asset of options.assets ?? []) {
-        const meta = next.media.find((entry) => entry.id === asset.meta.id)
+        const meta = retainedMedia.get(asset.meta.id)
         if (!meta) continue
         if (uploads.has(meta.id) || blobs.has(meta.id) || baselineMedia.has(meta.id))
           throw new LocalizedError(msg('媒体 ID 冲突，未覆盖已有文件。'))
@@ -202,7 +345,7 @@ export function createBrowserRepository(
           throw new WorkspaceReadError('invalid')
         uploads.set(meta.id, asset.blob)
       }
-      for (const meta of next.media) {
+      for (const meta of retainedMedia.values()) {
         const baseline = baselineMedia.get(meta.id)
         const blob = uploads.get(meta.id) ?? blobs.get(meta.id)
         if (
@@ -256,6 +399,7 @@ export function createBrowserRepository(
       check(expectedRevision)
       backup(options.reason ?? '自动备份', Boolean(options.reason))
       for (const [id, blob] of uploads) blobs.set(id, blob)
+      for (const [id, value] of retiredUpdates) retired.set(id, value)
       current = { revision: expectedRevision + 1, library: next, operationHistory }
       if (consumedDraft) drafts.delete(consumedDraft.sourceId)
       onChange()
@@ -363,6 +507,10 @@ export function createBrowserRepository(
       blobs.clear()
       drafts.clear()
       backups.splice(0)
+      retired.clear()
+      retiredBaseline.clear()
+      retiredLoaded.clear()
+      backupRetired.clear()
     },
   }
 }

@@ -7,7 +7,12 @@ import { scheduleSchema, librarySchema as legacySchema } from './legacy'
 import { pluginDataSchema, assessmentSchema } from '../plugins/data'
 import { sourceSchema, excerptSchema, MAX_SOURCE_BYTES, referencedSource } from './source-data'
 import { validateSourceHierarchy } from './source-tree'
-import { materialLocatorMatches, materialReceiptSchema } from './material-data'
+import {
+  materialLocatorMatches,
+  materialReceiptSchema,
+  locatorMatchesReference,
+} from './material-data'
+import { validateMaterialSequences } from './material-sequence'
 import { practiceSchema, attemptSchema, attemptSummarySchema } from './practice-data'
 
 export { scheduleSchema } from './legacy'
@@ -63,6 +68,7 @@ export const mediaTypes = [
   'audio/aac',
 ] as const
 export const MAX_MEDIA_BYTES = 10 * 1024 * 1024
+export const MAX_DOCUMENT_BYTES = 64 * 1024 * 1024
 export const MAX_BACKUP_BYTES = 100 * 1024 * 1024
 
 export function clozes(text: string) {
@@ -144,6 +150,9 @@ export const noteSchema = z
       ctx.addIssue({ code: 'custom', message: '请选择题目插件。' })
     if (note.type !== 'plugin' && note.plugin)
       ctx.addIssue({ code: 'custom', message: '普通卡片不能包含插件数据。' })
+    for (const locator of Object.values(note.plugin?.variantLocators ?? {}))
+      if (!note.excerpt || !locatorMatchesReference(note.excerpt, locator))
+        ctx.addIssue({ code: 'custom', message: '区域定位与笔记出处不匹配。' })
     if (note.type === 'cloze') {
       try {
         clozes(note.front)
@@ -159,7 +168,7 @@ export const noteSchema = z
 export const cardSchema = z.object({
   id,
   noteId: id,
-  variant: z.string().regex(/^(forward|reverse|cloze:[1-9]\d?)$/),
+  variant: z.string().regex(/^(forward|reverse|cloze:[1-9]\d?|plugin:[a-zA-Z0-9_-]{1,80})$/),
   schedule: scheduleSchema,
   createdAt: date,
   updatedAt: date,
@@ -171,22 +180,30 @@ export const cardSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
 })
-export const mediaSchema = z.object({
-  id,
-  name: z.string().min(1).max(255),
-  type: z.enum([
-    ...mediaTypes,
-    'text/plain',
-    'text/markdown',
-    'text/html',
-    'application/pdf',
-    'application/epub+zip',
-    'application/json',
-    'application/octet-stream',
-  ]),
-  size: z.number().int().positive().max(MAX_MEDIA_BYTES),
-  createdAt: date,
-})
+export const mediaSchema = z
+  .object({
+    id,
+    name: z.string().min(1).max(255),
+    type: z.enum([
+      ...mediaTypes,
+      'text/plain',
+      'text/markdown',
+      'text/html',
+      'application/pdf',
+      'application/epub+zip',
+      'application/json',
+      'application/octet-stream',
+    ]),
+    size: z.number().int().positive().max(MAX_DOCUMENT_BYTES),
+    createdAt: date,
+  })
+  .refine(
+    (asset) =>
+      asset.size <= MAX_MEDIA_BYTES ||
+      ['application/pdf', 'application/epub+zip', 'text/html', 'application/octet-stream'].includes(
+        asset.type,
+      ),
+  )
 export const reviewSchema = z.object({
   id,
   cardId: id,
@@ -257,7 +274,11 @@ export interface MediaUpload {
   blob: Blob
 }
 
-export function variants(note: Pick<Note, 'type' | 'front'>): string[] {
+export function variants(
+  note: Pick<Note, 'type' | 'front'> & { plugin?: Note['plugin'] },
+): string[] {
+  if (note.type === 'plugin' && note.plugin?.variants)
+    return note.plugin.variants.map((key) => `plugin:${key}`)
   if (note.type === 'basic' || note.type === 'plugin') return ['forward']
   if (note.type === 'reversed') return ['forward', 'reverse']
   return [...new Set(clozes(note.front).map((cloze) => cloze.number))]
@@ -266,7 +287,7 @@ export function variants(note: Pick<Note, 'type' | 'front'>): string[] {
 }
 
 const libraryContents = z.object({
-  version: z.literal(15),
+  version: z.literal(16),
   materialFolders: z.array(materialFolderSchema).max(10_000).default([]),
   materialReceipts: z.array(materialReceiptSchema).max(100_000).default([]),
   sources: z.array(sourceSchema).max(10_000),
@@ -322,6 +343,8 @@ export function validateLibraryReferences(
       )
         problem('来源正文缺失或格式不正确')
       if (snapshot.document) {
+        for (const resource of snapshot.document.resources ?? [])
+          if (!media.has(resource.mediaId)) problem('文档资源缺失')
         const original = media.get(snapshot.document.originalMediaId)
         const expected = (
           { pdf: 'application/pdf', epub: 'application/epub+zip', html: 'text/html' } as Record<
@@ -357,6 +380,7 @@ export function validateLibraryReferences(
       if (!mediaTypes.includes(media.get(ref.mediaId)?.type as (typeof mediaTypes)[number]))
         problem('笔记引用的媒体不存在')
   validateSourceHierarchy(library.sources, problem)
+  validateMaterialSequences(library.sources, problem)
   validateMaterialFolders(library.materialFolders, library.sources, problem)
   const cardVariants = new Map<string, string[]>()
   for (const card of library.cards) {
@@ -380,7 +404,10 @@ export function validateLibraryReferences(
         !source ||
         note.excerpt.end > source.characters ||
         note.excerpt.end - note.excerpt.start !== note.excerpt.quote.length ||
-        (note.excerpt.locator && !materialLocatorMatches(source, note.excerpt.locator))
+        (note.excerpt.locator && !materialLocatorMatches(source, note.excerpt.locator)) ||
+        Object.values(note.plugin?.variantLocators ?? {}).some(
+          (locator) => !source || !materialLocatorMatches(source, locator),
+        )
       )
         problem('摘录与来源不匹配')
     }
@@ -438,7 +465,7 @@ export const recordSchemas = {
 }
 export function emptyLibrary(): Library {
   return {
-    version: 15,
+    version: 16,
     materialFolders: [],
     materialReceipts: [],
     sources: [],
@@ -508,7 +535,10 @@ export function renderCard(card: Card, note: Note): CardView {
     deckId: note.deckId,
     type: note.type,
     plugin: note.plugin,
-    excerpt: note.excerpt,
+    excerpt:
+      note.excerpt && note.plugin?.variantLocators?.[card.variant.slice(7)]
+        ? { ...note.excerpt, locator: note.plugin.variantLocators[card.variant.slice(7)] }
+        : note.excerpt,
     inlineMedia: note.inlineMedia,
     format: note.format,
     tags: note.tags,
@@ -554,6 +584,7 @@ export function pruneMedia(library: Library): Library {
   for (const source of library.sources)
     for (const version of [source, ...(source.versions ?? [])]) {
       if (version.document) used.add(version.document.originalMediaId)
+      for (const resource of version.document?.resources ?? []) used.add(resource.mediaId)
       for (const ref of version.inlineMedia ?? []) used.add(ref.mediaId)
     }
   return { ...library, media: library.media.filter((item) => used.has(item.id)) }
@@ -638,10 +669,11 @@ export function migrateLibrary(value: unknown): Library {
       value.version === 12 ||
       value.version === 13 ||
       value.version === 14 ||
-      value.version === 15)
+      value.version === 15 ||
+      value.version === 16)
   )
     return librarySchema.parse(
-      value.version === 15
+      value.version === 16
         ? value
         : value.version === 6 ||
             value.version === 7 ||
@@ -651,22 +683,23 @@ export function migrateLibrary(value: unknown): Library {
             value.version === 11 ||
             value.version === 12 ||
             value.version === 13 ||
-            value.version === 14
-          ? { ...value, version: 15 }
+            value.version === 14 ||
+            value.version === 15
+          ? { ...value, version: 16 }
           : value.version === 5
-            ? { sources: [], ...value, version: 15 }
+            ? { sources: [], ...value, version: 16 }
             : {
                 sources: [],
                 practices: [],
                 attempts: [],
                 ...value,
-                version: 15,
+                version: 16,
               },
     )
   const old = legacySchema.parse(value)
   const seen = new Set<string>()
   return librarySchema.parse({
-    version: 15,
+    version: 16,
     sources: [],
     practices: [],
     attempts: [],

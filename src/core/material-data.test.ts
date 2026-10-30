@@ -12,6 +12,29 @@ import { exportArchive, parseArchive } from './archive'
 import { createRepository } from './storage'
 
 describe('versioned material locators', () => {
+  it('validates every independently reviewed plugin region against its real source format', () => {
+    const env = materialFixture()
+    const binding = {
+      sourceId: env.root.source.id,
+      versionId: env.root.source.mediaId,
+      schemaVersion: 1 as const,
+    }
+    const note = env.library.notes.at(-1)!
+    const plugin = {
+      id: 'visual-occlusion',
+      version: 1,
+      variants: ['one', 'two'],
+      data: {},
+      variantLocators: {
+        one: env.locator,
+        two: { ...binding, kind: 'image' as const, x: 0, y: 0, width: 0.5, height: 0.5 },
+      },
+    }
+    const changed = saveNote(env.library, { ...note, type: 'plugin', plugin }, note.id, true)
+    expect(librarySchema.safeParse(changed).success).toBe(false)
+    changed.notes.find((entry) => entry.id === note.id)!.plugin!.variantLocators!.two = env.locator
+    expect(librarySchema.safeParse(changed).success).toBe(true)
+  })
   it('validates format, immutable version identity and normalized multi-page regions', () => {
     const { root, locator } = materialFixture()
     expect(validateMaterialLocator(root.source, locator)).toEqual(locator)
@@ -121,7 +144,7 @@ describe('versioned material locators', () => {
     const assets = [...env.assets, edited.asset]
     const read = async (id: string) => assets.find((asset) => asset.meta.id === id)?.blob
     const json = await exportBackup(edited.library, read)
-    expect(JSON.parse(json).version).toBe(15)
+    expect(JSON.parse(json).version).toBe(16)
     const archive = await exportArchive(edited.library, read)
     for (const saved of [parseBackup(json), await parseArchive(archive!)]) {
       expect(saved.library).toEqual(edited.library)

@@ -133,6 +133,7 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
         scanHash?: string
         assetObservations?: { path: string; hash: string }[]
         operationHistory?: OperationHistory
+        retired?: RetiredNote[]
       } = {},
     ): Promise<Snapshot> {
       if (!cached) await repository.load()
@@ -201,7 +202,11 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
         for (const id of prior.keys()) patches.push({ store, id })
       }
       for (const asset of options.assets ?? [])
-        if (library.media.some((meta) => meta.id === asset.meta.id)) await upload(asset)
+        if (
+          library.media.some((meta) => meta.id === asset.meta.id) ||
+          options.retired?.some((entry) => entry.media.some((meta) => meta.id === asset.meta.id))
+        )
+          await upload(asset)
       const contentPatches = patches.filter((patch) => {
         if (patch.positionOnly) return false
         if (patch.store === 'notes') return true
@@ -364,6 +369,7 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
           scanHash: options.scanHash ?? null,
           assetObservations: options.assetObservations ?? [],
           operationHistory: options.operationHistory,
+          retired: options.retired,
         },
       })
       if (result.revision !== expectedRevision + 1) throw changed()
@@ -453,6 +459,15 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
     async retiredNote(id: string): Promise<RetiredNote> {
       const result = retiredNoteSchema.parse(await read({ type: 'retired-note', id }))
       if (result.revision !== cached?.revision) throw changed()
+      return result
+    },
+    async retiredNotes(backupId?: string): Promise<RetiredNote[]> {
+      const revision = cached?.revision
+      const result = z
+        .array(retiredNoteSchema)
+        .parse(await read({ type: 'retired-notes', revision, ...(backupId ? { backupId } : {}) }))
+      if (revision !== cached?.revision || result.some((entry) => entry.revision !== revision))
+        throw changed()
       return result
     },
     async getAttempt(id: string, expectedRevision = cached?.revision, signal?: AbortSignal) {

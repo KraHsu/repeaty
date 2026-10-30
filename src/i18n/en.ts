@@ -6,6 +6,15 @@ import { workbenchMessages } from './workbench'
 import { materialSearchMessages } from './material-search'
 import { readingWorkbenchMessages } from './reading-workbench'
 export const en = {
+  调整章节阅读安排: 'Change chapter reading order',
+  保存材料批注: 'Save material annotation',
+  删除材料批注: 'Delete material annotation',
+  '本地资源文件夹（可选）': 'Local resource folder (optional)',
+  '选择 HTML 旁的资源文件夹以保留本地图片；网页中的远程资源不会自动下载。':
+    'Select the resource folder next to the HTML file to retain local images. Remote resources are not downloaded automatically.',
+  '已选择 {count} 个关联文件': '{count} related files selected',
+  '请先完成前面的章节，再安排此章节学习。':
+    'Complete earlier chapters before scheduling this chapter.',
   ...readingWorkbenchMessages,
   ...materialSearchMessages,
   ...organizationMessages,
@@ -1811,4 +1820,9 @@ export const en = {
   '选择要安装的官方插件，仅修改所选插件。安装后会自动启用。':
     'Choose an official plugin. Only that plugin will be installed or updated, then enabled.',
   '暂无可安装的官方插件。': 'No official plugins are available.',
+  '插件工具暂时无法显示，请重试或检查插件是否已启用。':
+    'The plugin tool could not be displayed. Try again or check that the plugin is enabled.',
+  文档目录: 'Document contents',
+  本章已完成: 'Chapter completed',
+  待前章完成: 'Waiting for earlier chapters',
 } as const

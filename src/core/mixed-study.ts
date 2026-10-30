@@ -41,7 +41,10 @@ export function nextMixedTask(
   for (let index = round.cursor; index < round.sources.length; index++) {
     const entry = round.sources[index]!,
       source = sources.get(entry.id)
-    if (source?.mediaId === entry.mediaId && sourceQueueState(source, localDay(now)) === 'ready') {
+    if (
+      source?.mediaId === entry.mediaId &&
+      sourceQueueState(source, localDay(now), library.sources) === 'ready'
+    ) {
       reading = { kind: 'reading', ...entry, index }
       break
     }

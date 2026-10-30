@@ -68,6 +68,67 @@ cleanup(() => {
   vi.useRealTimers()
 })
 
+it('waits for an in-flight position save before granting a command hold, keeping newer scrolling queued', async () => {
+  const { progress, update, save, workspace } = setup()
+  let finish!: () => void
+  const gate = new Promise<void>((resolve) => {
+      finish = resolve
+    }),
+    original = save.getMockImplementation()!
+  save.mockImplementationOnce(async (input, at) => {
+    workspace.busy.value = true
+    await gate
+    await original(input, at)
+    workspace.busy.value = false
+  })
+  progress.record(update(100), true)
+  const acquired = vi.fn(),
+    hold = progress.holdForAction().then((release) => {
+      acquired()
+      return release
+    })
+  progress.record(update(200))
+  await vi.advanceTimersByTimeAsync(1500)
+  expect(acquired).not.toHaveBeenCalled()
+  expect(save).toHaveBeenCalledOnce()
+  finish()
+  const release = await hold
+  expect(workspace.busy.value).toBe(false)
+  expect(workspace.library.value.sources[0]!.reading?.offset).toBe(100)
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(save).toHaveBeenCalledOnce()
+  release()
+  await vi.advanceTimersByTimeAsync(0)
+  expect(save).toHaveBeenCalledTimes(2)
+  expect(workspace.library.value.sources[0]!.reading?.offset).toBe(200)
+})
+
+it('revokes a command waiting on an old scope and releases failed saves without silently retrying', async () => {
+  const { progress, update, save, workspace } = setup()
+  let finish!: () => void
+  save.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve
+      }),
+  )
+  progress.record(update(100), true)
+  const hold = progress.holdForAction(),
+    rejected = expect(hold).rejects.toThrow('学习库已变化')
+  workspace.scope.value = 'new-library'
+  finish()
+  await rejected
+  progress.record(update(200), true)
+  await vi.advanceTimersByTimeAsync(0)
+  expect(workspace.library.value.sources[0]!.reading?.offset).toBe(200)
+  save.mockRejectedValueOnce(new Error('write-failed'))
+  progress.record(update(300), true)
+  await expect(progress.holdForAction()).rejects.toThrow('write-failed')
+  await vi.advanceTimersByTimeAsync(1500)
+  expect(save).toHaveBeenCalledTimes(3)
+  expect(progress.pending.get(update(0).sourceId)?.error).toEqual(new Error('write-failed'))
+})
+
 it('captures a reactive position without retaining its proxy or mutable input', async () => {
   const { progress, update, workspace } = setup()
   const input = reactive(update(400))
@@ -174,6 +235,20 @@ it('retains a failed write for explicit retry instead of repeatedly writing or d
   expect(save).toHaveBeenCalledTimes(2)
   expect(progress.pending.size).toBe(0)
   expect(workspace.library.value.sources[0]!.reading?.offset).toBe(400)
+})
+
+it('clears the active-save marker when a position writer throws synchronously', async () => {
+  const { progress, update, save } = setup()
+  save.mockImplementationOnce(() => {
+    throw new Error('sync-write-failed')
+  })
+  progress.record(update(100), true)
+  await nextTick()
+  expect(progress.savingId.value).toBe('')
+  expect(progress.pending.get(update(0).sourceId)?.error).toEqual(new Error('sync-write-failed'))
+  await progress.flush()
+  expect(progress.pending.size).toBe(0)
+  expect(save).toHaveBeenCalledTimes(2)
 })
 
 it('revokes queued work on scope changes and restore, and prunes deleted snapshots', async () => {

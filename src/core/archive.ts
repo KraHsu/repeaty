@@ -4,6 +4,13 @@ import { msg, LocalizedError } from '../i18n'
 import { emptyLibrary, librarySchema, MAX_BACKUP_BYTES, type Library } from './model'
 import { parseBackup, type BackupData } from './backups'
 import { hasAttemptBody, type Attempt } from './practice-data'
+import type { RetiredNote } from '../desktop/retirement'
+import {
+  backupMedia,
+  retiredRows,
+  collectRetiredRows,
+  validateRetiredBackup,
+} from './retired-backup'
 
 const kinds = [
   'decks',
@@ -35,6 +42,9 @@ const countSchema = z.object({
   practices: z.number().int().min(0).max(100_000).default(0),
   attempts: z.number().int().min(0).max(500_000).default(0),
 })
+const archiveCounts = countSchema.extend({
+  retired: z.number().int().nonnegative().max(2_000_000).default(0),
+})
 const manifestSchema = z
   .object({
     format: z.literal('repeaty-archive'),
@@ -51,6 +61,7 @@ const manifestSchema = z
       z.literal(10),
       z.literal(11),
       z.literal(12),
+      z.literal(13),
     ]),
     libraryVersion: z.union([
       z.literal(3),
@@ -66,40 +77,51 @@ const manifestSchema = z
       z.literal(13),
       z.literal(14),
       z.literal(15),
+      z.literal(16),
     ]),
-    counts: countSchema,
-    parts: countSchema,
+    counts: archiveCounts,
+    parts: archiveCounts,
+    binaryCount: z.number().int().nonnegative().max(200_000).optional(),
   })
+  .refine(
+    (manifest) =>
+      manifest.version >= 13 ||
+      (manifest.counts.retired === 0 &&
+        manifest.parts.retired === 0 &&
+        (manifest.binaryCount === undefined || manifest.binaryCount === manifest.counts.media)),
+  )
   .refine((manifest) =>
-    manifest.version === 12
-      ? manifest.libraryVersion === 15
-      : manifest.version === 11
-        ? manifest.libraryVersion === 14
-        : manifest.version === 10
-          ? manifest.libraryVersion === 13
-          : manifest.version === 9
-            ? manifest.libraryVersion === 12
-            : manifest.version === 8
-              ? manifest.libraryVersion === 11
-              : manifest.version === 7
-                ? manifest.libraryVersion === 10
-                : manifest.version === 6
-                  ? manifest.libraryVersion === 9
-                  : manifest.version === 5
-                    ? manifest.libraryVersion === 8
-                    : manifest.version === 4
-                      ? manifest.libraryVersion === 7
-                      : manifest.version === 3
-                        ? manifest.libraryVersion === 6
-                        : manifest.counts.sources === 0 &&
-                          manifest.parts.sources === 0 &&
-                          (manifest.version === 2
-                            ? manifest.libraryVersion === 5
-                            : manifest.libraryVersion < 5 &&
-                              manifest.counts.practices === 0 &&
-                              manifest.counts.attempts === 0 &&
-                              manifest.parts.practices === 0 &&
-                              manifest.parts.attempts === 0),
+    manifest.version === 13
+      ? manifest.libraryVersion === 16
+      : manifest.version === 12
+        ? manifest.libraryVersion === 15
+        : manifest.version === 11
+          ? manifest.libraryVersion === 14
+          : manifest.version === 10
+            ? manifest.libraryVersion === 13
+            : manifest.version === 9
+              ? manifest.libraryVersion === 12
+              : manifest.version === 8
+                ? manifest.libraryVersion === 11
+                : manifest.version === 7
+                  ? manifest.libraryVersion === 10
+                  : manifest.version === 6
+                    ? manifest.libraryVersion === 9
+                    : manifest.version === 5
+                      ? manifest.libraryVersion === 8
+                      : manifest.version === 4
+                        ? manifest.libraryVersion === 7
+                        : manifest.version === 3
+                          ? manifest.libraryVersion === 6
+                          : manifest.counts.sources === 0 &&
+                            manifest.parts.sources === 0 &&
+                            (manifest.version === 2
+                              ? manifest.libraryVersion === 5
+                              : manifest.libraryVersion < 5 &&
+                                manifest.counts.practices === 0 &&
+                                manifest.counts.attempts === 0 &&
+                                manifest.parts.practices === 0 &&
+                                manifest.parts.attempts === 0),
   )
 export interface TransferOptions {
   signal?: AbortSignal
@@ -116,9 +138,14 @@ export async function exportArchive(
   options: TransferOptions & {
     writable?: WritableStream<Uint8Array>
     readAttempts?: (offset: number) => Promise<Attempt[]>
+    retired?: RetiredNote[]
   } = {},
 ): Promise<Blob | undefined> {
   options.signal?.throwIfAborted()
+  const retired = options.retired ?? []
+  validateRetiredBackup(library, retired)
+  const metadata = backupMedia(library, retired)
+  const extraRows = [...retiredRows(retired)]
   const fallback = options.writable ? undefined : new BlobWriter('application/zip')
   const destination = (options.writable ?? fallback!.writable).getWriter()
   let written = 0
@@ -132,11 +159,14 @@ export async function exportArchive(
     abort: (reason) => destination.abort(reason),
   })
   const writer = new ZipWriter(output, { useWebWorkers: false, bufferedWrite: false })
-  const counts = Object.fromEntries(kinds.map((kind) => [kind, library[kind].length])) as z.infer<
-    typeof countSchema
-  >
-  const parts = Object.fromEntries(kinds.map((kind) => [kind, 0])) as typeof counts
-  const total = kinds.reduce((sum, kind) => sum + library[kind].length, 0) + library.media.length
+  const archiveKinds = [...kinds, 'retired'] as const
+  const counts = {
+    ...Object.fromEntries(kinds.map((kind) => [kind, library[kind].length])),
+    retired: extraRows.length,
+  } as z.infer<typeof archiveCounts>
+  const parts = Object.fromEntries(archiveKinds.map((kind) => [kind, 0])) as typeof counts
+  const total =
+    kinds.reduce((sum, kind) => sum + library[kind].length, 0) + extraRows.length + metadata.length
   let complete = 0,
     expandedBytes = 0
   const encoder = new TextEncoder()
@@ -147,7 +177,7 @@ export async function exportArchive(
     await writer.add(path, new BlobReader(blob), { level, signal: options.signal })
   }
   try {
-    for (const kind of kinds) {
+    for (const kind of archiveKinds) {
       let lines: string[] = [],
         size = 0
       const flush = async () => {
@@ -165,7 +195,7 @@ export async function exportArchive(
       let bodyBatch: Attempt[] = [],
         bodyPosition = 0,
         offset = 0
-      for (const stored of library[kind]) {
+      for (const stored of kind === 'retired' ? extraRows : library[kind]) {
         options.signal?.throwIfAborted()
         let record = stored
         if (kind === 'attempts' && options.readAttempts) {
@@ -176,7 +206,7 @@ export async function exportArchive(
               throw failure()
           }
           record = bodyBatch[bodyPosition++]!
-          if (record.id !== stored.id) throw failure()
+          if (record.id !== (stored as Attempt).id) throw failure()
           offset++
         }
         if (kind === 'attempts' && !hasAttemptBody(record as Attempt)) throw failure()
@@ -189,8 +219,8 @@ export async function exportArchive(
       }
       await flush()
     }
-    for (let index = 0; index < library.media.length; index++) {
-      const meta = library.media[index]!,
+    for (let index = 0; index < metadata.length; index++) {
+      const meta = metadata[index]!,
         blob = await getMedia(meta.id)
       if (!blob || blob.size !== meta.size || blob.type !== meta.type)
         throw new LocalizedError(msg('无法导出：附件「{p0}」缺失或损坏。', { p0: meta.name }))
@@ -202,8 +232,9 @@ export async function exportArchive(
       new Blob([
         JSON.stringify({
           format: 'repeaty-archive',
-          version: 12,
-          libraryVersion: 15,
+          version: 13,
+          libraryVersion: 16,
+          binaryCount: metadata.length,
           counts,
           parts,
         }),
@@ -270,16 +301,19 @@ export async function parseArchive(file: Blob, options: TransferOptions = {}): P
       JSON.parse(await (await read('manifest.json', 64 * 1024)).text()),
     )
     const expected = new Set(['manifest.json'])
-    for (const kind of kinds) {
+    const archiveKinds = [...kinds, 'retired'] as const
+    for (const kind of archiveKinds) {
       if (manifest.parts[kind] > manifest.counts[kind]) throw failure()
       for (let i = 0; i < manifest.parts[kind]; i++) expected.add(partPath(kind, i))
     }
-    for (let i = 0; i < manifest.counts.media; i++) expected.add(mediaPath(i))
+    for (let i = 0; i < (manifest.binaryCount ?? manifest.counts.media); i++)
+      expected.add(mediaPath(i))
     if (expected.size !== entries.size || [...entries.keys()].some((path) => !expected.has(path)))
       throw failure()
     const library = emptyLibrary()
+    let retired: RetiredNote[] = []
     let complete = 1
-    for (const kind of kinds) {
+    for (const kind of archiveKinds) {
       const records: unknown[] = []
       for (let i = 0; i < manifest.parts[kind]; i++) {
         const text = await (await read(partPath(kind, i), MAX_PART_BYTES)).text()
@@ -291,12 +325,16 @@ export async function parseArchive(file: Blob, options: TransferOptions = {}): P
         options.progress?.((++complete / expected.size) * 100)
       }
       if (records.length !== manifest.counts[kind]) throw failure()
-      ;(library[kind] as unknown[]) = records
+      if (kind === 'retired') retired = collectRetiredRows(records)
+      else (library[kind] as unknown[]) = records
     }
     const validated = librarySchema.parse(library)
+    validateRetiredBackup(validated, retired)
+    const metadata = backupMedia(validated, retired)
+    if (metadata.length !== (manifest.binaryCount ?? manifest.counts.media)) throw failure()
     const assets: BackupData['assets'] = []
-    for (let i = 0; i < validated.media.length; i++) {
-      const meta = validated.media[i]!,
+    for (let i = 0; i < metadata.length; i++) {
+      const meta = metadata[i]!,
         blob = await read(mediaPath(i), meta.size, meta.type)
       if (blob.size !== meta.size) throw failure()
       assets.push({ meta, blob })
@@ -304,7 +342,7 @@ export async function parseArchive(file: Blob, options: TransferOptions = {}): P
     }
     options.signal?.throwIfAborted()
     options.progress?.(100)
-    return { library: validated, assets }
+    return { library: validated, assets, ...(retired.length ? { retired } : {}) }
   } catch (error) {
     if (options.signal?.aborted) throw options.signal.reason
     if (error instanceof LocalizedError) throw error

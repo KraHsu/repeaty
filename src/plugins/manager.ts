@@ -21,6 +21,7 @@ import type { PluginMaterialHostFactory } from './materials'
 import { PluginTaskScheduler } from './tasks'
 import type {
   MaterialCommandRequest,
+  MaterialCommandContext,
   MaterialSearchQuery,
   MaterialTaskOptions,
 } from '@repeaty/plugin-api'
@@ -137,7 +138,7 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
   ) {
     const { api, installation } = materialContribution(pluginId)
     const command = installation.commands?.find((entry) => entry.id === commandId)
-    if (!command) throw new Error('插件命令不可用。')
+    if (!command?.run) throw new Error('插件命令不可用。')
     if (
       !Number.isSafeInteger(request.expectedRevision) ||
       request.expectedRevision < 0 ||
@@ -152,9 +153,41 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
       (context) => {
         if (api.materials.snapshot().revision !== request.expectedRevision)
           throw new Error('学习库已更新，请重新打开命令。')
-        return command.run({ ...context, ...request, workspaceScope: snapshot.workspaceScope })
+        return command.run!({ ...context, ...request, workspaceScope: snapshot.workspaceScope })
       },
     )
+  }
+  function openMaterialTool(pluginId: string, commandId: string, request: MaterialCommandRequest) {
+    const { api, installation } = materialContribution(pluginId)
+    const command = installation.commands?.find((entry) => entry.id === commandId)
+    if (!command?.component) throw new Error('插件命令不可用。')
+    const snapshot = api.materials.snapshot()
+    if (
+      snapshot.revision !== request.expectedRevision ||
+      !/^[a-zA-Z0-9._-]{1,100}$/.test(request.operationId)
+    )
+      throw new Error('学习库已更新，请重新打开命令。')
+    const source = snapshot.sources.find((source) => source.id === request.sourceId)
+    if (
+      !source ||
+      (command.formats && !command.formats.includes(source.document?.format ?? source.format))
+    )
+      throw new Error('此命令不支持当前材料。')
+    const scope = api.resources.createScope()
+    const context: MaterialCommandContext = {
+      ...structuredClone(request),
+      workspaceScope: snapshot.workspaceScope,
+      signal: scope.signal,
+      onCleanup: scope.onCleanup,
+      createWorker: scope.createWorker,
+      progress: () => scope.signal.throwIfAborted(),
+      async yield() {
+        scope.signal.throwIfAborted()
+        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+        scope.signal.throwIfAborted()
+      },
+    }
+    return { command, installation, context, dispose: scope.dispose }
   }
   async function searchMaterialProvider(
     pluginId: string,
@@ -394,6 +427,7 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
           registerWidget,
           {
             registrations,
+            assets: bundle.assets,
             host: () => {
               // Evaluation/factory code may register contributions, but cannot mutate or read
               // the library until this exact activation has been published successfully.
@@ -621,6 +655,7 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
     materialApiFor,
     parseMaterialFile,
     executeMaterialCommand,
+    openMaterialTool,
     searchMaterialProvider,
     pluginPackages,
     pluginManagerBusy,

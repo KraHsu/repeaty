@@ -28,7 +28,8 @@ export function reconcileReadingRound(round: ReadingRound, sources: Source[], to
   while (cursor < round.entries.length) {
     const entry = round.entries[cursor]!,
       source = current.get(entry.sourceId)
-    if (source?.mediaId === entry.mediaId && sourceQueueState(source, today) === 'ready') break
+    if (source?.mediaId === entry.mediaId && sourceQueueState(source, today, sources) === 'ready')
+      break
     cursor++
   }
   return cursor === round.cursor ? round : { ...round, cursor }

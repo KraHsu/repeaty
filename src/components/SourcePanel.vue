@@ -26,6 +26,7 @@ import {
   sourceAtVersion,
 } from '../core/source-data'
 import { adaptiveReadingPlan } from '../core/adaptive-reading'
+import { materialLocked } from '../core/material-sequence'
 import { sourceExcerpt, recentSource } from '../core/sources'
 import { sourceArrangement } from '../core/reading-operations'
 import { sourceContextPath } from '../core/source-tree'
@@ -197,15 +198,19 @@ const hasFilters = computed(
 const matchingSources = computed(() => filterSources(props.library.sources, filters.value))
 const readyCount = computed(
   () =>
-    props.library.sources.filter((source) => sourceQueueState(source, today.value) === 'ready')
-      .length,
+    props.library.sources.filter(
+      (source) => sourceQueueState(source, today.value, props.library.sources) === 'ready',
+    ).length,
 )
 const counts = computed(() =>
   Object.fromEntries(
     queueViews.map((value) => [
       value,
       matchingSources.value.filter(
-        (entry) => value === 'all' || sourceQueueState(entry, today.value) === value,
+        (entry) =>
+          value === 'all' ||
+          (!entry.document?.container &&
+            sourceQueueState(entry, today.value, props.library.sources) === value),
       ).length,
     ]),
   ),
@@ -598,6 +603,38 @@ async function openSearchResult(hit: MaterialSearchHit) {
     }
   }
 }
+async function openDocumentSource(id: string, locator?: MaterialLocator) {
+  if (props.busy || inRound.value) return
+  const entry = props.library.sources.find((source) => source.id === id)
+  if (!entry || (locator && (locator.sourceId !== id || locator.versionId !== entry.mediaId)))
+    return
+  const scope = props.scope
+  if (!(await openSource(id))) return
+  if (!locator) return
+  await nextTick()
+  await readingLoad
+  await nextTick()
+  if (
+    !alive ||
+    scope !== props.scope ||
+    source.value?.id !== id ||
+    source.value.mediaId !== locator.versionId
+  )
+    return
+  const start =
+    locator.kind === 'text' || locator.kind === 'epub' || locator.kind === 'formula'
+      ? (locator.start ?? 0)
+      : 0
+  const end =
+    locator.kind === 'text' || locator.kind === 'epub' || locator.kind === 'formula'
+      ? (locator.end ?? Math.min(text.value.length, start + 1))
+      : Math.min(text.value.length, 1)
+  try {
+    await reader.value?.locate({ sourceId: id, mediaId: locator.versionId, start, end, locator })
+  } catch (issue) {
+    if (alive && scope === props.scope) navigationError.value = issue as Error
+  }
+}
 function remember() {
   const update = reader.value?.capture()
   if (update) props.reading.record(update, true)
@@ -852,7 +889,7 @@ async function stopRound() {
   }
 }
 const queueState = computed(() =>
-  source.value ? sourceQueueState(source.value, today.value) : undefined,
+  source.value ? sourceQueueState(source.value, today.value, props.library.sources) : undefined,
 )
 function openDefer() {
   emit('clearNotice')
@@ -1170,7 +1207,7 @@ async function download() {
         @imported="
           (ids) => {
             resetFilters()
-            view = 'ready'
+            view = 'all'
             page = 0
             selectedId = ids[0] ?? ''
           }
@@ -1473,16 +1510,25 @@ async function download() {
               >
                 <strong>{{ entry.title }}</strong></UiButton
               ><span
-                >{{ entry.format === 'markdown' ? 'Markdown' : t('纯文本') }} ·
-                {{ new Date(entry.createdAt).toLocaleDateString(locale) }}</span
+                >{{
+                  entry.document?.format.toUpperCase() ??
+                  (entry.format === 'markdown' ? 'Markdown' : t('纯文本'))
+                }}
+                · {{ new Date(entry.createdAt).toLocaleDateString(locale) }}</span
               >
               <span v-if="entry.kind === 'excerpt'" class="source-kind-badge">{{ t('摘录') }}</span>
               <span class="source-queue-state">{{
-                sourceQueueState(entry, today) === 'archived'
-                  ? t('已归档')
-                  : entry.queue
-                    ? t('安排于 {date}', { date: readingDate(entry.queue.availableOn) })
-                    : t('待阅读')
+                entry.document?.container
+                  ? t('文档目录')
+                  : entry.studySequence?.completed
+                    ? t('本章已完成')
+                    : materialLocked(entry, library.sources)
+                      ? t('待前章完成')
+                      : sourceQueueState(entry, today, library.sources) === 'archived'
+                        ? t('已归档')
+                        : entry.queue
+                          ? t('安排于 {date}', { date: readingDate(entry.queue.availableOn) })
+                          : t('待阅读')
               }}</span>
               <span
                 v-if="entry.priority && entry.priority !== 'normal'"
@@ -1822,6 +1868,7 @@ async function download() {
               </div>
             </div>
             <SourceReader
+              :hold-reading="reading.holdForAction"
               :editable="!!workbench && !session"
               :busy="busy"
               @change-text="workbench?.editContent($event)"
@@ -1829,6 +1876,22 @@ async function download() {
               :key="source.id + ':' + source.mediaId"
               ref="reader"
               :source="source"
+              :sources="library.sources"
+              :initial-selection="
+                source.origin?.locator?.kind === 'image' &&
+                source.document?.format === 'image' &&
+                !source.derived
+                  ? {
+                      locator: {
+                        ...source.origin.locator,
+                        sourceId: source.id,
+                        versionId: source.mediaId,
+                      },
+                      text,
+                      projection: { start: 0, end: text.length },
+                    }
+                  : undefined
+              "
               :text="text"
               :scope="scope"
               :original-name="
@@ -1838,6 +1901,7 @@ async function download() {
               @position="reading.record($event)"
               @wiki="openWiki"
               @wiki-preview="openWiki"
+              @open="openDocumentSource"
             />
             <div v-if="source.kind === 'excerpt'" class="source-excerpt-tools">
               <p v-if="!original" class="form-note">{{ t('原文已删除，摘录内容仍保留。') }}</p>

@@ -5,6 +5,7 @@ mod secrets;
 mod tests;
 #[cfg(windows)]
 mod windows_permissions;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use cap_std::fs::{Dir, OpenOptions};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -19,6 +20,7 @@ pub type Result<T> = std::result::Result<T, String>;
 const CODE_LIMIT: usize = 4 * 1024 * 1024;
 const STYLE_LIMIT: usize = 1024 * 1024;
 const README_LIMIT: usize = 256 * 1024;
+const ASSETS_LIMIT: usize = 34 * 1024 * 1024;
 const FILE_LIMIT: usize = 2 * 1024 * 1024;
 fn invalid() -> String {
     "invalid-plugin".into()
@@ -213,6 +215,59 @@ struct Package {
     raw: Value,
     manifest: Manifest,
 }
+fn validate_assets(value: &Value) -> Result<()> {
+    let entries = value.as_object().ok_or_else(invalid)?;
+    if entries.len() > 2000 {
+        return Err(invalid());
+    }
+    let mut total = 0;
+    for (path, value) in entries {
+        if path.len() > 240
+            || path.split('/').any(|part| {
+                let base = part.split('.').next().unwrap_or("").to_ascii_lowercase();
+                part.is_empty()
+                    || !part.as_bytes()[0].is_ascii_alphanumeric() && part.as_bytes()[0] != b'_'
+                    || !part
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
+                    || part.ends_with('.')
+                    || ["con", "prn", "aux", "nul"].contains(&base.as_str())
+                    || base.len() == 4
+                        && (base.starts_with("com") || base.starts_with("lpt"))
+                        && matches!(base.as_bytes()[3], b'1'..=b'9')
+            })
+        {
+            return Err(invalid());
+        }
+        let asset = value.as_object().ok_or_else(invalid)?;
+        let mime = value["type"].as_str().ok_or_else(invalid)?;
+        if asset.len() != 2
+            || mime.len() > 100
+            || mime.split('/').count() != 2
+            || mime.split('/').any(|part| {
+                part.is_empty()
+                    || !part
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b".+-".contains(&b))
+            })
+        {
+            return Err(invalid());
+        }
+        let encoded = value["base64"].as_str().ok_or_else(invalid)?;
+        if encoded.len() > (8 * 1024 * 1024_usize).div_ceil(3) * 4 {
+            return Err(invalid());
+        }
+        let bytes = STANDARD.decode(encoded).map_err(|_| invalid())?;
+        if bytes.len() > 8 * 1024 * 1024 {
+            return Err(invalid());
+        }
+        total += bytes.len();
+        if total > 24 * 1024 * 1024 {
+            return Err(invalid());
+        }
+    }
+    Ok(())
+}
 impl Package {
     fn parse(raw: Value, id: &str) -> Result<Self> {
         let manifest: Manifest =
@@ -244,6 +299,9 @@ impl Package {
         {
             return Err(invalid());
         }
+        if let Some(assets) = raw.get("assets") {
+            validate_assets(assets)?;
+        }
         let mut origins = HashSet::new();
         for value in &manifest.permissions.origins {
             if http::origin(value)? != *value || !origins.insert(value) {
@@ -258,6 +316,9 @@ impl Package {
         if let Some(readme) = self.raw.get("readme") {
             content["readme"] = readme.clone();
         }
+        if let Some(assets) = self.raw.get("assets") {
+            content["assets"] = assets.clone();
+        }
         repeaty_workspace::files::digest(canonical(&content).as_bytes())
     }
 }
@@ -268,12 +329,16 @@ fn package(root: &Dir, id: &str) -> Result<Package> {
     let main = read_text(&dir, "main.js", CODE_LIMIT)?.ok_or_else(invalid)?;
     let styles = read_text(&dir, "styles.css", STYLE_LIMIT)?;
     let readme = read_text(&dir, "README.md", README_LIMIT)?;
+    let assets = read_text(&dir, "assets.json", ASSETS_LIMIT)?;
     let mut raw = json!({"manifest":serde_json::from_str::<Value>(&manifest).map_err(|_|invalid())?,"main":main});
     if let Some(styles) = styles {
         raw["styles"] = Value::String(styles);
     }
     if let Some(readme) = readme {
         raw["readme"] = Value::String(readme);
+    }
+    if let Some(assets) = assets {
+        raw["assets"] = serde_json::from_str(&assets).map_err(|_| invalid())?;
     }
     Package::parse(raw, id)
 }
@@ -320,6 +385,9 @@ fn install(root: &Dir, id: &str, payload: Value) -> Result<Value> {
         }
         if let Some(readme) = value.raw.get("readme").and_then(Value::as_str) {
             write_new(&staging, "README.md", readme)?;
+        }
+        if let Some(assets) = value.raw.get("assets") {
+            write_new(&staging, "assets.json", &assets.to_string())?;
         }
         drop(staging);
         let existing = directory(&packages, id, false)?;

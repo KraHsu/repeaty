@@ -140,6 +140,7 @@ export const sourceAnnotationSchema = z
     end: z.number().int().positive().max(MAX_SOURCE_CHARACTERS),
     quote: z.string().min(1).max(MAX_EXCERPT_CHARACTERS),
     body: z.string().trim().min(1).max(10_000),
+    locator: materialLocatorSchema.optional(),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })
@@ -174,6 +175,14 @@ export const sourceSchema = z
     order: z.number().finite().optional(),
     properties: sourcePropertiesSchema.optional(),
     annotations: z.array(sourceAnnotationSchema).max(1000).optional(),
+    studySequence: z
+      .strictObject({
+        groupId: id,
+        index: z.number().int().nonnegative().max(999),
+        mode: z.enum(['free', 'sequential']),
+        completed: z.boolean(),
+      })
+      .optional(),
     ...sourceDetailsSchema.shape,
     format: z.enum(['plain', 'markdown']),
     mediaId: id,
@@ -227,7 +236,13 @@ export const sourceSchema = z
       const version = [source, ...(source.versions ?? [])].find(
         (item) => item.mediaId === entry.mediaId,
       )
-      if (!version || entry.end > version.characters)
+      if (
+        !version ||
+        entry.end > version.characters ||
+        (entry.locator &&
+          (!materialLocatorMatches({ ...version, id: source.id }, entry.locator) ||
+            !locatorMatchesReference({ ...entry, sourceId: source.id }, entry.locator)))
+      )
         context.addIssue({ code: 'custom', message: '批注与材料版本不匹配。' })
     }
     for (const version of source.versions ?? [])

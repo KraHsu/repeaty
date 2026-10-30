@@ -153,7 +153,7 @@ it('parses an independent package file and rejects malformed or oversized contai
     '插件包格式或 API 版本不受支持。',
   )
   await expect(
-    readPluginFile(new File(['x'.repeat(8 * 1024 * 1024 + 1)], 'oversized.repeaty-plugin')),
+    readPluginFile(new File(['x'.repeat(40 * 1024 * 1024 + 1)], 'oversized.repeaty-plugin')),
   ).rejects.toThrow('大小限制')
   await expect(
     readPluginFile(

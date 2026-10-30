@@ -169,6 +169,8 @@ function validateContent(header: WorkspaceHeader, content: WorkspaceContent): st
       return fail('invalid-cloze')
     }
   }
+  if (header.type === 'plugin' && header.plugin?.variants)
+    return header.plugin.variants.map((key) => `plugin:${key}`)
   return header.type === 'reversed' ? ['forward', 'reverse'] : ['forward']
 }
 

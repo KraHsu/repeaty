@@ -14,6 +14,7 @@ export type MaterialLocator = {
     }
   | { kind: 'epub'; href: string; cfi?: string; start?: number; end?: number }
   | { kind: 'image'; x: number; y: number; width: number; height: number }
+  | { kind: 'formula'; start: number; end: number; latex: string; leaves: number[] }
 )
 export interface MaterialTaskProgress {
   completed: number
@@ -23,15 +24,28 @@ export interface MaterialTaskProgress {
 /** Abort is cooperative. CPU-intensive parsing must use a Worker, not synchronous main-thread work. */
 export interface MaterialTaskContext {
   signal: AbortSignal
+  /** User-selected sidecar resources; no ambient filesystem access. */
+  files?: readonly File[]
   progress(value: MaterialTaskProgress): void
   /** Cleanup runs exactly once on completion, cancellation, failure, or plugin unload. */
   onCleanup(dispose: () => void): void
-  /** Host-owned Blob Worker; UTF-8 source <= 1 MiB. Terminated/revoked on task completion or abort.
+  /** Host-owned Blob Worker; UTF-8 source <= 4 MiB. Terminated/revoked on task completion or abort.
    * Optional for older hosts and explicitly supplied contexts; check materials.capabilities().worker.
    */
   createWorker?(source: string, options?: { type?: 'classic' | 'module'; name?: string }): Worker
   /** Yield to the host between bounded batches; throws when the task is no longer current. */
   yield(): Promise<void>
+}
+/** Offline package assets and disposable reader resources, bound to this plugin/library. */
+export declare const resources: {
+  read(path: string): Blob | undefined
+  createScope(): {
+    signal: AbortSignal
+    onCleanup(dispose: () => void): void
+    createWorker(source: string, options?: { type?: 'classic' | 'module'; name?: string }): Worker
+    url(path: string): string
+    dispose(): void
+  }
 }
 export interface MaterialTaskOptions {
   id: string
@@ -56,6 +70,12 @@ export interface MaterialImportCandidate {
   documentFormat: string
   readerId?: string
   parentKey?: string
+  documentPath?: string
+  documentData?: Record<string, unknown>
+  container?: boolean
+  url?: string
+  resources?: { path: string; blob: Blob }[]
+  studySequence?: { groupKey: string; index: number; mode: 'free' | 'sequential' }
 }
 export interface MaterialImporterContribution {
   id: string
@@ -70,12 +90,23 @@ export interface MaterialRecord {
   versionId: string
   format: 'plain' | 'markdown'
   parentSourceId?: string
+  studySequence?: {
+    groupId: string
+    index: number
+    mode: 'free' | 'sequential'
+    completed: boolean
+  }
+  locked: boolean
   document?: {
     schemaVersion: 1
     providerId: string
     readerId?: string
     format: string
     originalMediaId: string
+    path?: string
+    data?: Record<string, unknown>
+    container?: boolean
+    resources?: { path: string; mediaId: string }[]
   }
 }
 export interface MaterialSelection {
@@ -90,11 +121,16 @@ export interface MaterialReadingPosition {
   projectionOffset: number
 }
 export interface MaterialReaderProps {
+  workspaceScope: string
   material: Readonly<MaterialRecord>
   text: string
   original?: Blob
+  resource?: (path: string) => Promise<Blob | undefined>
+  readOnly?: boolean
+  onOpen?: (sourceId: string, locator?: MaterialLocator) => void
   selection?: MaterialSelection
-  position?: MaterialReadingPosition
+  /** Host navigation can request an offset alone (for example, restart at zero). */
+  position?: { locator?: MaterialLocator; projectionOffset: number }
   onSelect: (selection: MaterialSelection | undefined) => void
   onPosition?: (position: MaterialReadingPosition) => void
 }
@@ -102,6 +138,8 @@ export interface MaterialReaderContribution {
   id: string
   title: string
   formats: readonly string[]
+  /** Accept exact text projection ranges from host search and legacy excerpts. */
+  supportsTextLocation?: boolean
   component: Component
 }
 export interface MaterialCommandContext extends MaterialTaskContext {
@@ -116,7 +154,10 @@ export interface MaterialCommandContribution {
   title: string
   /** Optional suggestion only; the host owns collision resolution and actual key binding. */
   shortcut?: string
-  run(context: MaterialCommandContext): Promise<void>
+  /** Exactly one of run or component. Tool components receive { context, onClose }. */
+  run?: (context: MaterialCommandContext) => Promise<void>
+  component?: Component
+  formats?: readonly string[]
 }
 export interface MaterialSearchQuery {
   text: string
@@ -154,6 +195,7 @@ export interface MaterialMutationContext {
 export interface MaterialImportRequest {
   importerId: string
   files: readonly File[]
+  relatedFiles?: readonly File[]
 }
 export interface MaterialImportPlan {
   id: string
@@ -205,6 +247,25 @@ export interface MaterialHostApi {
   list(): Promise<readonly MaterialRecord[]>
   get(sourceId: string, versionId?: string): Promise<{ material: MaterialRecord; text: string }>
   original(sourceId: string, versionId?: string): Promise<Blob | undefined>
+  resource(sourceId: string, path: string, versionId?: string): Promise<Blob | undefined>
+  setSequence(
+    request: MaterialMutationContext & {
+      sourceId: string
+      mode?: 'free' | 'sequential'
+      completed?: boolean
+    },
+  ): Promise<{ revision: number }>
+  annotate(
+    request: MaterialMutationContext & {
+      sourceId: string
+      selection: MaterialSelection
+      body: string
+      id?: string
+    },
+  ): Promise<{ id: string; revision: number }>
+  removeAnnotation(
+    request: MaterialMutationContext & { sourceId: string; id: string },
+  ): Promise<{ revision: number }>
   prepareImport(request: MaterialImportRequest, signal?: AbortSignal): Promise<MaterialImportPlan>
   commitImport(request: MaterialMutationContext & { planId: string }): Promise<MaterialImportResult>
   discardImport(planId: string): void

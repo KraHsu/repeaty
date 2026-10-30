@@ -72,13 +72,23 @@ export function prepareSourceExcerpt(
     selection.quote !== excerpt.quote
   )
     throw new LocalizedError(msg('摘录与原文不一致，请重新选取。'))
-  return prepareSnapshot({ title, url: parent.url, format: parent.format }, selection.quote, now, {
-    sourceId: parent.id,
-    mediaId: parent.mediaId,
-    start: selection.start,
-    end: selection.end,
-    ...(excerpt.locator ? { locator: excerpt.locator } : {}),
-  })
+  const prepared = prepareSnapshot(
+    { title, url: parent.url, format: parent.format },
+    selection.quote,
+    now,
+    {
+      sourceId: parent.id,
+      mediaId: parent.mediaId,
+      start: selection.start,
+      end: selection.end,
+      ...(excerpt.locator ? { locator: excerpt.locator } : {}),
+    },
+  )
+  if (excerpt.locator?.kind === 'image' && parent.document?.format === 'image') {
+    const { importKey: _importKey, ...document } = parent.document
+    prepared.source.document = document
+  }
+  return prepared
 }
 export async function readSource(
   source: Source,
@@ -229,16 +239,25 @@ export function removeSource(library: Library, id: string): Library {
     sources: library.sources
       .filter((source) => source.id !== id)
       .map((source) =>
-        source.origin?.sourceId !== id && source.parentSourceId !== id
+        source.origin?.sourceId !== id &&
+        source.parentSourceId !== id &&
+        source.studySequence?.groupId !== id
           ? source
           : {
               ...source,
               ...(source.origin?.sourceId === id ? { origin: undefined } : {}),
               ...(source.parentSourceId === id ? { parentSourceId: undefined } : {}),
+              ...(source.studySequence?.groupId === id ? { studySequence: undefined } : {}),
             },
       ),
     notes: library.notes.map((note) =>
-      note.excerpt?.sourceId === id ? { ...note, excerpt: undefined } : note,
+      note.excerpt?.sourceId === id
+        ? {
+            ...note,
+            excerpt: undefined,
+            plugin: note.plugin ? { ...note.plugin, variantLocators: undefined } : undefined,
+          }
+        : note,
     ),
   })
 }

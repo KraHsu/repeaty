@@ -2,7 +2,8 @@
 import { build } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import * as sharedVue from 'vue'
-import { readFile, writeFile, mkdir, rm } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, rm, readdir, lstat, realpath } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
 import { resolve, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { watch } from 'node:fs'
@@ -22,6 +23,7 @@ const runtimeExports = [
   'registerSearchProvider',
   'materials',
   'tasks',
+  'resources',
   'practiceContentRevision',
   'hasAttemptBody',
   'MediaList',
@@ -51,6 +53,30 @@ const runtimeExports = [
 ]
 export async function buildPlugin(directory, { outdir } = {}) {
   directory = resolve(directory)
+  let pkg = {}
+  try {
+    pkg = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'))
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+  }
+  if (pkg.scripts?.['prepare:assets']) {
+    await new Promise((resolve, reject) => {
+      const child = spawn(
+        process.platform === 'win32' ? 'npm.cmd' : 'npm',
+        ['run', 'prepare:assets'],
+        {
+          cwd: directory,
+          stdio: 'inherit',
+          shell: process.platform === 'win32',
+          windowsHide: true,
+        },
+      )
+      child.on('error', reject)
+      child.on('exit', (code) =>
+        code === 0 ? resolve() : reject(new Error('Plugin asset preparation failed')),
+      )
+    })
+  }
   const manifest = JSON.parse(await readFile(join(directory, 'manifest.json'), 'utf8'))
   if (!/^[a-z][a-z0-9-]{0,63}$/.test(manifest.id) || manifest.apiVersion !== 1)
     throw new Error('Invalid plugin manifest')
@@ -115,7 +141,65 @@ export async function buildPlugin(directory, { outdir } = {}) {
     .filter((file) => file.type === 'asset' && file.fileName.endsWith('.css'))
     .map((file) => String(file.source))
     .join('\n')
-  const bundle = { manifest, main, styles, ...(readme === undefined ? {} : { readme }) }
+  const assets = {}
+  let assetBytes = 0
+  async function collect(path = '') {
+    let entries
+    try {
+      entries = await readdir(join(directory, 'assets', path), { withFileTypes: true })
+    } catch (error) {
+      if (!path && error.code === 'ENOENT') return
+      throw error
+    }
+    for (const entry of entries) {
+      const name = path ? `${path}/${entry.name}` : entry.name
+      if (
+        name.length > 240 ||
+        !/^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$/.test(entry.name) ||
+        entry.name.endsWith('.') ||
+        /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(entry.name)
+      )
+        throw new Error('Invalid plugin asset path')
+      const filename = join(directory, 'assets', name)
+      const stat = await lstat(filename)
+      if (stat.isSymbolicLink()) throw new Error('Plugin assets cannot be links')
+      if (stat.isDirectory()) {
+        await collect(name)
+        continue
+      }
+      if (!stat.isFile() || stat.size > 8 * 1024 * 1024)
+        throw new Error('Plugin asset exceeds 8 MiB')
+      const bytes = await readFile(filename)
+      assetBytes += bytes.length
+      if (assetBytes > 24 * 1024 * 1024 || Object.keys(assets).length >= 2000)
+        throw new Error('Plugin assets exceed package limits')
+      const extension = name.split('.').pop().toLowerCase()
+      const type =
+        {
+          js: 'text/javascript',
+          mjs: 'text/javascript',
+          wasm: 'application/wasm',
+          json: 'application/json',
+          css: 'text/css',
+          woff2: 'font/woff2',
+          woff: 'font/woff',
+          ttf: 'font/ttf',
+          otf: 'font/otf',
+          png: 'image/png',
+          jpg: 'image/jpeg',
+          svg: 'image/svg+xml',
+        }[extension] ?? 'application/octet-stream'
+      assets[name] = { type, base64: bytes.toString('base64') }
+    }
+  }
+  await collect()
+  const bundle = {
+    manifest,
+    main,
+    styles,
+    ...(readme === undefined ? {} : { readme }),
+    ...(Object.keys(assets).length ? { assets } : {}),
+  }
   if (Buffer.byteLength(main) > 4 * 1024 * 1024 || Buffer.byteLength(styles) > 1024 * 1024)
     throw new Error('Plugin code or CSS exceeds the host package limit')
   const out = outdir ? resolve(outdir) : join(directory, 'dist')
@@ -125,13 +209,19 @@ export async function buildPlugin(directory, { outdir } = {}) {
     writeFile(join(out, 'styles.css'), styles),
     writeFile(join(out, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n'),
     writeFile(join(out, manifest.id + '.repeaty-plugin'), JSON.stringify(bundle) + '\n'),
+    bundle.assets
+      ? writeFile(join(out, 'assets.json'), JSON.stringify(assets))
+      : rm(join(out, 'assets.json'), { force: true }),
     readme === undefined
       ? rm(join(out, 'README.md'), { force: true })
       : writeFile(join(out, 'README.md'), readme),
   ])
   return bundle
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(await realpath(resolve(process.argv[1]))).href
+) {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     options: {

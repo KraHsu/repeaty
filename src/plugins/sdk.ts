@@ -12,6 +12,8 @@ import type { PluginWidgetContribution, RegisterPluginWidget } from './widgets'
 import type { MaterialHostApi, MaterialTaskContext, MaterialTaskOptions } from '@repeaty/plugin-api'
 import type { MaterialRegistrations, PluginMaterialHostFactory } from './materials'
 import { PluginTaskScheduler, supportsPluginWorkers } from './tasks'
+import { createPluginResources } from './resources'
+import type { PluginAssets } from './assets'
 import AppPage from '../components/AppPage.vue'
 import {
   SettingGroup,
@@ -57,6 +59,7 @@ export function createPluginApi(
     host?: () => PluginMaterialHostFactory | undefined
     scheduler?: PluginTaskScheduler
     commandScheduler?: PluginTaskScheduler
+    assets?: PluginAssets
   } = {},
 ) {
   let alive = true
@@ -127,6 +130,10 @@ export function createPluginApi(
     list: () => materialCall((host) => host.list()),
     get: (id, version) => materialCall((host) => host.get(id, version)),
     original: (id, version) => materialCall((host) => host.original(id, version)),
+    resource: (id, path, version) => materialCall((host) => host.resource(id, path, version)),
+    setSequence: (request) => materialCall((host) => host.setSequence(request)),
+    annotate: (request) => materialCall((host) => host.annotate(request)),
+    removeAnnotation: (request) => materialCall((host) => host.removeAnnotation(request)),
     prepareImport: (request, signal) => materialCall((host) => host.prepareImport(request, signal)),
     commitImport: (request) => materialCall((host) => host.commitImport(request)),
     discardImport: (id) => materialHost().discardImport(id),
@@ -251,6 +258,7 @@ export function createPluginApi(
       return remove
     },
     materials,
+    resources: createPluginResources(materialOptions.assets, lifetime.signal, guard),
     tasks: { run: runTask },
     // Host-only command orchestration must not occupy the background parser queue it awaits.
     runMaterialCommand<T>(

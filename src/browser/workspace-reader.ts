@@ -1,6 +1,12 @@
 import type { Database, SqlJsStatic, SqlValue } from 'sql.js'
 import { z } from 'zod'
-import { workspaceLibrarySchema, type Library } from '../core/model'
+import {
+  MAX_DOCUMENT_BYTES,
+  MAX_MEDIA_BYTES,
+  workspaceLibrarySchema,
+  type Library,
+} from '../core/model'
+import { retiredNoteSchema, type RetiredNote } from '../desktop/retirement'
 import { parseOperationHistory, type OperationHistory } from '../core/operation-history'
 import { recordStores } from '../core/storage'
 import { sourceDraftSchema, type SourceDraft } from '../core/source-workbench'
@@ -41,16 +47,20 @@ const limits = {
   materialReceipts: 100_000,
   materialFolders: 10_000,
 }
-const assetSchema = z.object({
-  id: z.string(),
-  mime: z.string(),
-  path: z.string().regex(/^[a-f0-9]{64}\.[a-z0-9]+$/),
-  size: z
-    .number()
-    .int()
-    .positive()
-    .max(10 * 1024 * 1024),
-})
+const assetSchema = z
+  .object({
+    id: z.string(),
+    mime: z.string(),
+    path: z.string().regex(/^[a-f0-9]{64}\.[a-z0-9]+$/),
+    size: z.number().int().positive().max(MAX_DOCUMENT_BYTES),
+  })
+  .refine(
+    (value) =>
+      value.size <= MAX_MEDIA_BYTES ||
+      ['application/pdf', 'application/epub+zip', 'text/html', 'application/octet-stream'].includes(
+        value.mime,
+      ),
+  )
 export interface BrowserWorkspaceSnapshot {
   id: string
   name: string
@@ -99,7 +109,7 @@ export class BrowserWorkspaceReader {
       db.run('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF;')
       if (
         scalar(db, 'PRAGMA application_id') !== 0x52505459 ||
-        ![10, 11, 12, 13].includes(scalar(db, 'PRAGMA user_version') as number) ||
+        ![10, 11, 12, 13, 14].includes(scalar(db, 'PRAGMA user_version') as number) ||
         scalar(db, 'SELECT id FROM workspace_identity') !== marker.id
       )
         throw new WorkspaceReadError('incompatible')
@@ -140,7 +150,7 @@ export class BrowserWorkspaceReader {
         .safe()
         .parse(scalar(db, 'SELECT revision FROM workspace WHERE id=1'))
       progress(30)
-      const content: Record<string, unknown> = { version: 15 }
+      const content: Record<string, unknown> = { version: 16 }
       for (const [index, store] of recordStores.entries()) {
         if (
           !tables.has(store) &&
@@ -298,7 +308,7 @@ export class BrowserWorkspaceReader {
     if (!asset) return undefined
     const bytes = await this.files.read(
       '.repeaty/media/' + asset.path,
-      10 * 1024 * 1024,
+      MAX_DOCUMENT_BYTES,
       asset.path.slice(0, 64),
     )
     return new Blob([Uint8Array.from(bytes).buffer], { type: asset.mime })
@@ -320,10 +330,126 @@ export class BrowserWorkspaceReader {
       statement.free()
     }
   }
+  /** Explicit edits/export request full retired records; opening and grading never call this. */
+  async retiredNotes(ids?: string[]): Promise<RetiredNote[]> {
+    if (ids && (ids.length > 128 || ids.some((id) => !id || id.length > 100)))
+      throw new WorkspaceReadError('limit')
+    const tables = new Set(
+      rows(this.db, "SELECT name FROM sqlite_schema WHERE type='table'").map((row) => row.name),
+    )
+    if (!tables.has('retired_cards') && !tables.has('retired_notes')) return []
+    if (
+      [
+        'retired_cards',
+        'retired_notes',
+        'retired_records',
+        'retired_media',
+        'retired_documents',
+      ].some((table) => !tables.has(table))
+    )
+      throw new WorkspaceReadError('invalid')
+    const all =
+      ids ??
+      rows(
+        this.db,
+        'SELECT id FROM retired_notes UNION SELECT note_id AS id FROM retired_cards',
+      ).map((row) => String(row.id))
+    if (all.length > 100_000) throw new WorkspaceReadError('limit')
+    let bytes = 0
+    const decode = (value: unknown) => {
+      if (typeof value !== 'string') throw new WorkspaceReadError('invalid')
+      bytes += value.length * 2
+      if (bytes > MAX_DATABASE_BYTES) throw new WorkspaceReadError('limit')
+      return JSON.parse(value)
+    }
+    const read = (sql: string, id: string) =>
+      boundRows(this.db, sql, [id]).map((row) => decode(row.data))
+    const result: RetiredNote[] = []
+    for (const id of all) {
+      const note = read('SELECT data FROM retired_notes WHERE id=?', id)[0] ?? null
+      const cards = read(
+        'SELECT data FROM retired_cards WHERE note_id=? ORDER BY retired_at DESC,id',
+        id,
+      )
+      if (!note && !cards.length) continue
+      const raw: Record<string, unknown> = {
+        note,
+        cards,
+        revision: this.snapshot.revision,
+        document: null,
+        media: [],
+      }
+      for (const store of ['reviews', 'practices', 'attempts'])
+        raw[store] = read(
+          `SELECT r.data FROM retired_records r JOIN retired_cards c ON c.id=r.card_id WHERE c.note_id=? AND r.store='${store}' ORDER BY r.position,r.id`,
+          id,
+        )
+      const doc = boundRows(this.db, 'SELECT path,hash FROM retired_documents WHERE id=?', [id])[0]
+      if (doc) {
+        if (
+          typeof doc.hash !== 'string' ||
+          !/^[a-f0-9]{64}$/.test(doc.hash) ||
+          typeof doc.path !== 'string'
+        )
+          throw new WorkspaceReadError('invalid')
+        const data = await this.files.read(
+          '.repeaty/objects/' + doc.hash,
+          MAX_WORKSPACE_TEXT_BYTES,
+          doc.hash,
+        )
+        const rawText = new TextDecoder('utf-8', { fatal: true }).decode(data)
+        const parsed = readWorkspaceMarkdown(rawText)
+        if (
+          parsed.status !== 'managed' ||
+          parsed.document.identity.kind !== 'note' ||
+          parsed.document.identity.id !== id
+        )
+          throw new WorkspaceReadError('invalid')
+        raw.document = { id, kind: 'note', path: doc.path, hash: doc.hash, raw: rawText }
+      }
+      raw.media = read(
+        "SELECT m.data FROM retired_media m WHERE m.id IN (SELECT value FROM retired_notes n,json_each(json_extract(n.data,'$.frontMedia')) WHERE n.id=?1 UNION SELECT value FROM retired_notes n,json_each(json_extract(n.data,'$.backMedia')) WHERE n.id=?1 UNION SELECT json_extract(value,'$.mediaId') FROM retired_notes n,json_each(json_extract(n.data,'$.inlineMedia')) WHERE n.id=?1)",
+        id,
+      )
+      const value = retiredNoteSchema.parse(raw)
+      if (
+        (value.note && value.note.id !== id) ||
+        value.cards.some((card) => card.noteId !== id) ||
+        value.attempts.some((attempt) => !('code' in attempt) || typeof attempt.code !== 'string')
+      )
+        throw new WorkspaceReadError('invalid')
+      for (const meta of value.media) {
+        const row = boundRows(this.db, 'SELECT id,mime,path,size FROM assets WHERE id=?', [
+          meta.id,
+        ])[0]
+        const asset = assetSchema.parse(row)
+        if (
+          asset.mime !== meta.type ||
+          asset.size !== meta.size ||
+          this.files.size('.repeaty/media/' + asset.path) !== asset.size
+        )
+          throw new WorkspaceReadError('invalid')
+        this.assets.set(asset.id, asset)
+      }
+      result.push(value)
+    }
+    return result
+  }
   close() {
     this.db.close()
     this.assets.clear()
     this.attemptIndex.clear()
+  }
+}
+function boundRows(db: Database, sql: string, parameters: string[]) {
+  const statement = db.prepare(sql)
+  try {
+    statement.bind(parameters)
+    const result = []
+    while (statement.step()) result.push(statement.getAsObject())
+    return result
+  } finally {
+    statement.free()
   }
 }
 function scalar(db: Database, sql: string): SqlValue | undefined {
