@@ -17,6 +17,14 @@
 
 品牌单独使用30px；Markdown标题、公式和用户内嵌内容保留语义比例。行高为界面1.5、标题1.35、阅读1.75、代码1.6；字重使用400/500/600，品牌可用700。定义见 `src/styles/tokens.css`。新代码引用区域变量，不再增加零散字号；旧的 `--text-*` 别名保留。
 
+## 分区与分割线
+
+页面分区共用 `src/styles/sections.css`：给后一区块添加 `app-section-divider`，由它持有顶部边线、线前外边距和线后内边距。两侧统一使用 `--app-section-gap`（`1.5rem`，默认 24px），随字体缩放；前一区块不要再添加尾部 margin 或 padding 来控制同一条线。分割线颜色沿用主题的 `--line`。
+
+单列内容容器使用 `app-section-stack`，普通内容通过 `--app-content-gap` 设置间隔（默认同为 24px），分区自身保留共享间距，避免 `gap` 再叠加一次。已有多列网格可用 `app-section-grid`：行间距承担线前留白，分区不再重复加 margin。并排布局的竖线仍按列结构处理。
+
+设置注册项、插件详情、备份、学习概览、材料及复习内容使用这套规则。表单的既有 `form-actions` 和已安装插件使用的 `card-answer` / `leetcode-workspace` 也由同一处定义，插件无需复制宿主 CSS。自定义插件页面可以直接使用这些公共样式类；不要从宿主源码导入样式文件。固定编辑器操作栏、列表/表格行边线以及正文中的 Markdown 分割线有各自的布局语义，不添加页面分区外边距。
+
 ## Nuxt UI 基础
 
 项目继续使用 Vue / Vite / Tauri，通过 `@nuxt/ui/vite` 与 Vue 插件接入；无需 Nuxt 服务端或用户设备上的 Node.js。`config/ui.ts` 定义组件配置，`src/styles/nuxt-ui.css` 定义 Tailwind 主题色与字号映射；`style.css` / `controls.css` 只保留业务布局、排版和滚动条，位于 base / components 层，不覆盖组件库的控件皮肤。图标由本地 lucide 集合打包，不使用远程字体。Tailwind 关闭自动全仓扫描，仅扫描宿主与 Nuxt UI；图标扫描同样只读取宿主源码，插件维护自己的样式，更新插件无需重新生成本体 CSS。

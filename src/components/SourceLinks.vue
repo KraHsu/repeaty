@@ -125,7 +125,7 @@ function toggle(event: Event) {
         >{{ t('加载更多') }}</UiButton
       >
     </section>
-    <details @toggle="toggle">
+    <details :class="{ 'app-section-divider': target }" @toggle="toggle">
       <summary>
         {{ t('链接与反向链接') }}<span v-if="context"> · {{ count }}</span>
       </summary>
@@ -231,9 +231,5 @@ function toggle(event: Event) {
 .source-links h4 {
   margin: 1rem 0 0.3rem;
   font-size: inherit;
-}
-.wiki-preview {
-  border-bottom: 1px solid var(--ui-border);
-  padding-bottom: 0.75rem;
 }
 </style>

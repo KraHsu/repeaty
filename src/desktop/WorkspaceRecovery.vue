@@ -297,7 +297,7 @@ const maintain = (vacuum = false) =>
       </div>
       <details
         v-if="config"
-        class="recovery-policy backup-section-divider"
+        class="recovery-policy app-section-divider"
         :open="!config.targets.length"
       >
         <summary>
@@ -375,7 +375,7 @@ const maintain = (vacuum = false) =>
           </template>
         </div>
       </details>
-      <div class="recovery-list-heading backup-section-divider">
+      <div class="recovery-list-heading app-section-divider">
         <h3>{{ t('可恢复的备份') }}</h3>
         <UiButton variant="ghost" :disabled="busy" @click="act(refresh)"
           ><RefreshCw :size="15" />{{ t('刷新') }}</UiButton
@@ -426,7 +426,7 @@ const maintain = (vacuum = false) =>
       </details>
     </template>
   </section>
-  <WorkspaceAttachments v-if="!standalone" class="backup-section-divider" />
+  <WorkspaceAttachments v-if="!standalone" class="app-section-divider" />
   <AppModal
     v-if="preview"
     :title="t('预览完整备份')"

@@ -554,7 +554,6 @@ async function drop(row?: Row) {
   display: flex;
   gap: 0.6rem;
   justify-content: flex-end;
-  margin-top: 1rem;
 }
 @media (prefers-reduced-motion: reduce) {
   .material-tree li,

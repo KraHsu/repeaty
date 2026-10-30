@@ -1,0 +1,42 @@
+/* A section owns the line before it and the space on both sides. Keep trailing
+   margins off the preceding content; grids use app-section-stack to avoid
+   adding their row gap to the separator's margin. Existing form/plugin classes
+   share this rule so independently installed plugins benefit without a rebuild. */
+@layer components {
+  .app-section-divider,
+  .form-actions:not(.editor-actions):not(.app-section-footer),
+  .card-answer,
+  .leetcode-workspace {
+    margin-block-start: var(--app-section-gap);
+    padding-block-start: var(--app-section-gap);
+  }
+
+  .app-section-divider,
+  .form-actions,
+  .card-answer,
+  .leetcode-workspace {
+    border-block-start: 1px solid var(--line);
+  }
+
+  .app-section-divider > :first-child {
+    margin-block-start: 0;
+  }
+
+  .app-section-stack {
+    display: grid;
+    row-gap: 0;
+  }
+
+  .app-section-stack > * + *:not(.app-section-divider):not(.form-actions) {
+    margin-block-start: var(--app-content-gap, var(--app-section-gap));
+  }
+
+  /* Responsive multi-column grids already supply the space before the line. */
+  .app-section-grid {
+    row-gap: var(--app-section-gap);
+  }
+
+  .app-section-grid > .app-section-divider {
+    margin-block-start: 0;
+  }
+}

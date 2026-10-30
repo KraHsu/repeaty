@@ -167,7 +167,7 @@ const changes = computed(() => {
     wide
     @close="resolve(false)"
   >
-    <div class="automation-consent">
+    <div class="automation-consent app-section-stack">
       <p>{{ prompt.owner.label }}</p>
       <template v-if="prompt.kind === 'grant'">
         <p>
@@ -205,7 +205,11 @@ const changes = computed(() => {
         }}</UiNotice>
         <p>{{ en ? 'Affected records' : '涉及记录' }}: {{ prompt.preview.changes.length }}</p>
         <div class="automation-preview">
-          <section v-for="(change, index) in changes" :key="index">
+          <section
+            v-for="(change, index) in changes"
+            :key="index"
+            :class="{ 'app-section-divider': index > 0 }"
+          >
             <h3>{{ index + 1 }}. {{ change.title }}</h3>
             <p v-if="change.target" class="form-note">{{ change.target }}</p>
             <dl>
@@ -234,12 +238,11 @@ const changes = computed(() => {
 </template>
 <style scoped>
 .automation-consent {
-  display: grid;
-  gap: var(--space-4, 16px);
+  --app-content-gap: 1rem;
   min-width: 0;
 }
 .automation-consent p {
-  margin: 0;
+  margin-block-end: 0;
 }
 .automation-consent ul {
   max-height: 25vh;
@@ -255,11 +258,6 @@ const changes = computed(() => {
   border-radius: 12px;
   font-size: var(--text-sm);
   background: var(--surface-muted);
-}
-.automation-preview section + section {
-  border-top: 1px solid var(--border);
-  margin-top: 20px;
-  padding-top: 20px;
 }
 .automation-preview h3 {
   font-size: var(--text-base);

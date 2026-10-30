@@ -204,7 +204,7 @@ function downloadReport() {
 </script>
 
 <template>
-  <div class="anki-import">
+  <div class="anki-import app-section-stack">
     <p class="form-note">
       {{
         t(
@@ -380,8 +380,7 @@ function downloadReport() {
 
 <style scoped>
 .anki-import {
-  display: grid;
-  gap: 0.8rem;
+  --app-content-gap: 0.8rem;
   min-width: 0;
 }
 .anki-import > * {
@@ -399,7 +398,7 @@ function downloadReport() {
   max-width: 100%;
 }
 .anki-import p {
-  margin: 0;
+  margin-block-end: 0;
 }
 .anki-preview {
   display: grid;

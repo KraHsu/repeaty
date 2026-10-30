@@ -9,30 +9,24 @@
   border: 1px solid var(--line);
   border-radius: 0.875rem;
 }
-.settings-panel-heading {
-  padding-bottom: 1.4375rem;
-  border-bottom: 1px solid var(--app-soft-line);
-}
 .settings-panel-heading h2 {
   margin: 0;
   font-size: 1.375rem;
   line-height: 1.4;
   font-weight: var(--font-weight-semibold);
 }
+.settings-panel .ui-setting-group {
+  margin-block-end: 0;
+}
 .settings-panel .settings-configuration,
 .settings-panel .settings-view > .ui-setting-group {
   margin: 0;
-  padding: 1.6875rem 0;
+  padding: 0;
   border: 0;
   border-radius: 0;
   box-shadow: none;
   background: transparent;
   --tw-ring-shadow: 0 0 #0000;
-}
-.settings-panel .settings-content > .settings-configuration + .settings-configuration,
-.settings-panel .settings-content > .settings-view + .settings-configuration,
-.settings-panel .settings-content > .settings-configuration + .settings-view {
-  border-top: 1px solid var(--app-soft-line);
 }
 .settings-panel .settings-configuration > [data-slot='header'],
 .settings-panel .settings-view > .ui-setting-group > [data-slot='header'] {
@@ -56,6 +50,7 @@
 }
 .settings-panel .ui-setting-field:last-child {
   border-bottom: 0;
+  padding-block-end: 0;
 }
 .settings-panel
   .ui-setting-field:not(.ui-setting-field--binary)[data-orientation='horizontal']
@@ -300,7 +295,6 @@
   min-width: 0;
 }
 .plugin-detail-pane .plugin-settings {
-  --plugin-section-gap: 1.5rem;
   margin-bottom: 0;
   border-radius: 0.875rem;
   scroll-margin-top: 4rem;
@@ -355,11 +349,6 @@
   font-size: var(--font-size-meta);
   color: var(--muted);
   line-height: 1.7;
-}
-.plugin-detail-section {
-  margin-top: var(--plugin-section-gap);
-  padding-top: var(--plugin-section-gap);
-  border-top: 1px solid var(--line);
 }
 .plugin-readme-trigger {
   font-weight: var(--font-weight-semibold);

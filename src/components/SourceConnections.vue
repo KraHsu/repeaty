@@ -543,188 +543,201 @@ function date(value?: string) {
             >
           </div>
         </header>
-        <UiNotice v-if="unavailable">{{
-          t('此连接的插件尚未启用。请在插件页面安装或启用后再检查。')
-        }}</UiNotice>
-        <UiNotice v-else-if="selected.status === 'disconnected'">{{
-          t('连接已断开。已保存的材料、卡片和学习记录仍然保留。')
-        }}</UiNotice>
-        <UiNotice v-else-if="needsAuthorization" tone="warning"
-          >{{ t('此设备需要重新授权读取来源目录。已保存的材料和待确认的变化仍然保留。') }}
-          <UiButton variant="secondary" :disabled="busy || running" @click="configure(selected)">{{
-            t('选择目录并重新关联')
-          }}</UiButton>
-        </UiNotice>
-        <p v-if="running" role="status" class="connection-progress">
-          {{ controller.progress.value || t('正在检查来源…') }}
-        </p>
-        <template v-if="selected.mode === 'index'">
-          <p class="form-note">
-            {{ t('只读索引不复制或改写原目录。更新后可以搜索目录中的 Markdown 和文本。') }}
-          </p>
-          <form class="connection-index-search" @submit.prevent="searchIndex">
-            <UiInput
-              v-model="indexQuery"
-              type="search"
-              icon="i-lucide-search"
-              :placeholder="t('搜索这个目录中的内容…')"
-              :aria-label="t('搜索只读目录')"
-              :disabled="indexSearching || selected.status !== 'connected'"
-            /><UiButton
-              type="submit"
+        <div class="app-section-divider app-section-stack">
+          <UiNotice v-if="unavailable">{{
+            t('此连接的插件尚未启用。请在插件页面安装或启用后再检查。')
+          }}</UiNotice>
+          <UiNotice v-else-if="selected.status === 'disconnected'">{{
+            t('连接已断开。已保存的材料、卡片和学习记录仍然保留。')
+          }}</UiNotice>
+          <UiNotice v-else-if="needsAuthorization" tone="warning"
+            >{{ t('此设备需要重新授权读取来源目录。已保存的材料和待确认的变化仍然保留。') }}
+            <UiButton
               variant="secondary"
-              :busy="indexSearching"
-              :disabled="!indexQuery.trim() || selected.status !== 'connected'"
-              >{{ t('搜索') }}</UiButton
+              :disabled="busy || running"
+              @click="configure(selected)"
+              >{{ t('选择目录并重新关联') }}</UiButton
             >
-          </form>
-          <p v-if="indexResult && !indexResult.hits.length" class="form-note">
-            {{ t('没有找到匹配的文件。') }}
+          </UiNotice>
+          <p v-if="running" role="status" class="connection-progress">
+            {{ controller.progress.value || t('正在检查来源…') }}
           </p>
-          <ul v-if="indexResult?.hits.length" class="connection-index-results">
-            <li v-for="entry in indexResult.hits" :key="entry.path">
-              <UiButton
-                variant="ghost"
-                :disabled="busy || indexReading"
-                :aria-pressed="indexPreview?.entry.path === entry.path"
-                @click="readIndexed(entry)"
-                ><strong>{{ entry.path }}</strong
-                ><span>{{ entry.snippet }}</span></UiButton
-              >
-            </li>
-          </ul>
-          <p v-if="indexResult?.more" class="form-note">
-            {{ t('仅显示前 50 个结果，请缩小搜索范围。') }}
-          </p>
-          <p v-if="indexReading" role="status">{{ t('正在读取原文…') }}</p>
-          <article v-if="indexPreview" class="connection-index-preview">
-            <header>
-              <h3>{{ indexPreview.entry.path }}</h3>
-              <UiButton v-if="collection" variant="primary" :busy="busy" @click="collectIndexed">{{
-                t('收集到收件箱')
-              }}</UiButton>
-            </header>
-            <pre>{{ indexPreview.text }}</pre>
+          <template v-if="selected.mode === 'index'">
             <p class="form-note">
-              {{ t('这是原目录的只读预览。收集后才会在学习库保存一份副本。') }}
+              {{ t('只读索引不复制或改写原目录。更新后可以搜索目录中的 Markdown 和文本。') }}
             </p>
-          </article>
-          <p v-if="indexNotice" role="status">{{ indexNotice }}</p>
-        </template>
-        <template v-else>
-          <div v-if="!pending.length && !running" class="connection-current">
-            <Check :size="24" />
-            <h3>{{ t('没有待确认的变化') }}</h3>
-            <p>{{ t('新内容、修改和移除都会先出现在这里。') }}</p>
-          </div>
-          <div v-else class="connection-changes">
-            <div class="connection-pending" :aria-label="t('待确认的变化')">
-              <UiButton
-                v-for="entry in pending"
-                :key="entry.id"
-                variant="ghost"
-                :aria-pressed="candidateId === entry.id"
-                :disabled="busy"
-                @click="candidateId = entry.id"
-                ><span>{{ t(candidateLabels[entry.kind]) }}</span
-                ><strong>{{ entry.title }}</strong
-                ><span v-if="entry.path">{{ entry.path }}</span></UiButton
+            <form class="connection-index-search" @submit.prevent="searchIndex">
+              <UiInput
+                v-model="indexQuery"
+                type="search"
+                icon="i-lucide-search"
+                :placeholder="t('搜索这个目录中的内容…')"
+                :aria-label="t('搜索只读目录')"
+                :disabled="indexSearching || selected.status !== 'connected'"
+              /><UiButton
+                type="submit"
+                variant="secondary"
+                :busy="indexSearching"
+                :disabled="!indexQuery.trim() || selected.status !== 'connected'"
+                >{{ t('搜索') }}</UiButton
               >
-            </div>
-            <article v-if="candidate" class="connection-review">
-              <header>
-                <span class="connection-change-kind">{{ t(candidateLabels[candidate.kind]) }}</span>
-                <h3>{{ candidate.title }}</h3>
+            </form>
+            <p v-if="indexResult && !indexResult.hits.length" class="form-note">
+              {{ t('没有找到匹配的文件。') }}
+            </p>
+            <ul v-if="indexResult?.hits.length" class="connection-index-results">
+              <li v-for="entry in indexResult.hits" :key="entry.path">
                 <UiButton
-                  v-if="hasOriginal(candidate.key)"
                   variant="ghost"
-                  :disabled="busy || selected.status !== 'connected'"
-                  @click="exportOriginal(candidate.key)"
-                  >{{ t('导出原件') }}</UiButton
+                  :disabled="busy || indexReading"
+                  :aria-pressed="indexPreview?.entry.path === entry.path"
+                  @click="readIndexed(entry)"
+                  ><strong>{{ entry.path }}</strong
+                  ><span>{{ entry.snippet }}</span></UiButton
+                >
+              </li>
+            </ul>
+            <p v-if="indexResult?.more" class="form-note">
+              {{ t('仅显示前 50 个结果，请缩小搜索范围。') }}
+            </p>
+            <p v-if="indexReading" role="status">{{ t('正在读取原文…') }}</p>
+            <article v-if="indexPreview" class="connection-index-preview">
+              <header>
+                <h3>{{ indexPreview.entry.path }}</h3>
+                <UiButton
+                  v-if="collection"
+                  variant="primary"
+                  :busy="busy"
+                  @click="collectIndexed"
+                  >{{ t('收集到收件箱') }}</UiButton
                 >
               </header>
-              <label
-                v-if="candidate.kind === 'add' && relinkTargets.length"
-                class="connection-relink"
-                >{{ t('保存方式')
-                }}<UiSelect
-                  v-model="targetId"
-                  :disabled="busy"
-                  :items="[
-                    { value: '', label: t('作为新材料收集') },
-                    ...relinkTargets.map((source) => ({
-                      value: source.id,
-                      label: t('重新关联：{title}', { title: source.title }),
-                    })),
-                  ]"
-                /><span>{{ t('文件改名或移动时，可关联原材料以保留卡片和历史。') }}</span></label
-              >
-              <UiNotice v-if="conflict"
-                ><AlertTriangle :size="18" />{{
-                  t(
-                    '本地正文也有修改。采用来源更新会保存当前正文为历史版本；已有卡片仍指向原来的版本。',
-                  )
-                }}</UiNotice
-              >
-              <p v-if="reading" role="status">{{ t('正在读取对比内容…') }}</p>
-              <template v-else-if="review">
-                <UiNotice v-if="candidate.kind === 'missing'">{{
-                  t('来源中已找不到这份材料。确认后标记为来源缺失，本地正文、卡片和历史不会删除。')
-                }}</UiNotice>
-                <div class="connection-diff" :class="{ 'has-local': !!review.source }">
-                  <section v-if="review.source">
-                    <h4>{{ t('当前本地版本') }}</h4>
-                    <pre>{{ review.localText }}</pre>
-                  </section>
-                  <section v-if="candidate.kind !== 'missing'">
-                    <h4>{{ t('来源中的新内容') }}</h4>
-                    <pre>{{ review.text }}</pre>
-                  </section>
-                </div>
-                <details v-if="review.baseText" class="connection-base">
-                  <summary>{{ t('查看上次接收的版本') }}</summary>
-                  <pre>{{ review.baseText }}</pre>
-                </details>
-                <footer class="connection-review-actions">
-                  <UiButton
-                    variant="secondary"
-                    :disabled="busy || running"
-                    @click="resolve('keep')"
-                    >{{ t('忽略这次变化') }}</UiButton
-                  ><UiButton
-                    variant="primary"
-                    :busy="busy"
-                    :disabled="running || selected.status !== 'connected'"
-                    @click="resolve('accept')"
-                    >{{
-                      t(
-                        candidate.kind === 'missing'
-                          ? '确认来源已移除'
-                          : candidate.kind === 'add' && !targetId
-                            ? '收集到收件箱'
-                            : '采用来源更新',
-                      )
-                    }}</UiButton
-                  >
-                </footer>
-              </template>
+              <pre>{{ indexPreview.text }}</pre>
+              <p class="form-note">
+                {{ t('这是原目录的只读预览。收集后才会在学习库保存一份副本。') }}
+              </p>
             </article>
-          </div>
-        </template>
-        <details v-if="originalMaterials.length" class="connection-originals">
-          <summary>{{ t('已关联材料的原件') }}</summary>
-          <ul>
-            <li v-for="source in originalMaterials" :key="source.id">
-              <span>{{ source.title }}</span
-              ><UiButton
-                variant="ghost"
-                :disabled="busy || selected.status !== 'connected'"
-                @click="exportOriginal(source.binding!.key)"
-                >{{ t('导出原件') }}</UiButton
-              >
-            </li>
-          </ul>
-        </details>
+            <p v-if="indexNotice" role="status">{{ indexNotice }}</p>
+          </template>
+          <template v-else>
+            <div v-if="!pending.length && !running" class="connection-current">
+              <Check :size="24" />
+              <h3>{{ t('没有待确认的变化') }}</h3>
+              <p>{{ t('新内容、修改和移除都会先出现在这里。') }}</p>
+            </div>
+            <div v-else class="connection-changes">
+              <div class="connection-pending" :aria-label="t('待确认的变化')">
+                <UiButton
+                  v-for="entry in pending"
+                  :key="entry.id"
+                  variant="ghost"
+                  :aria-pressed="candidateId === entry.id"
+                  :disabled="busy"
+                  @click="candidateId = entry.id"
+                  ><span>{{ t(candidateLabels[entry.kind]) }}</span
+                  ><strong>{{ entry.title }}</strong
+                  ><span v-if="entry.path">{{ entry.path }}</span></UiButton
+                >
+              </div>
+              <article v-if="candidate" class="connection-review app-section-stack">
+                <header>
+                  <span class="connection-change-kind">{{
+                    t(candidateLabels[candidate.kind])
+                  }}</span>
+                  <h3>{{ candidate.title }}</h3>
+                  <UiButton
+                    v-if="hasOriginal(candidate.key)"
+                    variant="ghost"
+                    :disabled="busy || selected.status !== 'connected'"
+                    @click="exportOriginal(candidate.key)"
+                    >{{ t('导出原件') }}</UiButton
+                  >
+                </header>
+                <label
+                  v-if="candidate.kind === 'add' && relinkTargets.length"
+                  class="connection-relink"
+                  >{{ t('保存方式')
+                  }}<UiSelect
+                    v-model="targetId"
+                    :disabled="busy"
+                    :items="[
+                      { value: '', label: t('作为新材料收集') },
+                      ...relinkTargets.map((source) => ({
+                        value: source.id,
+                        label: t('重新关联：{title}', { title: source.title }),
+                      })),
+                    ]"
+                  /><span>{{ t('文件改名或移动时，可关联原材料以保留卡片和历史。') }}</span></label
+                >
+                <UiNotice v-if="conflict"
+                  ><AlertTriangle :size="18" />{{
+                    t(
+                      '本地正文也有修改。采用来源更新会保存当前正文为历史版本；已有卡片仍指向原来的版本。',
+                    )
+                  }}</UiNotice
+                >
+                <p v-if="reading" role="status">{{ t('正在读取对比内容…') }}</p>
+                <template v-else-if="review">
+                  <UiNotice v-if="candidate.kind === 'missing'">{{
+                    t(
+                      '来源中已找不到这份材料。确认后标记为来源缺失，本地正文、卡片和历史不会删除。',
+                    )
+                  }}</UiNotice>
+                  <div class="connection-diff" :class="{ 'has-local': !!review.source }">
+                    <section v-if="review.source">
+                      <h4>{{ t('当前本地版本') }}</h4>
+                      <pre>{{ review.localText }}</pre>
+                    </section>
+                    <section v-if="candidate.kind !== 'missing'">
+                      <h4>{{ t('来源中的新内容') }}</h4>
+                      <pre>{{ review.text }}</pre>
+                    </section>
+                  </div>
+                  <details v-if="review.baseText" class="connection-base">
+                    <summary>{{ t('查看上次接收的版本') }}</summary>
+                    <pre>{{ review.baseText }}</pre>
+                  </details>
+                  <footer class="connection-review-actions app-section-divider">
+                    <UiButton
+                      variant="secondary"
+                      :disabled="busy || running"
+                      @click="resolve('keep')"
+                      >{{ t('忽略这次变化') }}</UiButton
+                    ><UiButton
+                      variant="primary"
+                      :busy="busy"
+                      :disabled="running || selected.status !== 'connected'"
+                      @click="resolve('accept')"
+                      >{{
+                        t(
+                          candidate.kind === 'missing'
+                            ? '确认来源已移除'
+                            : candidate.kind === 'add' && !targetId
+                              ? '收集到收件箱'
+                              : '采用来源更新',
+                        )
+                      }}</UiButton
+                    >
+                  </footer>
+                </template>
+              </article>
+            </div>
+          </template>
+          <details v-if="originalMaterials.length" class="connection-originals">
+            <summary>{{ t('已关联材料的原件') }}</summary>
+            <ul>
+              <li v-for="source in originalMaterials" :key="source.id">
+                <span>{{ source.title }}</span
+                ><UiButton
+                  variant="ghost"
+                  :disabled="busy || selected.status !== 'connected'"
+                  @click="exportOriginal(source.binding!.key)"
+                  >{{ t('导出原件') }}</UiButton
+                >
+              </li>
+            </ul>
+          </details>
+        </div>
       </section>
     </div>
     <AppModal
@@ -734,7 +747,7 @@ function date(value?: string) {
       :error="error"
       @close="draft = undefined"
     >
-      <form class="connection-form" @submit.prevent="save">
+      <form class="connection-form app-section-stack" @submit.prevent="save">
         <label
           >{{ t('来源类型')
           }}<UiSelect
@@ -956,14 +969,12 @@ function date(value?: string) {
   font-size: var(--font-size-meta);
 }
 .connection-detail {
+  --app-content-gap: 1rem;
   display: grid;
-  gap: 1rem;
   min-width: 0;
 }
 .connection-detail-heading {
   flex-wrap: wrap;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--line);
 }
 .connection-actions,
 .connection-review-actions {
@@ -1001,8 +1012,6 @@ function date(value?: string) {
   overflow: auto;
 }
 .connection-review {
-  display: grid;
-  gap: 1rem;
   min-width: 0;
 }
 .connection-change-kind {
@@ -1056,17 +1065,12 @@ function date(value?: string) {
   color: var(--muted);
   margin-bottom: 0.75rem;
 }
-.connection-review-actions {
-  padding-top: 1rem;
-  border-top: 1px solid var(--line);
-}
-.connection-form,
 .connection-form label {
   display: grid;
   gap: 0.5rem;
 }
 .connection-form {
-  gap: 1rem;
+  --app-content-gap: 1rem;
 }
 .connection-directory {
   display: grid;
@@ -1077,7 +1081,7 @@ function date(value?: string) {
   overflow-wrap: anywhere;
 }
 .connection-progress {
-  margin: 0;
+  margin-block-end: 0;
   color: var(--muted);
 }
 .connection-index-search {
@@ -1091,7 +1095,8 @@ function date(value?: string) {
 .connection-index-results,
 .connection-originals ul {
   padding: 0;
-  margin: 0;
+  margin-block-end: 0;
+  margin-inline: 0;
   list-style: none;
 }
 .connection-index-results {

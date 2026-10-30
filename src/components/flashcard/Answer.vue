@@ -24,7 +24,7 @@ defineProps<QuestionProps>()
       :inline-media="card.inlineMedia"
       :get-media="getMedia"
     />
-    <div v-if="card.cloze.extra" class="cloze-extra">
+    <div v-if="card.cloze.extra" class="cloze-extra app-section-divider">
       <span class="eyebrow">{{ t('补充说明') }}</span>
       <CardContent
         :text="card.cloze.extra"

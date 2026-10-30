@@ -697,7 +697,7 @@ async function refreshPlugins() {
               >{{ t('重试') }}</UiButton
             >
           </UiNotice>
-          <section class="plugin-metadata plugin-detail-section" :aria-label="t('插件信息')">
+          <section class="plugin-metadata app-section-divider" :aria-label="t('插件信息')">
             <h3>{{ t('插件信息') }}</h3>
             <dl class="ui-setting-meta plugin-summary">
               <dt>{{ t('插件标识') }}</dt>
@@ -744,7 +744,7 @@ async function refreshPlugins() {
           </section>
           <UiCollapsible
             v-if="!previewLoading && !previewError"
-            class="plugin-readme plugin-detail-section ui-setting-help"
+            class="plugin-readme app-section-divider ui-setting-help"
             :open="openReadmes.has(entry.id)"
             @update:open="toggleReadme(entry.id, $event)"
           >
