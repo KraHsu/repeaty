@@ -69,6 +69,8 @@ markdown.renderer.rules.image = (tokens, index, _options, env) => {
 }
 const linkOpen = markdown.renderer.rules.link_open
 markdown.renderer.rules.link_open = (tokens, index, options, env, renderer) => {
+  const controlled = env.sourceLink?.(tokens[index]!.attrGet('href') ?? '')
+  if (controlled) return controlled
   tokens[index]!.attrSet('target', '_blank')
   tokens[index]!.attrSet('rel', 'noopener noreferrer')
   return linkOpen
@@ -153,6 +155,24 @@ interface ReadingEnvironment {
   anchor?: (html: string, start: number, end: number) => string
   wiki?: (html: string, target: string) => string
   task?: (offset: number, checked: boolean) => string
+  sourceLink?: (href: string) => string | undefined
+}
+export interface ContentLinkOptions {
+  sourceLinks?: ReadonlySet<string>
+  resourceLinks?: ReadonlySet<string>
+}
+function controlledLink(
+  href: string,
+  options: ContentLinkOptions,
+  register: (attributes: string) => string,
+) {
+  const attribute = options.sourceLinks?.has(href)
+    ? 'data-source-reference'
+    : options.resourceLinks?.has(href)
+      ? 'data-source-resource'
+      : undefined
+  if (!attribute) return undefined
+  return `<a class="${register(`class="reading-wiki-link" ${attribute}="${markdown.utils.escapeHtml(href)}" role="link" tabindex="0"`)}">`
 }
 markdown.renderer.rules.text = (tokens, index, _options, env: ReadingEnvironment) =>
   env.anchor
@@ -183,16 +203,30 @@ for (const type of ['fence', 'code_block']) {
 export function renderMarkdown(
   text: string,
   resources: ReadonlyMap<string, string> = new Map(),
+  options: ContentLinkOptions = {},
 ): string {
   const scope = contentScope()
-  return wrapHtml(cleanHtml(markdown.render(text, { resources }), scope, resources), scope)
+  const nonce = 'source-link-' + crypto.randomUUID(),
+    wrappers = new Map<string, string>()
+  const sourceLink = (href: string) =>
+    controlledLink(href, options, (attributes) => {
+      const key = `${nonce}-${wrappers.size}`
+      wrappers.set(key, attributes)
+      return key
+    })
+  const html = cleanHtml(
+    markdown.render(text, { resources, sourceLink }),
+    scope,
+    resources,
+  ).replace(/class="([^"]+)"/g, (attribute, key: string) => wrappers.get(key) ?? attribute)
+  return wrapHtml(html, scope)
 }
 
 /** Wrap top-level blocks with source offsets; ordinary card rendering stays unchanged. */
 export function renderReadingMarkdown(
   text: string,
   resources: ReadonlyMap<string, string> = new Map(),
-  options: { editableTasks?: boolean } = {},
+  options: ContentLinkOptions & { editableTasks?: boolean } = {},
 ): string {
   const scope = contentScope()
   const nonce = 'reading-' + crypto.randomUUID()
@@ -205,6 +239,12 @@ export function renderReadingMarkdown(
   const environment: ReadingEnvironment = {
     readingMapping: true,
     resources,
+    sourceLink: (href) =>
+      controlledLink(href, options, (attributes) => {
+        const key = `${nonce}-${wrappers.size}`
+        wrappers.set(key, attributes)
+        return key
+      }),
     anchor: (html, start, end) =>
       trusted(html, `data-reading-start="${start}" data-reading-stop="${end}"`),
     wiki: (html, target) =>

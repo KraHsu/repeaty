@@ -236,6 +236,8 @@ export function createBrowserRepository(
             'attempts',
             'materialReceipts',
             'materialFolders',
+            'sourceConnections',
+            'sourceCandidates',
           ] as const
         ).every((key) => library[key] === before[key]) &&
         library.cards.length === before.cards.length

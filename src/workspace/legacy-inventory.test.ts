@@ -4,7 +4,11 @@ import { fixture, legacyFixture, now } from '../core/test-fixtures'
 import { recordStores as currentRecordStores } from '../core/storage'
 // This inventory fixture describes the pre-material v16 database only.
 const recordStores = currentRecordStores.filter(
-  (store) => store !== 'materialReceipts' && store !== 'materialFolders',
+  (store) =>
+    store !== 'materialReceipts' &&
+    store !== 'materialFolders' &&
+    store !== 'sourceConnections' &&
+    store !== 'sourceCandidates',
 )
 import { summarizeAttempt } from '../core/practice-data'
 import {

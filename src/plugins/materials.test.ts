@@ -201,3 +201,46 @@ it('guards bound material host before and after awaits and cancels tasks when th
   await rejected
   expect(() => api.materials.snapshot()).toThrow('插件已卸载')
 })
+
+it('snapshots connector fields and cancels an active scan when it is unregistered', async () => {
+  const registry = createMaterialRegistrations(() => true)
+  const fields = [
+    {
+      key: 'mode',
+      title: 'Mode',
+      type: 'select' as const,
+      options: [{ value: 'all', label: 'All' }],
+      default: 'all',
+    },
+  ]
+  let task!: MaterialTaskContext
+  let finish!: (value: { items: []; complete: true }) => void
+  const cleanup = vi.fn()
+  const remove = registry.registrations.registerSourceConnector({
+    id: 'source',
+    title: 'Source',
+    kind: 'remote',
+    fields,
+    scan: async (_request, context) => {
+      task = context
+      context.onCleanup(cleanup)
+      return new Promise((resolve) => {
+        finish = resolve
+      })
+    },
+  })
+  fields[0]!.options[0]!.label = 'Changed'
+  expect(registry.connectors[0]!.fields![0]!.options![0]!.label).toBe('All')
+  const pending = registry.connectors[0]!.scan({ connectionId: 'one', settings: {} }, context())
+  await Promise.resolve()
+  const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+  remove()
+  await rejected
+  expect(task.signal.aborted).toBe(true)
+  expect(cleanup).toHaveBeenCalledOnce()
+  expect(() => task.progress({ completed: 1 })).toThrow()
+  finish({ items: [], complete: true })
+  await Promise.resolve()
+  expect(registry.connectors).toHaveLength(0)
+  expect(cleanup).toHaveBeenCalledOnce()
+})

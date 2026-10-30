@@ -9,6 +9,8 @@ const ids = [
   'pdf-reader',
   'document-reader',
   'visual-occlusion',
+  'obsidian',
+  'readwise',
 ]
 await mkdir('plugins/packages', { recursive: true })
 for (const id of ids) {

@@ -14,6 +14,8 @@ export function externalPlugins(desktop: boolean): Plugin {
           'pdf-reader',
           'document-reader',
           'visual-occlusion',
+          'obsidian',
+          'readwise',
         ]
       : [
           'review-history',
@@ -22,6 +24,8 @@ export function externalPlugins(desktop: boolean): Plugin {
           'pdf-reader',
           'document-reader',
           'visual-occlusion',
+          'obsidian',
+          'readwise',
         ]
     const files = new Map<string, string>()
     const catalog = ids.map((id) => {

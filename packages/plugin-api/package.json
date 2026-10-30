@@ -1,6 +1,6 @@
 {
   "name": "@repeaty/plugin-api",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "scripts": {
     "test": "node --test build.test.mjs"
   },
@@ -17,6 +17,7 @@
   "files": [
     "index.d.ts",
     "materials.d.ts",
+    "collection.d.ts",
     "build.d.mts",
     "build.mjs"
   ],

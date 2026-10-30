@@ -236,6 +236,13 @@ export function removeSource(library: Library, id: string): Library {
     throw new LocalizedError(msg('材料已不存在，请刷新后重试。'))
   return pruneMedia({
     ...library,
+    sourceCandidates: library.sourceCandidates
+      .filter((c) => c.sourceId !== id || c.kind !== 'missing')
+      .map((c) =>
+        c.sourceId === id
+          ? { ...c, sourceId: undefined, baseMediaId: undefined, kind: 'add' as const }
+          : c,
+      ),
     sources: library.sources
       .filter((source) => source.id !== id)
       .map((source) =>

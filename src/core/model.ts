@@ -1,6 +1,8 @@
 import { msg, LocalizedError } from '../i18n'
 import { inlineMediaSchema } from './inline-media-data'
 import { z } from 'zod'
+import { sourceConnectionSchema, sourceCandidateSchema } from './collection-data'
+export { sourceConnectionSchema, sourceCandidateSchema } from './collection-data'
 import { materialFolderSchema, validateMaterialFolders } from './material-organization-data'
 import { createEmptyCard, type Card as FsrsCard } from 'ts-fsrs'
 import { scheduleSchema, librarySchema as legacySchema } from './legacy'
@@ -287,9 +289,11 @@ export function variants(
 }
 
 const libraryContents = z.object({
-  version: z.literal(16),
+  version: z.literal(17),
   materialFolders: z.array(materialFolderSchema).max(10_000).default([]),
   materialReceipts: z.array(materialReceiptSchema).max(100_000).default([]),
+  sourceConnections: z.array(sourceConnectionSchema).max(100).default([]),
+  sourceCandidates: z.array(sourceCandidateSchema).max(10_000).default([]),
   sources: z.array(sourceSchema).max(10_000),
   practices: z.array(practiceSchema).max(100_000),
   attempts: z.array(attemptSchema).max(500_000),
@@ -318,6 +322,8 @@ export function validateLibraryReferences(
     'sources',
     'materialReceipts',
     'materialFolders',
+    'sourceConnections',
+    'sourceCandidates',
   ] as const) {
     if (new Set(library[key].map((entry) => entry.id)).size !== library[key].length)
       problem(`${key} 中存在重复 ID`)
@@ -327,6 +333,47 @@ export function validateLibraryReferences(
   const cards = new Set(library.cards.map((card) => card.id))
   const media = new Map(library.media.map((item) => [item.id, item]))
   const sources = new Map(library.sources.map((source) => [source.id, source]))
+  const connections = new Set(library.sourceConnections.map((connection) => connection.id))
+  const candidateKeys = new Set<string>(),
+    bindings = new Set<string>()
+  for (const candidate of library.sourceCandidates) {
+    const key = JSON.stringify([candidate.connectionId, candidate.key])
+    if (candidateKeys.has(key) || !connections.has(candidate.connectionId))
+      problem('来源候选的连接或身份无效')
+    candidateKeys.add(key)
+    if (
+      candidate.mediaId &&
+      (!media.has(candidate.mediaId) ||
+        !['text/plain', 'text/markdown'].includes(media.get(candidate.mediaId)!.type))
+    )
+      problem('来源候选正文不存在')
+    for (const resource of candidate.resources ?? [])
+      if (!media.has(resource.mediaId)) problem('来源候选附件不存在')
+    // Removed accepted materials can leave a reviewable candidate, but never a dangling version.
+    if (
+      candidate.sourceId &&
+      sources.has(candidate.sourceId) &&
+      candidate.baseMediaId &&
+      ![
+        sources.get(candidate.sourceId)!,
+        ...(sources.get(candidate.sourceId)!.versions ?? []),
+      ].some((v) => v.mediaId === candidate.baseMediaId)
+    )
+      problem('来源候选基线版本不存在')
+  }
+  for (const source of library.sources)
+    if (source.binding) {
+      const key = JSON.stringify([source.binding.connectionId, source.binding.key])
+      if (bindings.has(key) || !connections.has(source.binding.connectionId))
+        problem('材料来源关联无效或重复')
+      bindings.add(key)
+      if (
+        ![source, ...(source.versions ?? [])].some(
+          (v) => v.mediaId === source.binding!.acceptedMediaId,
+        )
+      )
+        problem('来源已接受版本不存在')
+    }
   const receiptKeys = new Set<string>()
   for (const receipt of library.materialReceipts) {
     const key = JSON.stringify([receipt.pluginId, receipt.kind, receipt.operationId])
@@ -451,6 +498,8 @@ export const workspaceLibrarySchema = libraryContents
   )
 export type Library = z.infer<typeof workspaceLibrarySchema>
 export const recordSchemas = {
+  sourceConnections: sourceConnectionSchema,
+  sourceCandidates: sourceCandidateSchema,
   materialFolders: materialFolderSchema,
   sources: sourceSchema,
   materialReceipts: materialReceiptSchema,
@@ -465,9 +514,11 @@ export const recordSchemas = {
 }
 export function emptyLibrary(): Library {
   return {
-    version: 16,
+    version: 17,
     materialFolders: [],
     materialReceipts: [],
+    sourceConnections: [],
+    sourceCandidates: [],
     sources: [],
     decks: [],
     notes: [],
@@ -580,6 +631,10 @@ export function pruneMedia(library: Library): Library {
       ...(source.versions ?? []).map((version) => version.mediaId),
     ]),
   ])
+  for (const candidate of library.sourceCandidates) {
+    if (candidate.mediaId) used.add(candidate.mediaId)
+    for (const resource of candidate.resources ?? []) used.add(resource.mediaId)
+  }
   for (const note of library.notes) for (const ref of note.inlineMedia ?? []) used.add(ref.mediaId)
   for (const source of library.sources)
     for (const version of [source, ...(source.versions ?? [])]) {
@@ -670,10 +725,11 @@ export function migrateLibrary(value: unknown): Library {
       value.version === 13 ||
       value.version === 14 ||
       value.version === 15 ||
-      value.version === 16)
+      value.version === 16 ||
+      value.version === 17)
   )
     return librarySchema.parse(
-      value.version === 16
+      value.version === 17
         ? value
         : value.version === 6 ||
             value.version === 7 ||
@@ -684,22 +740,23 @@ export function migrateLibrary(value: unknown): Library {
             value.version === 12 ||
             value.version === 13 ||
             value.version === 14 ||
-            value.version === 15
-          ? { ...value, version: 16 }
+            value.version === 15 ||
+            value.version === 16
+          ? { ...value, version: 17 }
           : value.version === 5
-            ? { sources: [], ...value, version: 16 }
+            ? { sources: [], ...value, version: 17 }
             : {
                 sources: [],
                 practices: [],
                 attempts: [],
                 ...value,
-                version: 16,
+                version: 17,
               },
     )
   const old = legacySchema.parse(value)
   const seen = new Set<string>()
   return librarySchema.parse({
-    version: 16,
+    version: 17,
     sources: [],
     practices: [],
     attempts: [],

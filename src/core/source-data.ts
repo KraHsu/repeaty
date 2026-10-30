@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { inboxSchema, sourceBindingSchema } from './collection-data'
 import { inlineMediaSchema } from './inline-media-data'
 import { parseSourceProperties, MAX_SOURCE_PROPERTIES } from './source-properties'
 import {
@@ -170,6 +171,8 @@ export interface SourceDetailsUpdate {
 export const sourceSchema = z
   .object({
     id,
+    inbox: inboxSchema.optional(),
+    binding: sourceBindingSchema.optional(),
     parentSourceId: id.optional(),
     folderId: id.optional(),
     order: z.number().finite().optional(),

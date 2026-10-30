@@ -29,6 +29,8 @@ import { createReadingCommands } from './library-reading'
 import { createFilesCommands } from './library-files'
 import { createStudyCommands } from './library-study'
 import { createTransfersCommands } from './library-transfers'
+import { createSourceConnectionCommands } from './library-connections'
+import { createCollectionCommands } from './library-collection'
 import { createMaterialCommands } from './library-materials'
 import { createOrganizationCommands } from './library-organization'
 import { createWorkbenchCommands } from './library-workbench'
@@ -567,6 +569,8 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
       ...createStudyCommands(context),
       ...createTransfersCommands(context),
       ...createMaterialCommands(context),
+      ...createCollectionCommands(context),
+      ...createSourceConnectionCommands(context),
       ...createOrganizationCommands(context),
       ...createWorkbenchCommands(context),
     },

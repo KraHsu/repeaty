@@ -240,6 +240,13 @@ export function createPluginApi(
       disposers.push(remove)
       return remove
     },
+    registerSourceConnector(
+      contribution: Parameters<MaterialRegistrations['registerSourceConnector']>[0],
+    ) {
+      const remove = registration('registerSourceConnector')(contribution)
+      disposers.push(remove)
+      return remove
+    },
     registerReader(contribution: Parameters<MaterialRegistrations['registerReader']>[0]) {
       const remove = registration('registerReader')(contribution)
       disposers.push(remove)

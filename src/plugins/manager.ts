@@ -120,14 +120,53 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
     pluginId: string,
     importerId: string,
     file: File,
-    options: Pick<MaterialTaskOptions, 'signal' | 'onProgress'> = {},
+    options: Pick<MaterialTaskOptions, 'signal' | 'onProgress'> & { files?: readonly File[] } = {},
   ) {
     const { api, installation } = materialContribution(pluginId)
     const importer = installation.importers?.find((entry) => entry.id === importerId)
     if (!importer) throw new Error('材料导入器不可用。')
     return api.tasks.run(
       { id: `parse-${crypto.randomUUID()}`, title: importer.title, ...options },
-      (context) => importer.parse(file, context),
+      (context) => importer.parse(file, { ...context, files: options.files }),
+    )
+  }
+  async function scanSourceConnector(
+    pluginId: string,
+    connectorId: string,
+    request: import('@repeaty/plugin-api').SourceConnectorRequest,
+    options: Pick<MaterialTaskOptions, 'signal' | 'onProgress'> = {},
+  ) {
+    const { api, installation } = materialContribution(pluginId)
+    const connector = installation.connectors?.find((entry) => entry.id === connectorId)
+    if (!connector) throw new Error('来源连接器不可用，请先启用对应插件。')
+    return api.tasks.run(
+      { id: `source-${crypto.randomUUID()}`, title: connector.title, ...options },
+      (context) => {
+        const current = () => {
+          context.signal.throwIfAborted()
+          const active = materialContribution(pluginId)
+          if (active.installation !== installation || !installation.connectors?.includes(connector))
+            throw new Error('来源连接器已停用或替换。')
+        }
+        const directory = request.directory
+        const owned = {
+          ...request,
+          settings: structuredClone(request.settings),
+          directory: directory
+            ? {
+                files: structuredClone(directory.files),
+                async read(path: string) {
+                  current()
+                  const blob = await directory.read(path)
+                  current()
+                  return blob
+                },
+              }
+            : undefined,
+        }
+        current()
+        return connector.scan(owned, context)
+      },
     )
   }
   async function executeMaterialCommand(
@@ -654,6 +693,7 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
     setMaterialHost,
     materialApiFor,
     parseMaterialFile,
+    scanSourceConnector,
     executeMaterialCommand,
     openMaterialTool,
     searchMaterialProvider,
