@@ -2,6 +2,8 @@
 
 [返回开发文档](DEVELOPMENT.md) · [LeetCode](LEETCODE.md)
 
+SDK 1.15 新增[插件本地化与可靠设置保存](INTERFACE_LANGUAGES.md#插件本地化)。材料命令可以通过 `formats: ['*']` 参与所有阅读器，使用同一套可配置快捷键与菜单；停用和卸载清理入口，保留用户的绑定偏好。独立官方[选区查询](../plugins/web-lookup/README.md)提供可编辑的外部查询目标。
+
 设置与表单使用 SDK 的 `SettingGroup`、`SettingSection`、`SettingField`，状态和提示分别使用 `UiStatus`、`UiNotice`，操作使用 `UiButton`、`UiIconButton`。这些接口由宿主中的 Nuxt UI 绘制；官方插件的编辑、答题、提交恢复及历史交互使用同一实现。复杂编辑器使用 `UiInput`、`UiTextarea` 等公开控件，不导入 Nuxt UI 或软件内部模块。见[界面规范](DESIGN_SYSTEM.md)及[控件独立示例](examples/settings-plugin/README.md)。
 
 本页描述当前开发分支的外置插件机制，尚未随新安装包发布。发布页既有的 0.27.0 安装包不代表本分支的实现，也不能作为这套插件机制的安装或 GUI 验收产物。

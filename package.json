@@ -21,7 +21,8 @@
     "packages/publishing-client",
     "plugins/static-publish",
     "plugins/wordpress-publish",
-    "plugins/discourse-publish"
+    "plugins/discourse-publish",
+    "plugins/web-lookup"
   ],
   "description": "Desktop flashcards and spaced repetition, with your learning library in one folder.",
   "engines": {

@@ -36,6 +36,7 @@ export function externalPlugins(desktop: boolean): Plugin {
           'study-statistics',
         ]
     if (!desktop) ids.push('static-publish')
+    ids.push('web-lookup')
     const files = new Map<string, string>()
     const catalog = ids.map((id) => {
       const bundle = JSON.parse(

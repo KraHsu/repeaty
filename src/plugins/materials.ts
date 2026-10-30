@@ -271,13 +271,26 @@ export function createMaterialRegistrations(current: () => boolean) {
         (run !== undefined && typeof run !== 'function') ||
         (component &&
           (Array.isArray(component) || !['object', 'function'].includes(typeof component))) ||
-        (formats && !strings(formats, (value) => /^[a-z0-9][a-z0-9.+_-]{0,63}$/.test(value))) ||
+        (formats &&
+          !strings(
+            formats,
+            (value) => value === '*' || /^[a-z0-9][a-z0-9.+_-]{0,63}$/.test(value),
+          )) ||
         (shortcut !== undefined && (typeof shortcut !== 'string' || shortcut.length > 100))
       )
         throw new Error('插件命令定义无效。')
       return register(commands, contribution, (signal) => ({
         id,
-        title,
+        get title() {
+          // A plugin can localize its label reactively; identity and executable
+          // capabilities remain captured at registration time.
+          try {
+            const next = contribution.title
+            return typeof next === 'string' && next.trim() && next.length <= 200 ? next : title
+          } catch {
+            return title
+          }
+        },
         shortcut,
         formats,
         component: component && markRaw(component),

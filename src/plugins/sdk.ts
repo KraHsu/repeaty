@@ -1,6 +1,6 @@
 import * as vue from 'vue'
-import { t, locale } from '../i18n'
-import { readSetting, writeSetting } from '../settings-store'
+import { t, locale, createTranslator } from '../i18n'
+import { readSetting, writeSetting, persistSetting } from '../settings-store'
 import { practiceContentRevision } from '../core/practice'
 import { hasAttemptBody } from '../core/practice-data'
 import { callPluginHost, readPluginData, writePluginData } from '@repeaty-plugin-host'
@@ -375,6 +375,7 @@ export function createPluginApi(
   return {
     t,
     locale,
+    createTranslator,
     MediaList,
     CardContent,
     PracticeHistory,
@@ -469,6 +470,11 @@ export function createPluginApi(
     writeSetting(key: string, value: string, onError?: () => void) {
       guard()
       writeSetting(settingsKey(key), value, onError)
+    },
+    async persistSetting(key: string, value: string) {
+      guard()
+      await persistSetting(settingsKey(key), value)
+      guard()
     },
     nativePlugin: native,
     pluginFiles: {

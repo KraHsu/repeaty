@@ -42,7 +42,7 @@ export default function activate(): ExtensionPlugin {
       {
         id: 'connections',
         get title() {
-          return locale.value === 'en' ? 'Connections' : '连接'
+          return !locale.value.startsWith('zh') ? 'Connections' : '连接'
         },
       },
       { id: 'readwise', title: 'Readwise' },
@@ -55,10 +55,10 @@ export default function activate(): ExtensionPlugin {
     type: 'extension',
     version: 1,
     get label() {
-      return locale.value === 'en' ? 'Readwise source' : 'Readwise 来源'
+      return !locale.value.startsWith('zh') ? 'Readwise source' : 'Readwise 来源'
     },
     get description() {
-      return locale.value === 'en'
+      return !locale.value.startsWith('zh')
         ? 'Collect Reader documents and highlights; review updates before accepting.'
         : '收集 Reader 正文与高亮，确认后采用来源更新。'
     },

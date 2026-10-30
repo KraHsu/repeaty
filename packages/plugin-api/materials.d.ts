@@ -157,6 +157,7 @@ export interface MaterialCommandContribution {
   /** Exactly one of run or component. Tool components receive { context, onClose }. */
   run?: (context: MaterialCommandContext) => Promise<void>
   component?: Component
+  /** '*' contributes to every material format, including future readers. */
   formats?: readonly string[]
 }
 export interface MaterialSearchQuery {

@@ -244,7 +244,9 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
     const source = snapshot.sources.find((source) => source.id === request.sourceId)
     if (
       !source ||
-      (command.formats && !command.formats.includes(source.document?.format ?? source.format))
+      (command.formats &&
+        !command.formats.includes('*') &&
+        !command.formats.includes(source.document?.format ?? source.format))
     )
       throw new Error('此命令不支持当前材料。')
     const scope = api.resources.createScope()

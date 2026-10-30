@@ -71,16 +71,16 @@ const messages = {
 } as const
 
 export function text(key: keyof typeof messages) {
-  return messages[key][locale.value === 'en' ? 1 : 0]
+  return messages[key][!locale.value.startsWith('zh') ? 1 : 0]
 }
 export function duration(value: number | null) {
   if (value === null) return '—'
-  if (value === 0) return locale.value === 'en' ? '0 min' : '0 分钟'
+  if (value === 0) return !locale.value.startsWith('zh') ? '0 min' : '0 分钟'
   const minutes = Math.floor(value / 60_000)
-  if (minutes === 0) return locale.value === 'en' ? '< 1 min' : '不足 1 分钟'
+  if (minutes === 0) return !locale.value.startsWith('zh') ? '< 1 min' : '不足 1 分钟'
   const hours = Math.floor(minutes / 60)
-  if (!hours) return locale.value === 'en' ? `${minutes} min` : `${minutes} 分钟`
-  return locale.value === 'en'
+  if (!hours) return !locale.value.startsWith('zh') ? `${minutes} min` : `${minutes} 分钟`
+  return !locale.value.startsWith('zh')
     ? `${hours} h ${minutes % 60} min`
     : `${hours} 小时 ${minutes % 60} 分钟`
 }
