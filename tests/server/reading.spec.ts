@@ -194,13 +194,13 @@ test('an unavailable service refuses to archive and retains the original reading
   await expect(
     page.getByRole('heading', { name: 'Account queue retry', exact: true }),
   ).toBeVisible()
-  await selectUiValue(page.getByLabel('阅读优先级', { exact: true }), 'high')
+  await selectUiValue(page.getByLabel('学习优先级', { exact: true }), '1')
   await expect(page.getByRole('alert')).toBeVisible()
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'normal')
+  await expect(page.getByLabel('学习优先级', { exact: true })).toHaveAttribute('value', 'inherit')
   expect((await (await request.get('api/library', { headers })).json()).library).toEqual(before)
   reject = false
-  await selectUiValue(page.getByLabel('阅读优先级', { exact: true }), 'high')
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'high')
+  await selectUiValue(page.getByLabel('学习优先级', { exact: true }), '1')
+  await expect(page.getByLabel('学习优先级', { exact: true })).toHaveAttribute('value', '1')
   await page.getByRole('button', { name: '归档材料', exact: true }).click()
   await expect(page.getByRole('heading', { name: '暂无待阅读材料', exact: true })).toBeVisible()
 })

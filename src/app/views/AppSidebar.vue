@@ -42,6 +42,7 @@ function active(page: string) {
 const navigation = ref<HTMLElement>()
 const selection = ref<HTMLElement>()
 let observer: ResizeObserver | undefined
+let resizeFrame: number | undefined
 const observedLinks = new Set<HTMLElement>()
 function positionSelection() {
   const nav = navigation.value
@@ -81,13 +82,29 @@ function updateSelection() {
   }
   positionSelection()
 }
+function positionAfterResize() {
+  if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame)
+  // Chromium can report resize/media changes before applying the new CSS gap,
+  // even in that frame's rAF. Cross the render boundary before measuring it.
+  resizeFrame = requestAnimationFrame(() => {
+    resizeFrame = requestAnimationFrame(() => {
+      resizeFrame = undefined
+      positionSelection()
+    })
+  })
+}
 onMounted(() => {
   observer = new ResizeObserver(positionSelection)
   if (navigation.value) observer.observe(navigation.value)
   updateSelection()
+  // Responsive gaps can move links without resizing the links or navigation.
+  // ResizeObserver alone does not report that positional change.
+  window.addEventListener('resize', positionAfterResize)
 })
 onUpdated(updateSelection)
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', positionAfterResize)
+  if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame)
   observer?.disconnect()
   observedLinks.clear()
 })

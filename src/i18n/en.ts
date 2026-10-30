@@ -7,7 +7,17 @@ import { materialSearchMessages } from './material-search'
 import { readingWorkbenchMessages } from './reading-workbench'
 import { collectionMessages } from './collection'
 import { captureMessages } from './capture'
+import { studySchedulingMessages } from './study-scheduling'
+import { studyControlMessages } from './study-controls'
 export const en = {
+  ...studyControlMessages,
+  ...studySchedulingMessages,
+  调整学习设置: 'Change study settings',
+  调整学习优先级: 'Change study priority',
+  均衡安排新卡: 'Balance new cards',
+  保存个人记忆参数: 'Save personal memory parameters',
+  采用个人记忆参数: 'Apply personal memory parameters',
+  回退个人记忆参数: 'Restore previous memory parameters',
   ...captureMessages,
   ...collectionMessages,
   调整章节阅读安排: 'Change chapter reading order',

@@ -14,7 +14,9 @@
     "plugins/document-reader",
     "plugins/visual-occlusion",
     "plugins/obsidian",
-    "plugins/readwise"
+    "plugins/readwise",
+    "plugins/fsrs-optimizer",
+    "plugins/study-statistics"
   ],
   "description": "Desktop flashcards and spaced repetition, with your learning library in one folder.",
   "engines": {

@@ -26,12 +26,20 @@ const kinds = [
   'materialFolders',
   'sourceConnections',
   'sourceCandidates',
+  'studySettings',
+  'studyEvents',
+  'studyActivity',
+  'fsrsModels',
 ] as const
 const MB = 1024 * 1024
 export const MAX_ARCHIVE_BYTES = 2 * 1024 * MB
 const PART_BYTES = MB
 const MAX_PART_BYTES = 8 * MB
 const countSchema = z.object({
+  studySettings: z.number().int().min(0).max(1).default(0),
+  studyEvents: z.number().int().min(0).max(500_000).default(0),
+  studyActivity: z.number().int().min(0).max(500_000).default(0),
+  fsrsModels: z.number().int().min(0).max(200).default(0),
   sourceConnections: z.number().int().min(0).max(100).default(0),
   sourceCandidates: z.number().int().min(0).max(10_000).default(0),
   materialFolders: z.number().int().min(0).max(10_000).default(0),
@@ -67,6 +75,7 @@ const manifestSchema = z
       z.literal(12),
       z.literal(13),
       z.literal(14),
+      z.literal(15),
     ]),
     libraryVersion: z.union([
       z.literal(3),
@@ -84,6 +93,7 @@ const manifestSchema = z
       z.literal(15),
       z.literal(16),
       z.literal(17),
+      z.literal(18),
     ]),
     counts: archiveCounts,
     parts: archiveCounts,
@@ -96,40 +106,51 @@ const manifestSchema = z
         manifest.parts.retired === 0 &&
         (manifest.binaryCount === undefined || manifest.binaryCount === manifest.counts.media)),
   )
+  .refine(
+    (manifest) =>
+      manifest.version >= 15 ||
+      ['studySettings', 'studyEvents', 'studyActivity', 'fsrsModels'].every(
+        (key) =>
+          manifest.counts[key as keyof typeof manifest.counts] === 0 &&
+          manifest.parts[key as keyof typeof manifest.parts] === 0,
+      ),
+  )
   .refine((manifest) =>
-    manifest.version === 14
-      ? manifest.libraryVersion === 17
-      : manifest.version === 13
-        ? manifest.libraryVersion === 16
-        : manifest.version === 12
-          ? manifest.libraryVersion === 15
-          : manifest.version === 11
-            ? manifest.libraryVersion === 14
-            : manifest.version === 10
-              ? manifest.libraryVersion === 13
-              : manifest.version === 9
-                ? manifest.libraryVersion === 12
-                : manifest.version === 8
-                  ? manifest.libraryVersion === 11
-                  : manifest.version === 7
-                    ? manifest.libraryVersion === 10
-                    : manifest.version === 6
-                      ? manifest.libraryVersion === 9
-                      : manifest.version === 5
-                        ? manifest.libraryVersion === 8
-                        : manifest.version === 4
-                          ? manifest.libraryVersion === 7
-                          : manifest.version === 3
-                            ? manifest.libraryVersion === 6
-                            : manifest.counts.sources === 0 &&
-                              manifest.parts.sources === 0 &&
-                              (manifest.version === 2
-                                ? manifest.libraryVersion === 5
-                                : manifest.libraryVersion < 5 &&
-                                  manifest.counts.practices === 0 &&
-                                  manifest.counts.attempts === 0 &&
-                                  manifest.parts.practices === 0 &&
-                                  manifest.parts.attempts === 0),
+    manifest.version === 15
+      ? manifest.libraryVersion === 18
+      : manifest.version === 14
+        ? manifest.libraryVersion === 17
+        : manifest.version === 13
+          ? manifest.libraryVersion === 16
+          : manifest.version === 12
+            ? manifest.libraryVersion === 15
+            : manifest.version === 11
+              ? manifest.libraryVersion === 14
+              : manifest.version === 10
+                ? manifest.libraryVersion === 13
+                : manifest.version === 9
+                  ? manifest.libraryVersion === 12
+                  : manifest.version === 8
+                    ? manifest.libraryVersion === 11
+                    : manifest.version === 7
+                      ? manifest.libraryVersion === 10
+                      : manifest.version === 6
+                        ? manifest.libraryVersion === 9
+                        : manifest.version === 5
+                          ? manifest.libraryVersion === 8
+                          : manifest.version === 4
+                            ? manifest.libraryVersion === 7
+                            : manifest.version === 3
+                              ? manifest.libraryVersion === 6
+                              : manifest.counts.sources === 0 &&
+                                manifest.parts.sources === 0 &&
+                                (manifest.version === 2
+                                  ? manifest.libraryVersion === 5
+                                  : manifest.libraryVersion < 5 &&
+                                    manifest.counts.practices === 0 &&
+                                    manifest.counts.attempts === 0 &&
+                                    manifest.parts.practices === 0 &&
+                                    manifest.parts.attempts === 0),
   )
 export interface TransferOptions {
   signal?: AbortSignal
@@ -240,8 +261,8 @@ export async function exportArchive(
       new Blob([
         JSON.stringify({
           format: 'repeaty-archive',
-          version: 14,
-          libraryVersion: 17,
+          version: 15,
+          libraryVersion: 18,
           binaryCount: metadata.length,
           counts,
           parts,

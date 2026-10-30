@@ -34,14 +34,14 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
   await importReading(page, 'Queue B', 'plain', 'Another material\n'.repeat(500))
   const baseline = await read()
   const first = baseline.sources.find((source) => source.title === 'Queue A')!
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'normal')
+  await expect(page.getByLabel('学习优先级', { exact: true })).toHaveAttribute('value', 'inherit')
   expect(baseline.sources.every((source) => source.priority === undefined)).toBe(true)
   await page.locator('.source-list-title').filter({ hasText: 'Queue A' }).click()
   await expect(page.locator('.source-text')).toHaveAttribute('aria-busy', 'false')
   await moveReading(page, 0.55)
-  const priority = page.getByLabel('阅读优先级', { exact: true })
-  await selectUiValue(priority, 'low')
-  await expect(priority).toHaveAttribute('value', 'low')
+  const priority = page.getByLabel('学习优先级', { exact: true })
+  await selectUiValue(priority, '9')
+  await expect(priority).toHaveAttribute('value', '9')
   await expect(page.locator('.source-list-title')).toHaveText(['Queue B', 'Queue A'])
   await expect(page.getByRole('heading', { name: 'Queue A', exact: true })).toBeVisible()
   const lowered = (await read()).sources.find((source) => source.id === first.id)!
@@ -50,8 +50,8 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
   expect(
     await page.locator('.source-text').evaluate((element) => element.scrollTop),
   ).toBeGreaterThan(500)
-  await selectUiValue(priority, 'high')
-  await expect(priority).toHaveAttribute('value', 'high')
+  await selectUiValue(priority, '1')
+  await expect(priority).toHaveAttribute('value', '1')
   await expect(page.locator('.source-list-title')).toHaveText(['Queue A', 'Queue B'])
   await moveReading(page, 0.6)
   // Do not wait for the idle save: archiving must capture the current position.
@@ -59,7 +59,7 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
   await expect(page.getByRole('heading', { name: 'Queue B', exact: true })).toBeVisible()
   const archived = (await read()).sources.find((source) => source.id === first.id)!
   expect(archived.queue?.state).toBe('archived')
-  expect(archived.priority).toBe('high')
+  expect(archived.studyPriority).toBe(1)
   expect(archived.reading!.offset).toBeGreaterThan(500)
   await queueView(page, '已归档')
   await expect(page.getByRole('heading', { name: 'Queue A', exact: true })).toBeVisible()
@@ -151,7 +151,7 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
   await expect(page.locator('.source-list-title')).toHaveText(['Queue A'])
   const planned = (await read()).sources.find((source) => source.id === first.id)!
   expect(planned.queue).toEqual({ state: 'active', availableOn: later })
-  expect(planned.priority).toBe('high')
+  expect(planned.studyPriority).toBe(1)
   expect(planned.reading!.offset).toBeGreaterThan(500)
   await setResponsiveViewport(page, 390, 844)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -215,7 +215,7 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
   expect(backup.library.sources.find((source) => source.id === first.id)!.queue).toEqual(
     planned.queue,
   )
-  expect(backup.library.sources.find((source) => source.id === first.id)!.priority).toBe('high')
+  expect(backup.library.sources.find((source) => source.id === first.id)!.studyPriority).toBe(1)
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await queueView(page, '稍后阅读')
   await page.getByRole('button', { name: '归档材料', exact: true }).click()
@@ -229,7 +229,7 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
   expect((await read()).sources.find((source) => source.id === first.id)!.queue).toEqual(
     planned.queue,
   )
-  expect((await read()).sources.find((source) => source.id === first.id)!.priority).toBe('high')
+  expect((await read()).sources.find((source) => source.id === first.id)!.studyPriority).toBe(1)
 
   // Changing only wall-clock time leaves real timers running. The application's
   // regular clock tick must make the deferred material available without a write.

@@ -1,5 +1,6 @@
 import { t, msg } from '../i18n'
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
+import { studySettings } from '../core/study-settings'
 import { shortcutBlocked } from '../shortcuts'
 import type { Operation } from '../core/operations'
 import { useNotifications } from '../notifications'
@@ -61,7 +62,13 @@ export function useStudyActions({
 }) {
   const { dismissNotificationContext } = useNotifications()
 
-  const mixedRatio = ref(3)
+  const mixedRatio = ref(studySettings(library.value).cardsPerReading)
+  watch(
+    [() => workspace.scope.value, () => studySettings(library.value).cardsPerReading, modal],
+    () => {
+      mixedRatio.value = studySettings(library.value).cardsPerReading
+    },
+  )
   const undoingAction = ref(false)
   const reviewBindings = computed(() => ({
     library: library.value,
@@ -76,6 +83,10 @@ export function useStudyActions({
     saveAttempt: workspace.recordAttempt,
     getAttempt: workspace.getAttempt,
     getSource: workspace.getSource,
+    recordPlainPractice: (id: string, cardId: string, scope: string) =>
+      run(() => workspace.recordPlainPractice(id, cardId, scope)),
+    undoPlainPractice: (id: string, scope: string) =>
+      run(() => workspace.undoPlainPractice(id, scope)),
     finishPractice: (
       id: string,
       cardId: string,

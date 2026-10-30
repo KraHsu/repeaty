@@ -12,7 +12,7 @@ import {
 } from './sources'
 import { arrangeSource, nextReadingInterval } from './source-queue'
 import { sourceSchema, type Source, type SourceQueueAction } from './source-data'
-import { migrateLibrary } from './model'
+import { localDay, migrateLibrary } from './model'
 import { createRepository, recordStores } from './storage'
 import { exportArchive, parseArchive } from './archive'
 import { exportBackup, parseBackup, rekeyBackup } from './backups'
@@ -56,8 +56,17 @@ it('advances only confirmed reads through calendar intervals and caps at 30 days
     expect(next.sources[0]!.readingIntervalDays).toBe(days)
     expect(next.sources[0]!.queue).toEqual({ state: 'active', availableOn: date })
     expect(next.sources[0]!.reading).toEqual(library.sources[0]!.reading)
-    for (const store of recordStores.filter((store) => store !== 'sources'))
+    for (const store of recordStores.filter(
+      (store) => store !== 'sources' && store !== 'studyEvents',
+    ))
       expect(next[store]).toBe(library[store])
+    expect(next.studyEvents).toHaveLength(current.studyEvents.length + 1)
+    expect(next.studyEvents.at(-1)).toMatchObject({
+      kind: 'reading',
+      sourceId: current.sources[0]!.id,
+      occurredAt: at.toISOString(),
+      studyDay: localDay(at),
+    })
     if (days === 30) expect(change(next, { type: 'read', ...plan }, at)).toBe(next)
     current = next
     at = new Date(`${date}T12:00:00`)
@@ -71,7 +80,7 @@ it('advances from an imported interval that is not on the ladder instead of rest
       { ...source, readingIntervalDays: days as Source['readingIntervalDays'] },
       now,
     )
-  // 2 and 5 are intervals that no current version writes but older imports may hold.
+  // Configured intervals need not be on the legacy ladder when switching back to legacy mode.
   expect(imported(2)).toMatchObject({ intervalDays: 3 })
   expect(imported(5)).toMatchObject({ intervalDays: 7 })
   expect(nextReadingInterval({ ...source, readingIntervalDays: 30 }, now)).toMatchObject({
@@ -112,7 +121,7 @@ it('retains the last interval through custom dates, priority, archive, restore a
 it('rejects skipped steps, stale confirmations, archived reads and unsupported interval values', () => {
   const { library, source, change } = sample()
   const plan = nextReadingInterval(source, now)
-  for (const interval of [0, -1, 2, 31, '1', null, Number.NaN, Infinity])
+  for (const interval of [0, -1, 1.5, 36501, '1', null, Number.NaN, Infinity])
     expect(() => sourceSchema.parse({ ...source, readingIntervalDays: interval })).toThrow()
   expect(() => change(library, { type: 'read', ...plan, intervalDays: 3 })).toThrow('重新确认')
   expect(() => change(library, { type: 'read', ...plan, date: '2027-01-01' })).toThrow('重新确认')

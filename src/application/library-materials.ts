@@ -1,3 +1,5 @@
+import { studyDay } from '../core/study-day'
+import { studySettings } from '../core/study-settings'
 import { z } from 'zod'
 import type {
   MaterialHostApi,
@@ -413,7 +415,23 @@ export function createMaterialCommands(context: LibraryContext) {
                   : entry,
               )
               return withReceipt(
-                { ...current, sources },
+                {
+                  ...current,
+                  sources,
+                  studyEvents:
+                    request.completed === true && !source.studySequence?.completed
+                      ? [
+                          ...current.studyEvents,
+                          {
+                            id: crypto.randomUUID(),
+                            kind: 'reading' as const,
+                            sourceId: source.id,
+                            occurredAt: new Date().toISOString(),
+                            studyDay: studyDay(new Date(), studySettings(current)),
+                          },
+                        ]
+                      : current.studyEvents,
+                },
                 id,
                 request,
                 fingerprint,

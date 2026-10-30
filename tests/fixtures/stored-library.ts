@@ -67,6 +67,10 @@ export async function storedLibrary(page: Page) {
         'materialFolders',
         'sourceConnections',
         'sourceCandidates',
+        'studySettings',
+        'studyEvents',
+        'studyActivity',
+        'fsrsModels',
       ]) {
         result[key] = await new Promise((resolve, reject) => {
           const r = db.transaction(key).objectStore(key).getAll()

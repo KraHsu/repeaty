@@ -27,6 +27,7 @@ import type {
 import { createCollectionsCommands } from './library-collections'
 import { createReadingCommands } from './library-reading'
 import { createFilesCommands } from './library-files'
+import { createStudySettingsCommands } from './library-study-settings'
 import { createStudyCommands } from './library-study'
 import { createTransfersCommands } from './library-transfers'
 import { createSourceConnectionCommands } from './library-connections'
@@ -567,6 +568,7 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
       ...createReadingCommands(context),
       ...createFilesCommands(context),
       ...createStudyCommands(context),
+      ...createStudySettingsCommands(context),
       ...createTransfersCommands(context),
       ...createMaterialCommands(context),
       ...createCollectionCommands(context),

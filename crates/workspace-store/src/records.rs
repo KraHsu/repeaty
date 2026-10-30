@@ -16,7 +16,7 @@ use std::{io::Write, sync::Arc};
 #[path = "records_snapshot_tests.rs"]
 mod snapshot_tests;
 
-pub const STORES: [&str; 13] = [
+pub const STORES: [&str; 17] = [
     "decks",
     "notes",
     "cards",
@@ -30,6 +30,10 @@ pub const STORES: [&str; 13] = [
     "materialFolders",
     "sourceConnections",
     "sourceCandidates",
+    "studySettings",
+    "studyEvents",
+    "studyActivity",
+    "fsrsModels",
 ];
 pub const MAX_MEDIA: usize = 10 * 1024 * 1024;
 pub const MAX_DOCUMENT: usize = 64 * 1024 * 1024;
@@ -97,7 +101,7 @@ impl Database {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         let version: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 15 {
+        if version > 16 {
             return Err(Error::invalid());
         }
         let tx = connection.transaction()?;
@@ -196,7 +200,7 @@ impl Database {
         Ok(snapshot)
     }
     fn library_history(db: &Connection, summary: bool) -> Result<Value> {
-        let mut library = json!({"version":17});
+        let mut library = json!({"version":18});
         for store in STORES {
             let data = if store == "attempts" && summary {
                 "json_remove(data,'$.code','$.result.detail')"
@@ -445,6 +449,9 @@ impl Database {
                 "materialFolders" => 10000,
                 "sourceConnections" => 100,
                 "sourceCandidates" => 10000,
+                "studySettings" => 1,
+                "studyEvents" | "studyActivity" => 500000,
+                "fsrsModels" => 200,
                 _ => 1600000,
             };
             if count > limit || distinct != count || (count > 0 && max != Some(count - 1)) {
@@ -475,6 +482,12 @@ impl Database {
             if !patch.position_only {
                 Self::validate_patch(&tx, patch, previous.as_ref(), commit.retired.is_some())?;
             }
+        }
+        if ["decks", "studySettings", "fsrsModels"]
+            .iter()
+            .any(|store| touched_stores.contains(store))
+        {
+            crate::study::validate_model_selections(&tx)?;
         }
         finish(&tx)?;
         if let Some(history) = &commit.operation_history {
@@ -562,7 +575,12 @@ impl Database {
                 .as_ref()
                 .is_some_and(|v| !v["inbox"].is_null() || !v["binding"].is_null())
         }) {
-            tx.pragma_update(None, "user_version", 15)?;
+            let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+            tx.pragma_update(None, "user_version", version.max(15))?;
+        }
+        if commit.patches.iter().any(crate::study::needs_p6) {
+            let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+            tx.pragma_update(None, "user_version", version.max(16))?;
         }
         tx.execute("UPDATE workspace SET revision=?1 WHERE id=1", [current + 1])?;
         Self::collect_assets(&tx)?;
@@ -636,6 +654,7 @@ impl Database {
             }
             "media" => Self::validate_media(tx, patch),
             "reviews" | "practices" | "attempts" => Self::validate_history(tx, patch),
+            "studySettings" | "studyActivity" => crate::study::validate(patch),
             "materialReceipts" => {
                 if let Some(value) = &patch.value {
                     let duplicate: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM materialReceipts WHERE id<>?1 AND json_extract(data,'$.pluginId')=?2 AND json_extract(data,'$.kind')=?3 AND json_extract(data,'$.operationId')=?4)", params![patch.id, value["pluginId"].as_str().unwrap_or(""), value["kind"].as_str().unwrap_or(""), value["operationId"].as_str().unwrap_or("")], |row| row.get(0))?;
@@ -1381,7 +1400,7 @@ impl Database {
             })
             .optional()?
             .ok_or_else(Error::missing)?;
-        let mut library = json!({"version":17});
+        let mut library = json!({"version":18});
         for store in STORES {
             let mut rows = BTreeMap::<String, (i64, Value)>::new();
             let mut stmt = self

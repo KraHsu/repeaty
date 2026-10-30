@@ -1,3 +1,5 @@
+import { studySettings, studySettingsSchema } from './study-settings'
+import { fsrsModelSchema, studyEventSchema, studyActivitySchema } from './study-data'
 import { sourceConnectionSchema, sourceCandidateSchema } from './collection-data'
 import { msg, LocalizedError } from '../i18n'
 import { retiredNoteSchema, type RetiredNote } from '../desktop/retirement'
@@ -71,6 +73,10 @@ export const recordStores = [
   'materialFolders',
   'sourceConnections',
   'sourceCandidates',
+  'studySettings',
+  'studyEvents',
+  'studyActivity',
+  'fsrsModels',
 ] as const
 export type RecordStore = (typeof recordStores)[number]
 type Entity = Library[RecordStore][number]
@@ -121,6 +127,10 @@ interface RepeatyDB extends DBSchema {
   sources: RecordTable
   materialReceipts: RecordTable
   sourceConnections: RecordTable
+  studySettings: RecordTable
+  studyEvents: RecordTable
+  studyActivity: RecordTable
+  fsrsModels: RecordTable
   sourceCandidates: RecordTable
   materialFolders: RecordTable
   cardDrafts: { key: string; value: CardDraft }
@@ -160,6 +170,10 @@ const schemas = {
   materialReceipts: materialReceiptSchema,
   sourceConnections: sourceConnectionSchema,
   sourceCandidates: sourceCandidateSchema,
+  studySettings: studySettingsSchema,
+  studyEvents: studyEventSchema,
+  studyActivity: studyActivitySchema,
+  fsrsModels: fsrsModelSchema,
   materialFolders: materialFolderSchema,
   decks: deckSchema,
   notes: noteSchema,
@@ -191,7 +205,7 @@ export function createRepository(
 ) {
   // save() shadows `options` with its own parameter, so keep the repository setting here.
   const compactHistory = Boolean(options.compactHistory)
-  const database = openDB<RepeatyDB>(name, 21, {
+  const database = openDB<RepeatyDB>(name, 22, {
     async upgrade(db, _oldVersion, _newVersion, tx) {
       try {
         for (const store of stores)
@@ -378,6 +392,10 @@ export function createRepository(
       meta.counts.materialFolders ??= 0
       meta.counts.sourceConnections ??= 0
       meta.counts.sourceCandidates ??= 0
+      meta.counts.studySettings ??= 0
+      meta.counts.studyEvents ??= 0
+      meta.counts.studyActivity ??= 0
+      meta.counts.fsrsModels ??= 0
       return meta
     }
     const old = await tx.objectStore('workspace').get('main')
@@ -621,6 +639,8 @@ export function createRepository(
           'materialFolders',
           'sourceConnections',
           'sourceCandidates',
+          'studySettings',
+          'fsrsModels',
         ].every((key) => previous[key as RecordStore] === library[key as RecordStore]) &&
         library.cards.length === previous.cards.length &&
         library.cards.every((card) => {
@@ -632,6 +652,8 @@ export function createRepository(
         workspaceLibrarySchema.parse(library)
       if (library.reviews.length > 500_000)
         throw new LocalizedError(msg('复习记录已达到 50 万条上限，请先导出备份。'))
+      if (library.studyEvents.length > 500_000 || library.studyActivity.length > 500_000)
+        throw new Error('study-record-limit')
       const patches: { store: RecordStore; id: string; row?: Row; positionOnly?: number }[] = []
       const next = { ...library }
       const noteDecks = new Map(library.notes.map((note) => [note.id, note.deckId]))
@@ -1060,11 +1082,16 @@ export function createRepository(
     ): Promise<CardPage> {
       signal?.throwIfAborted()
       const db = await database
-      const tx = db.transaction(['decks', 'notes', 'cards'], 'readonly')
+      const tx = db.transaction(['decks', 'notes', 'cards', 'studySettings'], 'readonly')
       const decks = (await tx.objectStore('decks').getAll()).map(
         (row) => row.value,
       ) as Library['decks']
-      const matches = compileSearch(decks, filter, now)
+      const settings = studySettings({
+        studySettings: (await tx.objectStore('studySettings').getAll()).map(
+          (row) => row.value,
+        ) as Library['studySettings'],
+      })
+      const matches = compileSearch(decks, filter, now, settings)
       const result: CardPage = { cards: [], total: 0, eligible: 0, studyIds: [] }
       const notes = new Map<string, Library['notes'][number]>()
       const source = filter.deckId
@@ -1097,7 +1124,7 @@ export function createRepository(
           if ((simple || result.total >= offset) && result.cards.length < 50)
             result.cards.push(view)
           if (!simple) result.total++
-          if (includeStudy && available(card, now)) {
+          if (includeStudy && available(card, now, settings)) {
             result.eligible++
             if (result.studyIds.length < 500) result.studyIds.push(card.id)
           }

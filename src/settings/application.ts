@@ -4,6 +4,7 @@ import { preferences, setPreference, preferenceError } from '../preferences'
 import type { SettingsCategory, SettingsContribution, SettingsEntry, SettingsField } from './types'
 
 const AiCardSkill = defineAsyncComponent(() => import('../components/AiCardSkill.vue'))
+const StudySettings = defineAsyncComponent(() => import('../components/StudySettings.vue'))
 const SearchSynonymSettings = defineAsyncComponent(
   () => import('../components/SearchSynonymSettings.vue'),
 )
@@ -154,6 +155,30 @@ export function createApplicationSettings(options: ApplicationSettingsOptions): 
                   ? 'MaterialSearchSettingsEntry'
                   : 'MaterialReadingSettingsEntry',
               setup: () => () => (isCurrent() ? h(component, { isCurrent }) : null),
+            }),
+          ),
+        },
+        true,
+      ),
+    )
+  }
+  for (const [section, title] of [
+    ['review', '复习'],
+    ['queue', '队列'],
+    ['reading', '阅读'],
+  ] as const) {
+    entries.push(
+      entry(
+        {
+          id: `study-${section}`,
+          get title() {
+            return t(title)
+          },
+          category: [category('study', '学习'), category(section, title)],
+          component: markRaw(
+            defineComponent({
+              name: `StudySettings${section}`,
+              setup: () => () => (isCurrent() ? h(StudySettings, { section, isCurrent }) : null),
             }),
           ),
         },

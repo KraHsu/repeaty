@@ -139,8 +139,8 @@ export async function readingIntervalFlow(
   await manual.getByLabel('下次阅读日期').fill('2099-06-12')
   await manual.getByRole('button', { name: '保存阅读安排', exact: true }).click()
   await expect(manual).toHaveCount(0)
-  await selectUiValue(page.getByLabel('阅读优先级', { exact: true }), 'high')
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'high')
+  await selectUiValue(page.getByLabel('学习优先级', { exact: true }), '1')
+  await expect(page.getByLabel('学习优先级', { exact: true })).toHaveAttribute('value', '1')
   const custom = (await read()).sources.find((source) => source.id === root.id)!
   expect(custom.readingIntervalDays).toBe(3)
   expect(custom.queue!.availableOn).toBe('2099-06-12')
@@ -166,7 +166,7 @@ export async function readingIntervalFlow(
   const cleared = (await read()).sources.find((source) => source.id === root.id)!
   expect(cleared.readingIntervalDays).toBeUndefined()
   expect(cleared.queue).toEqual(restored.queue)
-  expect(cleared.priority).toBe('high')
+  expect(cleared.studyPriority).toBe(1)
   dialog = await openReadSchedule(page, 1)
   await dialog.getByRole('button', { name: '保存阅读安排', exact: true }).click()
   await expect(dialog).toHaveCount(0)
@@ -176,7 +176,7 @@ export async function readingIntervalFlow(
   await page.getByRole('button', { name: '导出 .repeaty', exact: true }).click()
   const bytes = await readFile((await (await download).path())!)
   const backup = await parseArchive(new Blob([bytes]))
-  expect(backup.library.version).toBe(16)
+  expect(backup.library.version).toBe(18)
   expect(backup.library.sources.map((source) => source.readingIntervalDays)).toEqual([1, 1])
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await queueView(page, '稍后阅读')

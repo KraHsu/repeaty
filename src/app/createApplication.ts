@@ -6,6 +6,7 @@ import { useLibrary } from '../composables/useLibrary'
 import { useReadingProgress } from '../composables/useReadingProgress'
 import { useOffline } from '../composables/useOffline'
 import { useNotifications } from '../notifications'
+import { useStudyActivity } from './useStudyActivity'
 import { useStudyClock } from './useStudyClock'
 import { useAppNavigation } from './useAppNavigation'
 import { useLibraryQueries } from './useLibraryQueries'
@@ -25,7 +26,7 @@ import { useReadingLeaveGuard } from './useReadingLeaveGuard'
 export function createApplication() {
   const plugins = usePluginManager()
   providePluginManager(plugins)
-  const { clearNotifications } = useNotifications()
+  const { clearNotifications, notify } = useNotifications()
 
   const workspace = useLibrary()
   const releaseMaterials = plugins.setMaterialHost((owner) =>
@@ -79,13 +80,43 @@ export function createApplication() {
   }
   const clock = useStudyClock()
   const views = useStudyViews()
-  const beforeLeave = useReadingLeaveGuard({
+  const leaveReading = useReadingLeaveGuard({
     scope: workspace.scope,
     busy,
     ...views,
     reading: readingProgress,
   })
+  let activity: ReturnType<typeof useStudyActivity> | undefined
+  function beforeLeave(allowBackgroundSave = false): boolean | Promise<boolean> {
+    const expectedScope = workspace.scope.value
+    const reading = leaveReading(allowBackgroundSave)
+    if (allowBackgroundSave) return reading
+    return Promise.resolve(reading).then(async (allowed) => {
+      if (!allowed) return false
+      try {
+        await activity?.flush()
+        return true
+      } catch {
+        if (workspace.scope.value === expectedScope)
+          notify('学习活动记录尚未保存，请重试后再关闭或切换学习库。', 'error')
+        return false
+      }
+    })
+  }
   const navigation = useAppNavigation(undefined, () => beforeLeave(true))
+  activity = useStudyActivity(
+    workspace,
+    computed(() => {
+      if (navigation.mixed.value) return views.mixedController.value?.activityKind ?? 'other'
+      if (navigation.review.value)
+        return navigation.review.value.study && !navigation.review.value.study.reschedule
+          ? 'practice'
+          : 'review'
+      return views.activeSource.value?.studying ? 'reading' : 'other'
+    }),
+  )
+  const studyActivity = activity
+  onScopeDispose(plugins.setStudyHost((owner) => workspace.studyApi(owner, studyActivity)))
   const extensions = usePluginViews(navigation, workspace.scope, plugins)
   const readPluginReviews = createPluginReviewReader()
   const pluginReviews = computed(() => readPluginReviews(library.value.reviews))
@@ -114,6 +145,7 @@ export function createApplication() {
     globalKeydown: study.globalKeydown,
     tick: clock.tick,
     beforeLeave,
+    beforeClose: () => studyActivity.close(),
   })
   return {
     ...base,
