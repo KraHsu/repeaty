@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { pluginAssetsSchema } from './assets'
 
 export const pluginIdSchema = z
   .string()
@@ -63,6 +64,7 @@ export const bundleSchema = z
       .max(256 * 1024)
       .refine((value) => new TextEncoder().encode(value).length <= 256 * 1024)
       .optional(),
+    assets: pluginAssetsSchema.optional(),
   })
   .strict()
 export type PluginManifest = z.infer<typeof manifestSchema>
@@ -83,6 +85,7 @@ export async function packageHash(bundle: PluginBundle) {
     main: bundle.main,
     styles: bundle.styles ?? '',
     ...(bundle.readme === undefined ? {} : { readme: bundle.readme }),
+    ...(bundle.assets === undefined ? {} : { assets: bundle.assets }),
   })
   const hash = await crypto.subtle.digest(
     'SHA-256',
@@ -91,7 +94,7 @@ export async function packageHash(bundle: PluginBundle) {
   return Array.from(new Uint8Array(hash), (value) => value.toString(16).padStart(2, '0')).join('')
 }
 export async function readPluginFile(file: File): Promise<PluginBundle> {
-  if (file.size > 8 * 1024 * 1024) throw new Error('插件包超过大小限制。')
+  if (file.size > 40 * 1024 * 1024) throw new Error('插件包超过大小限制。')
   try {
     return bundleSchema.parse(JSON.parse(await file.text()))
   } catch {

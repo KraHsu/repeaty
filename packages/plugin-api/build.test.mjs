@@ -4,12 +4,35 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildPlugin } from './build.mjs'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 
 const fixtureRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '../../test-results/plugin-readme-build',
 )
 const projects = []
+test('package CLI builds offline assets and removes stale assets output', async () => {
+  const directory = await project()
+  await mkdir(join(directory, 'assets'))
+  await writeFile(join(directory, 'assets/worker.js'), 'postMessage(42)')
+  await promisify(execFile)(
+    process.execPath,
+    [fileURLToPath(new URL('./build.mjs', import.meta.url)), directory],
+    { windowsHide: true },
+  )
+  const bundle = JSON.parse(
+    await readFile(join(directory, 'dist/readme-example.repeaty-plugin'), 'utf8'),
+  )
+  assert.equal(
+    Buffer.from(bundle.assets['worker.js'].base64, 'base64').toString(),
+    'postMessage(42)',
+  )
+  assert.equal(bundle.assets['worker.js'].type, 'text/javascript')
+  await rm(join(directory, 'assets/worker.js'))
+  await buildPlugin(directory)
+  await assert.rejects(readFile(join(directory, 'dist/assets.json')), { code: 'ENOENT' })
+})
 
 test('material registrations and service ports are supplied by the activating host without bundling host logic', async () => {
   const directory = await project()
