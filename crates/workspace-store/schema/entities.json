@@ -4,6 +4,50 @@
     "type": "object",
     "properties": {
       "id": { "type": "string", "minLength": 1, "maxLength": 100 },
+      "inbox": {
+        "type": "object",
+        "properties": {
+          "state": { "type": "string", "enum": ["new", "archived"] },
+          "capturedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["text", "file", "clipboard", "global", "connector"]
+          },
+          "name": { "type": "string", "maxLength": 2048 }
+        },
+        "required": ["state", "capturedAt", "kind"],
+        "additionalProperties": false
+      },
+      "binding": {
+        "type": "object",
+        "properties": {
+          "connectionId": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "key": { "type": "string", "minLength": 1, "maxLength": 2048 },
+          "fingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "acceptedMediaId": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "missing": { "type": "boolean" },
+          "links": {
+            "maxItems": 2000,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "targetKey": { "type": "string", "minLength": 1, "maxLength": 2048 },
+                "label": { "type": "string", "maxLength": 2048 },
+                "anchor": { "type": "string", "maxLength": 2048 }
+              },
+              "required": ["targetKey"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["connectionId", "key", "fingerprint", "acceptedMediaId"],
+        "additionalProperties": false
+      },
       "parentSourceId": { "type": "string", "minLength": 1, "maxLength": 100 },
       "folderId": { "type": "string", "minLength": 1, "maxLength": 100 },
       "order": { "type": "number" },
@@ -797,6 +841,7 @@
         "type": "string",
         "enum": [
           "import",
+          "collect",
           "create-note",
           "create-excerpt",
           "edit-content",
@@ -853,6 +898,137 @@
       }
     },
     "required": ["id", "name", "order", "createdAt"],
+    "additionalProperties": false
+  },
+  "sourceConnections": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "id": { "type": "string", "minLength": 1, "maxLength": 100 },
+      "pluginId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,79}$" },
+      "connectorId": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$" },
+      "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+      "mode": { "type": "string", "enum": ["import", "index"] },
+      "status": { "type": "string", "enum": ["connected", "disconnected"] },
+      "settings": {
+        "type": "object",
+        "propertyNames": { "type": "string", "maxLength": 100 },
+        "additionalProperties": { "$ref": "#/$defs/__schema0" }
+      },
+      "intervalHours": {
+        "anyOf": [
+          { "type": "number", "const": 0 },
+          { "type": "number", "const": 1 },
+          { "type": "number", "const": 12 },
+          { "type": "number", "const": 24 },
+          { "type": "number", "const": 168 }
+        ]
+      },
+      "cursor": { "type": "string", "maxLength": 16384 },
+      "checkedAt": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+      },
+      "generation": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+    },
+    "required": [
+      "id",
+      "pluginId",
+      "connectorId",
+      "title",
+      "mode",
+      "status",
+      "settings",
+      "intervalHours",
+      "createdAt",
+      "generation"
+    ],
+    "additionalProperties": false,
+    "$defs": {
+      "__schema0": {
+        "anyOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "boolean" },
+          { "type": "null" },
+          { "type": "array", "items": { "$ref": "#/$defs/__schema0" } },
+          {
+            "type": "object",
+            "propertyNames": { "type": "string" },
+            "additionalProperties": { "$ref": "#/$defs/__schema0" }
+          }
+        ]
+      }
+    }
+  },
+  "sourceCandidates": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "id": { "type": "string", "minLength": 1, "maxLength": 100 },
+      "connectionId": { "type": "string", "minLength": 1, "maxLength": 100 },
+      "key": { "type": "string", "minLength": 1, "maxLength": 2048 },
+      "fingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+      "kind": { "type": "string", "enum": ["add", "update", "missing"] },
+      "sourceId": { "type": "string", "minLength": 1, "maxLength": 100 },
+      "baseMediaId": { "type": "string", "minLength": 1, "maxLength": 100 },
+      "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+      "format": { "type": "string", "enum": ["plain", "markdown"] },
+      "url": { "type": "string", "maxLength": 2048, "pattern": "^(?:https?:\\/\\/[^\\s]+)?$" },
+      "mediaId": { "type": "string", "minLength": 1, "maxLength": 100 },
+      "characters": { "type": "integer", "minimum": 1, "maximum": 250000 },
+      "path": { "type": "string", "minLength": 1, "maxLength": 2048 },
+      "resources": {
+        "maxItems": 2000,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "path": { "type": "string", "minLength": 1, "maxLength": 2048 },
+            "mediaId": { "type": "string", "minLength": 1, "maxLength": 100 }
+          },
+          "required": ["path", "mediaId"],
+          "additionalProperties": false
+        }
+      },
+      "links": {
+        "maxItems": 2000,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "targetKey": { "type": "string", "minLength": 1, "maxLength": 2048 },
+            "label": { "type": "string", "maxLength": 2048 },
+            "anchor": { "type": "string", "maxLength": 2048 }
+          },
+          "required": ["targetKey"],
+          "additionalProperties": false
+        }
+      },
+      "discoveredAt": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+      },
+      "dismissed": { "type": "boolean" }
+    },
+    "required": [
+      "id",
+      "connectionId",
+      "key",
+      "fingerprint",
+      "kind",
+      "title",
+      "format",
+      "url",
+      "discoveredAt"
+    ],
     "additionalProperties": false
   },
   "decks": {

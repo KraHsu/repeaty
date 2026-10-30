@@ -15,7 +15,8 @@ struct Inner {
     sessions: Option<Sessions>,
     subscription: Option<String>,
 }
-pub struct Workspaces(Arc<Mutex<Inner>>, Arc<AtomicU64>);
+pub type ActiveIdentity = Arc<Mutex<(String, String)>>;
+pub struct Workspaces(Arc<Mutex<Inner>>, Arc<AtomicU64>, ActiveIdentity);
 impl Workspaces {
     pub fn new(directory: &Path) -> Self {
         Self(
@@ -25,10 +26,14 @@ impl Workspaces {
                 subscription: None,
             })),
             Arc::new(AtomicU64::new(0)),
+            Arc::new(Mutex::new((String::new(), String::new()))),
         )
     }
     pub fn invalidate_watches(&self) {
         self.1.fetch_add(1, Ordering::AcqRel);
+    }
+    pub fn active_identity(&self) -> ActiveIdentity {
+        self.2.clone()
     }
 }
 /// Serialize plugin filesystem operations with workspace switching and use a held root capability.
@@ -146,12 +151,20 @@ pub(crate) async fn run<T: Send + 'static>(
     task: impl FnOnce(&mut Sessions) -> StoreResult<T> + Send + 'static,
 ) -> Result<T, String> {
     let manager = state.0.clone();
+    let identity = state.2.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let mut guard = manager.lock().map_err(|_| "storage-error".to_owned())?;
         if guard.sessions.is_none() {
             guard.sessions = Some(Sessions::open(&guard.directory).map_err(|e| e.0.to_owned())?);
         }
-        task(guard.sessions.as_mut().ok_or("storage-error")?).map_err(|e| e.0.to_owned())
+        let sessions = guard.sessions.as_mut().ok_or("storage-error")?;
+        let result = task(sessions).map_err(|e| e.0.to_owned());
+        let active = sessions
+            .active_identity()
+            .map(|(id, token)| (format!("local:workspace:{id}"), token.to_owned()))
+            .unwrap_or_default();
+        *identity.lock().map_err(|_| "storage-error")? = active;
+        result
     })
     .await
     .map_err(|_| "storage-error".to_owned())?

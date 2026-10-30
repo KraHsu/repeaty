@@ -193,7 +193,7 @@ impl Library {
         let identity: String = check
             .query_row("SELECT id FROM workspace_identity", [], |r| r.get(0))
             .map_err(|_| fail("workspace-incompatible"))?;
-        if app != APP_ID || ![10, 11, 12, 13, 14].contains(&version) || identity != marker.id {
+        if app != APP_ID || ![10, 11, 12, 13, 14, 15].contains(&version) || identity != marker.id {
             return Err(fail("workspace-incompatible"));
         }
         drop(check);

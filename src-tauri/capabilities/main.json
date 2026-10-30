@@ -35,6 +35,20 @@
     "allow-workspace-watch",
     "allow-workspace-unwatch",
     "allow-workspace-backups",
-    "allow-workspace-backup-cancel"
+    "allow-workspace-backup-cancel",
+    "allow-collection-bind-scope",
+    "allow-collection-directories",
+    "allow-collection-directory-choose",
+    "allow-collection-directory-list",
+    "allow-collection-directory-read",
+    "allow-collection-directory-disconnect",
+    "allow-collection-directory-cancel",
+    "allow-collection-directory-index",
+    "allow-collection-directory-search",
+    "allow-collection-download",
+    "allow-collection-capture-status",
+    "allow-collection-capture-configure",
+    "allow-collection-capture-clipboard",
+    "allow-collection-capture-take"
   ]
 }
