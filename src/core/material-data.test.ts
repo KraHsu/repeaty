@@ -144,7 +144,7 @@ describe('versioned material locators', () => {
     const assets = [...env.assets, edited.asset]
     const read = async (id: string) => assets.find((asset) => asset.meta.id === id)?.blob
     const json = await exportBackup(edited.library, read)
-    expect(JSON.parse(json).version).toBe(18)
+    expect(JSON.parse(json).version).toBe(19)
     const archive = await exportArchive(edited.library, read)
     for (const saved of [parseBackup(json), await parseArchive(archive!)]) {
       expect(saved.library).toEqual(edited.library)

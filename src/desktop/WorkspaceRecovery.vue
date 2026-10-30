@@ -221,6 +221,7 @@ const countLabels: Record<string, string> = {
   savedSearches: '常用筛选',
   practices: '练习记录',
   materialReceipts: '材料导入记录',
+  automationReceipts: '自动化操作记录',
   studySettings: '学习设置',
   studyEvents: '学习活动',
   studyActivity: '活跃使用时间',

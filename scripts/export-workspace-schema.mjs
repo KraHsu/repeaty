@@ -19,6 +19,7 @@ try {
     fsrsModels: 'fsrsModelSchema',
     sources: 'sourceSchema',
     materialReceipts: 'materialReceiptSchema',
+    automationReceipts: 'automationReceiptSchema',
     materialFolders: 'materialFolderSchema',
     sourceConnections: 'sourceConnectionSchema',
     sourceCandidates: 'sourceCandidateSchema',

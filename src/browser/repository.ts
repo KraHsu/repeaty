@@ -32,6 +32,7 @@ import { studySettings } from '../core/study-settings'
 import { studyActivitySchema, studyEventSchema } from '../core/study-data'
 import { validateSourceOrigins } from '../core/sources'
 import { validateMaterialChanges } from '../core/material-data'
+import { validateAutomationReceipts } from '../core/automation-data'
 import { LocalizedError, msg } from '../i18n'
 import { WorkspaceReadError } from './errors'
 import type { BrowserWorkspaceSnapshot } from './workspace-reader'
@@ -226,6 +227,14 @@ export function createBrowserRepository(
       if (options.consumeSourceDraft && !consumedDraft) throw new WorkspaceReadError('invalid')
       const before = current.library
       validateMaterialChanges(before, library)
+      if (before.automationReceipts !== library.automationReceipts)
+        validateAutomationReceipts(
+          before.automationReceipts,
+          library.automationReceipts,
+          (message) => {
+            throw new Error(message)
+          },
+        )
       const progressOnly =
         (
           [
@@ -237,6 +246,7 @@ export function createBrowserRepository(
             'practices',
             'attempts',
             'materialReceipts',
+            'automationReceipts',
             'materialFolders',
             'sourceConnections',
             'sourceCandidates',

@@ -22,6 +22,7 @@ const changeSchema = z
   .transform((change, context) => {
     if (
       change.store === 'materialReceipts' ||
+      change.store === 'automationReceipts' ||
       (!change.before && !change.after) ||
       new Set(change.keys).size !== change.keys.length ||
       change.keys.some((key) => ['__proto__', 'constructor', 'prototype'].includes(key))

@@ -16,7 +16,7 @@ use std::{io::Write, sync::Arc};
 #[path = "records_snapshot_tests.rs"]
 mod snapshot_tests;
 
-pub const STORES: [&str; 17] = [
+pub const STORES: [&str; 18] = [
     "decks",
     "notes",
     "cards",
@@ -27,6 +27,7 @@ pub const STORES: [&str; 17] = [
     "attempts",
     "sources",
     "materialReceipts",
+    "automationReceipts",
     "materialFolders",
     "sourceConnections",
     "sourceCandidates",
@@ -101,7 +102,7 @@ impl Database {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         let version: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 16 {
+        if version > 17 {
             return Err(Error::invalid());
         }
         let tx = connection.transaction()?;
@@ -200,7 +201,7 @@ impl Database {
         Ok(snapshot)
     }
     fn library_history(db: &Connection, summary: bool) -> Result<Value> {
-        let mut library = json!({"version":18});
+        let mut library = json!({"version":19});
         for store in STORES {
             let data = if store == "attempts" && summary {
                 "json_remove(data,'$.code','$.result.detail')"
@@ -446,6 +447,7 @@ impl Database {
                 "savedSearches" => 100,
                 "sources" => 10000,
                 "materialReceipts" => 100000,
+                "automationReceipts" => 100000,
                 "materialFolders" => 10000,
                 "sourceConnections" => 100,
                 "sourceCandidates" => 10000,
@@ -493,9 +495,19 @@ impl Database {
         if let Some(history) = &commit.operation_history {
             if history["schemaVersion"] != 1
                 || ["undo", "redo"].iter().any(|key| {
-                    history[*key]
-                        .as_array()
-                        .is_none_or(|stack| stack.len() > 20)
+                    history[*key].as_array().is_none_or(|stack| {
+                        stack.len() > 20
+                            || stack.iter().any(|operation| {
+                                operation["changes"].as_array().is_some_and(|changes| {
+                                    changes.iter().any(|change| {
+                                        matches!(
+                                            change["store"].as_str(),
+                                            Some("automationReceipts" | "materialReceipts")
+                                        )
+                                    })
+                                })
+                            })
+                    })
                 })
                 || history["mediaIds"].as_array().is_none_or(|ids| {
                     ids.len() > 100_000
@@ -582,6 +594,14 @@ impl Database {
             let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
             tx.pragma_update(None, "user_version", version.max(16))?;
         }
+        if commit
+            .patches
+            .iter()
+            .any(|patch| patch.store == "automationReceipts")
+        {
+            let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+            tx.pragma_update(None, "user_version", version.max(17))?;
+        }
         tx.execute("UPDATE workspace SET revision=?1 WHERE id=1", [current + 1])?;
         Self::collect_assets(&tx)?;
         tx.commit()?;
@@ -658,6 +678,21 @@ impl Database {
             "materialReceipts" => {
                 if let Some(value) = &patch.value {
                     let duplicate: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM materialReceipts WHERE id<>?1 AND json_extract(data,'$.pluginId')=?2 AND json_extract(data,'$.kind')=?3 AND json_extract(data,'$.operationId')=?4)", params![patch.id, value["pluginId"].as_str().unwrap_or(""), value["kind"].as_str().unwrap_or(""), value["operationId"].as_str().unwrap_or("")], |row| row.get(0))?;
+                    if duplicate {
+                        return Err(Error::invalid());
+                    }
+                }
+                if previous
+                    .zip(patch.value.as_ref())
+                    .is_some_and(|(before, next)| before != next)
+                {
+                    return Err(Error::invalid());
+                }
+                Ok(())
+            }
+            "automationReceipts" => {
+                if let Some(value) = &patch.value {
+                    let duplicate: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM automationReceipts WHERE id<>?1 AND json_extract(data,'$.actorId')=?2 AND json_extract(data,'$.requestId')=?3)", params![patch.id, value["actorId"].as_str().unwrap_or(""), value["requestId"].as_str().unwrap_or("")], |row| row.get(0))?;
                     if duplicate {
                         return Err(Error::invalid());
                     }
@@ -1400,7 +1435,7 @@ impl Database {
             })
             .optional()?
             .ok_or_else(Error::missing)?;
-        let mut library = json!({"version":18});
+        let mut library = json!({"version":19});
         for store in STORES {
             let mut rows = BTreeMap::<String, (i64, Value)>::new();
             let mut stmt = self

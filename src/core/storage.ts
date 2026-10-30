@@ -32,6 +32,7 @@ import {
 } from './model'
 import { sourceSchema, type Source } from './source-data'
 import { materialReceiptSchema, validateMaterialChanges } from './material-data'
+import { automationReceiptSchema, validateAutomationReceipts } from './automation-data'
 import { validateSourceOrigins } from './sources'
 import { cardDraftSchema, MAX_DRAFTS, type CardDraft } from './card-draft-data'
 import { checkSourceDraftVersion, sourceDraftSchema, type SourceDraft } from './source-workbench'
@@ -70,6 +71,7 @@ export const recordStores = [
   'attempts',
   'sources',
   'materialReceipts',
+  'automationReceipts',
   'materialFolders',
   'sourceConnections',
   'sourceCandidates',
@@ -126,6 +128,7 @@ interface RepeatyDB extends DBSchema {
   attemptSummaries: RecordTable
   sources: RecordTable
   materialReceipts: RecordTable
+  automationReceipts: RecordTable
   sourceConnections: RecordTable
   studySettings: RecordTable
   studyEvents: RecordTable
@@ -168,6 +171,7 @@ type Transaction = IDBPTransaction<RepeatyDB, typeof stores, 'readwrite'>
 const schemas = {
   sources: sourceSchema,
   materialReceipts: materialReceiptSchema,
+  automationReceipts: automationReceiptSchema,
   sourceConnections: sourceConnectionSchema,
   sourceCandidates: sourceCandidateSchema,
   studySettings: studySettingsSchema,
@@ -205,7 +209,7 @@ export function createRepository(
 ) {
   // save() shadows `options` with its own parameter, so keep the repository setting here.
   const compactHistory = Boolean(options.compactHistory)
-  const database = openDB<RepeatyDB>(name, 22, {
+  const database = openDB<RepeatyDB>(name, 23, {
     async upgrade(db, _oldVersion, _newVersion, tx) {
       try {
         for (const store of stores)
@@ -389,6 +393,7 @@ export function createRepository(
       meta.counts.practices ??= 0
       meta.counts.attempts ??= 0
       meta.counts.materialReceipts ??= 0
+      meta.counts.automationReceipts ??= 0
       meta.counts.materialFolders ??= 0
       meta.counts.sourceConnections ??= 0
       meta.counts.sourceCandidates ??= 0
@@ -626,6 +631,14 @@ export function createRepository(
           : parseOperationHistory(options.operationHistory)
       const previous = cached!.library
       validateMaterialChanges(previous, library)
+      if (previous.automationReceipts !== library.automationReceipts)
+        validateAutomationReceipts(
+          previous.automationReceipts,
+          library.automationReceipts,
+          (message) => {
+            throw new Error(message)
+          },
+        )
       // The frequent grading path validates only changed cards/reviews. Structural edits and
       // external restores still receive complete cross-reference validation at the boundary.
       const progressOnly =
@@ -636,6 +649,7 @@ export function createRepository(
           'savedSearches',
           'sources',
           'materialReceipts',
+          'automationReceipts',
           'materialFolders',
           'sourceConnections',
           'sourceCandidates',

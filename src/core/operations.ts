@@ -70,7 +70,7 @@ export function operationFor(
   }
   for (const store of Object.keys(recordSchemas) as Store[]) {
     // A committed command receipt survives undo, so a delayed retry cannot recreate deleted data.
-    if (store === 'materialReceipts') continue
+    if (store === 'materialReceipts' || store === 'automationReceipts') continue
     if (before[store] === after[store]) continue
     // A rating only appends one review. Never diff the complete persisted history.
     if (kind === 'review' && store === 'reviews') {

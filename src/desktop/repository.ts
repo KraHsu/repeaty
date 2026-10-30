@@ -152,6 +152,7 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
           'savedSearches',
           'sources',
           'materialReceipts',
+          'automationReceipts',
           'materialFolders',
           'sourceConnections',
           'sourceCandidates',

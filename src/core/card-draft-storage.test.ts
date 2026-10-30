@@ -203,7 +203,7 @@ it('isolates local databases, enforces capacity across writers, and keeps malfor
   await repo.discardCardDraft(batch[0]!.id)
   await expect(repo.addCardDrafts(proposal.drafts)).rejects.toThrow('50')
   expect(await repo.readCardDrafts()).toHaveLength(MAX_DRAFTS - 1)
-  const db = await openDB(name, 22)
+  const db = await openDB(name, 23)
   const broken = { ...batch[1]!, version: 99 }
   await db.put('cardDrafts', broken, batch[1]!.id)
   await expect(repo.readCardDrafts()).rejects.toThrow()

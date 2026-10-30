@@ -13,7 +13,7 @@ import { storedLibrary } from './stored-library'
 export async function readBrowserLibrary(page: Page): Promise<Library> {
   const rows = await storedLibrary(page)
   return {
-    version: 18,
+    version: 19,
     ...Object.fromEntries(
       Object.entries(rows).map(([key, rows]) => [
         key,
