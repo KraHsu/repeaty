@@ -20,6 +20,26 @@ fn install_trusted(host: &Plugins, root: &Dir, id: &str) {
     call(host, root, id, "trust", json!({"hash":hash})).unwrap();
 }
 #[test]
+fn models_permission_is_explicit_and_requires_trust_in_the_current_package() {
+    let (_workspace, _device, host, root) = fixture();
+    install_trusted(&host, &root, "sample");
+    assert_eq!(
+        host.models_authorized(&root, "sample").unwrap_err(),
+        "permission-denied"
+    );
+    let mut enabled = bundle("sample");
+    enabled["manifest"]["permissions"]["models"] = json!(true);
+    call(&host, &root, "sample", "install", enabled).unwrap();
+    assert_eq!(
+        host.models_authorized(&root, "sample").unwrap_err(),
+        "plugin-not-trusted"
+    );
+    let hash = package(&root, "sample").unwrap().hash();
+    call(&host, &root, "sample", "trust", json!({"hash":hash})).unwrap();
+    host.models_authorized(&root, "sample").unwrap();
+    assert!(host.models_authorized(&root, "../escape").is_err());
+}
+#[test]
 fn install_update_remove_are_independent_of_plugin_data_and_require_exact_device_trust() {
     let (workspace, _device, host, root) = fixture();
     assert_eq!(

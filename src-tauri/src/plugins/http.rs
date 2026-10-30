@@ -210,6 +210,7 @@ mod tests {
             origins: vec!["https://example.org".into()],
             secrets: true,
             files: false,
+            models: false,
         };
         host.secrets.lock().unwrap().operation("sample",&permissions,json!({"action":"set","slot":"account","origin":"https://example.org","values":{"session":"private","csrf":"token"}})).unwrap();
         (directory, host, permissions)
