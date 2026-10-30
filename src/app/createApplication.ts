@@ -23,6 +23,8 @@ import { createPluginReviewReader } from '../plugins/activity'
 import { useReadingLeaveGuard } from './useReadingLeaveGuard'
 import { useAutomationConsent } from './useAutomationConsent'
 import { usePluginNetworkConsent } from './usePluginNetworkConsent'
+import { useInputCommands } from '../input/controller'
+import { provideMenuPreferences } from '../input/menus'
 
 /** One composition root owns UI controllers and connects the selected storage adapter. */
 export function createApplication() {
@@ -31,6 +33,26 @@ export function createApplication() {
   const { clearNotifications, notify } = useNotifications()
 
   const workspace = useLibrary()
+  const input = useInputCommands(workspace.scope)
+  const menus = provideMenuPreferences(workspace.scope)
+  watch(
+    () =>
+      plugins.pluginRuntime.installations.flatMap((owner) =>
+        (owner.commands ?? []).map((command) => ({ owner, command })),
+      ),
+    (entries, _previous, onCleanup) => {
+      const disposers = entries.map(({ owner, command }) =>
+        input.registerDefinition({
+          id: `plugin:${owner.plugin.id}:${command.id}`,
+          title: `${owner.plugin.label} · ${command.title}`,
+          context: 'material',
+          defaultShortcuts: command.shortcut ? [command.shortcut] : [],
+        }),
+      )
+      onCleanup(() => disposers.forEach((dispose) => dispose()))
+    },
+    { immediate: true },
+  )
   const networkConsent = usePluginNetworkConsent(workspace.scope)
   onScopeDispose(plugins.setNetworkConsent(networkConsent.consent))
   onScopeDispose(plugins.setPublishingHost((owner) => workspace.publishingApi(owner)))
@@ -79,6 +101,8 @@ export function createApplication() {
   const sourceConnections = useSourceConnections(workspace, plugins)
   const capture = useNativeCollection(workspace, collection)
   const base = {
+    input,
+    menus,
     sourceConnections,
     capture,
     workspace,

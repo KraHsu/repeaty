@@ -11,7 +11,7 @@ import ConnectionSettings from '@repeaty/publishing-client/settings'
 import { createDiscourse } from './client'
 import { createAuthorization } from './authorization'
 
-const t = (zh: string, en: string) => (locale.value === 'en' ? en : zh)
+const t = (zh: string, en: string) => (!locale.value.startsWith('zh') ? en : zh)
 const icon = () =>
   h(
     'svg',

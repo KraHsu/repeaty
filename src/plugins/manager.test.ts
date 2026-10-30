@@ -21,6 +21,43 @@ import type { MaterialHostApi, MaterialSearchPage } from '@repeaty/plugin-api'
 
 const managers: PluginManager[] = []
 
+it('opens wildcard material tools for current formats and disposes their context on disable', async () => {
+  const env = environment([{ id: 'sample', bundle: bundle(), trusted: true }], (api) => {
+    api.registerCommand({
+      id: 'lookup',
+      title: 'Lookup',
+      formats: ['*'],
+      component: { render: () => h('p', 'Lookup') },
+    })
+    api.registerCommand({
+      id: 'only-pdf',
+      title: 'PDF',
+      formats: ['pdf'],
+      component: { render: () => h('p', 'PDF') },
+    })
+  })
+  env.manager.setMaterialHost(
+    (plugin) =>
+      ({
+        capabilities: () => ({ available: true }),
+        snapshot: () => ({
+          workspaceScope: plugin.scope,
+          revision: 1,
+          sources: [{ id: 'source', format: 'markdown' }],
+          decks: [],
+        }),
+      }) as unknown as MaterialHostApi,
+  )
+  await env.manager.initializePlugins()
+  const request = { expectedRevision: 1, operationId: 'open-lookup', sourceId: 'source' }
+  const opened = env.manager.openMaterialTool('sample', 'lookup', request)
+  expect(opened.context.sourceId).toBe('source')
+  expect(() => env.manager.openMaterialTool('sample', 'only-pdf', request)).toThrow('不支持')
+  await env.manager.enablePlugin('sample', false)
+  expect(opened.context.signal.aborted).toBe(true)
+  expect(() => env.manager.openMaterialTool('sample', 'lookup', request)).toThrow('插件已卸载')
+})
+
 it('runs command orchestration separately from parsers, rejects stale revisions and clears facades on disable', async () => {
   let api!: ReturnType<typeof createPluginApi>
   const executions: string[] = []

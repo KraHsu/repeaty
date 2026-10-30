@@ -207,6 +207,7 @@ async function choose(event: Event) {
       return
     if (!isCurrent()) return
     await installPlugin(bundle)
+    if (isCurrent()) selectPlugin(bundle.manifest.id)
   })
 }
 function toggle(id: string, enabled: boolean, trusted: boolean, name: string) {

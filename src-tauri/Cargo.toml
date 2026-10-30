@@ -9,7 +9,7 @@ publish = false
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["sync", "net", "time", "process", "io-util"] }
@@ -21,6 +21,11 @@ base64 = "0.22"
 open = "5"
 tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-window-state = "2"
+semver = "1"
 clipboard-rs = "0.3.5"
 tempfile = "3"
 uuid = { version = "1", features = ["v4"] }
@@ -37,5 +42,6 @@ windows = { version = "0.59.0", features = ["Win32_System_Com", "Win32_UI_Access
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Threading", "Win32_System_LibraryLoader", "Win32_Graphics_Gdi", "Win32_UI_Controls", "Win32_UI_HiDpi", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
+tauri = { version = "2", features = ["test"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
 rmcp = { version = "=3.5.1", default-features = false, features = ["client", "transport-streamable-http-client-reqwest"] }

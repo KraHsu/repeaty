@@ -66,5 +66,5 @@ const english: Record<string, string> = {
   '清理结果为空，请调整规则。': 'The result is empty. Adjust the rules.',
 }
 export function text(value: string) {
-  return locale.value === 'en' ? (english[value] ?? value) : value
+  return !locale.value.startsWith('zh') ? (english[value] ?? value) : value
 }

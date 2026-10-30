@@ -4,7 +4,7 @@ import PublishPage from '@repeaty/publishing-client/ui'
 import ConnectionSettings from '@repeaty/publishing-client/settings'
 import { createWordPress } from './client'
 
-const t = (zh: string, en: string) => (locale.value === 'en' ? en : zh)
+const t = (zh: string, en: string) => (!locale.value.startsWith('zh') ? en : zh)
 const icon = () =>
   h(
     'svg',

@@ -1,5 +1,5 @@
 import { locale } from '@repeaty/plugin-api'
-export const t = (zh: string, en: string) => (locale.value === 'en' ? en : zh)
+export const t = (zh: string, en: string) => (!locale.value.startsWith('zh') ? en : zh)
 export function message(error: unknown) {
   if (error instanceof DOMException && error.name === 'AbortError')
     return t(

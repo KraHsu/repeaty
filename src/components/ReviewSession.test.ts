@@ -9,6 +9,8 @@ import { reviewCard, undoReview } from '../core/scheduler'
 import { operationFor, replayOperation, type Operation } from '../core/operations'
 import { setLocale } from '../i18n'
 import { studyEventSchema } from '../core/study-data'
+import { createInputController, INPUT_COMMANDS, type InputController } from '../input/controller'
+import { useSettingsStore } from '../settings-store'
 
 vi.mock('../plugins', async () => {
   const { defineComponent, h } = await import('vue')
@@ -43,7 +45,7 @@ vi.mock('@nuxt/ui/components/DropdownMenu.vue', async () => {
 async function flush() {
   for (let index = 0; index < 5; index++) await nextTick()
 }
-async function mountReview(filtered: boolean, plainPractice = false) {
+async function mountReview(filtered: boolean, plainPractice = false, commands?: InputController) {
   setLocale('zh-CN')
   const original = saveNote(fixture(), { ...input, front: 'Second question' })
   if (plainPractice) original.cards[0]!.id = 'c'.repeat(150)
@@ -97,6 +99,7 @@ async function mountReview(filtered: boolean, plainPractice = false) {
   const host = document.createElement('div')
   document.body.append(host)
   const app = createApp({ render: () => h(ReviewSession, { ...props, ref: component }) })
+  if (commands) app.provide(INPUT_COMMANDS, commands)
   app.use(createPinia()).mount(host)
   await flush()
   return {
@@ -121,6 +124,39 @@ async function grade() {
   )
   await flush()
 }
+
+it('honors remapped review keys and removes active commands on unmount', async () => {
+  useSettingsStore({ getItem: () => null, setItem: () => {} })
+  const commands = createInputController(ref('local:test'))
+  await commands.saveShortcuts('review.reveal', ['K'])
+  await commands.saveShortcuts('review.good', ['G'])
+  const test = await mountReview(false, false, commands)
+  try {
+    expect(test.host.textContent).toContain('或按 K')
+    expect(test.host.textContent).not.toContain('或按空格键')
+    await grade()
+    expect(test.props.submit).not.toHaveBeenCalled()
+    const press = async (key: string, isComposing = false) => {
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key, isComposing, bubbles: true, cancelable: true }),
+      )
+      await flush()
+    }
+    await press('k', true)
+    await press('g')
+    expect(test.props.submit).not.toHaveBeenCalled()
+    await press('k')
+    expect(
+      [...test.host.querySelectorAll('.grade-title kbd')].map((node) => node.textContent),
+    ).toContain('G')
+    await press('g')
+    expect(test.props.submit).toHaveBeenCalledTimes(1)
+  } finally {
+    test.close()
+    expect(await commands.run('review.reveal')).toBe(false)
+    commands.dispose()
+  }
+})
 
 it('uses bounded stable practice event IDs for valid long card IDs and repeat after undo', async () => {
   const test = await mountReview(false, true)

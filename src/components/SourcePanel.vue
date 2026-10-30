@@ -79,6 +79,7 @@ import SourceContext from './SourceContext.vue'
 import SourceExcerptList from './SourceExcerptList.vue'
 import { excerptsForSource, matchingExcerpts } from '../core/source-navigation'
 import type { CollectionInput } from '../core/collection-input'
+import type { MenuAction } from '../input/menus'
 
 const props = defineProps<{
   library: Library
@@ -179,11 +180,11 @@ async function filed(id: string) {
 const editingContent = ref(false)
 const contentEditor = ref<InstanceType<typeof SourceContentEditor>>()
 const annotations = ref<InstanceType<typeof SourceAnnotations>>()
-const organizationView = ref<'list' | 'tree'>('list')
 const filtersOpen = ref(false),
-  bulkOpen = ref(false),
-  contextOpen = ref(true)
+  bulkOpen = ref(false)
 const panels = useReadingPanels(computed(() => props.scope))
+const organizationView = panels.organizationView
+const contextOpen = panels.contextOpen
 function toggleBulk() {
   bulkOpen.value = !(bulkOpen.value || selection.value.size)
   if (!bulkOpen.value) selection.value = new Map()
@@ -1299,6 +1300,53 @@ async function download() {
     exporting.value = false
   }
 }
+const readerActions = computed<MenuAction[]>(() => [
+  {
+    id: 'material.excerpt',
+    title: t('保存为摘录'),
+    disabled: props.busy || !excerpt.value,
+    run: openExcerpt,
+  },
+  {
+    id: 'material.card',
+    title: t('用摘录制卡'),
+    disabled: props.busy || !excerpt.value || !props.library.decks.length,
+    run: () => {
+      if (excerpt.value && source.value) emit('create', excerpt.value, source.value.format)
+    },
+  },
+  ...(props.canShare
+    ? [
+        {
+          id: 'material.share',
+          title: t('通过 MCP 制卡'),
+          disabled: props.busy || !excerpt.value || !props.library.decks.length,
+          run: () => {
+            if (excerpt.value) emit('share', excerpt.value)
+          },
+        },
+      ]
+    : []),
+  ...(props.workbench
+    ? [
+        {
+          id: 'material.cloze',
+          title: t('制作挖空卡'),
+          disabled: props.busy || !excerpt.value || !props.library.decks.length,
+          run: () => {
+            if (excerpt.value && source.value)
+              emit('create', excerpt.value, source.value.format, 'cloze')
+          },
+        },
+        {
+          id: 'material.annotation',
+          title: t('添加批注'),
+          disabled: props.busy || !excerpt.value,
+          run: addAnnotation,
+        },
+      ]
+    : []),
+])
 </script>
 
 <template>
@@ -2031,6 +2079,7 @@ async function download() {
               </div>
             </div>
             <SourceReader
+              :actions="readerActions"
               :hold-reading="reading.holdForAction"
               :editable="!!workbench && !session"
               :busy="busy"

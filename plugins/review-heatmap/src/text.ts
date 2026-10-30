@@ -22,5 +22,5 @@ const messages = {
 } as const
 
 export function text(key: keyof typeof messages) {
-  return messages[key][locale.value === 'en' ? 1 : 0]
+  return messages[key][!locale.value.startsWith('zh') ? 1 : 0]
 }

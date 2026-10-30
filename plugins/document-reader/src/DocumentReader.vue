@@ -19,7 +19,7 @@ import { cacheBook, cachedBook } from './cache'
 import { pointRange, selectionOffsets, spanAt } from './selection'
 
 const props = defineProps<MaterialReaderProps>()
-const t = (zh: string, en: string) => (locale.value === 'en' ? en : zh)
+const t = (zh: string, en: string) => (!locale.value.startsWith('zh') ? en : zh)
 const book = shallowRef<DocumentBook>(),
   busy = ref(false),
   error = ref(''),
@@ -575,14 +575,16 @@ onBeforeUnmount(() => {
   border-block: 1px solid var(--ui-border);
 }
 .document-prose {
-  max-width: 48rem;
+  max-width: var(--reading-width, 48rem);
   margin-inline: auto;
   padding: 1.5rem clamp(1rem, 3vw, 2.5rem) 3rem;
-  line-height: 1.85;
+  line-height: var(--line-height-reading, 1.85);
+  font-family: var(--reading-font, var(--font-ui));
+  font-size: var(--font-size-reading, 1rem);
   overflow-wrap: anywhere;
 }
 .document-prose :deep(p) {
-  margin: 0.8em 0;
+  margin: var(--reading-paragraph-spacing, 0.8em) 0;
 }
 .document-prose :deep(h1),
 .document-prose :deep(h2),
@@ -592,13 +594,13 @@ onBeforeUnmount(() => {
   margin: 1.5em 0 0.75em;
 }
 .document-prose :deep(h1) {
-  font-size: 1.75rem;
+  font-size: 1.75em;
 }
 .document-prose :deep(h2) {
-  font-size: 1.4rem;
+  font-size: 1.4em;
 }
 .document-prose :deep(h3) {
-  font-size: 1.2rem;
+  font-size: 1.2em;
 }
 .document-prose :deep(img),
 .document-prose :deep(audio) {

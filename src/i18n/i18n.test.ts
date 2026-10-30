@@ -1,7 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { computed } from 'vue'
 import { en } from './en'
-import { detectLocale, duration, initI18n, locale, LOCALE_STORAGE_KEY, msg, setLocale, t } from '.'
+import {
+  detectLocale,
+  duration,
+  initI18n,
+  locale,
+  LOCALE_STORAGE_KEY,
+  msg,
+  setLocale,
+  t,
+  currentLanguagePack,
+} from '.'
+import { parseLanguagePack } from './language-packs'
 import { parseNoteImport } from '../core/batch'
 import { parseBackup, exportBackup } from '../core/backups'
 import { insertCloze } from '../core/authoring'
@@ -25,10 +36,10 @@ describe('locale preferences', () => {
     [null, ['en-GB'], 'en'],
     [null, ['zh-SG'], 'zh-CN'],
     [null, ['zh-Hans-CN'], 'zh-CN'],
-    [null, ['zh-TW'], 'zh-CN'],
-    ['invalid', ['fr-FR', 'en-US', 'zh-CN'], 'en'],
-    [null, ['ja-JP', 'zh-CN'], 'zh-CN'],
-    [null, ['de-DE'], 'en'],
+    [null, ['zh-TW'], 'zh-TW'],
+    ['invalid', ['fr-FR', 'en-US', 'zh-CN'], 'fr'],
+    [null, ['ja-JP', 'zh-CN'], 'ja'],
+    [null, ['de-DE'], 'de'],
     [null, [], 'en'],
   ] as const)('resolves %s / %s to %s', (saved, languages, expected) => {
     expect(detectLocale(saved, languages)).toBe(expected)
@@ -70,6 +81,15 @@ describe('locale preferences', () => {
 })
 
 describe('messages and data isolation', () => {
+  it('exports effective language text without turning a Chinese round trip into English', () => {
+    setLocale('zh-CN')
+    const chinese = parseLanguagePack(JSON.stringify(currentLanguagePack()))
+    expect(chinese.messages['保存']).toBe('保存')
+    setLocale('en')
+    const english = parseLanguagePack(JSON.stringify(currentLanguagePack()))
+    expect(english.messages['保存']).toBe('Save')
+    expect(english.messages['打开卡组 {p0}']).toBe('Open deck {p0}')
+  })
   it('retains matching interpolation parameters in every English message', () => {
     const params = (text: string) =>
       [...text.matchAll(/(?<!\{)\{(\w+)\}(?!\})/g)].map((match) => match[1]).sort()

@@ -83,6 +83,9 @@ it('provides individual desktop configuration views without registering plugin m
   expect(entries.map(({ contribution }) => contribution.id)).toEqual([
     'appearance',
     'notifications',
+    'input',
+    'language-packs',
+    'menus',
     'material-search',
     'material-reading',
     'study-review',
@@ -91,7 +94,10 @@ it('provides individual desktop configuration views without registering plugin m
     'workspace',
     'mcp',
     'capture',
+    'experience',
     'ai',
+    'reading-appearance',
+    'navigation',
   ])
   expect(
     entries.some(({ contribution }) => contribution.category?.some(({ id }) => id === 'plugins')),

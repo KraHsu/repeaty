@@ -73,12 +73,20 @@ it.each([false, true])(
       path: 'plugins/format-cleanup.repeaty-plugin',
       installByDefault: false,
     })
+    expect(catalog.find(({ id }) => id === 'web-lookup')).toMatchObject({
+      path: 'plugins/web-lookup.repeaty-plugin',
+      installByDefault: false,
+    })
+    const lookup = bundleSchema.parse(JSON.parse(files.get('plugins/web-lookup.repeaty-plugin')!))
+    expect(lookup.manifest).toMatchObject({ id: 'web-lookup', version: '1.0.0', kind: 'frontend' })
+    expect(lookup.manifest.permissions).toBeUndefined()
+    expect(lookup.readme).toContain('选区查询')
     const cleanup = bundleSchema.parse(
       JSON.parse(files.get('plugins/format-cleanup.repeaty-plugin')!),
     )
     expect(cleanup.manifest).toMatchObject({
       id: 'format-cleanup',
-      version: '1.0.0',
+      version: '1.0.1',
       kind: 'frontend',
     })
     expect(cleanup.manifest.permissions).toBeUndefined()
@@ -91,7 +99,7 @@ it.each([false, true])(
     )
     expect(heatmap.manifest).toMatchObject({
       id: 'review-heatmap',
-      version: '1.1.0',
+      version: '1.1.1',
       kind: 'frontend',
       description: '在学习概览中以日历热力图展示最近 365 天的正式评分次数。',
     })

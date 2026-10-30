@@ -9,7 +9,15 @@ import { collectionMessages } from './collection'
 import { captureMessages } from './capture'
 import { studySchedulingMessages } from './study-scheduling'
 import { studyControlMessages } from './study-controls'
+import { desktopExperienceMessages } from './desktop-experience'
+import { personalizationMessages } from './personalization'
+import { inputEnglish } from './input.en'
+import { appearanceMessages } from './appearance'
 export const en = {
+  ...inputEnglish,
+  ...appearanceMessages,
+  ...desktopExperienceMessages,
+  ...personalizationMessages,
   ...studyControlMessages,
   ...studySchedulingMessages,
   调整学习设置: 'Change study settings',

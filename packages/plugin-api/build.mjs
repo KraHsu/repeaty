@@ -12,8 +12,10 @@ import { parseArgs } from 'node:util'
 const runtimeExports = [
   't',
   'locale',
+  'createTranslator',
   'readSetting',
   'writeSetting',
+  'persistSetting',
   'registerSettings',
   'registerPage',
   'registerWidget',

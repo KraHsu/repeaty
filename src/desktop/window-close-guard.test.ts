@@ -17,7 +17,10 @@ function deferred<T>() {
   })
   return { promise, resolve }
 }
-async function setup(guard: () => Promise<boolean>) {
+async function setup(
+  guard: () => Promise<boolean>,
+  options?: Parameters<typeof connectWindowCloseGuard>[1],
+) {
   let listener!: Listener
   let subscribed = false
   const unlisten = vi.fn(async () => {
@@ -34,7 +37,7 @@ async function setup(guard: () => Promise<boolean>) {
     if (subscribed) await listener(event)
     permitted.push(!event.preventDefault.mock.calls.length)
   })
-  disposers.push(await connectWindowCloseGuard(guard))
+  disposers.push(await connectWindowCloseGuard(guard, options))
   const request = () => {
     const event = { preventDefault: vi.fn() }
     const complete = listener(event)
@@ -157,5 +160,35 @@ it('does not close a new session when releasing an old listener completes late',
   await setup(async () => false)
   release.resolve()
   await request.complete
+  expect(driver.close).not.toHaveBeenCalled()
+})
+
+it('retains the save listener when a post-save native action hides the window', async () => {
+  const afterSave = vi.fn().mockResolvedValueOnce('handled').mockResolvedValue('close')
+  const test = await setup(async () => true, { afterSave })
+  await test.request().complete
+  expect(driver.close).not.toHaveBeenCalled()
+  expect(test.subscribed()).toBe(true)
+  await test.request().complete
+  expect(driver.close).toHaveBeenCalledOnce()
+})
+it('does not hide or install after a rejected save and cancels pending quit intent', async () => {
+  const afterSave = vi.fn(),
+    canceled = vi.fn(async () => {})
+  const test = await setup(async () => false, { afterSave, canceled })
+  await test.request().complete
+  expect(afterSave).not.toHaveBeenCalled()
+  expect(canceled).toHaveBeenCalledOnce()
+  expect(driver.close).not.toHaveBeenCalled()
+})
+it('native post-save failure leaves the existing close guard attached', async () => {
+  const afterSave = vi.fn(async () => {
+      throw new Error('native failed')
+    }),
+    canceled = vi.fn(async () => {})
+  const test = await setup(async () => true, { afterSave, canceled })
+  await test.request().complete
+  expect(canceled).toHaveBeenCalledOnce()
+  expect(test.subscribed()).toBe(true)
   expect(driver.close).not.toHaveBeenCalled()
 })

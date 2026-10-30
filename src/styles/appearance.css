@@ -1,0 +1,118 @@
+/* Public reading tokens also apply to independently built plugin surfaces. */
+.status-chip-with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+}
+:where(
+  .source-markdown-preview,
+  .source-original,
+  .source-text,
+  .markdown-content,
+  .epub-reader,
+  .reading-preview
+) {
+  font-family: var(--reading-font, var(--font-ui));
+  line-height: var(--line-height-reading);
+}
+:where(.source-markdown-preview, .source-original, .source-text) {
+  max-width: min(100%, var(--reading-width, 50rem));
+  margin-inline: auto;
+}
+.markdown-content :where(p, blockquote, ul, ol, pre, table),
+.plain-paragraph {
+  margin-block: 0 var(--reading-paragraph-spacing, 0.75em);
+}
+.markdown-content mark,
+.source-original mark {
+  background: var(--reading-highlight) !important;
+  color: inherit;
+}
+.cloze-blank,
+.cloze-answer {
+  color: var(--reading-cloze, var(--ui-primary));
+}
+:root[data-dim-images='true'].dark
+  :where(.markdown-content, .source-original, .epub-reader, .document-prose)
+  img {
+  filter: brightness(0.8);
+}
+:root[data-pdf-mode='warm'] .pdf-page canvas {
+  filter: sepia(0.22);
+}
+:root[data-pdf-mode='inverted'] .pdf-page canvas {
+  filter: invert(0.9) hue-rotate(180deg);
+}
+:root[data-font-smoothing='system'] {
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+}
+.sidebar .nav-link {
+  font-size: calc(var(--font-size-control) * var(--navigation-scale, 1));
+}
+.sidebar[data-density='compact'] .main-nav {
+  gap: 4px;
+}
+.sidebar[data-density='compact'] .main-nav .nav-link {
+  min-height: 40px;
+}
+.sidebar[data-custom-order='true'] .sidebar-divider {
+  display: none;
+}
+.sidebar[data-custom-order='true'] .nav-utility-start {
+  margin-top: 0;
+}
+.sidebar[data-always-labels='true'] .nav-label {
+  display: inline;
+  white-space: normal;
+}
+.sidebar[data-always-labels='true'] .nav-link {
+  flex-wrap: wrap;
+  height: auto;
+  gap: 4px;
+}
+.sidebar[data-always-labels='true'] .nav-label {
+  font-size: var(--font-size-meta);
+}
+.card-table,
+.source-list {
+  font-size: calc(var(--font-size-body) * var(--list-scale, 1));
+}
+:root[data-reduce-motion='true'] *,
+:root[data-reduce-motion='true'] *::before,
+:root[data-reduce-motion='true'] *::after {
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+:root[data-strong-contrast='true'] {
+  --ui-text-muted: var(--ui-text);
+  --ui-text-dimmed: var(--ui-text);
+}
+@media (forced-colors: active) {
+  :root,
+  :root.dark {
+    --ui-text: CanvasText !important;
+    --ui-text-muted: CanvasText !important;
+    --ui-text-dimmed: CanvasText !important;
+    --ui-text-highlighted: CanvasText !important;
+    --ui-text-toned: CanvasText !important;
+    --ui-text-inverted: HighlightText !important;
+    --ui-primary: LinkText !important;
+    --ui-bg: Canvas !important;
+    --ui-bg-muted: Canvas !important;
+    --ui-bg-elevated: Canvas !important;
+    --ui-border: CanvasText !important;
+    --app-canvas: Canvas !important;
+    --app-rail: Canvas !important;
+    --app-nav-active: Highlight !important;
+    --app-nav-ink: HighlightText !important;
+  }
+  .nav-link[aria-current='page'] {
+    outline: 2px solid Highlight;
+  }
+  :focus-visible {
+    outline: 2px solid Highlight !important;
+    outline-offset: 3px;
+  }
+}

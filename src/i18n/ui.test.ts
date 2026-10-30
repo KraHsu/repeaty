@@ -1,7 +1,7 @@
 import { installApplicationState } from '../stores'
 // @vitest-environment happy-dom
 import 'fake-indexeddb/auto'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { createApp, nextTick, type App as VueApp } from 'vue'
 import App from '../App.vue'
 import { createRepository } from '../core/storage'
@@ -63,18 +63,43 @@ async function start() {
   // Native .click() on a disabled button is a no-op; wait for the actual action.
   await vi.waitFor(() => expect(button(t('创建卡组')).disabled).toBe(false), { timeout: 5000 })
 }
+async function openLanguageSettings() {
+  button(t('设置')).click()
+  // Follow the category containing this control. Waiting for every dynamic import
+  // also waits for unrelated gesture, language-pack and plugin settings in the parent
+  // category; those panels have their own tests and need not mount for this flow.
+  const category = '[data-category-key="general.appearance"]'
+  await vi.waitFor(() => expect(host.querySelector(category)).not.toBeNull())
+  host.querySelector<HTMLButtonElement>(category)!.click()
+  await vi.waitFor(() => expect(languageInput()).toBeInstanceOf(HTMLButtonElement))
+}
 async function submitForm() {
   document
     .querySelector('[role="dialog"] form')!
     .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
   await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull())
 }
-beforeEach(async () => {
+function ensureStandardsMode() {
   if (!document.doctype)
     document.insertBefore(
       document.implementation.createDocumentType('html', '', ''),
       document.documentElement,
     )
+}
+beforeAll(async () => {
+  ensureStandardsMode()
+  // This suite checks mounted localization and navigation, not Vite's cold module
+  // compilation time. Prepare the real panels used below before the interactions;
+  // mounting, navigation and installation state still run through the real app.
+  // Appearance is also rendered alongside the language field in its category.
+  await Promise.all([
+    import('../components/PluginPanel.vue'),
+    import('../components/SettingsPage.vue'),
+    import('../components/AppearanceSettings.vue'),
+  ])
+})
+beforeEach(async () => {
+  ensureStandardsMode()
   localStorage.clear()
   vi.stubGlobal('navigator', { languages: ['en-US'] })
   document.head.innerHTML =
@@ -100,6 +125,9 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 
+// This integration mounts the real app twice and renders settings in both languages.
+// Keep the per-transition waits bounded below, but give the complete reload flow its
+// own budget: it exceeds the default 5s under the full suite's worker contention.
 it('switches the mounted app, document metadata, and persists the explicit choice on reload', async () => {
   await start()
   expect(host.querySelector('h1')!.textContent).toContain('Overview')
@@ -109,11 +137,9 @@ it('switches the mounted app, document metadata, and persists the explicit choic
   )
   expect(localStorage.getItem(LOCALE_STORAGE_KEY)).toBeNull()
   expect(host.querySelector('.topbar select')).toBeNull()
-  button('Settings').click()
-  await vi.dynamicImportSettled()
-  await vi.waitFor(() => expect(languageInput()).toBeDefined())
+  await openLanguageSettings()
   const languageSelect = languageInput()!
-  expect(languageSelect.textContent).toContain('English')
+  expect(languageSelect.textContent).toContain('Follow system')
   await chooseOption(languageSelect, '中文（简体）')
   await nextTick()
   expect(host.querySelector('h1')!.textContent).toContain('设置')
@@ -126,24 +152,26 @@ it('switches the mounted app, document metadata, and persists the explicit choic
   app!.unmount()
   await start()
   expect(host.querySelector('h1')!.textContent).toContain('学习概览')
-  button('设置').click()
-  await nextTick()
+  await openLanguageSettings()
   expect(languageInput()!.textContent).toContain('中文（简体）')
-})
+}, 10_000)
 
 it('opens plugin management separately from the shared settings categories', async () => {
   await start()
   button('Plugins').click()
-  await vi.dynamicImportSettled()
-  await vi.waitFor(() => expect(host.querySelector('h1')?.textContent).toBe('Plugins'), {
-    timeout: 5000,
-  })
+  await vi.waitFor(() => expect(button('Plugins').getAttribute('aria-current')).toBe('page'))
+  await vi.waitFor(
+    () => {
+      const diagnostic = `Active page: ${host.querySelector('.main-nav [aria-current="page"]')?.getAttribute('aria-label')}; main: ${host.querySelector('main')?.textContent?.slice(0, 300)}`
+      expect(host.querySelector('.plugin-manager'), diagnostic).not.toBeNull()
+    },
+    { timeout: 5000 },
+  )
+  expect(host.querySelector('h1')?.textContent).toBe('Plugins')
   expect(host.querySelector('.plugin-manager')).not.toBeNull()
   expect(host.querySelector('.settings-categories')).toBeNull()
   expect(host.querySelector('.settings-configuration')).toBeNull()
-  button('Settings').click()
-  await vi.dynamicImportSettled()
-  await vi.waitFor(() => expect(languageInput()).toBeDefined(), { timeout: 5000 })
+  await openLanguageSettings()
   expect(host.querySelector('.settings-categories [data-category-key="plugins"]')).toBeNull()
   expect(host.querySelector('.plugin-manager')).toBeNull()
 }, 10_000)

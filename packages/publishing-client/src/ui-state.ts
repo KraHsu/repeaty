@@ -10,7 +10,7 @@ import type { Connection, Ledger, Store, Native } from './types'
 import { emptyLedger } from './engine'
 import { record, siteUrl } from './util'
 
-export const t = (zh: string, en: string) => (locale.value === 'en' ? en : zh)
+export const t = (zh: string, en: string) => (!locale.value.startsWith('zh') ? en : zh)
 export const native: Native = (operation, payload, signal) =>
   operation === 'http'
     ? network.request(payload as PluginHttpRequest, signal)
