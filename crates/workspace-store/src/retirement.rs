@@ -6,6 +6,8 @@ use crate::{
 };
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde_json::{Value, json};
+mod portable;
+pub(crate) use portable::{export, history_schema, replace, validate as portable_validate};
 pub fn schema(db: &Connection) -> Result<()> {
     db.execute_batch("CREATE TABLE retired_notes(id TEXT PRIMARY KEY,data TEXT NOT NULL,retired_at TEXT NOT NULL);
       CREATE INDEX retired_notes_order ON retired_notes(retired_at DESC,id);
@@ -15,7 +17,7 @@ pub fn schema(db: &Connection) -> Result<()> {
       CREATE TABLE retired_records(store TEXT NOT NULL,id TEXT NOT NULL,card_id TEXT NOT NULL,position INTEGER NOT NULL,data TEXT NOT NULL,PRIMARY KEY(store,id));
       CREATE INDEX retired_records_card ON retired_records(card_id,store);
       CREATE TABLE retired_media(id TEXT PRIMARY KEY,data TEXT NOT NULL);")?;
-    Ok(())
+    history_schema(db)
 }
 pub fn capture(tx: &Transaction<'_>, patches: &[Patch]) -> Result<()> {
     for patch in patches
@@ -28,6 +30,8 @@ pub fn capture(tx: &Transaction<'_>, patches: &[Patch]) -> Result<()> {
                 tx.execute("INSERT INTO retired_documents SELECT id,path,hash FROM documents WHERE kind='note' AND id=?1 ON CONFLICT(id) DO UPDATE SET path=excluded.path,hash=excluded.hash",[&patch.id])?;
             }
             "cards" => {
+                tx.execute("INSERT INTO retired_notes SELECT n.id,n.data,strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM notes n JOIN cards c ON c.note_id=n.id WHERE c.id=?1 ON CONFLICT(id) DO UPDATE SET data=excluded.data,retired_at=excluded.retired_at",[&patch.id])?;
+                tx.execute("INSERT INTO retired_documents SELECT d.id,d.path,d.hash FROM documents d JOIN cards c ON c.note_id=d.id WHERE d.kind='note' AND c.id=?1 ON CONFLICT(id) DO UPDATE SET path=excluded.path,hash=excluded.hash",[&patch.id])?;
                 tx.execute("INSERT INTO retired_cards SELECT id,note_id,json_extract(data,'$.variant'),data,strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM cards WHERE id=?1 ON CONFLICT(id) DO UPDATE SET note_id=excluded.note_id,variant=excluded.variant,data=excluded.data,retired_at=excluded.retired_at",[&patch.id])?;
                 for (store, condition) in [
                     ("reviews", "card_id=?1"),
@@ -49,17 +53,33 @@ pub fn capture(tx: &Transaction<'_>, patches: &[Patch]) -> Result<()> {
     Ok(())
 }
 pub fn reactivate(tx: &Transaction<'_>, patches: &[Patch]) -> Result<()> {
+    let mut notes = std::collections::BTreeSet::new();
     for patch in patches.iter().filter(|patch| patch.value.is_some()) {
         match patch.store.as_str() {
             "notes" => {
-                tx.execute("DELETE FROM retired_notes WHERE id=?1", [&patch.id])?;
-                tx.execute("DELETE FROM retired_documents WHERE id=?1", [&patch.id])?;
+                notes.insert(patch.id.clone());
             }
             "cards" => {
+                if let Some(note) = tx
+                    .query_row(
+                        "SELECT note_id FROM retired_cards WHERE id=?1",
+                        [&patch.id],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .optional()?
+                {
+                    notes.insert(note);
+                }
                 tx.execute("DELETE FROM retired_records WHERE card_id=?1", [&patch.id])?;
                 tx.execute("DELETE FROM retired_cards WHERE id=?1", [&patch.id])?;
             }
             _ => {}
+        }
+    }
+    for note in notes {
+        if tx.query_row("SELECT EXISTS(SELECT 1 FROM notes WHERE id=?1) AND NOT EXISTS(SELECT 1 FROM retired_cards WHERE note_id=?1)", [&note], |row| row.get::<_,bool>(0))? {
+            tx.execute("DELETE FROM retired_notes WHERE id=?1", [&note])?;
+            tx.execute("DELETE FROM retired_documents WHERE id=?1", [&note])?;
         }
     }
     Ok(())
@@ -77,9 +97,9 @@ pub fn listing(db: &Connection, query: &str, offset: i64) -> Result<Value> {
     if query.len() > 1000 || !(0..=1000000).contains(&offset) {
         return Err(Error::invalid());
     }
-    let condition = "(?1='' OR instr(lower(json_extract(n.data,'$.front')),lower(?1))>0)";
+    let condition = "NOT EXISTS(SELECT 1 FROM notes active WHERE active.id=n.id) AND (?1='' OR instr(lower(json_extract(n.data,'$.front')),lower(?1))>0)";
     let total: i64 = if query.is_empty() {
-        db.query_row("SELECT count(*) FROM retired_notes", [], |r| r.get(0))?
+        db.query_row("SELECT count(*) FROM retired_notes n WHERE NOT EXISTS(SELECT 1 FROM notes active WHERE active.id=n.id)", [], |r| r.get(0))?
     } else {
         db.query_row(
             &format!("SELECT count(*) FROM retired_notes n WHERE {condition}"),

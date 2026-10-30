@@ -26,6 +26,17 @@ pub const STORES: [&str; 11] = [
     "materialFolders",
 ];
 pub const MAX_MEDIA: usize = 10 * 1024 * 1024;
+pub const MAX_DOCUMENT: usize = 64 * 1024 * 1024;
+pub fn media_limit(mime: &str) -> usize {
+    if matches!(
+        mime,
+        "application/pdf" | "application/epub+zip" | "text/html" | "application/octet-stream"
+    ) {
+        MAX_DOCUMENT
+    } else {
+        MAX_MEDIA
+    }
+}
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -35,6 +46,8 @@ pub struct Commit {
     pub reason: Option<String>,
     #[serde(default)]
     pub operation_history: Option<Value>,
+    #[serde(default)]
+    pub retired: Option<Vec<Value>>,
 }
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -78,7 +91,7 @@ impl Database {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         let version: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 13 {
+        if version > 14 {
             return Err(Error::invalid());
         }
         let tx = connection.transaction()?;
@@ -143,6 +156,7 @@ impl Database {
             })
             .collect::<Result<_>>()?;
         crate::attachments::schema(&connection)?;
+        crate::retirement::history_schema(&connection)?;
         Ok(Self {
             connection,
             validators,
@@ -175,7 +189,7 @@ impl Database {
         Ok(snapshot)
     }
     fn library_history(db: &Connection, summary: bool) -> Result<Value> {
-        let mut library = json!({"version":15});
+        let mut library = json!({"version":16});
         for store in STORES {
             let data = if store == "attempts" && summary {
                 "json_remove(data,'$.code','$.result.detail')"
@@ -290,6 +304,7 @@ impl Database {
                     return Err(Error::invalid());
                 }
                 if patch.store == "notes" {
+                    crate::materials::plugin(&value["plugin"])?;
                     if value["type"] == "plugin" {
                         if !value["plugin"].is_object()
                             || value["plugin"]["data"].to_string().len() > 800_000
@@ -304,6 +319,9 @@ impl Database {
                     && value["question"]["plugin"]["data"].to_string().len() > 800_000
                 {
                     return Err(Error::invalid());
+                }
+                if patch.store == "practices" {
+                    crate::materials::plugin(&value["question"]["plugin"])?;
                 }
                 if patch.store == "attempts" {
                     let status = value["status"].as_str().unwrap_or("");
@@ -427,6 +445,23 @@ impl Database {
         if touched_stores.contains("materialFolders") {
             Self::validate_folder_graph(&tx)?;
         }
+        if changed.iter().any(|(patch, previous)| {
+            patch.store == "sources"
+                && patch.value.as_ref().is_none_or(|value| {
+                    previous.as_ref().is_none_or(|old| {
+                        ["studySequence", "parentSourceId"]
+                            .iter()
+                            .any(|key| old[*key] != value[*key])
+                            || old["document"]["container"] != value["document"]["container"]
+                    })
+                })
+        }) {
+            crate::materials::sequences(&tx)?;
+        }
+        if let Some(retired) = &commit.retired {
+            crate::retirement::portable_validate(&tx, retired, &self.validators)?;
+            crate::retirement::replace(&tx, retired)?;
+        }
         for (patch, previous) in &changed {
             if !patch.position_only {
                 Self::validate_patch(&tx, patch, previous.as_ref())?;
@@ -489,7 +524,24 @@ impl Database {
                             .any(|key| !value[*key].is_null())
                     }))
         }) {
-            tx.pragma_update(None, "user_version", 13)?;
+            let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+            tx.pragma_update(None, "user_version", version.max(13))?;
+        }
+        if commit.retired.is_some()
+            || tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM retired_history WHERE revision=?1)",
+                [current + 1],
+                |row| row.get::<_, bool>(0),
+            )?
+            || commit.patches.iter().any(|patch| {
+                patch.value.as_ref().is_some_and(|value| {
+                    crate::materials::needs_p4(value)
+                        || patch.store == "media"
+                            && value["size"].as_u64().unwrap_or(0) > MAX_MEDIA as u64
+                })
+            })
+        {
+            tx.pragma_update(None, "user_version", 14)?;
         }
         tx.execute("UPDATE workspace SET revision=?1 WHERE id=1", [current + 1])?;
         Self::collect_assets(&tx)?;
@@ -540,6 +592,9 @@ impl Database {
                             if end <= start || text.get(start..end) != Some(quote.as_slice()) {
                                 return Err(Error::invalid());
                             }
+                            let mut reference = annotation.clone();
+                            reference["sourceId"] = json!(patch.id);
+                            crate::materials::reference(&snapshot, &reference, &text)?;
                         }
                     }
                 }
@@ -656,7 +711,8 @@ impl Database {
                 [&patch.id],
                 |row| row.get(0),
             )?;
-            return if referenced {
+            let resources: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM sources s,json_each(json_extract(s.data,'$.document.resources')) r WHERE json_extract(r.value,'$.mediaId')=?1) OR EXISTS(SELECT 1 FROM sources s,json_each(json_extract(s.data,'$.versions')) v,json_each(json_extract(v.value,'$.document.resources')) r WHERE json_extract(r.value,'$.mediaId')=?1)", [&patch.id], |row| row.get(0))?;
+            return if referenced || resources {
                 Err(Error::invalid())
             } else {
                 Ok(())
@@ -667,7 +723,10 @@ impl Database {
             params![patch.id, value.to_string()],
             |row| row.get(0),
         )?;
-        if stored {
+        if stored
+            && value["size"].as_u64().unwrap_or(u64::MAX)
+                <= media_limit(value["type"].as_str().unwrap_or("")) as u64
+        {
             Ok(())
         } else {
             Err(Error::invalid())
@@ -794,7 +853,8 @@ impl Database {
                 "SELECT EXISTS(SELECT 1 FROM sources WHERE json_extract(data,'$.origin.sourceId')=?1 OR json_extract(data,'$.parentSourceId')=?1) OR EXISTS(SELECT 1 FROM notes WHERE json_extract(data,'$.excerpt.sourceId')=?1)",
                 [&patch.id], |row| row.get(0),
             )?;
-            return if referenced {
+            let retired = Self::retired_source_refs(tx, &patch.id)?;
+            return if referenced || !retired.is_empty() {
                 Err(Error::invalid())
             } else {
                 Ok(())
@@ -932,11 +992,16 @@ impl Database {
         }
         // Every existing quote must still resolve, including a reference without an explicit version.
         let mut statement = tx.prepare("SELECT data, 'source' FROM sources WHERE json_extract(data,'$.origin.sourceId')=?1 UNION ALL SELECT data, 'note' FROM notes WHERE json_extract(data,'$.excerpt.sourceId')=?1")?;
-        let references = statement
+        let mut references = statement
             .query_map([&patch.id], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
+        references.extend(
+            Self::retired_source_refs(tx, &patch.id)?
+                .into_iter()
+                .map(|data| (data, "note".into())),
+        );
         for (data, kind) in references {
             let child: Value = serde_json::from_str(&data)?;
             let reference = &child[if kind == "source" {
@@ -958,6 +1023,15 @@ impl Database {
                 if text.get(start..end) != Some(quote.as_slice()) {
                     return Err(Error::invalid());
                 }
+                for locator in child["plugin"]["variantLocators"]
+                    .as_object()
+                    .into_iter()
+                    .flat_map(|map| map.values())
+                {
+                    let mut variant_reference = reference.clone();
+                    variant_reference["locator"] = locator.clone();
+                    crate::materials::reference(&parent, &variant_reference, &text)?;
+                }
             } else {
                 for snapshot in std::iter::once(&child)
                     .chain(child["versions"].as_array().into_iter().flatten())
@@ -972,10 +1046,43 @@ impl Database {
         }
         Ok(())
     }
+    fn retired_source_refs(tx: &Transaction<'_>, id: &str) -> Result<Vec<String>> {
+        let present: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='retired_notes' AND type='table')", [], |row| row.get(0))?;
+        if !present {
+            return Ok(vec![]);
+        }
+        let mut statement = tx.prepare(
+            "SELECT data FROM retired_notes WHERE json_extract(data,'$.excerpt.sourceId')=?1",
+        )?;
+        Ok(statement
+            .query_map([id], |row| row.get(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?)
+    }
     fn validate_note(tx: &Transaction<'_>, patch: &Patch, previous: Option<&Value>) -> Result<()> {
         let Some(value) = patch.value.as_ref() else {
             return Ok(());
         };
+        if previous.is_none_or(|before| {
+            before["plugin"]["variantLocators"] != value["plugin"]["variantLocators"]
+                || before["excerpt"] != value["excerpt"]
+        }) && let Some(locators) = value["plugin"]["variantLocators"].as_object()
+        {
+            let excerpt = &value["excerpt"];
+            let raw: String = tx
+                .query_row(
+                    "SELECT data FROM sources WHERE id=?1",
+                    [excerpt["sourceId"].as_str().unwrap_or("")],
+                    |row| row.get(0),
+                )
+                .map_err(|_| Error::invalid())?;
+            let snapshot = Self::source_snapshot(&serde_json::from_str(&raw)?, excerpt)?;
+            let text = Self::source_body(tx, &snapshot)?;
+            for locator in locators.values() {
+                let mut reference = excerpt.clone();
+                reference["locator"] = locator.clone();
+                crate::materials::reference(&snapshot, &reference, &text)?;
+            }
+        }
         if previous.is_none_or(|before| {
             before["frontMedia"] != value["frontMedia"] || before["backMedia"] != value["backMedia"]
         }) {
@@ -1059,6 +1166,10 @@ impl Database {
             "DELETE FROM history WHERE revision <= (SELECT MIN(revision) FROM checkpoints)",
             [],
         )?;
+        tx.execute(
+            "DELETE FROM retired_history WHERE revision <= (SELECT MIN(revision) FROM checkpoints)",
+            [],
+        )?;
         Ok(())
     }
     fn collect_assets(_tx: &Transaction<'_>) -> Result<()> {
@@ -1094,7 +1205,7 @@ impl Database {
             })
             .optional()?
             .ok_or_else(Error::missing)?;
-        let mut library = json!({"version":15});
+        let mut library = json!({"version":16});
         for store in STORES {
             let mut rows = BTreeMap::<String, (i64, Value)>::new();
             let mut stmt = self
@@ -1153,12 +1264,16 @@ impl Database {
             "application/json",
             "application/octet-stream",
         ];
-        if !valid_id(id) || bytes.is_empty() || bytes.len() > MAX_MEDIA || !allowed.contains(&mime)
+        if !valid_id(id)
+            || bytes.is_empty()
+            || bytes.len() > media_limit(mime)
+            || !allowed.contains(&mime)
         {
             return Err(Error::invalid());
         }
         if mime.starts_with("text/")
-            && (bytes.len() > 1024 * 1024 || std::str::from_utf8(bytes).is_err())
+            && ((mime != "text/html" && bytes.len() > 1024 * 1024)
+                || std::str::from_utf8(bytes).is_err())
         {
             return Err(Error::invalid());
         }
@@ -1263,8 +1378,14 @@ fn read_asset(dir: &Dir, path: &str) -> std::io::Result<Vec<u8>> {
         use cap_std::fs::OpenOptionsExt;
         options.custom_flags(0x00200000);
     }
-    let bytes =
-        files::read_stable_file(dir.open_with(path, &options)?.into_std(), MAX_MEDIA as u64)?;
+    let bytes = files::read_stable_file(
+        dir.open_with(path, &options)?.into_std(),
+        if matches!(extension, "pdf" | "epub" | "html" | "bin") {
+            MAX_DOCUMENT
+        } else {
+            MAX_MEDIA
+        } as u64,
+    )?;
     if files::digest(&bytes) != hash {
         return Err(std::io::ErrorKind::InvalidData.into());
     }

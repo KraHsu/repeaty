@@ -26,7 +26,40 @@ pub(crate) fn document(tx: &Transaction<'_>, snapshot: &Value) -> Result<()> {
         "html" => mime == "text/html",
         _ => true,
     };
-    if valid { Ok(()) } else { Err(Error::invalid()) }
+    if !valid
+        || value["path"]
+            .as_str()
+            .is_some_and(|path| !material_path(path))
+        || value
+            .get("data")
+            .is_some_and(|data| data.to_string().len() > 16 * 1024)
+    {
+        return Err(Error::invalid());
+    }
+    let mut paths = HashSet::new();
+    for resource in value["resources"].as_array().into_iter().flatten() {
+        let path = resource["path"].as_str().ok_or_else(Error::invalid)?;
+        if !material_path(path)
+            || !paths.insert(path)
+            || !tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM media WHERE id=?1)",
+                [resource["mediaId"].as_str().unwrap_or("")],
+                |row| row.get::<_, bool>(0),
+            )?
+        {
+            return Err(Error::invalid());
+        }
+    }
+    Ok(())
+}
+fn material_path(path: &str) -> bool {
+    !path.is_empty()
+        && path.encode_utf16().count() <= 2048
+        && !path.contains(['\\', ':'])
+        && !path.chars().any(|c| c <= '\u{1f}')
+        && path
+            .split('/')
+            .all(|part| !part.is_empty() && part != "." && part != "..")
 }
 
 fn region(value: &Value) -> bool {
@@ -48,7 +81,7 @@ pub(crate) fn reference(snapshot: &Value, reference: &Value, text: &[u16]) -> Re
         return Err(Error::invalid());
     }
     let kind = locator["kind"].as_str().unwrap_or("");
-    if kind != "text" && snapshot["document"]["format"] != kind {
+    if kind != "text" && kind != "formula" && snapshot["document"]["format"] != kind {
         return Err(Error::invalid());
     }
     let valid = match kind {
@@ -69,6 +102,26 @@ pub(crate) fn reference(snapshot: &Value, reference: &Value, text: &[u16]) -> Re
             .as_array()
             .is_some_and(|regions| !regions.is_empty() && regions.iter().all(region)),
         "image" => region(locator),
+        "formula" => {
+            let start = locator["start"].as_u64().unwrap_or(u64::MAX);
+            let end = locator["end"].as_u64().unwrap_or(0);
+            let leaves = locator["leaves"].as_array().ok_or_else(Error::invalid)?;
+            snapshot["format"] == "markdown"
+                && end > start
+                && end <= snapshot["characters"].as_u64().unwrap_or(0)
+                && !locator["latex"].as_str().unwrap_or("").trim().is_empty()
+                && leaves
+                    .iter()
+                    .filter_map(Value::as_u64)
+                    .collect::<HashSet<_>>()
+                    .len()
+                    == leaves.len()
+                && (reference["start"].is_null()
+                    || locator["start"] == reference["start"] && locator["end"] == reference["end"])
+                && reference["quote"].as_str().is_none_or(|quote| {
+                    formula_quote(quote, locator["latex"].as_str().unwrap_or(""))
+                })
+        }
         "epub" => {
             let href = locator["href"].as_str().unwrap_or("");
             let paired = match (locator["start"].as_u64(), locator["end"].as_u64()) {
@@ -77,6 +130,7 @@ pub(crate) fn reference(snapshot: &Value, reference: &Value, text: &[u16]) -> Re
                 _ => false,
             };
             !href.is_empty()
+                && (snapshot["document"]["path"].is_null() || snapshot["document"]["path"] == href)
                 && !href.starts_with(['/', '\\'])
                 && !href.split(['/', '\\']).any(|p| p == "..")
                 && !href.split('/').next().unwrap_or("").contains(':')
@@ -85,6 +139,106 @@ pub(crate) fn reference(snapshot: &Value, reference: &Value, text: &[u16]) -> Re
         _ => false,
     };
     if valid { Ok(()) } else { Err(Error::invalid()) }
+}
+fn formula_quote(quote: &str, latex: &str) -> bool {
+    [("$$", "$$"), ("\\[", "\\]"), ("\\(", "\\)"), ("$", "$")]
+        .iter()
+        .any(|(open, close)| {
+            quote
+                .strip_prefix(open)
+                .and_then(|rest| rest.strip_suffix(close))
+                .is_some_and(|inner| !inner.is_empty() && inner.trim() == latex.trim())
+        })
+}
+
+pub(crate) fn plugin(value: &Value) -> Result<()> {
+    if value.is_null() {
+        return Ok(());
+    }
+    let keys: HashSet<&str> = value["variants"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    if value["variants"]
+        .as_array()
+        .is_some_and(|items| items.len() != keys.len())
+        || value["variantLocators"]
+            .as_object()
+            .is_some_and(|locators| locators.keys().any(|key| !keys.contains(key.as_str())))
+    {
+        return Err(Error::invalid());
+    }
+    Ok(())
+}
+
+pub(crate) fn sequences(tx: &Transaction<'_>) -> Result<()> {
+    let mut statement = tx.prepare("SELECT id,json_extract(data,'$.parentSourceId'),json_extract(data,'$.studySequence'),json_extract(data,'$.document.container') FROM sources")?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<bool>>(3)?,
+            ))
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let roots: HashSet<_> = rows
+        .iter()
+        .filter(|row| row.2.is_none() && row.3 == Some(true))
+        .map(|row| row.0.as_str())
+        .collect();
+    let mut groups: HashMap<String, (String, HashSet<u64>)> = HashMap::new();
+    for (_, _, sequence, _) in &rows {
+        let Some(raw) = sequence else {
+            continue;
+        };
+        let sequence: Value = serde_json::from_str(raw)?;
+        let id = sequence["groupId"].as_str().ok_or_else(Error::invalid)?;
+        let mode = sequence["mode"].as_str().ok_or_else(Error::invalid)?;
+        if !roots.contains(id) {
+            return Err(Error::invalid());
+        }
+        let group = groups
+            .entry(id.into())
+            .or_insert_with(|| (mode.into(), HashSet::new()));
+        if group.0 != mode
+            || !group
+                .1
+                .insert(sequence["index"].as_u64().ok_or_else(Error::invalid)?)
+        {
+            return Err(Error::invalid());
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn needs_p4(value: &Value) -> bool {
+    if !value["studySequence"].is_null()
+        || !value["plugin"]["variants"].is_null()
+        || !value["plugin"]["variantLocators"].is_null()
+        || !value["question"]["plugin"]["variants"].is_null()
+        || value["variant"]
+            .as_str()
+            .is_some_and(|variant| variant.starts_with("plugin:"))
+        || value["annotations"]
+            .as_array()
+            .is_some_and(|annotations| annotations.iter().any(|entry| !entry["locator"].is_null()))
+    {
+        return true;
+    }
+    std::iter::once(value)
+        .chain(value["versions"].as_array().into_iter().flatten())
+        .any(|snapshot| {
+            ["path", "data", "resources", "container"]
+                .iter()
+                .any(|key| !snapshot["document"][*key].is_null())
+                || snapshot["reading"]["locator"]["kind"] == "formula"
+                || snapshot["excerpt"]["locator"]["kind"] == "formula"
+                || snapshot["origin"]["locator"]["kind"] == "formula"
+        })
 }
 
 pub(crate) fn reading(snapshot: &Value, source_id: &str) -> Result<()> {
@@ -179,6 +333,7 @@ mod tests {
             patches,
             reason: None,
             operation_history: None,
+            retired: None,
         }
     }
     fn source(id: &str, media: &str) -> Value {
@@ -250,7 +405,7 @@ mod tests {
         let mut db = Database::open(&path, assets.clone()).unwrap();
         assert_eq!(version(&db), 11);
         let library = db.load().unwrap()["library"].clone();
-        assert_eq!(library["version"], 15);
+        assert_eq!(library["version"], 16);
         assert!(library["sources"].as_array().unwrap().contains(&imported));
         assert_eq!(library["materialReceipts"][0], receipt);
         assert_eq!(
@@ -269,7 +424,7 @@ mod tests {
         );
         assert_eq!(db.load().unwrap()["revision"], 2);
         db.connection
-            .pragma_update(None, "user_version", 14)
+            .pragma_update(None, "user_version", 15)
             .unwrap();
         drop(db);
         assert!(Database::open(&path, assets).is_err());
