@@ -7,6 +7,8 @@ import { computed, ref, shallowRef, watch } from 'vue'
 import { History, Layers, Pause, Pencil, Play, Plus, Repeat2, Trash2 } from '@lucide/vue'
 import CardSearchInput from './CardSearchInput.vue'
 import CollectionSearchTools from './CollectionSearchTools.vue'
+import MaterialStateIcon from './MaterialStateIcon.vue'
+import { appearance } from '../appearance'
 import {
   cardViews,
   filterStates,
@@ -404,9 +406,27 @@ async function editSelected() {
             </div>
           </td>
           <td>
-            <span :class="['status-chip', { fresh: card.schedule.state === 0 }]">{{
-              t(cardStatus(card, now, studySettings(library)))
-            }}</span
+            <span
+              :class="['status-chip status-chip-with-icon', { fresh: card.schedule.state === 0 }]"
+              ><MaterialStateIcon
+                kind="review"
+                :state="
+                  card.suspended ? 'archived' : card.schedule.state === 0 ? 'pending' : 'scheduled'
+                "
+              /><span
+                :style="{
+                  opacity: appearance.strongContrast
+                    ? 1
+                    : appearance.reviewIcons[
+                        card.suspended
+                          ? 'archived'
+                          : card.schedule.state === 0
+                            ? 'pending'
+                            : 'scheduled'
+                      ].textOpacity,
+                }"
+                >{{ t(cardStatus(card, now, studySettings(library))) }}</span
+              ></span
             ><small v-if="card.schedule.state !== 0" class="due-date">{{
               new Date(card.schedule.due).toLocaleString(locale, {
                 month: 'short',

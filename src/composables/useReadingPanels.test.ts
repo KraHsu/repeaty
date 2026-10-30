@@ -60,3 +60,33 @@ it('bounds corrupted saved widths and never persists an unfinished gesture on di
   scope.stop()
   expect(settings.setItem).not.toHaveBeenCalled()
 })
+
+it('persists tree mode and context visibility, restoring each library independently', () => {
+  let saved: string | null = null
+  const settings = {
+    getItem: () => saved,
+    setItem: vi.fn((_: string, value: string) => {
+      saved = value
+    }),
+  }
+  useSettingsStore(settings)
+  const scope = effectScope(),
+    library = ref('one')
+  const panels = scope.run(() => useReadingPanels(library))!
+  panels.organizationView.value = 'tree'
+  panels.contextOpen.value = false
+  const previous = saved
+  library.value = 'reload-one'
+  expect(panels.organizationView.value).toBe('tree')
+  expect(panels.contextOpen.value).toBe(false)
+  saved = null
+  const count = settings.setItem.mock.calls.length
+  library.value = 'two'
+  expect(panels.organizationView.value).toBe('list')
+  expect(panels.contextOpen.value).toBe(true)
+  expect(settings.setItem).toHaveBeenCalledTimes(count)
+  saved = previous
+  library.value = 'one-again'
+  expect(panels.contextOpen.value).toBe(false)
+  scope.stop()
+})

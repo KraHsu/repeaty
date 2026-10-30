@@ -1,14 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, onUnmounted } from 'vue'
-import {
-  Folder,
-  FileText,
-  ChevronRight,
-  MoreHorizontal,
-  FolderPlus,
-  ArrowUp,
-  ArrowDown,
-} from '@lucide/vue'
+import { Folder, ChevronRight, MoreHorizontal, FolderPlus, ArrowUp, ArrowDown } from '@lucide/vue'
 import type { Library } from '../core/model'
 import type { MaterialDestination } from '../core/material-organization-data'
 import type { MaterialWorkbenchActions } from './material-workbench-actions'
@@ -17,6 +9,8 @@ import AppModal from './AppModal.vue'
 import StudyPriorityField from './StudyPriorityField.vue'
 import { studySettings } from '../core/study-settings'
 import { t } from '../i18n'
+import { appearance } from '../appearance'
+import MaterialStateIcon from './MaterialStateIcon.vue'
 
 const props = defineProps<{
   library: Library
@@ -83,6 +77,22 @@ onUnmounted(() => {
   dragged = undefined
 })
 const key = (row: Pick<Row, 'kind' | 'id'>) => `${row.kind}:${row.id}`
+const iconStates = computed(
+  () =>
+    new Map(
+      props.library.sources.map(
+        (source) =>
+          [
+            source.id,
+            source.queue?.state === 'archived'
+              ? 'archived'
+              : source.queue
+                ? 'scheduled'
+                : 'pending',
+          ] as const,
+      ),
+    ),
+)
 const destinationKey = (target: MaterialDestination) =>
   target.parentSourceId
     ? `source:${target.parentSourceId}`
@@ -345,9 +355,21 @@ async function drop(row?: Row) {
           :disabled="busy"
           @click="row.kind === 'source' ? emit('open', row.id) : toggle(row)"
         >
-          <Folder v-if="row.kind === 'folder'" :size="16" /><FileText v-else :size="16" /><span>{{
-            row.name
-          }}</span>
+          <Folder v-if="row.kind === 'folder'" :size="16" /><MaterialStateIcon
+            v-else
+            :state="iconStates.get(row.id)"
+          /><span
+            :style="
+              row.kind === 'source'
+                ? {
+                    opacity: appearance.strongContrast
+                      ? 1
+                      : appearance.materialIcons[iconStates.get(row.id) ?? 'pending'].textOpacity,
+                  }
+                : undefined
+            "
+            >{{ row.name }}</span
+          >
         </UiButton>
         <details class="tree-menu" :open="openMenu === key(row)">
           <summary

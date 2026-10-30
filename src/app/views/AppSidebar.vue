@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, onUpdated, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, onUpdated, ref, type Component } from 'vue'
+import { navigationPreferences, orderedNavigation } from '../../navigation-preferences'
 import { UiButton } from '../../components/ui'
 import PluginNavigationIcon from '../../components/PluginNavigationIcon.vue'
 import { version } from '../../../package.json'
@@ -17,6 +18,9 @@ import {
   Puzzle,
   PanelLeft,
   CircleHelp,
+  Star,
+  ChartColumn,
+  Grid2X2,
 } from '@lucide/vue'
 import { desktopEdition } from '../../edition'
 import { WorkspaceBrowser, workspacePendingCount, workspaceDetectionError } from '@repeaty-platform'
@@ -25,15 +29,139 @@ defineProps<{ collapsed: boolean; canToggle: boolean }>()
 defineEmits<{ toggle: [] }>()
 const { library, tab, review, mixed, modal, navigate, openHistory } = useApplication()
 const { pluginPages, activePluginPage, openPluginPage } = useApplication()
-const learning = [
-  { page: 'overview', label: '学习概览', icon: Layers },
-  { page: 'cards', label: '全部卡片', icon: Files },
-  { page: 'sources', label: '学习材料', icon: BookOpen },
-] as const
-const utilities = [
-  { page: 'plugins', label: '插件', icon: Puzzle },
-  { page: 'settings', label: '设置', icon: Settings },
-] as const
+const iconOptions: Record<string, Component> = {
+  layers: Layers,
+  files: Files,
+  book: BookOpen,
+  folder: FolderOpen,
+  history: History,
+  database: Database,
+  puzzle: Puzzle,
+  settings: Settings,
+  star: Star,
+  chart: ChartColumn,
+  grid: Grid2X2,
+}
+interface NavigationItem {
+  id: string
+  label: string
+  icon?: Component
+  action: () => unknown
+  selected: boolean
+  group: string
+  pluginId?: string
+  pageId?: string
+  description?: string
+}
+const items = computed(() => {
+  const base: NavigationItem[] = [
+    {
+      id: 'overview',
+      label: '学习概览',
+      icon: Layers,
+      action: () => navigate('overview'),
+      selected: active('overview'),
+      group: 'learning',
+    },
+    {
+      id: 'cards',
+      label: '全部卡片',
+      icon: Files,
+      action: () => navigate('cards'),
+      selected: active('cards'),
+      group: 'learning',
+    },
+    {
+      id: 'sources',
+      label: '学习材料',
+      icon: BookOpen,
+      action: () => navigate('sources'),
+      selected: active('sources'),
+      group: 'learning',
+    },
+  ]
+  if (desktopEdition || library.value.practices.length)
+    base.push({
+      id: 'history',
+      label: '练习历史',
+      icon: History,
+      action: openHistory,
+      selected: active('history'),
+      group: 'learning',
+    })
+  if (WorkspaceBrowser)
+    base.push({
+      id: 'workspace',
+      label: '工作目录',
+      icon: FolderOpen,
+      action: () => navigate('workspace'),
+      selected: active('workspace'),
+      group: 'management',
+      description: workspacePendingCount.value
+        ? t('{count} 项文件修改待检查', { count: workspacePendingCount.value })
+        : workspaceDetectionError.value
+          ? t('文件检测需要检查，请打开工作目录。')
+          : undefined,
+    })
+  base.push({
+    id: 'data',
+    label: '数据与备份',
+    icon: Database,
+    action: () => navigate('data'),
+    selected: active('data'),
+    group: 'management',
+  })
+  for (const entry of pluginPages.value)
+    base.push({
+      id: `plugin:${entry.pluginId}/${entry.contribution.id}`,
+      label: entry.contribution.title,
+      icon: entry.contribution.icon,
+      action: () => openPluginPage(entry.pluginId, entry.contribution.id),
+      selected: active('plugin-page') && activePluginPage.value?.key === entry.key,
+      group: 'management',
+      pluginId: entry.pluginId,
+      pageId: entry.contribution.id,
+      description: entry.contribution.description,
+    })
+  base.push(
+    {
+      id: 'plugins',
+      label: '插件',
+      icon: Puzzle,
+      action: () => navigate('plugins'),
+      selected: active('plugins'),
+      group: 'utility',
+    },
+    {
+      id: 'settings',
+      label: '设置',
+      icon: Settings,
+      action: () => navigate('settings'),
+      selected: active('settings'),
+      group: 'utility',
+    },
+    {
+      id: 'help',
+      label: '帮助',
+      icon: CircleHelp,
+      action: () => {
+        modal.value = 'shortcuts'
+      },
+      selected: false,
+      group: 'utility',
+    },
+  )
+  return orderedNavigation(base).filter(
+    (item) =>
+      item.selected ||
+      item.id === 'settings' ||
+      item.id === 'help' ||
+      !navigationPreferences.hidden.includes(item.id),
+  )
+})
+function itemIcon(item: NavigationItem) {
+  return iconOptions[navigationPreferences.icons[item.id] ?? ''] ?? item.icon
+}
 function active(page: string) {
   return page === 'overview'
     ? tab.value === page || !!review.value || !!mixed.value
@@ -110,7 +238,12 @@ onBeforeUnmount(() => {
 })
 </script>
 <template>
-  <aside class="sidebar">
+  <aside
+    class="sidebar"
+    :data-density="navigationPreferences.density"
+    :data-always-labels="navigationPreferences.labels === 'always'"
+    :data-custom-order="navigationPreferences.order.length > 0"
+  >
     <div class="sidebar-tools">
       <UiButton
         v-if="canToggle"
@@ -136,134 +269,60 @@ onBeforeUnmount(() => {
     <div class="sidebar-content">
       <nav ref="navigation" id="primary-navigation" class="main-nav" :aria-label="t('主导航')">
         <span ref="selection" class="sidebar-nav-selection" aria-hidden="true" />
-        <UiButton
-          v-for="item in learning"
-          :key="item.page"
-          variant="ghost"
-          class="nav-link text-(--muted) hover:bg-(--app-nav-hover)"
-          :class="{
-            active: active(item.page),
-            'bg-transparent text-(--app-nav-ink) hover:bg-transparent': active(item.page),
-          }"
-          :aria-current="active(item.page) ? 'page' : undefined"
-          :aria-label="t(item.label)"
-          :title="t(item.label)"
-          @click="navigate(item.page)"
-          ><component :is="item.icon" :size="22" /><span class="nav-label">{{
-            t(item.label)
-          }}</span></UiButton
-        >
-        <UiButton
-          v-if="desktopEdition || library.practices.length"
-          variant="ghost"
-          class="nav-link text-(--muted) hover:bg-(--app-nav-hover)"
-          :class="{
-            active: active('history'),
-            'bg-transparent text-(--app-nav-ink) hover:bg-transparent': active('history'),
-          }"
-          :aria-current="active('history') ? 'page' : undefined"
-          :aria-label="t('练习历史')"
-          :title="t('练习历史')"
-          @click="openHistory()"
-          ><History :size="22" /><span class="nav-label">{{ t('练习历史') }}</span></UiButton
-        >
-        <hr class="sidebar-divider" :aria-label="t('学习与管理')" />
-        <UiButton
-          v-if="WorkspaceBrowser"
-          variant="ghost"
-          class="nav-link workspace-nav text-(--muted) hover:bg-(--app-nav-hover)"
-          :class="{
-            active: active('workspace'),
-            'bg-transparent text-(--app-nav-ink) hover:bg-transparent': active('workspace'),
-          }"
-          :aria-current="active('workspace') ? 'page' : undefined"
-          :aria-label="t('工作目录')"
-          :aria-description="
-            workspacePendingCount
-              ? t('{count} 项文件修改待检查', { count: workspacePendingCount })
-              : workspaceDetectionError
-                ? t('文件检测需要检查，请打开工作目录。')
-                : undefined
-          "
-          :title="
-            workspacePendingCount
-              ? `${t('工作目录')} · ${t('{count} 项文件修改待检查', { count: workspacePendingCount })}`
-              : workspaceDetectionError
-                ? t('文件检测需要检查，请打开工作目录。')
-                : t('工作目录')
-          "
-          @click="navigate('workspace')"
-          ><FolderOpen :size="22" /><span class="nav-label">{{ t('工作目录') }}</span
-          ><span v-if="workspacePendingCount" class="nav-count" aria-hidden="true">{{
-            workspacePendingCount
-          }}</span
-          ><span v-else-if="workspaceDetectionError" class="nav-count" aria-hidden="true"
-            >!</span
-          ></UiButton
-        >
-        <UiButton
-          variant="ghost"
-          class="nav-link text-(--muted) hover:bg-(--app-nav-hover)"
-          :class="{
-            active: active('data'),
-            'bg-transparent text-(--app-nav-ink) hover:bg-transparent': active('data'),
-          }"
-          :aria-current="active('data') ? 'page' : undefined"
-          :aria-label="t('数据与备份')"
-          :title="t('数据与备份')"
-          @click="navigate('data')"
-          ><Database :size="22" /><span class="nav-label">{{ t('数据与备份') }}</span></UiButton
-        >
-        <UiButton
-          v-for="entry in pluginPages"
-          :key="entry.key"
-          variant="ghost"
-          class="nav-link plugin-nav-link text-(--muted) hover:bg-(--app-nav-hover)"
-          :class="{
-            active: active('plugin-page') && activePluginPage?.key === entry.key,
-            'bg-transparent text-(--app-nav-ink) hover:bg-transparent':
-              active('plugin-page') && activePluginPage?.key === entry.key,
-          }"
-          :aria-current="
-            active('plugin-page') && activePluginPage?.key === entry.key ? 'page' : undefined
-          "
-          :aria-label="t(entry.contribution.title)"
-          :aria-description="t(entry.contribution.description ?? '') || undefined"
-          :title="t(entry.contribution.title)"
-          :data-plugin-page="`${entry.pluginId}/${entry.contribution.id}`"
-          @click="openPluginPage(entry.pluginId, entry.contribution.id)"
-        >
-          <span class="plugin-nav-icon" aria-hidden="true"
-            ><PluginNavigationIcon :component="entry.contribution.icon"
-          /></span>
-          <span class="nav-label plugin-nav-label">{{ t(entry.contribution.title) }}</span>
-        </UiButton>
-        <UiButton
-          v-for="(item, index) in utilities"
-          :key="item.page"
-          variant="ghost"
-          class="nav-link text-(--muted) hover:bg-(--app-nav-hover)"
-          :class="{
-            active: active(item.page),
-            'nav-utility-start': index === 0,
-            'bg-transparent text-(--app-nav-ink) hover:bg-transparent': active(item.page),
-          }"
-          :aria-current="active(item.page) ? 'page' : undefined"
-          :aria-label="t(item.label)"
-          :title="t(item.label)"
-          @click="navigate(item.page)"
-          ><component :is="item.icon" :size="22" /><span class="nav-label">{{
-            t(item.label)
-          }}</span></UiButton
-        >
-        <UiButton
-          variant="ghost"
-          class="nav-link sidebar-help text-(--muted) hover:bg-(--app-nav-hover)"
-          :aria-label="t('帮助')"
-          :title="t('快捷键') + ' · ?'"
-          @click="modal = 'shortcuts'"
-          ><CircleHelp :size="22" /><span class="nav-label">{{ t('帮助') }}</span></UiButton
-        >
+        <template v-for="(item, index) in items" :key="item.id">
+          <hr
+            v-if="
+              !navigationPreferences.order.length &&
+              item.group === 'management' &&
+              items[index - 1]?.group === 'learning'
+            "
+            class="sidebar-divider"
+            :aria-label="t('学习与管理')"
+          />
+          <UiButton
+            variant="ghost"
+            class="nav-link text-(--muted) hover:bg-(--app-nav-hover)"
+            :class="{
+              active: item.selected,
+              'bg-transparent text-(--app-nav-ink) hover:bg-transparent': item.selected,
+              'workspace-nav': item.id === 'workspace',
+              'plugin-nav-link': !!item.pluginId,
+              'nav-utility-start':
+                !navigationPreferences.order.length &&
+                item.group === 'utility' &&
+                items[index - 1]?.group !== 'utility',
+              'sidebar-help': item.id === 'help',
+            }"
+            :aria-current="item.selected ? 'page' : undefined"
+            :aria-label="t(item.label)"
+            :aria-description="item.description ? t(item.description) : undefined"
+            :title="t(item.label)"
+            :data-plugin-page="item.pluginId ? `${item.pluginId}/${item.pageId}` : undefined"
+            :data-navigation-id="item.id"
+            @click="item.action()"
+          >
+            <span
+              v-if="item.pluginId && !iconOptions[navigationPreferences.icons[item.id] ?? '']"
+              class="plugin-nav-icon"
+              aria-hidden="true"
+              ><PluginNavigationIcon :component="item.icon"
+            /></span>
+            <component :is="itemIcon(item)" v-else :size="22" aria-hidden="true" />
+            <span class="nav-label">{{ t(item.label) }}</span>
+            <span
+              v-if="item.id === 'workspace' && workspacePendingCount"
+              class="nav-count"
+              aria-hidden="true"
+              >{{ workspacePendingCount }}</span
+            >
+            <span
+              v-else-if="item.id === 'workspace' && workspaceDetectionError"
+              class="nav-count"
+              aria-hidden="true"
+              >!</span
+            >
+          </UiButton>
+        </template>
       </nav>
     </div>
     <footer class="sidebar-bottom">
