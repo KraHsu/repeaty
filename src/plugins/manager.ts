@@ -19,6 +19,7 @@ import { currentPluginWorkspace } from '@repeaty-plugin-host'
 import { createPluginPreferences, defaultPluginPreferences } from './preferences'
 import type { PluginStudyHostFactory } from './study'
 import type { PluginAutomationHostFactory } from './automation'
+import type { PluginPublishingHostFactory, PluginNetworkConsent } from './publishing'
 import type { PluginMaterialHostFactory } from './materials'
 import { PluginTaskScheduler } from './tasks'
 import type {
@@ -55,6 +56,8 @@ export interface PluginManagerEnvironment {
   materialHost?: PluginMaterialHostFactory
   studyHost?: PluginStudyHostFactory
   automationHost?: PluginAutomationHostFactory
+  publishingHost?: PluginPublishingHostFactory
+  networkConsent?: PluginNetworkConsent
 }
 let environmentFactory: (() => PluginManagerEnvironment) | undefined
 /** Embedded hosts supply a new adapter environment per app; mutable runtimes are never shared. */
@@ -101,6 +104,20 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
   const commandScheduler = new PluginTaskScheduler(1)
   let studyHost = environment.studyHost
   let automationHost = environment.automationHost
+  let publishingHost = environment.publishingHost
+  let networkConsent = environment.networkConsent
+  function setPublishingHost(factory: PluginPublishingHostFactory) {
+    publishingHost = factory
+    return () => {
+      if (publishingHost === factory) publishingHost = undefined
+    }
+  }
+  function setNetworkConsent(consent: PluginNetworkConsent) {
+    networkConsent = consent
+    return () => {
+      if (networkConsent === consent) networkConsent = undefined
+    }
+  }
   function setAutomationHost(factory: PluginAutomationHostFactory) {
     automationHost = factory
     return () => {
@@ -484,6 +501,22 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
           registerWidget,
           {
             registrations,
+            publishingHost: () => {
+              const published = materialApis.get(bundle.manifest.id)
+              return published &&
+                published.api === materialApi &&
+                pluginRuntime.installations.includes(published.installation)
+                ? publishingHost
+                : undefined
+            },
+            networkConsent: () => {
+              const published = materialApis.get(bundle.manifest.id)
+              return published &&
+                published.api === materialApi &&
+                pluginRuntime.installations.includes(published.installation)
+                ? networkConsent
+                : undefined
+            },
             automationHost: () => {
               const published = materialApis.get(bundle.manifest.id)
               return published &&
@@ -713,6 +746,8 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
     materialApis.clear()
     studyHost = undefined
     automationHost = undefined
+    publishingHost = undefined
+    networkConsent = undefined
     materialHost = undefined
     pluginPackages.splice(0)
   }
@@ -729,6 +764,8 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
     setMaterialHost,
     setStudyHost,
     setAutomationHost,
+    setPublishingHost,
+    setNetworkConsent,
     materialApiFor,
     parseMaterialFile,
     scanSourceConnector,

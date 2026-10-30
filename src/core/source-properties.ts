@@ -2,7 +2,10 @@ import { isAlias, isMap, isScalar, isSeq, parseDocument } from 'yaml'
 
 export const MAX_SOURCE_PROPERTIES = 65_536
 const reserved = new Set(['repeaty', 'title', 'url'])
-export function parseSourceProperties(text: string): Record<string, unknown> {
+export function parseSourceProperties(
+  text: string,
+  options: { allowReserved?: boolean } = {},
+): Record<string, unknown> {
   if (text.length > MAX_SOURCE_PROPERTIES) throw new Error('材料属性不能超过 65536 个字符。')
   if (!text.trim()) return {}
   const doc = parseDocument(text, { schema: 'core', uniqueKeys: true, stringKeys: true })
@@ -38,7 +41,7 @@ export function parseSourceProperties(text: string): Record<string, unknown> {
     throw new Error('材料属性值无效。')
   }
   const result = read(doc.contents, 0) as Record<string, unknown>
-  if (Object.keys(result).some((key) => reserved.has(key)))
+  if (!options.allowReserved && Object.keys(result).some((key) => reserved.has(key)))
     throw new Error('repeaty、title 和 url 由材料管理，请在对应字段中修改。')
   return result
 }
