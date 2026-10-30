@@ -27,3 +27,6 @@ mod materials;
 mod p4_tests;
 #[cfg(test)]
 mod p5_tests;
+#[cfg(test)]
+mod p6_tests;
+mod study;

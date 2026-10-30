@@ -13,6 +13,10 @@ try {
   const sources = await vite.ssrLoadModule('/src/core/source-data.ts')
   const schemas = {}
   for (const [store, name] of Object.entries({
+    studySettings: 'studySettingsSchema',
+    studyEvents: 'studyEventSchema',
+    studyActivity: 'studyActivitySchema',
+    fsrsModels: 'fsrsModelSchema',
     sources: 'sourceSchema',
     materialReceipts: 'materialReceiptSchema',
     materialFolders: 'materialFolderSchema',

@@ -40,6 +40,7 @@ const packageSchema = z.object({
     z.literal(15),
     z.literal(16),
     z.literal(17),
+    z.literal(18),
   ]),
   library: z.unknown().transform((value) => migrateLibrary(value)),
   retired: retiredBackupSchema.optional(),
@@ -79,7 +80,7 @@ export async function exportBackup(
   }
   const result = JSON.stringify({
     format: 'repeaty-backup',
-    version: 17,
+    version: 18,
     library,
     assets,
     ...(retired.length ? { retired } : {}),

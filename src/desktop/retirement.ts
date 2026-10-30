@@ -53,6 +53,9 @@ export function noteLifecycle(
   if (previous && previous.id !== id) throw stale()
   const note = noteSchema.parse({
     ...input,
+    studyPriority: Object.hasOwn(input, 'studyPriority')
+      ? input.studyPriority
+      : previous?.studyPriority,
     excerpt: input.excerpt ?? previous?.excerpt,
     inlineMedia: input.inlineMedia ?? previous?.inlineMedia,
     id,

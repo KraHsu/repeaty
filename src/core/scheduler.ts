@@ -5,7 +5,6 @@ import { finishPractice } from './practice'
 import {
   cardViews,
   hydrateSchedule,
-  localDay,
   serializeSchedule,
   type Card,
   type CardView,
@@ -14,26 +13,68 @@ import {
   type Library,
 } from './model'
 
-function scheduler(retention = 0.9) {
-  return fsrs({ request_retention: retention, enable_fuzz: false })
+import { studyDay, studyDayStart, nextStudyDayStart, scheduledStudyDayStart } from './study-day'
+import {
+  studySettings,
+  effectiveFsrsWeights,
+  DEFAULT_STUDY_SETTINGS,
+  type StudySettings,
+} from './study-settings'
+import { createPriorityResolver, weightedPriorityOrder } from './study-priority'
+
+function scheduler(retention = 0.9, settings = DEFAULT_STUDY_SETTINGS, weights?: number[]) {
+  return fsrs({
+    request_retention: retention,
+    maximum_interval: settings.maxIntervalDays,
+    enable_short_term: settings.enableShortTerm,
+    enable_fuzz: false,
+    ...(weights ? { w: weights } : {}),
+  })
 }
-export const dayKey = localDay
-export function isBuried(card: Card, now = new Date()): boolean {
-  const day = localDay(now)
+function normalizeDue<T extends { card: { due: Date; scheduled_days: number } }>(
+  result: T,
+  now: Date,
+  settings: Readonly<StudySettings>,
+): T {
+  // FSRS can separate Hard/Good/Easy by adding a day after applying its own
+  // maximum. A user-specified cap is still a hard bound, even when ratings tie.
+  if (result.card.scheduled_days > settings.maxIntervalDays) {
+    result.card.scheduled_days = settings.maxIntervalDays
+    result.card.due = new Date(now.getTime() + settings.maxIntervalDays * 86_400_000)
+  }
+  // Midnight is the legacy mode: preserve exact FSRS due timestamps by default.
+  if (settings.dayStartHour && result.card.scheduled_days >= 1)
+    result.card.due = scheduledStudyDayStart(now, result.card.scheduled_days, settings)
+  return result
+}
+export const dayKey = studyDay
+export function isBuried(
+  card: Card,
+  now = new Date(),
+  settings?: Pick<StudySettings, 'dayStartHour'>,
+): boolean {
+  const day = studyDay(now, settings)
   return card.buriedOn === day || card.autoBurial?.day === day
 }
-export function available(card: Card, now = new Date()): boolean {
-  return !card.suspended && !isBuried(card, now)
+export function available(
+  card: Card,
+  now = new Date(),
+  settings?: Pick<StudySettings, 'dayStartHour'>,
+): boolean {
+  return !card.suspended && !isBuried(card, now, settings)
 }
 export function dailyUsage(library: Library, now = new Date()) {
   const notes = new Map(library.notes.map((note) => [note.id, note.deckId]))
   const deckByCard = new Map(library.cards.map((card) => [card.id, notes.get(card.noteId)]))
-  const day = localDay(now)
+  const settings = studySettings(library)
+  const start = studyDayStart(now, settings).getTime()
+  const end = nextStudyDayStart(now, settings).getTime()
   const usage = new Map(
     library.decks.map((deck) => [deck.id, { new: new Set<string>(), review: new Set<string>() }]),
   )
   for (const review of library.reviews) {
-    if (review.studyDay !== day) continue
+    const at = Date.parse(review.reviewedAt)
+    if (at < start || at >= end) continue
     const deck = usage.get(deckByCard.get(review.cardId) ?? '')
     if (deck && (review.kind === 'new' || review.kind === 'review'))
       deck[review.kind].add(review.cardId)
@@ -49,6 +90,7 @@ export function dueCards(
   eligible: CardEligibility = allCards,
   views = cardViews(library),
 ): CardView[] {
+  const settings = studySettings(library)
   const usage = dailyUsage(library, now)
   const budgets = new Map(
     library.decks.map((deck) => [
@@ -59,12 +101,12 @@ export function dueCards(
       },
     ]),
   )
-  return views
+  let ordered = views
     .filter(
       (card) =>
         (!deckId || card.deckId === deckId) &&
         eligible(card) &&
-        available(card, now) &&
+        available(card, now, settings) &&
         new Date(card.schedule.due) <= now,
     )
     .sort((a, b) => {
@@ -77,19 +119,35 @@ export function dueCards(
         a.id.localeCompare(b.id)
       )
     })
-    .filter((card) => {
-      const kind =
-        card.schedule.state === State.New
-          ? 'new'
-          : card.schedule.state === State.Review
-            ? 'review'
-            : null
-      if (!kind || usage.get(card.deckId)?.[kind].has(card.id)) return true
-      const budget = budgets.get(card.deckId)!
-      if (budget[kind] <= 0) return false
-      budget[kind]--
-      return true
-    })
+  const priority = createPriorityResolver(library)
+  if (settings.priorityMode === 'weighted') {
+    ordered = weightedPriorityOrder(
+      ordered,
+      (card) => priority.card(card).value,
+      settings.priorityRatio,
+      `${studyDay(now, settings)}:${library.reviews.length}`,
+    )
+  } else {
+    const values = new Map(ordered.map((card) => [card.id, priority.card(card)]))
+    if ([...values.values()].some((entry) => entry.numeric)) {
+      const effective = (id: string) =>
+        values.get(id)!.numeric ? values.get(id)!.value : settings.defaultPriority
+      ordered.sort((a, b) => effective(a.id) - effective(b.id))
+    }
+  }
+  return ordered.filter((card) => {
+    const kind =
+      card.schedule.state === State.New
+        ? 'new'
+        : card.schedule.state === State.Review
+          ? 'review'
+          : null
+    if (!kind || usage.get(card.deckId)?.[kind].has(card.id)) return true
+    const budget = budgets.get(card.deckId)!
+    if (budget[kind] <= 0) return false
+    budget[kind]--
+    return true
+  })
 }
 export function blockedByLimit(
   library: Library,
@@ -102,13 +160,31 @@ export function blockedByLimit(
     (card) =>
       (!deckId || card.deckId === deckId) &&
       canReview(card) &&
-      available(card, now) &&
+      available(card, now, studySettings(library)) &&
       new Date(card.schedule.due) <= now,
   )
   return eligible.length - dueCards(library, now, deckId, canReview, views).length
 }
-export function previewReview(card: Card, now = new Date(), deck?: Pick<Deck, 'desiredRetention'>) {
-  return scheduler(deck?.desiredRetention).repeat(hydrateSchedule(card.schedule), now)
+export function previewReview(
+  card: Card,
+  now = new Date(),
+  deck?: Pick<Deck, 'desiredRetention'> & { id?: string },
+  library?: Library,
+) {
+  const settings = studySettings(library)
+  const actualDeck =
+    deck ??
+    (library &&
+      library.decks.find(
+        (entry) => entry.id === library.notes.find((note) => note.id === card.noteId)?.deckId,
+      ))
+  const result = scheduler(
+    actualDeck?.desiredRetention,
+    settings,
+    library ? effectiveFsrsWeights(library, actualDeck?.id) : undefined,
+  ).repeat(hydrateSchedule(card.schedule), now)
+  for (const rating of [1, 2, 3, 4] as const) normalizeDue(result[rating], now, settings)
+  return result
 }
 export function reviewCard(
   library: Library,
@@ -124,11 +200,12 @@ export function reviewCard(
     const practice = library.practices.find((entry) => entry.id === practiceId)
     if (practice?.reviewId && practice.cardId === id && practice.rating === rating) return library
   }
+  const settings = studySettings(library)
   const card = library.cards.find((entry) => entry.id === id)
   if (!card) throw new LocalizedError(msg('卡片已不存在。'))
   const views = cardViews(library)
   if (
-    !available(card, now) ||
+    !available(card, now, settings) ||
     !canReview(views.find((entry) => entry.id === id)!) ||
     (source === 'normal' &&
       !dueCards(library, now, undefined, canReview, views).some((entry) => entry.id === id))
@@ -138,11 +215,20 @@ export function reviewCard(
     throw new LocalizedError(msg('当前时间早于上次复习，请检查本机时间。'))
   const deckId = library.notes.find((note) => note.id === card.noteId)!.deckId
   const deck = library.decks.find((entry) => entry.id === deckId)!
-  const result = scheduler(deck.desiredRetention).next(hydrateSchedule(card.schedule), now, rating)
+  const result = normalizeDue(
+    scheduler(deck.desiredRetention, settings, effectiveFsrsWeights(library, deckId)).next(
+      hydrateSchedule(card.schedule),
+      now,
+      rating,
+    ),
+    now,
+    settings,
+  )
   const reviewId = crypto.randomUUID()
   const siblings = deck.burySiblings
     ? library.cards.filter(
-        (entry) => entry.noteId === card.noteId && entry.id !== id && available(entry, now),
+        (entry) =>
+          entry.noteId === card.noteId && entry.id !== id && available(entry, now, settings),
       )
     : []
   const siblingIds = new Set(siblings.map((entry) => entry.id))
@@ -163,7 +249,7 @@ export function reviewCard(
             leech: entry.leech || markedLeech,
           }
         : siblingIds.has(entry.id)
-          ? { ...entry, autoBurial: { day: localDay(now), reviewId } }
+          ? { ...entry, autoBurial: { day: studyDay(now, settings), reviewId } }
           : entry,
     ),
     reviews: [
@@ -181,7 +267,7 @@ export function reviewCard(
         practiceId,
         reviewedAt: now.toISOString(),
         nextDue: result.card.due.toISOString(),
-        studyDay: localDay(now),
+        studyDay: studyDay(now, settings),
         kind:
           card.schedule.state === State.New
             ? 'new'
@@ -254,7 +340,7 @@ export function changeCards(
                 : action === 'clearLeech'
                   ? { leech: false }
                   : action === 'bury'
-                    ? { buriedOn: localDay(now) }
+                    ? { buriedOn: studyDay(now, studySettings(library)) }
                     : { buriedOn: undefined, autoBurial: undefined }),
           }
         : card,
@@ -271,7 +357,7 @@ export function weekActivity(library: Library, now = new Date()) {
   return Array.from({ length: 7 }, (_, index) => {
     const date = new Date(now)
     date.setDate(date.getDate() - (6 - index))
-    const key = localDay(date)
+    const key = studyDay(date, studySettings(library))
     return {
       key,
       label: new Intl.DateTimeFormat(locale.value, { weekday: 'short' }).format(date),

@@ -135,9 +135,9 @@ it('rejects invalid adaptive feedback, counters, dates and unbounded factors', (
   const state = nextAdaptiveReading(source, 'good', now)
   for (const patch of [
     { intervalDays: 0 },
-    { intervalDays: 366 },
-    { factor: 3.1 },
-    { factor: 1.2 },
+    { intervalDays: 36501 },
+    { factor: 10.1 },
+    { factor: 0.9 },
     { readCount: 0 },
     { readCount: 1.5 },
     { feedback: 'accepted' },

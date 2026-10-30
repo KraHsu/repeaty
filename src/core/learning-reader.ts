@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { dueCards, blockedByLimit, dayKey, type CardEligibility } from './scheduler'
 import type { Library } from './model'
+import { studySettings } from './study-settings'
 
 export type LearningQuery = {
   tool:
@@ -71,7 +72,7 @@ export function readLearning(
   const context = {
     revision: currentRevision,
     generatedAt: now.toISOString(),
-    localDate: dayKey(now),
+    localDate: dayKey(now, studySettings(library)),
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   }
   if (query.tool === 'repeaty_due_cards') {

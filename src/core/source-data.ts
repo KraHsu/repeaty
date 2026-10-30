@@ -39,13 +39,13 @@ export const sourceQueueSchema = z.object({
 export const sourcePrioritySchema = z.enum(['high', 'normal', 'low'])
 export type SourcePriority = z.infer<typeof sourcePrioritySchema>
 export const READING_INTERVAL_DAYS = [1, 3, 7, 14, 30] as const
-export const sourceReadingIntervalSchema = z.literal(READING_INTERVAL_DAYS)
+export const sourceReadingIntervalSchema = z.number().int().min(1).max(36500)
 export const readingFeedbackSchema = z.enum(['again', 'good', 'easy'])
 export type ReadingFeedback = z.infer<typeof readingFeedbackSchema>
-export const adaptiveIntervalSchema = z.number().int().min(1).max(365)
+export const adaptiveIntervalSchema = z.number().int().min(1).max(36500)
 export const adaptiveReadingSchema = z.object({
   intervalDays: adaptiveIntervalSchema,
-  factor: z.number().finite().min(1.3).max(3),
+  factor: z.number().finite().min(1).max(10),
   lastReadOn: z.iso.date(),
   readCount: z.number().int().min(1).max(1_000_000),
   feedback: readingFeedbackSchema,
@@ -82,6 +82,7 @@ export type SourceBatchAction = Extract<
   { type: 'priority' | 'defer' | 'archive' | 'restore' }
 >
 export interface SourceArrangement {
+  studyPriority?: number
   queue?: Source['queue']
   priority?: SourcePriority
   readingIntervalDays?: Source['readingIntervalDays']
@@ -170,6 +171,7 @@ export interface SourceDetailsUpdate {
 }
 export const sourceSchema = z
   .object({
+    studyPriority: z.number().int().min(0).max(9).optional(),
     id,
     inbox: inboxSchema.optional(),
     binding: sourceBindingSchema.optional(),

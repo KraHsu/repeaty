@@ -24,6 +24,7 @@ import { parseSourceProperties } from '../core/source-properties'
 import { recordStores, type Snapshot, type BackupSummary, type CardPage } from '../core/storage'
 import { compileSearch } from '../core/search'
 import { available } from '../core/scheduler'
+import { studySettings } from '../core/study-settings'
 import {
   createWorkspaceMarkdown,
   readWorkspaceMarkdown,
@@ -154,6 +155,8 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
           'materialFolders',
           'sourceConnections',
           'sourceCandidates',
+          'studySettings',
+          'fsrsModels',
         ] as const
       ).every((key) => previous[key] === library[key])
       if (structural) workspaceLibrarySchema.parse(library)
@@ -161,6 +164,8 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
         validateLibraryReferences(library, () => {
           throw nativeError('invalid-data')
         })
+      if (library.studyEvents.length > 500_000 || library.studyActivity.length > 500_000)
+        throw new Error('study-record-limit')
       const patches: NativePatch[] = []
       let restoredBytes = 0
       for (const store of recordStores) {
@@ -533,9 +538,10 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
     ): Promise<CardPage> {
       signal?.throwIfAborted()
       if (!cached) await repository.load()
-      const matches = compileSearch(cached!.library.decks, filter, now)
+      const settings = studySettings(cached!.library)
+      const matches = compileSearch(cached!.library.decks, filter, now, settings)
       const cards = cardViews(cached!.library).filter(matches)
-      const eligible = includeStudy ? cards.filter((card) => available(card, now)) : []
+      const eligible = includeStudy ? cards.filter((card) => available(card, now, settings)) : []
       return {
         cards: cards.slice((Math.max(1, page) - 1) * 50, Math.max(1, page) * 50),
         total: cards.length,

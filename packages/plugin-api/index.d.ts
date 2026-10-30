@@ -10,6 +10,7 @@ import type {
 } from 'vue'
 export * from './materials'
 export * from './collection'
+export * from './study'
 import type { MaterialLocator } from './materials'
 
 export type Grade = 1 | 2 | 3 | 4
@@ -80,6 +81,7 @@ export interface Practice {
   startedAt: string
   answerSeen?: boolean
   completedAt?: string
+  studyDay?: string
   completion?: 'review' | 'practice'
   assessment?: Assessment
   rating?: Grade

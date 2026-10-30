@@ -1,6 +1,8 @@
 import { msg, LocalizedError } from '../i18n'
 import { inlineMediaSchema } from './inline-media-data'
 import { z } from 'zod'
+import { studySettingsSchema } from './study-settings'
+import { fsrsModelSchema, studyEventSchema, studyActivitySchema } from './study-data'
 import { sourceConnectionSchema, sourceCandidateSchema } from './collection-data'
 export { sourceConnectionSchema, sourceCandidateSchema } from './collection-data'
 import { materialFolderSchema, validateMaterialFolders } from './material-organization-data'
@@ -17,6 +19,8 @@ import {
 import { validateMaterialSequences } from './material-sequence'
 import { practiceSchema, attemptSchema, attemptSummarySchema } from './practice-data'
 
+export { studySettingsSchema } from './study-settings'
+export { fsrsModelSchema, studyEventSchema, studyActivitySchema } from './study-data'
 export { scheduleSchema } from './legacy'
 export { materialReceiptSchema } from './material-data'
 export { materialFolderSchema } from './material-organization-data'
@@ -114,6 +118,8 @@ export function clozes(text: string) {
 
 export const deckSchema = z.object({
   id,
+  studyPriority: z.number().int().min(0).max(9).optional(),
+  activeFsrsModelId: id.optional(),
   name: z.string().trim().min(1).max(80),
   description: z.string().max(300),
   color: z.enum(colors),
@@ -128,6 +134,7 @@ export const noteSchema = z
   .object({
     id,
     deckId: id,
+    studyPriority: z.number().int().min(0).max(9).optional(),
     type: z.enum(['basic', 'reversed', 'cloze', 'plugin']),
     plugin: pluginDataSchema.optional(),
     excerpt: excerptSchema.optional(),
@@ -242,10 +249,12 @@ export type DeckInput = Pick<
   | 'burySiblings'
   | 'leechThreshold'
   | 'desiredRetention'
+  | 'studyPriority'
 >
 export type NoteInput = Pick<
   Note,
   | 'deckId'
+  | 'studyPriority'
   | 'type'
   | 'front'
   | 'back'
@@ -289,7 +298,11 @@ export function variants(
 }
 
 const libraryContents = z.object({
-  version: z.literal(17),
+  version: z.literal(18),
+  studySettings: z.array(studySettingsSchema).max(1).default([]),
+  studyEvents: z.array(studyEventSchema).max(500_000).default([]),
+  studyActivity: z.array(studyActivitySchema).max(500_000).default([]),
+  fsrsModels: z.array(fsrsModelSchema).max(200).default([]),
   materialFolders: z.array(materialFolderSchema).max(10_000).default([]),
   materialReceipts: z.array(materialReceiptSchema).max(100_000).default([]),
   sourceConnections: z.array(sourceConnectionSchema).max(100).default([]),
@@ -324,9 +337,22 @@ export function validateLibraryReferences(
     'materialFolders',
     'sourceConnections',
     'sourceCandidates',
+    'studySettings',
+    'studyEvents',
+    'studyActivity',
+    'fsrsModels',
   ] as const) {
     if (new Set(library[key].map((entry) => entry.id)).size !== library[key].length)
       problem(`${key} 中存在重复 ID`)
+  }
+  const models = new Map(library.fsrsModels.map((model) => [model.id, model]))
+  const globalModel = library.studySettings[0]?.activeFsrsModelId
+  if (globalModel && (!models.has(globalModel) || models.get(globalModel)!.deckId))
+    problem('默认记忆参数不存在或不适用')
+  for (const deck of library.decks) {
+    const model = deck.activeFsrsModelId && models.get(deck.activeFsrsModelId)
+    if (deck.activeFsrsModelId && (!model || model.deckId !== deck.id))
+      problem('卡组记忆参数不存在或不适用')
   }
   const decks = new Set(library.decks.map((deck) => deck.id))
   const notes = new Map(library.notes.map((note) => [note.id, note]))
@@ -498,6 +524,10 @@ export const workspaceLibrarySchema = libraryContents
   )
 export type Library = z.infer<typeof workspaceLibrarySchema>
 export const recordSchemas = {
+  studySettings: studySettingsSchema,
+  studyEvents: studyEventSchema,
+  studyActivity: studyActivitySchema,
+  fsrsModels: fsrsModelSchema,
   sourceConnections: sourceConnectionSchema,
   sourceCandidates: sourceCandidateSchema,
   materialFolders: materialFolderSchema,
@@ -514,7 +544,11 @@ export const recordSchemas = {
 }
 export function emptyLibrary(): Library {
   return {
-    version: 17,
+    version: 18,
+    studySettings: [],
+    studyEvents: [],
+    studyActivity: [],
+    fsrsModels: [],
     materialFolders: [],
     materialReceipts: [],
     sourceConnections: [],
@@ -655,6 +689,9 @@ export function saveNote(
   if (noteId && !previous) throw new LocalizedError(msg('笔记已不存在，请刷新页面。'))
   const note = noteSchema.parse({
     ...input,
+    studyPriority: Object.hasOwn(input, 'studyPriority')
+      ? input.studyPriority
+      : previous?.studyPriority,
     excerpt: input.excerpt ?? previous?.excerpt,
     inlineMedia: input.inlineMedia ?? previous?.inlineMedia,
     id: noteId ?? crypto.randomUUID(),
@@ -726,10 +763,11 @@ export function migrateLibrary(value: unknown): Library {
       value.version === 14 ||
       value.version === 15 ||
       value.version === 16 ||
-      value.version === 17)
+      value.version === 17 ||
+      value.version === 18)
   )
     return librarySchema.parse(
-      value.version === 17
+      value.version === 18
         ? value
         : value.version === 6 ||
             value.version === 7 ||
@@ -741,22 +779,23 @@ export function migrateLibrary(value: unknown): Library {
             value.version === 13 ||
             value.version === 14 ||
             value.version === 15 ||
-            value.version === 16
-          ? { ...value, version: 17 }
+            value.version === 16 ||
+            value.version === 17
+          ? { ...value, version: 18 }
           : value.version === 5
-            ? { sources: [], ...value, version: 17 }
+            ? { sources: [], ...value, version: 18 }
             : {
                 sources: [],
                 practices: [],
                 attempts: [],
                 ...value,
-                version: 17,
+                version: 18,
               },
     )
   const old = legacySchema.parse(value)
   const seen = new Set<string>()
   return librarySchema.parse({
-    version: 17,
+    version: 18,
     sources: [],
     practices: [],
     attempts: [],

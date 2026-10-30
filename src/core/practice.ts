@@ -1,3 +1,5 @@
+import { studyDay } from './study-day'
+import { studySettings } from './study-settings'
 import { msg, LocalizedError } from '../i18n'
 import {
   practiceSchema,
@@ -143,6 +145,7 @@ export function finishPractice(
         ? {
             ...entry,
             completedAt: now.toISOString(),
+            studyDay: studyDay(now, studySettings(library)),
             completion: reviewId ? 'review' : 'practice',
             assessment,
             rating: review?.rating,
