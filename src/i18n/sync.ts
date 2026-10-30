@@ -1,0 +1,193 @@
+export const syncMessages = {
+  设备同步: 'Device sync',
+  添加设备或更改连接: 'Add a device or change connection',
+  查看记录标识: 'View record identifier',
+  此字段不存在: 'This field is absent',
+  此记录已删除: 'This record was deleted',
+  笔记: 'Note',
+  卡片: 'Card',
+  卡组: 'Deck',
+  学习材料: 'Study material',
+  评分记录: 'Review record',
+  练习记录: 'Practice record',
+  答题记录: 'Answer record',
+  附件: 'Attachment',
+  笔记正文: 'Note content',
+  保存的搜索: 'Saved search',
+  学习设置: 'Study settings',
+  学习事件: 'Study event',
+  学习活动: 'Study activity',
+  记忆模型: 'Memory model',
+  材料文件夹: 'Material folder',
+  材料集合: 'Material collection',
+  材料记录: 'Material record',
+  材料连接: 'Material connection',
+  候选材料: 'Material candidate',
+  自动化记录: 'Automation record',
+  插件设置: 'Plugin settings',
+  插件数据: 'Plugin data',
+  已退役: 'Retired',
+  学习记录: 'Study record',
+  问题: 'Question',
+  答案: 'Answer',
+  标题: 'Title',
+  名称: 'Name',
+  说明: 'Description',
+  复习安排: 'Review schedule',
+  标签: 'Tags',
+  所属卡组: 'Deck',
+  所属笔记: 'Note',
+  来源材料: 'Source material',
+  问题附件: 'Question attachments',
+  答案附件: 'Answer attachments',
+  正文: 'Content',
+  插件内容: 'Plugin content',
+  暂停状态: 'Suspension status',
+  卡片变体: 'Card variant',
+  顺序: 'Order',
+  所属文件夹: 'Folder',
+  评分: 'Rating',
+  作答代码: 'Answer code',
+  内容格式: 'Content format',
+  内容类型: 'Content type',
+  内容字段: 'Content field',
+  '请先打开桌面工作目录。': 'Open a desktop workspace first.',
+  同步需要处理: 'Sync needs attention',
+  正在处理同步: 'Sync in progress',
+  同步尚未启动: 'Sync is not running',
+  同步已暂停: 'Sync paused',
+  等待同步: 'Ready to sync',
+  尚未配对: 'Not paired',
+  '同步操作未完成，请重试。': 'The sync action did not finish. Please try again.',
+  '请输入私有局域网或回环 IP 地址与端口。': 'Enter a private LAN or loopback IP address and port.',
+  '无法复制邀请，请显示后手动复制。':
+    'Could not copy the invitation. Reveal it and copy it manually.',
+  '无法显示此版本，请重新检查。': 'Could not display this version. Check again.',
+  局域网同步: 'LAN sync',
+  '在同一局域网内交换学习库更新。收到内容后，先检查再合入。':
+    'Exchange library updates on the same local network. Review received changes before applying them.',
+  启动同步: 'Start sync',
+  恢复同步: 'Resume sync',
+  立即交换更新: 'Exchange updates now',
+  暂停同步: 'Pause sync',
+  取消当前操作: 'Cancel current action',
+  刷新状态: 'Refresh status',
+  本机设备: 'This device',
+  同步组: 'Sync group',
+  接收的更新: 'Received updates',
+  '待检查 {count} 项更新': '{count} updates to review',
+  '复习、阅读或编辑进行中时不能合入。先结束当前操作，学习内容才会更新。':
+    'Updates cannot be applied during review, reading, or editing. Finish the current activity before updating the library.',
+  待处理冲突: 'Conflicts to resolve',
+  整个记录: 'Entire record',
+  查看并处理: 'Review conflict',
+  '将合入 {changes} 项内容与 {events} 条学习事件。':
+    '{changes} content changes and {events} learning events will be applied.',
+  预览合入: 'Preview changes',
+  确认合入学习库: 'Apply to library',
+  设备与配对: 'Devices and pairing',
+  '只与自己信任的设备配对。请核对设备标识后批准加入。':
+    'Pair only with devices you trust. Verify the device identifier before approving a request.',
+  本机监听地址: 'Local listening address',
+  '手动填写本机私有 IP 与端口，例如 192.168.1.8:43127。回环地址只用于本机连接。':
+    'Enter this device’s private IP address and port, such as 192.168.1.8:43127. Loopback addresses connect only on this machine.',
+  设置监听地址: 'Set listening address',
+  生成配对邀请: 'Create invitation',
+  '邀请含有配对密钥。请通过可信方式交给另一台设备。':
+    'The invitation contains a pairing secret. Share it with the other device using a trusted method.',
+  隐藏邀请: 'Hide invitation',
+  显示邀请: 'Reveal invitation',
+  复制邀请: 'Copy invitation',
+  '邀请已复制。': 'Invitation copied.',
+  配对邀请: 'Pairing invitation',
+  另一台设备的邀请: 'Invitation from another device',
+  '粘贴邀请后申请加入，并在另一台设备上批准。':
+    'Paste the invitation to request access, then approve it on the other device.',
+  申请加入: 'Request to join',
+  加入申请: 'Join requests',
+  批准加入: 'Approve request',
+  拒绝: 'Reject',
+  已配对设备: 'Paired devices',
+  移除设备: 'Remove device',
+  '尚未连接其他设备。': 'No other devices are connected.',
+  同步诊断: 'Sync diagnostics',
+  '查看连接状态、协议和传输计数。诊断不包含正文、邀请密钥或凭据。':
+    'Inspect connection status, protocol, and transfer counts. Diagnostics exclude content, pairing secrets, and credentials.',
+  查看同步诊断: 'View sync diagnostics',
+  '移除“{name}”后，此设备不能继续同步。已下载的内容仍保留在对方设备上。':
+    'Removing “{name}” prevents further sync. Content already downloaded remains on that device.',
+  确认移除: 'Confirm removal',
+  处理同步冲突: 'Resolve sync conflict',
+  '选择要使用的版本，再预览并确认合入。': 'Choose a version, then preview and confirm the changes.',
+  本机版本: 'Local version',
+  远端版本: 'Remote version',
+  使用本机版本: 'Use local version',
+  使用远端版本: 'Use remote version',
+  退出同步组: 'Leave sync group',
+  确认退出同步组: 'Confirm leaving group',
+  '退出后停止同步并移除本机保存的配对授权。学习内容和插件数据保留，旧同步日志归档后不再交换。':
+    'Leaving stops sync and removes pairing authorizations stored on this device. Study content and plugin data are kept. Previous sync logs are archived and no longer exchanged.',
+  '已退出同步组，学习内容和插件数据保留。':
+    'Left the sync group. Study content and plugin data are kept.',
+  '同步已取消，已接收的更新仍保留。': 'Sync cancelled. Received updates are kept.',
+  '学习库已变化，请重新预览合入。': 'The library has changed. Preview the updates again.',
+  '当前学习库已加入其他同步组，不能直接更换配对。':
+    'This library already belongs to another sync group. Leave that group before joining another.',
+  '邀请无效或已过期，请重新生成。':
+    'The invitation is invalid or expired. Create a new invitation.',
+  '对方拒绝了加入申请。': 'The other device rejected the request.',
+  '无法使用这个本机地址，请检查 IP、端口和网络权限。':
+    'Cannot use this local address. Check the IP address, port, and network permissions.',
+  '请先填写并设置本机监听地址。': 'Enter and set the local listening address first.',
+  '设备协议不兼容，请将两端更新到兼容版本。':
+    'The device protocols are incompatible. Update both devices to compatible versions.',
+  '单次合入最多处理 10 万条更新、10 万项变更和 64 MiB；本次未合入，待处理更新保留。':
+    'A single apply can process up to 100,000 updates, 100,000 changes, and 64 MiB. Nothing was applied; pending updates are kept.',
+  '部分更新缺少前序记录，请与原设备继续交换。':
+    'Some updates are missing earlier records. Exchange updates with the original device again.',
+  '请先处理冲突，再确认合入。': 'Resolve conflicts before applying the updates.',
+  '关联记录存在冲突，当前无法合入；双方版本仍保留。':
+    'Related records conflict and cannot be applied yet. Both versions are kept.',
+  '所需附件尚未传输完成，请继续交换更新。':
+    'Required attachments are not fully transferred. Exchange updates again.',
+  '请先配对另一台设备。': 'Pair with another device first.',
+  '请先启动同步并设置本机监听地址。': 'Start sync and set the local listening address first.',
+  '请先结束当前学习或编辑，再合入同步更新。':
+    'Finish the current study or editing activity before applying sync updates.',
+  '学习库已切换，请重新打开同步设置。': 'The library has changed. Reopen sync settings.',
+  '同步操作未完成，请检查连接和待处理状态后重试。':
+    'The sync action did not finish. Check the connection and pending updates, then try again.',
+  '交换完成。请预览收到的更新，再确认合入。':
+    'Exchange completed. Preview the received updates before applying them.',
+  '同步更新已合入学习库。': 'Sync updates applied to the library.',
+  '同步组已创建，请设置本机监听地址。': 'Sync group created. Set the local listening address.',
+  '地址已准备。可以创建同步组，或使用另一台设备的邀请加入。':
+    'Address prepared. Create a sync group or join using another device’s invitation.',
+  '加入申请已发送，请在另一台设备上批准。': 'Join request sent. Approve it on the other device.',
+  '设备已配对。现在可以交换更新。': 'Devices paired. You can now exchange updates.',
+  '学习库正在保存，请稍后再合入。':
+    'The library is being saved. Apply updates after saving finishes.',
+  '请先结束当前复习，再合入同步更新。': 'Finish the current review before applying sync updates.',
+  '请先结束阅读或编辑，再合入同步更新。': 'Finish reading or editing before applying sync updates.',
+  '无法连接对方设备，请检查局域网地址、监听状态和防火墙。':
+    'Cannot reach the other device. Check its local address, listening status, and firewall.',
+  '连接已断开，已收到的更新保留，可以重新交换。':
+    'The connection was lost. Received updates are kept. You can exchange updates again.',
+  '连接等待超时，请检查对方设备后重试。':
+    'The connection timed out. Check the other device and try again.',
+  '设备认证失败，请检查配对是否已被撤销。':
+    'Device authentication failed. Check whether pairing has been revoked.',
+  '同步已暂停，请恢复后重试。': 'Sync is paused. Resume it and try again.',
+  '磁盘空间不足，已接收的分块保留，请释放空间后重试。':
+    'The disk is full. Received chunks are kept. Free some space and try again.',
+  '附件校验失败，未合入学习库，请重新交换。':
+    'Attachment verification failed. Nothing was applied. Exchange updates again.',
+  '同一附件标识的内容不同，已停止合入以保留原有内容。':
+    'An attachment identifier has conflicting content. Applying was stopped to preserve existing content.',
+  '附件超过传输上限，原数据和待处理更新均保留。':
+    'An attachment exceeds the transfer limit. Existing data and pending updates are kept.',
+  '同步已合入，但插件设置暂未刷新，请重新打开学习库。':
+    'Sync updates were applied, but plugin settings could not be refreshed. Reopen the library.',
+  '正在提交合入，已提交的学习内容会保留。':
+    'Applying updates. Study content that has been committed will be kept.',
+} as const

@@ -19,6 +19,7 @@ export {
   DraftWorkbench,
   DesktopTitlebar,
   PlatformSettings,
+  createDeviceSync,
   workspaceAvailable,
   connectWorkspaceMonitor,
   workspacePendingCount,

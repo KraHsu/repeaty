@@ -194,17 +194,19 @@ export function createApplicationSettings(options: ApplicationSettingsOptions): 
   }
   if (options.platformSettings) {
     const PlatformSettings = options.platformSettings
-    for (const section of ['workspace', 'mcp', 'capture', 'experience'] as const) {
+    for (const section of ['workspace', 'mcp', 'capture', 'experience', 'sync'] as const) {
       entries.push(
         entry(
           {
             id: section,
             get title() {
-              return section === 'experience'
-                ? t('桌面')
-                : section === 'capture'
-                  ? '快捷收集'
-                  : t(section === 'workspace' ? '工作目录' : 'MCP 连接')
+              return section === 'sync'
+                ? t('设备同步')
+                : section === 'experience'
+                  ? t('桌面')
+                  : section === 'capture'
+                    ? '快捷收集'
+                    : t(section === 'workspace' ? '工作目录' : 'MCP 连接')
             },
             category:
               section === 'experience'
@@ -213,7 +215,15 @@ export function createApplicationSettings(options: ApplicationSettingsOptions): 
                   ? [category('workspace', '工作目录')]
                   : [
                       category('connections', '连接'),
-                      { id: section, title: section === 'capture' ? '快捷收集' : t('MCP 连接') },
+                      {
+                        id: section,
+                        title:
+                          section === 'sync'
+                            ? t('设备同步')
+                            : section === 'capture'
+                              ? '快捷收集'
+                              : t('MCP 连接'),
+                      },
                     ],
             component: markRaw(
               defineComponent({

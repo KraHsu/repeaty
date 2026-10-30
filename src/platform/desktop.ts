@@ -18,6 +18,7 @@ export const WorkspaceBrowser = defineAsyncComponent(
   () => import('../desktop/WorkspaceManager.vue'),
 )
 export const PlatformSettings = defineAsyncComponent(() => import('../desktop/DesktopSettings.vue'))
+export { createDeviceSync } from '../desktop/device-sync'
 export const WorkspaceBackupTools = defineAsyncComponent(
   () => import('../desktop/WorkspaceRecovery.vue'),
 )

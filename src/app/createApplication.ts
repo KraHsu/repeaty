@@ -1,4 +1,5 @@
 import { useNativeCollection } from './useNativeCollection'
+import { useDeviceSync } from './useDeviceSync'
 import { useSourceConnections } from './useSourceConnections'
 import { computed, onScopeDispose, watch } from 'vue'
 import { t } from '../i18n'
@@ -171,6 +172,19 @@ export function createApplication() {
     ...editor,
   })
   const transfers = useBackupActions({ ...base, ...clock, ...navigation, ...runner })
+  const deviceSync = useDeviceSync(
+    workspace,
+    computed(() => {
+      if (!ready.value) return '请先打开桌面工作目录。'
+      if (busy.value) return '学习库正在保存，请稍后再合入。'
+      if (navigation.review.value || navigation.mixed.value)
+        return '请先结束当前复习，再合入同步更新。'
+      if (navigation.modal.value || views.activeSource.value || views.mixedReader.value)
+        return '请先结束阅读或编辑，再合入同步更新。'
+      return null
+    }),
+    () => plugins.reloadPlugins(),
+  )
   watch(workspace.scope, () => {
     navigation.resetLibrary()
     editor.resetEditor()
@@ -201,6 +215,7 @@ export function createApplication() {
     pluginReviews,
     automationConsent,
     networkConsent,
+    deviceSync,
     pageTitle: computed(() =>
       extensions.activePluginPage.value
         ? t(extensions.activePluginPage.value.contribution.title)

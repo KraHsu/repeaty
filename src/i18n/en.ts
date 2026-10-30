@@ -13,7 +13,9 @@ import { desktopExperienceMessages } from './desktop-experience'
 import { personalizationMessages } from './personalization'
 import { inputEnglish } from './input.en'
 import { appearanceMessages } from './appearance'
+import { syncMessages } from './sync'
 export const en = {
+  ...syncMessages,
   ...inputEnglish,
   ...appearanceMessages,
   ...desktopExperienceMessages,

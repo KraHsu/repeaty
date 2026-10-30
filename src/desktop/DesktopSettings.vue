@@ -6,8 +6,9 @@ import { displayFilesystemPath } from './display-path'
 import McpSettings from './McpSettings.vue'
 import CaptureSettings from './CaptureSettings.vue'
 import DesktopExperienceSettings from './DesktopExperienceSettings.vue'
+import SyncSettings from './SyncSettings.vue'
 import { SettingGroup } from '../components/ui'
-defineProps<{ section?: 'workspace' | 'mcp' | 'capture' | 'experience' }>()
+defineProps<{ section?: 'workspace' | 'mcp' | 'capture' | 'experience' | 'sync' }>()
 const path = computed(() => workspaceStatus.value?.active?.path)
 </script>
 <template>
@@ -21,6 +22,7 @@ const path = computed(() => workspaceStatus.value?.active?.path)
   </div>
   <CaptureSettings v-if="section === 'capture'" />
   <DesktopExperienceSettings v-if="section === 'experience'" />
+  <SyncSettings v-if="section === 'sync'" />
 </template>
 <style scoped>
 .workspace-setting-path {
