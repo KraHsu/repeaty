@@ -370,3 +370,5 @@ LeetCode 的请求、解析、账号状态、提交恢复和建议评分逻辑�
 - Windows Tauri 调试客户端构建、真实 MCP stdio、Rust 格式与 Clippy、共享 Schema、发布元数据、28 项发布规则检查通过；未生成或发布新安装包。
 
 桌面浏览器回归使用真实 Rust 学习库，并在测试夹具中适配系统对话框与插件 IPC；原生通用能力另外通过 Rust 测试验证。这些结果不等同于 Windows WebView 实机交互、macOS / Linux 新插件机制、客户端安装或正式发布验收。LeetCode 联网用例使用受控响应，不访问真实账号。
+
+学习统计、个人 FSRS 参数及候选校验接口见 [插件学习服务](PLUGIN_STUDY.md)，软件中的设置和使用方式见 [学习安排](STUDY_SETTINGS.md)。

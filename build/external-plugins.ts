@@ -16,6 +16,8 @@ export function externalPlugins(desktop: boolean): Plugin {
           'visual-occlusion',
           'obsidian',
           'readwise',
+          'fsrs-optimizer',
+          'study-statistics',
         ]
       : [
           'review-history',
@@ -26,6 +28,8 @@ export function externalPlugins(desktop: boolean): Plugin {
           'visual-occlusion',
           'obsidian',
           'readwise',
+          'fsrs-optimizer',
+          'study-statistics',
         ]
     const files = new Map<string, string>()
     const catalog = ids.map((id) => {
