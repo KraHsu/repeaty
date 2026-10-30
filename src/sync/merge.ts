@@ -80,11 +80,13 @@ export function planSync(input: SyncPlanInput, choices: Record<string, SyncChoic
   validateSyncSnapshot(input.snapshot)
   const originalClock = parseSyncClock(input.appliedClock)
   const events = parseSyncEvents(input.events, input.groupId)
+  const eventById = new Map(events.map((event) => [event.id, event]))
   const clock = { ...originalClock }
   const snapshot = cloneSyncSnapshot(input.snapshot)
   const remoteProjection = cloneSyncSnapshot(input.snapshot)
   const conflicts: SyncConflict[] = [],
     appliedIds: string[] = []
+  const conflictsByRecord = new Map<string, SyncConflict[]>()
   const conflictContents = new Map<string, string>()
   const waiting = new Map(
     events
@@ -99,6 +101,48 @@ export function planSync(input: SyncPlanInput, choices: Record<string, SyncChoic
     )
   const dominates = (left: SyncClock, right: SyncClock) =>
     Object.entries(right).every(([device, sequence]) => sequenceAt(left, device) >= sequence)
+  const dependents = new Map<string, string[]>()
+  const needed = new Map<string, number>()
+  const ready: string[] = []
+  const dependencyKey = (device: string, sequence: number) => JSON.stringify([device, sequence])
+  function readyPush(id: string) {
+    ready.push(id)
+    let at = ready.length - 1
+    while (at > 0) {
+      const parent = (at - 1) >>> 1
+      if (ready[parent]! <= ready[at]!) break
+      ;[ready[parent], ready[at]] = [ready[at]!, ready[parent]!]
+      at = parent
+    }
+  }
+  function readyPop(): string {
+    const first = ready[0]!,
+      last = ready.pop()!
+    if (ready.length) {
+      ready[0] = last
+      let at = 0
+      while (true) {
+        let child = at * 2 + 1
+        if (child >= ready.length) break
+        if (child + 1 < ready.length && ready[child + 1]! < ready[child]!) child++
+        if (ready[at]! <= ready[child]!) break
+        ;[ready[at], ready[child]] = [ready[child]!, ready[at]!]
+        at = child
+      }
+    }
+    return first
+  }
+  for (const event of waiting.values()) {
+    const dependencies = Object.entries(missing(event))
+    needed.set(event.id, dependencies.length)
+    if (!dependencies.length) readyPush(event.id)
+    for (const [device, sequence] of dependencies) {
+      const key = dependencyKey(device, sequence)
+      const ids = dependents.get(key) ?? []
+      ids.push(event.id)
+      dependents.set(key, ids)
+    }
+  }
 
   function conflict(
     event: SyncEvent,
@@ -125,7 +169,7 @@ export function planSync(input: SyncPlanInput, choices: Record<string, SyncChoic
     const choice = Object.hasOwn(choices, id) ? choices[id] : undefined
     if (choice !== undefined && choice !== 'local' && choice !== 'remote')
       return syncFailure('sync-invalid-choice')
-    conflicts.push({
+    const entry: SyncConflict = {
       id,
       eventId: event.id,
       store,
@@ -137,7 +181,12 @@ export function planSync(input: SyncPlanInput, choices: Record<string, SyncChoic
       remote: exposed(remote),
       resolvable,
       ...(choice && resolvable ? { choice } : {}),
-    })
+    }
+    conflicts.push(entry)
+    const key = JSON.stringify([store, recordId])
+    const entries = conflictsByRecord.get(key) ?? []
+    entries.push(entry)
+    conflictsByRecord.set(key, entries)
     return choice === 'remote' && resolvable ? remote : local
   }
 
@@ -205,13 +254,8 @@ export function planSync(input: SyncPlanInput, choices: Record<string, SyncChoic
     return result
   }
 
-  while (waiting.size) {
-    const ready = [...waiting.values()]
-      .filter((event) => !Object.keys(missing(event)).length)
-      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-    if (!ready.length) break
-    // Re-evaluate after every event: causally eligible does not imply arrival order.
-    const event = ready[0]!
+  while (ready.length) {
+    const event = waiting.get(readyPop())!
     for (const change of event.changes) {
       const rawTarget = syncStore(change.store)
       const rawRows = { ...(remoteProjection[rawTarget.section][rawTarget.store] ?? {}) }
@@ -250,14 +294,14 @@ export function planSync(input: SyncPlanInput, choices: Record<string, SyncChoic
       }
       const { section, store } = syncStore(target)
       const prior = syncRow(snapshot, target, change.id)
-      const unresolved = conflicts.filter(
-        (entry) => entry.store === target && entry.recordId === change.id && !entry.supersededBy,
+      const unresolved = (conflictsByRecord.get(JSON.stringify([target, change.id])) ?? []).filter(
+        (entry) => !entry.supersededBy,
       )
       const resolves =
         unresolved.length > 0 &&
         dominates(event.clock, originalClock) &&
         unresolved.every((entry) => {
-          const cause = events.find((candidate) => candidate.id === entry.eventId)!
+          const cause = eventById.get(entry.eventId)!
           return sequenceAt(event.clock, cause.deviceId) >= cause.sequence
         })
       if (resolves) for (const entry of unresolved) entry.supersededBy = event.id
@@ -287,6 +331,13 @@ export function planSync(input: SyncPlanInput, choices: Record<string, SyncChoic
     clock[event.deviceId] = event.sequence
     appliedIds.push(event.id)
     waiting.delete(event.id)
+    const key = dependencyKey(event.deviceId, event.sequence)
+    for (const id of dependents.get(key) ?? []) {
+      const count = needed.get(id)! - 1
+      needed.set(id, count)
+      if (count === 0) readyPush(id)
+    }
+    dependents.delete(key)
   }
   // New history for an already retired owner stays readable in retirement,
   // rather than violating the active projection or silently disappearing.

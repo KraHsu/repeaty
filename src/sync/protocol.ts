@@ -30,7 +30,7 @@ export interface SyncSnapshot {
   retired: SyncRows
 }
 export const SYNC_LIMITS = Object.freeze({
-  events: 2048,
+  events: 100_000,
   devices: 128,
   changes: 100_000,
   bytes: 64 * 1024 * 1024,

@@ -95,7 +95,7 @@ describe('sync envelope validation', () => {
   it('enforces group, count, causal device and per-transaction identity boundaries', () => {
     expect(() => parseSyncEvents([event('a', 1, [])], 'other')).toThrow('sync-wrong-group')
     expect(() =>
-      parseSyncEvents(Array.from({ length: SYNC_LIMITS.events + 1 }, () => event('a', 1, []))),
+      parseSyncEvents(Array<SyncEvent>(SYNC_LIMITS.events + 1).fill(event('a', 1, []))),
     ).toThrow('sync-batch-limit')
     const change = { store: 'values:settings', id: 'plugin:theme', before: null, after: 'green' }
     expect(() => parseSyncEvents([event('a', 1, [change, change])])).toThrow(
@@ -181,6 +181,25 @@ describe('sync envelope validation', () => {
 })
 
 describe('causal planning and content conflict resolution', () => {
+  it('processes more than 2048 offline transactions through indexed causal dependencies', () => {
+    const snapshot = snapshotFromLibrary(fixture())
+    const events = Array.from({ length: 4096 }, (_, index) =>
+      event('offline', index + 1, [
+        {
+          store: 'values:plugin:sample',
+          id: 'counter',
+          before: index === 0 ? null : index,
+          after: index + 1,
+          position: 0,
+        },
+      ]),
+    ).reverse()
+    const result = run(snapshot, events)
+    expect(result.blocked).toBe(false)
+    expect(result.pending).toEqual([])
+    expect(result.clock.offline).toBe(4096)
+    expect(result.snapshot.values['plugin:sample']!.counter!.value).toBe(4096)
+  })
   it('applies unordered dependencies and duplicate delivery exactly once without mutating inputs', () => {
     const base = fixture(),
       edited = changeNote(base, { front: 'first' }),
