@@ -1347,6 +1347,7 @@ export const en = {
   设备凭据: 'Device credentials',
   插件文件: 'Plugin files',
   设备模型连接: 'Device model connections',
+  经确认的自定义网站: 'Custom websites after confirmation',
   '允许 CLI / MCP 查询整库': 'Allow CLI / MCP library queries',
   '读取当前库的材料、目录、笔记与学习记录；关闭连接或切库后失效。':
     'Read materials, folders, notes and learning records in the current library. Access ends when the connection closes or the library changes.',

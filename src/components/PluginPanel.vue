@@ -122,6 +122,7 @@ function capabilities(manifest?: PluginManifest) {
   if (manifest?.permissions?.secrets) values.push(t('设备凭据'))
   if (manifest?.permissions?.files) values.push(t('插件文件'))
   if (manifest?.permissions?.models) values.push(t('设备模型连接'))
+  if (manifest?.permissions?.network) values.push(t('经确认的自定义网站'))
   return values.length ? values.join(' · ') : t('无原生能力')
 }
 let generation = 0,
@@ -480,13 +481,17 @@ async function installOfficial(bundle: PluginBundle) {
                   <span v-if="entry.bundle.manifest.permissions.models">{{
                     t('设备模型连接')
                   }}</span>
+                  <span v-if="entry.bundle.manifest.permissions.network">{{
+                    t('经确认的自定义网站')
+                  }}</span>
                 </template>
                 <span
                   v-if="
                     !entry.bundle?.manifest.permissions?.origins?.length &&
                     !entry.bundle?.manifest.permissions?.secrets &&
                     !entry.bundle?.manifest.permissions?.files &&
-                    !entry.bundle?.manifest.permissions?.models
+                    !entry.bundle?.manifest.permissions?.models &&
+                    !entry.bundle?.manifest.permissions?.network
                   "
                   >{{ t('无原生能力') }}</span
                 >

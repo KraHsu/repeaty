@@ -19,6 +19,9 @@ export function externalPlugins(desktop: boolean): Plugin {
           'fsrs-optimizer',
           'study-statistics',
           'assistant',
+          'static-publish',
+          'wordpress-publish',
+          'discourse-publish',
         ]
       : [
           'review-history',
@@ -32,6 +35,7 @@ export function externalPlugins(desktop: boolean): Plugin {
           'fsrs-optimizer',
           'study-statistics',
         ]
+    if (!desktop) ids.push('static-publish')
     const files = new Map<string, string>()
     const catalog = ids.map((id) => {
       const bundle = JSON.parse(

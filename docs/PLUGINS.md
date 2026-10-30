@@ -14,6 +14,8 @@ Repeaty 在运行时加载外置插件。官方答题历史、LeetCode、复习�
 
 ## 页面与界面扩展边界
 
+SDK 1.14.0 增加[公开发布投影和受确认的网站连接](PLUGIN_PUBLISHING.md)。独立官方静态站、WordPress 与 Discourse 发布插件从插件页安装，配置注册到统一设置页，发布绑定随学习库保存，设备凭据不随库移动。操作方式见[发布学习材料](PUBLISHING.md)。
+
 SDK 1.13.0 增加带宿主授权、预览、事务及幂等收据的[自动化接口](PLUGIN_AUTOMATION.md)，以及设备模型连接。独立官方[学习助手](../plugins/assistant/README.md)提供会话、授权材料问答和可审查的整理建议；通过插件页面安装、启停和卸载。
 
 SDK 1.7.0 支持通过 `registerPage()` 注册独立页面及对应主侧栏入口，通过 `registerWidget()` 在学习概览的指定位置嵌入组件。题目插件、复习面板插件都可注册；只提供页面或嵌入组件的插件导出 `type: 'extension'` 的 `ExtensionPlugin`，激活时至少注册一项页面或组件。现有题目、答案、编辑器、历史记录渲染以及 `registerSettings()` 保持原接口。

@@ -12,7 +12,7 @@ fn bundle(id: &str) -> Value {
     json!({"manifest":{"id":id,"name":"Sample","version":"1.0.0","apiVersion":1,"dataVersion":1,"kind":"local","permissions":{"origins":["https://example.org"],"files":true,"secrets":true}},"main":"export default {};"})
 }
 fn call(host: &Plugins, root: &Dir, id: &str, op: &str, value: Value) -> Result<Value> {
-    host.operation(root.try_clone().unwrap(), id, op, value)
+    host.operation(root.try_clone().unwrap(), id, op, value, None)
 }
 fn install_trusted(host: &Plugins, root: &Dir, id: &str) {
     call(host, root, id, "install", bundle(id)).unwrap();

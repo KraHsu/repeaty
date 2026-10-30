@@ -25,6 +25,8 @@ const runtimeExports = [
   'materials',
   'study',
   'automation',
+  'publishing',
+  'network',
   'tasks',
   'resources',
   'practiceContentRevision',
