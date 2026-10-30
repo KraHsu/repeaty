@@ -109,6 +109,7 @@ mod tests {
             origins: vec!["https://example.org".into()],
             secrets: true,
             files: false,
+            models: false,
         };
         store.operation("sample",&permissions,serde_json::json!({"action":"set","slot":"site","origin":"https://example.org","values":{"session":"kept"}})).unwrap();
         drop(store);

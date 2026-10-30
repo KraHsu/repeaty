@@ -1,6 +1,10 @@
 import { studySettings, studySettingsSchema } from './study-settings'
 import { fsrsModelSchema, studyEventSchema, studyActivitySchema } from './study-data'
-import { sourceConnectionSchema, sourceCandidateSchema } from './collection-data'
+import {
+  sourceConnectionSchema,
+  sourceCandidateSchema,
+  materialCollectionSchema,
+} from './collection-data'
 import { msg, LocalizedError } from '../i18n'
 import { retiredNoteSchema, type RetiredNote } from '../desktop/retirement'
 import {
@@ -32,6 +36,7 @@ import {
 } from './model'
 import { sourceSchema, type Source } from './source-data'
 import { materialReceiptSchema, validateMaterialChanges } from './material-data'
+import { automationReceiptSchema, validateAutomationReceipts } from './automation-data'
 import { validateSourceOrigins } from './sources'
 import { cardDraftSchema, MAX_DRAFTS, type CardDraft } from './card-draft-data'
 import { checkSourceDraftVersion, sourceDraftSchema, type SourceDraft } from './source-workbench'
@@ -70,7 +75,9 @@ export const recordStores = [
   'attempts',
   'sources',
   'materialReceipts',
+  'automationReceipts',
   'materialFolders',
+  'materialCollections',
   'sourceConnections',
   'sourceCandidates',
   'studySettings',
@@ -126,6 +133,7 @@ interface RepeatyDB extends DBSchema {
   attemptSummaries: RecordTable
   sources: RecordTable
   materialReceipts: RecordTable
+  automationReceipts: RecordTable
   sourceConnections: RecordTable
   studySettings: RecordTable
   studyEvents: RecordTable
@@ -133,6 +141,7 @@ interface RepeatyDB extends DBSchema {
   fsrsModels: RecordTable
   sourceCandidates: RecordTable
   materialFolders: RecordTable
+  materialCollections: RecordTable
   cardDrafts: { key: string; value: CardDraft }
   sourceDrafts: { key: string; value: SourceDraft }
   operationHistory: { key: string; value: OperationHistory }
@@ -168,6 +177,7 @@ type Transaction = IDBPTransaction<RepeatyDB, typeof stores, 'readwrite'>
 const schemas = {
   sources: sourceSchema,
   materialReceipts: materialReceiptSchema,
+  automationReceipts: automationReceiptSchema,
   sourceConnections: sourceConnectionSchema,
   sourceCandidates: sourceCandidateSchema,
   studySettings: studySettingsSchema,
@@ -175,6 +185,7 @@ const schemas = {
   studyActivity: studyActivitySchema,
   fsrsModels: fsrsModelSchema,
   materialFolders: materialFolderSchema,
+  materialCollections: materialCollectionSchema,
   decks: deckSchema,
   notes: noteSchema,
   cards: cardSchema,
@@ -205,7 +216,7 @@ export function createRepository(
 ) {
   // save() shadows `options` with its own parameter, so keep the repository setting here.
   const compactHistory = Boolean(options.compactHistory)
-  const database = openDB<RepeatyDB>(name, 22, {
+  const database = openDB<RepeatyDB>(name, 24, {
     async upgrade(db, _oldVersion, _newVersion, tx) {
       try {
         for (const store of stores)
@@ -389,7 +400,9 @@ export function createRepository(
       meta.counts.practices ??= 0
       meta.counts.attempts ??= 0
       meta.counts.materialReceipts ??= 0
+      meta.counts.automationReceipts ??= 0
       meta.counts.materialFolders ??= 0
+      meta.counts.materialCollections ??= 0
       meta.counts.sourceConnections ??= 0
       meta.counts.sourceCandidates ??= 0
       meta.counts.studySettings ??= 0
@@ -626,6 +639,14 @@ export function createRepository(
           : parseOperationHistory(options.operationHistory)
       const previous = cached!.library
       validateMaterialChanges(previous, library)
+      if (previous.automationReceipts !== library.automationReceipts)
+        validateAutomationReceipts(
+          previous.automationReceipts,
+          library.automationReceipts,
+          (message) => {
+            throw new Error(message)
+          },
+        )
       // The frequent grading path validates only changed cards/reviews. Structural edits and
       // external restores still receive complete cross-reference validation at the boundary.
       const progressOnly =
@@ -636,7 +657,9 @@ export function createRepository(
           'savedSearches',
           'sources',
           'materialReceipts',
+          'automationReceipts',
           'materialFolders',
+          'materialCollections',
           'sourceConnections',
           'sourceCandidates',
           'studySettings',

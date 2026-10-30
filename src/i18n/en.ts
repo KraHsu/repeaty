@@ -1346,6 +1346,13 @@ export const en = {
   联网域名: 'Allowed websites',
   设备凭据: 'Device credentials',
   插件文件: 'Plugin files',
+  设备模型连接: 'Device model connections',
+  '允许 CLI / MCP 查询整库': 'Allow CLI / MCP library queries',
+  '读取当前库的材料、目录、笔记与学习记录；关闭连接或切库后失效。':
+    'Read materials, folders, notes and learning records in the current library. Access ends when the connection closes or the library changes.',
+  '允许 CLI / MCP 批量修改': 'Allow CLI / MCP batch changes',
+  '外部工具可预览并应用整库修改，包括恢复快照。每次修改需携带预览和当前修订号，并保留恢复点。只向你信任的本机工具开放。':
+    'External tools may preview and apply changes across the library, including snapshot restores. Each change requires a preview and the current revision, and retains a recovery point. Enable only for local tools you trust.',
   无原生能力: 'No native capabilities',
   安装或更新官方插件: 'Install or update official plugins',
   重新扫描插件: 'Rescan plugins',

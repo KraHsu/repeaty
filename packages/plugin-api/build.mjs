@@ -24,6 +24,7 @@ const runtimeExports = [
   'registerSearchProvider',
   'materials',
   'study',
+  'automation',
   'tasks',
   'resources',
   'practiceContentRevision',

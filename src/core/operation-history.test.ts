@@ -57,6 +57,7 @@ it('rejects invalid records, duplicate commands, hidden receipts and missing med
     { ...entry.changes[0]!, id: 'another-record' },
     { ...entry.changes[0]!, keys: ['__proto__'] },
     { ...entry.changes[0]!, store: 'materialReceipts' },
+    { ...entry.changes[0]!, store: 'automationReceipts' },
   ])
     expect(() =>
       parseOperationHistory({ ...history, undo: [{ ...entry, changes: [change] }] }),

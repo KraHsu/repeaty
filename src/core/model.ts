@@ -3,8 +3,18 @@ import { inlineMediaSchema } from './inline-media-data'
 import { z } from 'zod'
 import { studySettingsSchema } from './study-settings'
 import { fsrsModelSchema, studyEventSchema, studyActivitySchema } from './study-data'
-import { sourceConnectionSchema, sourceCandidateSchema } from './collection-data'
-export { sourceConnectionSchema, sourceCandidateSchema } from './collection-data'
+import {
+  sourceConnectionSchema,
+  sourceCandidateSchema,
+  materialCollectionSchema,
+} from './collection-data'
+import { automationReceiptSchema, validateAutomationReceipts } from './automation-data'
+export { automationReceiptSchema } from './automation-data'
+export {
+  sourceConnectionSchema,
+  sourceCandidateSchema,
+  materialCollectionSchema,
+} from './collection-data'
 import { materialFolderSchema, validateMaterialFolders } from './material-organization-data'
 import { createEmptyCard, type Card as FsrsCard } from 'ts-fsrs'
 import { scheduleSchema, librarySchema as legacySchema } from './legacy'
@@ -298,13 +308,15 @@ export function variants(
 }
 
 const libraryContents = z.object({
-  version: z.literal(18),
+  version: z.literal(19),
   studySettings: z.array(studySettingsSchema).max(1).default([]),
   studyEvents: z.array(studyEventSchema).max(500_000).default([]),
   studyActivity: z.array(studyActivitySchema).max(500_000).default([]),
   fsrsModels: z.array(fsrsModelSchema).max(200).default([]),
   materialFolders: z.array(materialFolderSchema).max(10_000).default([]),
+  materialCollections: z.array(materialCollectionSchema).max(10_000).default([]),
   materialReceipts: z.array(materialReceiptSchema).max(100_000).default([]),
+  automationReceipts: z.array(automationReceiptSchema).max(100_000).default([]),
   sourceConnections: z.array(sourceConnectionSchema).max(100).default([]),
   sourceCandidates: z.array(sourceCandidateSchema).max(10_000).default([]),
   sources: z.array(sourceSchema).max(10_000),
@@ -334,7 +346,9 @@ export function validateLibraryReferences(
     'attempts',
     'sources',
     'materialReceipts',
+    'automationReceipts',
     'materialFolders',
+    'materialCollections',
     'sourceConnections',
     'sourceCandidates',
     'studySettings',
@@ -401,6 +415,7 @@ export function validateLibraryReferences(
         problem('来源已接受版本不存在')
     }
   const receiptKeys = new Set<string>()
+  validateAutomationReceipts([], library.automationReceipts, problem)
   for (const receipt of library.materialReceipts) {
     const key = JSON.stringify([receipt.pluginId, receipt.kind, receipt.operationId])
     if (receiptKeys.has(key)) problem('材料操作身份重复')
@@ -531,8 +546,10 @@ export const recordSchemas = {
   sourceConnections: sourceConnectionSchema,
   sourceCandidates: sourceCandidateSchema,
   materialFolders: materialFolderSchema,
+  materialCollections: materialCollectionSchema,
   sources: sourceSchema,
   materialReceipts: materialReceiptSchema,
+  automationReceipts: automationReceiptSchema,
   decks: deckSchema,
   notes: noteSchema,
   cards: cardSchema,
@@ -544,13 +561,15 @@ export const recordSchemas = {
 }
 export function emptyLibrary(): Library {
   return {
-    version: 18,
+    version: 19,
     studySettings: [],
     studyEvents: [],
     studyActivity: [],
     fsrsModels: [],
     materialFolders: [],
+    materialCollections: [],
     materialReceipts: [],
+    automationReceipts: [],
     sourceConnections: [],
     sourceCandidates: [],
     sources: [],
@@ -764,10 +783,11 @@ export function migrateLibrary(value: unknown): Library {
       value.version === 15 ||
       value.version === 16 ||
       value.version === 17 ||
-      value.version === 18)
+      value.version === 18 ||
+      value.version === 19)
   )
     return librarySchema.parse(
-      value.version === 18
+      value.version === 19
         ? value
         : value.version === 6 ||
             value.version === 7 ||
@@ -780,22 +800,23 @@ export function migrateLibrary(value: unknown): Library {
             value.version === 14 ||
             value.version === 15 ||
             value.version === 16 ||
-            value.version === 17
-          ? { ...value, version: 18 }
+            value.version === 17 ||
+            value.version === 18
+          ? { ...value, version: 19 }
           : value.version === 5
-            ? { sources: [], ...value, version: 18 }
+            ? { sources: [], ...value, version: 19 }
             : {
                 sources: [],
                 practices: [],
                 attempts: [],
                 ...value,
-                version: 18,
+                version: 19,
               },
     )
   const old = legacySchema.parse(value)
   const seen = new Set<string>()
   return librarySchema.parse({
-    version: 18,
+    version: 19,
     sources: [],
     practices: [],
     attempts: [],

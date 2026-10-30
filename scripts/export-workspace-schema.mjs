@@ -3,7 +3,8 @@ import { z } from 'zod'
 import { format } from 'prettier'
 import { readFile, writeFile } from 'node:fs/promises'
 const vite = await createServer({
-  configFile: 'config/vite.config.ts',
+  configFile: false,
+  optimizeDeps: { noDiscovery: true, include: [] },
   server: { middlewareMode: true, watch: null, hmr: false, ws: false },
   appType: 'custom',
 })
@@ -19,7 +20,9 @@ try {
     fsrsModels: 'fsrsModelSchema',
     sources: 'sourceSchema',
     materialReceipts: 'materialReceiptSchema',
+    automationReceipts: 'automationReceiptSchema',
     materialFolders: 'materialFolderSchema',
+    materialCollections: 'materialCollectionSchema',
     sourceConnections: 'sourceConnectionSchema',
     sourceCandidates: 'sourceCandidateSchema',
     decks: 'deckSchema',

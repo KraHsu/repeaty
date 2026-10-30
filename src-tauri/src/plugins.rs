@@ -1,5 +1,6 @@
 //! Runtime packages and generic native capabilities; no plugin business code is linked here.
 mod http;
+mod models;
 mod secrets;
 #[cfg(test)]
 mod tests;
@@ -198,6 +199,8 @@ pub struct Permissions {
     secrets: bool,
     #[serde(default)]
     files: bool,
+    #[serde(default)]
+    models: bool,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -485,13 +488,16 @@ fn plugin_file(root: &Dir, id: &str, payload: Value) -> Result<Value> {
 pub struct Plugins {
     secrets: Arc<Mutex<secrets::Secrets>>,
     client: reqwest::Client,
+    models: Arc<models::Models>,
 }
 impl Plugins {
     pub fn new(directory: &Path) -> Result<Self> {
+        let secrets = Arc::new(Mutex::new(secrets::Secrets::open(
+            &directory.join("plugin-secrets.sqlite3"),
+        )?));
         Ok(Self {
-            secrets: Arc::new(Mutex::new(secrets::Secrets::open(
-                &directory.join("plugin-secrets.sqlite3"),
-            )?)),
+            models: Arc::new(models::Models::new(directory, secrets.clone())?),
+            secrets,
             client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(20))
                 .redirect(reqwest::redirect::Policy::none())
@@ -510,6 +516,17 @@ impl Plugins {
         } else {
             Err("plugin-not-trusted".into())
         }
+    }
+    fn models_authorized(&self, root: &Dir, id: &str) -> Result<()> {
+        if !id_valid(id) {
+            return Err(invalid());
+        }
+        let package = package(root, id)?;
+        self.trusted(&package)?;
+        if !package.manifest.permissions.models {
+            return Err("permission-denied".into());
+        }
+        Ok(())
     }
     fn operation(&self, root: Dir, id: &str, operation: &str, payload: Value) -> Result<Value> {
         match operation {
@@ -602,7 +619,35 @@ impl Plugins {
         payload: Value,
     ) -> Result<Value> {
         let host = self.clone();
-        if operation == "http" {
+        if operation.starts_with("model.") {
+            let plugin_id = id.clone();
+            let disposing = operation == "model.dispose";
+            crate::workspaces::with_plugin_workspace(workspaces, token.clone(), move |root| {
+                if !id_valid(&plugin_id) {
+                    return Err(invalid());
+                }
+                // Cleanup only touches this activation's existing resources. The package
+                // may already be removed or replaced with one without model permission.
+                if disposing {
+                    Ok(())
+                } else {
+                    host.models_authorized(&root, &plugin_id)
+                }
+            })
+            .await?;
+            let response = self
+                .models
+                .call(
+                    &token,
+                    &id,
+                    &operation,
+                    payload,
+                    workspaces.active_identity(),
+                )
+                .await;
+            crate::workspaces::with_plugin_workspace(workspaces, token, |_| Ok(())).await?;
+            response
+        } else if operation == "http" {
             let prepared =
                 crate::workspaces::with_plugin_workspace(workspaces, token.clone(), move |root| {
                     if !id_valid(&id) {

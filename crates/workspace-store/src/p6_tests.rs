@@ -247,7 +247,7 @@ fn study_settings_events_activity_models_survive_checkpoints_reopen_and_complete
         ))
         .unwrap();
     let old = library.db.backup(&checkpoint).unwrap();
-    assert_eq!(old["version"], 18);
+    assert_eq!(old["version"], 19);
     assert_eq!(old["studySettings"][0]["dayStartHour"], 4);
     assert_eq!(old["studyEvents"][0], event);
     let current = library.db.load().unwrap();
@@ -281,7 +281,7 @@ fn future_reader_gate_is_rejected_by_library_open_and_complete_backup() {
     library
         .db
         .connection
-        .pragma_update(None, "user_version", 17)
+        .pragma_update(None, "user_version", 18)
         .unwrap();
     let archive = directory.path().join("future.repeaty-workspace");
     assert!(backup::create(&library, &archive, &AtomicBool::new(false)).is_err());

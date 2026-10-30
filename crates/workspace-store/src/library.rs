@@ -194,7 +194,7 @@ impl Library {
             .query_row("SELECT id FROM workspace_identity", [], |r| r.get(0))
             .map_err(|_| fail("workspace-incompatible"))?;
         if app != APP_ID
-            || ![10, 11, 12, 13, 14, 15, 16].contains(&version)
+            || ![10, 11, 12, 13, 14, 15, 16, 17].contains(&version)
             || identity != marker.id
         {
             return Err(fail("workspace-incompatible"));

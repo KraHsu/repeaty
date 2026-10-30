@@ -20,6 +20,64 @@ function query(page: Page, tool: string, args: Record<string, unknown> = {}, sco
   )
 }
 
+test('automation grants, previews and receipt replay use the real desktop library transaction', async ({
+  page,
+}) => {
+  await openSettings(page, 'connections.mcp')
+  await page.getByRole('button', { name: '开启 MCP', exact: true }).click()
+  const initial = await query(page, 'repeaty_automation_status')
+  expect(initial).toMatchObject({ status: 'ok', data: { readEnabled: false, writeEnabled: false } })
+  expect(await query(page, 'repeaty_query_library', { kind: 'library' })).toMatchObject({
+    status: 'error',
+    code: 'permission-denied',
+  })
+  await page.getByRole('switch', { name: '允许 CLI / MCP 查询整库', exact: true }).click()
+  const before = await query(page, 'repeaty_query_library', { kind: 'library' })
+  const request = {
+    protocolVersion: 1,
+    operationId: 'desktop-automation-1',
+    expectedRevision: before.data.revision,
+    commands: [
+      { kind: 'source.create', input: { title: '自动化材料', body: '预览后保存的正文。' } },
+    ],
+  }
+  expect(await query(page, 'repeaty_preview_changes', request)).toMatchObject({
+    status: 'error',
+    code: 'permission-denied',
+  })
+  await page.getByRole('switch', { name: '允许 CLI / MCP 批量修改', exact: true }).click()
+  const preview = await query(page, 'repeaty_preview_changes', request)
+  expect(preview.status).toBe('ok')
+  const input = { request, fingerprint: preview.data.fingerprint, planId: preview.data.planId }
+  const saved = await query(page, 'repeaty_apply_changes', input)
+  expect(saved).toMatchObject({ status: 'ok', data: { replayed: false } })
+  const repeated = await query(page, 'repeaty_apply_changes', input)
+  expect(repeated).toEqual({ ...saved, data: { ...saved.data, replayed: true } })
+  const sources = await query(page, 'repeaty_query_library', {
+    kind: 'sources',
+    text: '自动化材料',
+  })
+  expect(sources).toMatchObject({ status: 'ok', data: { total: 1 } })
+  const status = await query(page, 'repeaty_operation_status', { operationId: request.operationId })
+  expect(status).toMatchObject({ status: 'ok', data: { found: true, receipt: { replayed: true } } })
+  expect(await query(page, 'repeaty_operation_status', { operationId: 'missing' })).toMatchObject({
+    status: 'ok',
+    data: { found: false },
+  })
+  await page.getByRole('switch', { name: '允许 CLI / MCP 批量修改', exact: true }).click()
+  expect(await query(page, 'repeaty_apply_changes', input)).toMatchObject({
+    status: 'error',
+    code: 'permission-denied',
+  })
+  await page.reload()
+  await openSettings(page, 'connections.mcp')
+  await page.getByRole('button', { name: '开启 MCP', exact: true }).click()
+  await page.getByRole('switch', { name: '允许 CLI / MCP 查询整库', exact: true }).click()
+  expect(
+    await query(page, 'repeaty_operation_status', { operationId: request.operationId }),
+  ).toMatchObject(status)
+})
+
 test('desktop settings opt in to local read queries, revoke keys, and retain the library unchanged', async ({
   page,
 }, info) => {

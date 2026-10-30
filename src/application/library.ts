@@ -35,6 +35,7 @@ import { createCollectionCommands } from './library-collection'
 import { createMaterialCommands } from './library-materials'
 import { createOrganizationCommands } from './library-organization'
 import { createWorkbenchCommands } from './library-workbench'
+import { createAutomationCommands } from './library-automation'
 export function createLibraryService(state: LibraryState, dependencies: LibraryDependencies) {
   const {
     library,
@@ -575,6 +576,7 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
       ...createSourceConnectionCommands(context),
       ...createOrganizationCommands(context),
       ...createWorkbenchCommands(context),
+      ...createAutomationCommands(context),
     },
   }
 }

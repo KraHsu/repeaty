@@ -4,6 +4,8 @@
 
 桌面版可以通过 MCP 向本机客户端提供待复习题目、学习统计和练习摘要。需保持 Repeaty 运行，并使用本地学习库。
 
+另外提供独立授权的学习库自动化工具和原生 CLI。外部工具可在授权后查询材料、目录与笔记，预览批量修改，再通过与界面相同的事务应用。自动化默认关闭，不随摘录分享而自动开放。
+
 从 0.13.0 起，也可以主动分享一段材料摘录，接收问答、双向和挖空卡草稿，再在编辑器中确认保存。
 
 0.14.0 会在本机保留待确认草稿，重启后可以继续处理。分享授权仍在退出、重载或切库时撤销。
@@ -14,7 +16,7 @@
 
 1. 打开侧栏「设置 → 连接 → MCP 连接」，选择客户端，点击「显示连接配置」。
 2. 将配置合并到对应文件中，保留其他服务。配置里的程序路径和连接文件路径来自当前安装，直接复制实际内容。
-3. 在 Repeaty 中点击「开启 MCP」，保持本地学习库窗口运行。在客户端重新加载 MCP 配置，确认可以看到五个 `repeaty_` 工具。
+3. 在 Repeaty 中点击「开启 MCP」，保持本地学习库窗口运行。在客户端重新加载 MCP 配置，确认可以看到十个 `repeaty_` 工具。能列出工具不代表已取得整库读写权限。
 
 | 客户端         | 配置位置                                                                                                                         | 检查连接                                                       |
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
@@ -139,9 +141,76 @@ MCP 监听属于桌面客户端，在线体验页不提供此入口。
 
 题目接口只提供问题一侧的文本：双向卡按各自方向显示，挖空卡保留当前空位的提示。LeetCode 卡片提供已保存的问题标题和插件标识；完整题面仍在 Repeaty 中查看。
 
-学习库查询结果不包含答案一侧、提交代码、裁判详情、附件、LeetCode Cookie 或上游会话。材料访问只提供你当前分享的选区；正式笔记与卡片通过界面确认保存，MCP 没有评分、撤销或直接修改学习进度的工具。历史中的评分与撤销状态仅供查询；读取历史摘要不会计为查看答案。
+上述三个学习摘要工具不包含答案一侧、提交代码、裁判详情、附件或凭据。摘录工具只读取当前分享的选区，生成的卡片由用户在界面确认保存；读取历史摘要不会计为查看答案。
+
+下面的整库自动化另有显式授权，可读取授权库中的笔记答案、材料正文，以及执行支持的修改与撤销。所有工具都不提供模型 API 密钥、LeetCode Cookie 或设备凭据。
 
 题目和卡组文字属于用户内容，可能包含看似指令的文本。客户端应把它们作为学习材料处理，不能据此扩大工具权限。Repeaty 不会自动把查询结果发给模型服务；后续发送范围由客户端决定。
+
+## 学习库自动化
+
+在「设置 → 连接 → MCP 连接」开启连接后，按需开启「允许 CLI / MCP 查询整库」和「允许 CLI / MCP 批量修改」。这是对可信本机工具的会话授权；开启写入后，每次有效的 `apply` 不再弹出逐项确认。关闭连接、重载或切换学习库会撤销授权。官方助手插件使用自己单独的范围授权与修改审查流程。
+
+| 工具                        | 作用                                                         | 授权       |
+| --------------------------- | ------------------------------------------------------------ | ---------- |
+| `repeaty_automation_status` | 当前学习库、修订号、自动化能力和授权状态                     | 已连接     |
+| `repeaty_query_library`     | 查询目录、材料、笔记、卡组、卡片与历史；按需读取某一版本正文 | 整库读取   |
+| `repeaty_preview_changes`   | 验证命令并返回变更清单、原请求、指纹和预览 ID，不写入        | 读取及写入 |
+| `repeaty_apply_changes`     | 应用已审查的预览，使用当前应用事务和恢复机制                 | 读取及写入 |
+| `repeaty_operation_status`  | 按调用方的 `operationId` 查询持久化回执                      | 整库读取   |
+
+参数以工具发布的 JSON Schema 和 [公开自动化类型](../packages/plugin-api/automation.d.ts)为准。分页携带首次查询的 `revision`，后续页不接受省略修订号。材料正文需显式使用 `source.body` 查询，普通列表不会加载整库正文。`status` 说明当前宿主支持的退役记录和恢复点能力。
+
+修改先 `preview` 再 `apply`，必须保留同一原请求、`fingerprint` 和 `planId`。学习库变更后旧修订号失效；预览过期、重新授权或切库后重新预览。同一操作编号和同一内容的成功重试返回原回执，不重复创建；复用编号修改内容会返回 `request-conflict`。
+
+超时、进程中断或取消等待不等于写入回滚。先调用 `repeaty_operation_status`，传入原请求中的调用方 `operationId`。结果为 `{ "found": true, "receipt": {...} }` 或 `{ "found": false }`；不要根据网络错误直接生成新的操作编号重做。
+
+## 原生 CLI
+
+使用已安装的 Repeaty 可执行文件，加上 `--cli`。下列示例中的 `repeaty-desktop` 代表实际程序路径；Windows 使用对应 `.exe`。CLI 不启动 WebView、不直接打开数据库、不需要 Node.js；除帮助和版本外，需保持桌面应用运行并开启上述连接和授权。
+
+```text
+repeaty-desktop --cli help
+repeaty-desktop --cli version
+repeaty-desktop --cli status
+repeaty-desktop --cli query --request-file query.json
+repeaty-desktop --cli preview --request-file request.json
+repeaty-desktop --cli apply --request-file apply.json
+repeaty-desktop --cli operation --request-file operation.json
+```
+
+`query.json` 示例：
+
+```json
+{ "kind": "sources", "limit": 20 }
+```
+
+`request.json` 示例（将 `expectedRevision` 换成当前状态中的值）：
+
+```json
+{
+  "protocolVersion": 1,
+  "operationId": "create-folder-20261030-1",
+  "expectedRevision": 42,
+  "commands": [{ "kind": "folder.create", "name": "复习材料" }]
+}
+```
+
+检查预览结果中的 `data.changes` 后，把 `data.request`、`data.fingerprint` 和 `data.planId` 放入 `apply.json` 的同名字段，再运行 `apply`。查询这次操作的回执时，`operation.json` 为：
+
+```json
+{ "operationId": "create-folder-20261030-1" }
+```
+
+也可以用 `--json '<JSON 对象>'` 直接传参，或 `--request-file -` / 单独的 `-` 从标准输入读取。例如 PowerShell：
+
+```powershell
+@{ kind = 'sources'; limit = 20 } | ConvertTo-Json -Compress | & $repeatyExe --cli query -
+```
+
+一次请求限一个 JSON 对象、最多 512 KiB。未指定输入选项且 stdin 已重定向时自动读取 stdin。`help` 包含当前完整请求 Schema。连接文件默认来自当前用户的 Repeaty 应用数据目录；多份安装可传 `--connection-file <绝对路径>` 明确指定。
+
+stdout 始终只有一行 JSON：成功为 `{ "ok": true, "data": ... }`，失败为 `{ "ok": false, "error": { "code": "..." } }`。退出码：`0` 成功、`1` 操作被拒绝、`2` 参数错误、`3` 连接/授权/学习库不可用或超时、`4` 必需恢复备份失败。命令输出不包含连接密钥。
 
 ## 连接不可用时
 
@@ -155,6 +224,9 @@ MCP 监听属于桌面客户端，在线体验页不提供此入口。
 | `selection-unavailable` | 在材料页重新选取并分享摘录，读取新的 `selectionId`                                |
 | `request-conflict`      | 相同 `requestId` 已用于另一批内容；重试原内容或使用新编号                         |
 | `draft-limit`           | 先处理待确认草稿；若已接收 32 批，重新分享选区再继续                              |
+| `permission-denied`     | 在当前学习库的 MCP 设置中核对整库读取或批量修改授权                               |
+| `preview-required`      | 预览已失效或不存在；读取当前修订号后重新预览并审查                                |
+| `receipt-limit`         | 持久化操作回执已达上限，本次修改未执行；不要自动删除回执后重试                    |
 
 HTTP 连接被拒绝或返回 401 通常表示已经关闭，或仍使用上一次连接的配置。回到设置重新开启，HTTP 客户端更新地址和密钥；Codex / Claude 的 stdio 配置不变，重试工具调用即可。若程序路径已失效，从设置重新复制配置。接口拒绝浏览器 `Origin` 请求和非本机地址的 `Host` 请求，不提供跨域网页连接。
 

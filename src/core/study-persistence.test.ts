@@ -61,18 +61,18 @@ function populated() {
   return library
 }
 
-it('round-trips every study store and exact weights through JSON and archive v15, without rewriting historical day keys', async () => {
+it('round-trips every study store and exact weights through JSON and archive v16, without rewriting historical day keys', async () => {
   const library = populated()
   const text = await exportBackup(library, async () => undefined)
-  expect(JSON.parse(text).version).toBe(18)
+  expect(JSON.parse(text).version).toBe(19)
   const archive = (await exportArchive(library, async () => undefined))!
   const zip = new ZipReader(new BlobReader(archive), { useWebWorkers: false })
   try {
     const manifest = (await zip.getEntries()).find((entry) => entry.filename === 'manifest.json')!
     if (manifest.directory) throw new Error('missing manifest')
     expect(JSON.parse(await (await manifest.getData(new BlobWriter())).text())).toMatchObject({
-      version: 15,
-      libraryVersion: 18,
+      version: 16,
+      libraryVersion: 19,
       counts: { studySettings: 1, studyEvents: 1, studyActivity: 1, fsrsModels: 1 },
     })
   } finally {
@@ -115,7 +115,7 @@ it('persists study deltas and checkpoint history, and rejects invalid model sele
       studyEvents: [],
     }
     const second = await repo.save(changed, first.revision, { now })
-    const db = await openDB(name, 22)
+    const db = await openDB(name)
     try {
       expect(await db.count('fsrsModels')).toBe(1)
       expect((await db.getAll('history')).map((row) => row.store).sort()).toEqual([
@@ -189,7 +189,7 @@ it('reads gate16 study records into a browser copy and never changes selected wo
   } finally {
     await repo.close()
   }
-  env.db.run('PRAGMA user_version=17')
+  env.db.run('PRAGMA user_version=18')
   env.files[fileIndex] = selectedFile('.repeaty/state.sqlite3', env.db.export())
   await expect(
     BrowserWorkspaceReader.open(SQL, { kind: 'files', files: env.files }),
