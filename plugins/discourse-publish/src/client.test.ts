@@ -21,6 +21,28 @@ const draft: Draft = {
   status: 'publish',
 }
 const state = { slots: [{ slot: 'forum', origin: connection.site, revision: 1 }] }
+it('keeps a forum subpath in the public topic link', async () => {
+  const native = vi.fn(async (operation: string, input: unknown) => {
+    if (operation === 'secrets') return state
+    const path = new URL((input as { url: string }).url).pathname
+    expect(path).toMatch(/^\/community\//)
+    const body = path.endsWith('/posts/7.json')
+      ? { id: 7, topic_id: 9, post_number: 1, raw: 'body', version: 1 }
+      : { id: 9, title: 'Title', category_id: 2, tags: [] }
+    return {
+      status: 200,
+      body: JSON.stringify(body),
+      headers: {},
+      credentialRevision: 1,
+      currentCredentialRevision: 1,
+    }
+  })
+  const result = await createDiscourse(native, {
+    ...connection,
+    site: connection.site + '/community',
+  }).read('7', new AbortController().signal)
+  expect(result?.url).toBe('https://forum.example/community/t/9')
+})
 it('never treats readback rejection after a successful create as a safe create retry', async () => {
   let count = 0
   const native = vi.fn(async (operation: string) =>

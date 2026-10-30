@@ -41,7 +41,7 @@ export function createDiscourse(native: Native, connection: Connection): Adapter
             : 'publish',
       category: topic.category_id ? id(topic.category_id) : '',
       tags: tags.sort(),
-      url: safeUrl(`/t/${topicId}`, connection.site),
+      url: safeUrl(`${connection.site}/t/${topicId}`, connection.site),
     }
     return { ...result, revision: await fingerprint([result, post.version, topic.last_posted_at]) }
   }
