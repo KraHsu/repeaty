@@ -17,6 +17,7 @@ import { PluginRuntime, type PluginModule } from './runtime'
 import { createPluginApi, evaluatePlugin, nativePluginCall } from './sdk'
 import { currentPluginWorkspace } from '@repeaty-plugin-host'
 import { createPluginPreferences, defaultPluginPreferences } from './preferences'
+import type { PluginStudyHostFactory } from './study'
 import type { PluginMaterialHostFactory } from './materials'
 import { PluginTaskScheduler } from './tasks'
 import type {
@@ -51,6 +52,7 @@ export interface PluginManagerEnvironment {
   evaluate?: (code: string, api: ReturnType<typeof createPluginApi>) => Promise<PluginModule>
   seedOfficial?: boolean
   materialHost?: PluginMaterialHostFactory
+  studyHost?: PluginStudyHostFactory
 }
 let environmentFactory: (() => PluginManagerEnvironment) | undefined
 /** Embedded hosts supply a new adapter environment per app; mutable runtimes are never shared. */
@@ -95,6 +97,13 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
   >()
   const taskScheduler = new PluginTaskScheduler()
   const commandScheduler = new PluginTaskScheduler(1)
+  let studyHost = environment.studyHost
+  function setStudyHost(factory: PluginStudyHostFactory) {
+    studyHost = factory
+    return () => {
+      if (studyHost === factory) studyHost = undefined
+    }
+  }
   let materialHost = environment.materialHost
   function setMaterialHost(factory: PluginMaterialHostFactory) {
     materialHost = factory
@@ -466,6 +475,14 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
           registerWidget,
           {
             registrations,
+            studyHost: () => {
+              const published = materialApis.get(bundle.manifest.id)
+              return published &&
+                published.api === materialApi &&
+                pluginRuntime.installations.includes(published.installation)
+                ? studyHost
+                : undefined
+            },
             assets: bundle.assets,
             host: () => {
               // Evaluation/factory code may register contributions, but cannot mutate or read
@@ -677,6 +694,7 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
     pluginManagerBusy.value = false
     await pluginRuntime.close()
     materialApis.clear()
+    studyHost = undefined
     materialHost = undefined
     pluginPackages.splice(0)
   }
@@ -691,6 +709,7 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
   return {
     pluginRuntime,
     setMaterialHost,
+    setStudyHost,
     materialApiFor,
     parseMaterialFile,
     scanSourceConnector,

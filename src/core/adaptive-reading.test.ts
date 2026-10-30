@@ -11,6 +11,7 @@ import { createRepository } from './storage'
 import { exportBackup, parseBackup } from './backups'
 import { exportArchive, parseArchive } from './archive'
 import { migrateLibrary } from './model'
+import { studySettingsSchema } from './study-settings'
 
 function setup() {
   const prepared = prepareSource(
@@ -159,4 +160,55 @@ it('does not introduce undefined adaptive fields when arranging an unread legacy
   )
   expect(Object.hasOwn(deferred.sources[0]!, 'adaptiveReading')).toBe(false)
   expect(Object.hasOwn(deferred.sources[0]!, 'readingIntervalDays')).toBe(false)
+})
+
+it('keeps configured growth within its factor range independently of early or overdue reads', () => {
+  const { source } = setup()
+  const settings = studySettingsSchema.parse({
+    readingMode: 'configured',
+    readingInitialDays: 4,
+    readingGrowthMin: 1.5,
+    readingGrowthMax: 2,
+    readingMaxDays: 100,
+  })
+  const first = nextAdaptiveReading(source, 'easy', now, settings)
+  expect(first.intervalDays).toBe(4)
+  const read = { ...source, adaptiveReading: { ...first, intervalDays: 10, factor: 2 } }
+  for (const at of [now, new Date('2030-10-17T18:00:00Z')]) {
+    expect(nextAdaptiveReading(read, 'easy', at, settings)).toMatchObject({
+      intervalDays: 20,
+      factor: 2,
+    })
+    expect(nextAdaptiveReading(read, 'good', at, settings).intervalDays).toBe(20)
+    expect(nextAdaptiveReading(read, 'again', at, settings).intervalDays).toBe(5)
+  }
+})
+
+it('rounds configured day counts and applies max days without rounding the factor outside narrow bounds', () => {
+  const { source } = setup()
+  const settings = studySettingsSchema.parse({
+    readingMode: 'configured',
+    readingGrowthMin: 1.333,
+    readingGrowthMax: 1.334,
+    readingMaxDays: 6,
+  })
+  const read = {
+    ...source,
+    adaptiveReading: {
+      ...nextAdaptiveReading(source, 'good', now, settings),
+      intervalDays: 4,
+    },
+  }
+  const good = nextAdaptiveReading(read, 'good', now, settings)
+  expect(good.factor).toBeGreaterThanOrEqual(1.333)
+  expect(good.factor).toBeLessThanOrEqual(1.334)
+  expect(good.intervalDays).toBe(Math.round(4 * good.factor))
+  expect(
+    nextAdaptiveReading(
+      { ...read, adaptiveReading: { ...read.adaptiveReading, intervalDays: 6 } },
+      'easy',
+      now,
+      settings,
+    ).intervalDays,
+  ).toBe(6)
 })

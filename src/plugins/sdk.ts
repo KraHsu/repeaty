@@ -13,6 +13,8 @@ import type { MaterialHostApi, MaterialTaskContext, MaterialTaskOptions } from '
 import type { MaterialRegistrations, PluginMaterialHostFactory } from './materials'
 import { PluginTaskScheduler, supportsPluginWorkers } from './tasks'
 import { createPluginResources } from './resources'
+import type { PluginStudyHostFactory } from './study'
+import type { StudyHostApi } from '@repeaty/plugin-api'
 import type { PluginAssets } from './assets'
 import AppPage from '../components/AppPage.vue'
 import {
@@ -57,6 +59,7 @@ export function createPluginApi(
   materialOptions: {
     registrations?: MaterialRegistrations
     host?: () => PluginMaterialHostFactory | undefined
+    studyHost?: () => PluginStudyHostFactory | undefined
     scheduler?: PluginTaskScheduler
     commandScheduler?: PluginTaskScheduler
     assets?: PluginAssets
@@ -141,6 +144,50 @@ export function createPluginApi(
     createExcerpt: (request) => materialCall((host) => host.createExcerpt(request)),
     editContent: (request) => materialCall((host) => host.editContent(request)),
     search: (query, signal) => materialCall((host) => host.search(query, signal)),
+  }
+  let boundStudy: StudyHostApi | undefined
+  function studyHost() {
+    guard()
+    const factory = materialOptions.studyHost?.()
+    if (!factory) throw new Error('study-service-unavailable')
+    return (boundStudy ??= factory({
+      pluginId: manifest.id,
+      scope,
+      signal: lifetime.signal,
+      assertCurrent: guard,
+    }))
+  }
+  async function studyCall<T>(run: (host: StudyHostApi) => Promise<T>) {
+    const value = await run(studyHost())
+    guard()
+    return value
+  }
+  const study: StudyHostApi = {
+    statistics: (query, signal) => studyCall((host) => host.statistics(query, signal)),
+    statisticsDetails: (query, signal) =>
+      studyCall((host) => host.statisticsDetails(query, signal)),
+    trainingState: (query, signal) => studyCall((host) => host.trainingState(query, signal)),
+    trainingSnapshot: (query, signal) => studyCall((host) => host.trainingSnapshot(query, signal)),
+    submitCandidate: (request, signal) =>
+      studyCall((host) => host.submitCandidate(request, signal)),
+    activateModel: (request, signal) => studyCall((host) => host.activateModel(request, signal)),
+    rollbackModel: (request, signal) => studyCall((host) => host.rollbackModel(request, signal)),
+    discardTraining: (token) => studyHost().discardTraining(token),
+    activity: () => studyHost().activity(),
+    subscribe(listener) {
+      let subscribed = true
+      const stop = studyHost().subscribe(() => {
+        if (subscribed && alive && isCurrent()) listener()
+      })
+      const dispose = () => {
+        if (subscribed) {
+          subscribed = false
+          stop()
+        }
+      }
+      disposers.push(dispose)
+      return dispose
+    },
   }
   const registration = <K extends keyof MaterialRegistrations>(name: K) => {
     guard()
@@ -265,6 +312,7 @@ export function createPluginApi(
       return remove
     },
     materials,
+    study,
     resources: createPluginResources(materialOptions.assets, lifetime.signal, guard),
     tasks: { run: runTask },
     // Host-only command orchestration must not occupy the background parser queue it awaits.

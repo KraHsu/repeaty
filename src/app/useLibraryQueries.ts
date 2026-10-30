@@ -2,9 +2,11 @@ import { t } from '../i18n'
 import { computed } from 'vue'
 import { deckStudyCounts } from '../core/deck-status'
 import { usePlugins } from '../plugins'
-import { localDay, createCardViewReader } from '../core/model'
+import { createCardViewReader } from '../core/model'
+import { studySettings } from '../core/study-settings'
+import { studyDay } from '../core/study-day'
 import { queuedSources } from '../core/source-queue'
-import { blockedByLimit, dayKey, dueCards, weekActivity } from '../core/scheduler'
+import { blockedByLimit, dueCards, weekActivity } from '../core/scheduler'
 import type { useLibrary } from '../composables/useLibrary'
 import type { useStudyClock } from './useStudyClock'
 import type { useAppNavigation } from './useAppNavigation'
@@ -29,14 +31,22 @@ export function useLibraryQueries({
     blockedByLimit(library.value, coarseNow.value, undefined, canReviewCard),
   )
   const readyReading = computed(() =>
-    queuedSources(library.value.sources, 'ready', localDay(coarseNow.value)),
+    queuedSources(
+      library.value.sources,
+      'ready',
+      studyDay(coarseNow.value, studySettings(library.value)),
+      {},
+      library.value,
+    ),
   )
   const readyExcerpts = computed(
     () => readyReading.value.filter((source) => source.kind === 'excerpt').length,
   )
   const newCount = computed(() => due.value.filter((card) => card.schedule.state === 0).length)
   const todayReviews = computed(() =>
-    library.value.reviews.filter((entry) => entry.studyDay === dayKey(now.value)),
+    library.value.reviews.filter(
+      (entry) => entry.studyDay === studyDay(now.value, studySettings(library.value)),
+    ),
   )
   const activity = computed(() => weekActivity(library.value, coarseNow.value))
   const maxActivity = computed(() => Math.max(4, ...activity.value.map((day) => day.count)))

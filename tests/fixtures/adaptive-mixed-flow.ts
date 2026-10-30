@@ -105,7 +105,7 @@ export async function startMixed(page: Page) {
   await page.getByRole('button', { name: '学习概览', exact: true }).click()
   await page.getByRole('button', { name: '开始混合学习', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '开始混合学习', exact: true })
-  await dialog.getByLabel('每篇材料之间复习几张卡片？', { exact: true }).fill('1')
+  await dialog.getByLabel('每轮先复习几张卡片？', { exact: true }).fill('1')
   await dialog.getByRole('button', { name: '开始学习', exact: true }).click()
   await expect(dialog).toHaveCount(0)
 }

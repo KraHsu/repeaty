@@ -9,7 +9,7 @@ const { busy, modal, mixedRatio, startMixed, shortcuts } = useApplication()
   <AppModal v-if="modal === 'mixed'" :title="t('开始混合学习')" :busy="busy" @close="modal = null">
     <form class="editor-form" @submit.prevent="startMixed">
       <p>{{ t('按现有复习额度安排卡片，在其中穿插今天待阅读的材料。') }}</p>
-      <label for="mixed-ratio">{{ t('每篇材料之间复习几张卡片？') }}</label>
+      <label for="mixed-ratio">{{ t('每轮先复习几张卡片？') }}</label>
       <UiInput
         id="mixed-ratio"
         v-model.number="mixedRatio"

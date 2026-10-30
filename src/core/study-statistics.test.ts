@@ -6,6 +6,7 @@ import { prepareSource } from './sources'
 import { practiceSchema } from './practice-data'
 import type { Library } from './model'
 import type { Source } from './source-data'
+import { sourceQueueState } from './source-queue'
 
 afterEach(() => vi.unstubAllEnvs())
 
@@ -271,4 +272,29 @@ it('bounds detail pages and rejects impossible dates or oversized ranges without
     studyStatisticsDetails(library, { day: '2026-10-28', kind: 'readings', limit: 201 }, context()),
   ).toThrow()
   expect(JSON.stringify(library)).toBe(before)
+})
+
+it('matches the real reading queue when a completed chapter is reopened', () => {
+  vi.stubEnv('TZ', 'UTC')
+  const { library, source } = sample()
+  const chapter: Source = {
+    ...source,
+    queue: { state: 'active', availableOn: '2026-10-30' },
+    studySequence: { groupId: 'book', index: 0, mode: 'free', completed: true },
+  }
+  library.sources = [chapter]
+  const scheduled = () =>
+    studyStatisticsDetails(
+      library,
+      {
+        day: '2026-10-30',
+        kind: 'scheduledReadings',
+      },
+      context(),
+    ).items.map((item) => item.id)
+  expect(sourceQueueState(chapter, '2026-10-30', library.sources)).toBe('archived')
+  expect(scheduled()).toEqual([])
+  library.sources = [{ ...chapter, studySequence: { ...chapter.studySequence!, completed: false } }]
+  expect(sourceQueueState(library.sources[0]!, '2026-10-30', library.sources)).toBe('ready')
+  expect(scheduled()).toEqual([source.id])
 })

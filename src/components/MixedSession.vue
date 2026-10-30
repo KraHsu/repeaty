@@ -2,7 +2,9 @@
 import { UiButton } from './ui'
 import { computed, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { t } from '../i18n'
-import { type Library, localDay } from '../core/model'
+import { type Library } from '../core/model'
+import { studyDay } from '../core/study-day'
+import { studySettings } from '../core/study-settings'
 import { dueCards } from '../core/scheduler'
 import { sourceQueueState } from '../core/source-queue'
 import { usePlugins } from '../plugins'
@@ -14,6 +16,7 @@ import {
   finishMixedCard,
   finishMixedReading,
   type MixedTask,
+  type MixedRound,
 } from '../core/mixed-study'
 
 const props = defineProps<{
@@ -49,8 +52,9 @@ const current = shallowRef<Task>()
 const active = ref(false),
   switching = ref(false)
 const locked = computed(() => props.busy || active.value || switching.value)
-const grades = shallowRef<{ id: string; cardId: string }[]>([])
-const readingCheckpoints = shallowRef<{ id: string; index: number; after: number }[]>([])
+type Checkpoint = { before: MixedRound; after: MixedRound }
+const grades = shallowRef<({ id: string; cardId: string } & Checkpoint)[]>([])
+const readingCheckpoints = shallowRef<({ id: string; index: number } & Checkpoint)[]>([])
 const undoneGrades = new Map<string, { entry: (typeof grades.value)[number]; cursor: number }>()
 const undoneReadings = new Map<string, (typeof readingCheckpoints.value)[number]>()
 let key = 0,
@@ -73,21 +77,26 @@ function activity(item: Task, busy: boolean) {
 function cardDone(item: CardTask, graded: boolean) {
   if (!alive || current.value?.key !== item.key) return
   if (graded) {
+    const before = round.value
     round.value = finishMixedCard(round.value)
     const review = props.library.reviews.at(-1)
     if (review?.cardId === item.id)
-      grades.value = [...grades.value, { id: review.id, cardId: item.id }]
+      grades.value = [
+        ...grades.value,
+        { id: review.id, cardId: item.id, before, after: round.value },
+      ]
   }
   choose()
 }
 function readingDone(item: ReadingTask, arranged: boolean) {
   if (!alive || current.value?.key !== item.key) return
+  const before = round.value
   round.value = finishMixedReading(round.value, item.index)
   const undoId = props.readingUndoId
   if (undoId && arranged)
     readingCheckpoints.value = [
       ...readingCheckpoints.value.slice(-19),
-      { id: undoId, index: item.index, after: round.value.cursor },
+      { id: undoId, index: item.index, before, after: round.value },
     ]
   choose()
 }
@@ -138,7 +147,12 @@ async function undoCard() {
     grades.value = grades.value.slice(0, -1)
     round.value = {
       ...round.value,
-      cardsSinceReading: Math.max(0, round.value.cardsSinceReading - 1),
+      ...(round.value.cursor === latest.after.cursor
+        ? {
+            cardsSinceReading: latest.before.cardsSinceReading,
+            readingsInCycle: latest.before.readingsInCycle,
+          }
+        : {}),
       completedCards: Math.max(0, round.value.completedCards - 1),
     }
     choose(
@@ -169,13 +183,14 @@ async function undoReading() {
     )
       return
     if (!(await props.undoReading()) || !alive || scope !== props.scope) return
-    if (checkpoint && checkpoint.id === undoId && checkpoint.after === round.value.cursor) {
+    if (checkpoint && checkpoint.id === undoId && checkpoint.after.cursor === round.value.cursor) {
       undoneReadings.set(checkpoint.id, checkpoint)
       if (undoneReadings.size > 20) undoneReadings.delete(undoneReadings.keys().next().value!)
       round.value = {
         ...round.value,
         cursor: checkpoint.index,
-        cardsSinceReading: round.value.cardsPerReading,
+        cardsSinceReading: checkpoint.before.cardsSinceReading,
+        readingsInCycle: checkpoint.before.readingsInCycle,
         completedReadings: Math.max(0, round.value.completedReadings - 1),
       }
     }
@@ -196,7 +211,11 @@ const currentValid = computed(() => {
         (source) =>
           source.id === item.id &&
           source.mediaId === item.mediaId &&
-          sourceQueueState(source, localDay(props.now), props.library.sources) === 'ready',
+          sourceQueueState(
+            source,
+            studyDay(props.now, studySettings(props.library)),
+            props.library.sources,
+          ) === 'ready',
       )
 })
 watch([currentValid, locked], ([valid, busy]) => {
@@ -223,8 +242,12 @@ async function reconcileRedo(operation: Operation) {
         round.value = {
           ...round.value,
           completedCards: round.value.completedCards + 1,
-          cardsSinceReading:
-            round.value.cardsSinceReading + (round.value.cursor === saved.cursor ? 1 : 0),
+          ...(round.value.cursor === saved.cursor
+            ? {
+                cardsSinceReading: saved.entry.after.cardsSinceReading,
+                readingsInCycle: saved.entry.after.readingsInCycle,
+              }
+            : {}),
         }
         reconciled = true
       }
@@ -234,7 +257,13 @@ async function reconcileRedo(operation: Operation) {
     if (checkpoint) {
       undoneReadings.delete(operation.id)
       if (round.value.cursor === checkpoint.index) {
-        round.value = finishMixedReading(round.value, checkpoint.index)
+        round.value = {
+          ...round.value,
+          cursor: checkpoint.after.cursor,
+          cardsSinceReading: checkpoint.after.cardsSinceReading,
+          readingsInCycle: checkpoint.after.readingsInCycle,
+          completedReadings: round.value.completedReadings + 1,
+        }
         readingCheckpoints.value = [...readingCheckpoints.value.slice(-19), checkpoint]
         reconciled = true
       }
@@ -242,7 +271,23 @@ async function reconcileRedo(operation: Operation) {
   }
   if (reconciled || !current.value || !currentValid.value) choose()
 }
-defineExpose({ undoCard, undoReading, canUndoCard, locked, leave, reconcileUndo, reconcileRedo })
+const activityKind = computed(() =>
+  current.value?.kind === 'reading'
+    ? 'reading'
+    : current.value?.kind === 'card'
+      ? 'review'
+      : 'other',
+)
+defineExpose({
+  undoCard,
+  undoReading,
+  canUndoCard,
+  locked,
+  leave,
+  reconcileUndo,
+  reconcileRedo,
+  activityKind,
+})
 </script>
 
 <template>
@@ -259,7 +304,12 @@ defineExpose({ undoCard, undoReading, canUndoCard, locked, leave, reconcileUndo,
           }}
         </p>
         <p class="form-note">
-          {{ t('每 {count} 张卡片穿插 1 篇材料。', { count: round.cardsPerReading }) }}
+          {{
+            t('每 {cards} 张卡片穿插 {readings} 篇材料。', {
+              cards: round.cardsPerReading,
+              readings: round.readingsPerCycle,
+            })
+          }}
         </p>
       </div>
       <div class="mixed-actions">

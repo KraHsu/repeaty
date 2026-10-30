@@ -1,4 +1,6 @@
 export const studyControlMessages = {
+  '学习活动记录尚未保存，请重试后再关闭或切换学习库。':
+    'Study activity has not been saved. Retry before closing or switching libraries.',
   '继承来源：{p0}。': 'Inherited from: {p0}.',
   上级材料: 'Parent material',
   复习与学习日: 'Review and study day',
@@ -29,16 +31,18 @@ export const studyControlMessages = {
   最小增长倍数: 'Minimum growth factor',
   '不能大于最大增长倍数。': 'Must not exceed the maximum growth factor.',
   最大增长倍数: 'Maximum growth factor',
-  '在增长范围内生成后续阅读间隔。': 'Future reading intervals use this growth range.',
+  '按反馈选择增长倍数，乘以上次阅读间隔；“再读一遍”可缩短间隔。':
+    'Feedback chooses a growth factor applied to the previous reading interval. “Read again” may shorten it.',
   最大阅读间隔: 'Maximum reading interval',
-  '不能小于初始阅读间隔。': 'Must not be shorter than the initial interval.',
+  '不能小于初始阅读间隔。结果四舍五入为整数天，并以此值为上限。':
+    'Must not be shorter than the initial interval. Results are rounded to whole days and capped at this value.',
   '请检查设置值。': 'Check the setting values.',
   '设置保存在当前学习库中，修改可撤销。新设置用于后续安排。':
     'Settings are saved in this library and can be undone. New values apply to future scheduling.',
   优先级安排方式: 'Priority scheduling',
-  '兼容模式保留现有排序；加权模式在同一优先级内保留到期顺序。0 始终为绝对优先。':
-    'Compatibility mode keeps the existing order. Weighted mode preserves due order within each priority. 0 always means absolute priority.',
-  兼容现有排序: 'Keep existing order',
+  '顺序模式按已设置的优先级安排，未设置时保留原有排序。加权模式让不同优先级轮选。0 始终优先。':
+    'Ordered mode follows assigned priorities, keeping the existing order when none are set. Weighted mode samples across priorities. 0 always comes first.',
+  按优先级顺序: 'Priority order',
   按优先级加权: 'Weighted priority',
   阅读间隔模式: 'Reading interval mode',
   现有自适应阅读: 'Existing adaptive reading',

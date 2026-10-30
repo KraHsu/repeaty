@@ -31,7 +31,15 @@ import { sourceExcerpt, recentSource } from '../core/sources'
 import { sourceArrangement } from '../core/reading-operations'
 import { sourceContextPath } from '../core/source-tree'
 import SourceBatchDialog from './SourceBatchDialog.vue'
-import { localDay } from '../core/model'
+import StudyPriorityField from './StudyPriorityField.vue'
+import { studyPriorityOrigin } from './study-priority-label'
+import {
+  createPriorityResolver,
+  effectiveSourcePriority,
+  sourcePriorityGroup,
+} from '../core/study-priority'
+import { studyDay } from '../core/study-day'
+import { studySettings } from '../core/study-settings'
 import {
   filterSources,
   queuedSources,
@@ -128,7 +136,8 @@ watch(
   { flush: 'sync' },
 )
 onUnmounted(() => knowledge.value.dispose())
-const today = computed(() => localDay(props.now))
+const scheduling = computed(() => studySettings(props.library))
+const today = computed(() => studyDay(props.now, scheduling.value))
 const section = ref<'library' | 'inbox' | 'connections'>('library')
 const collectionImport = ref<InstanceType<typeof CollectionImport>>()
 const collecting = ref(false)
@@ -239,7 +248,23 @@ const filters = computed<SourceFilter>(() => ({
 const hasFilters = computed(
   () => !!query.value.trim() || kind.value !== 'all' || priority.value !== 'all',
 )
-const matchingSources = computed(() => filterSources(props.library.sources, filters.value))
+const matchingSources = computed(() =>
+  filterSources(props.library.sources, filters.value, props.library),
+)
+const effectivePriorityGroups = computed(() => {
+  const resolver = createPriorityResolver(props.library)
+  return new Map(
+    props.library.sources.map((source) => {
+      const priority = resolver.source(source)
+      return [
+        source.id,
+        priority.numeric || scheduling.value.priorityMode === 'weighted'
+          ? sourcePriorityGroup(priority.value)
+          : (source.priority ?? 'normal'),
+      ]
+    }),
+  )
+})
 const readyCount = computed(
   () =>
     props.library.sources.filter(
@@ -284,7 +309,8 @@ function resetFilters() {
 }
 const selectedId = ref(
   props.session?.sourceId ??
-    recentSource(queuedSources(props.library.sources, 'ready', today.value))?.id ??
+    recentSource(queuedSources(props.library.sources, 'ready', today.value, {}, props.library))
+      ?.id ??
     '',
 )
 const source = computed(() =>
@@ -363,7 +389,7 @@ const importing = ref(false),
   importError = ref<DisplayMessage>('')
 const pageSize = 20
 const filteredSources = computed(() =>
-  queuedSources(props.library.sources, view.value, today.value, filters.value),
+  queuedSources(props.library.sources, view.value, today.value, filters.value, props.library),
 )
 const pages = computed(() => Math.max(1, Math.ceil(filteredSources.value.length / pageSize)))
 const filteredSourceIds = computed(() => new Set(filteredSources.value.map((item) => item.id)))
@@ -693,9 +719,9 @@ const deferring = ref(false),
   moving = ref(false),
   deferDate = ref('')
 const deferOptions = computed(() => [
-  { label: '明天', date: nextReadingDay(props.now) },
-  { label: '3 天后', date: nextReadingDay(props.now, 3) },
-  { label: '1 周后', date: nextReadingDay(props.now, 7) },
+  { label: '明天', date: nextReadingDay(props.now, 1, scheduling.value) },
+  { label: '3 天后', date: nextReadingDay(props.now, 3, scheduling.value) },
+  { label: '1 周后', date: nextReadingDay(props.now, 7, scheduling.value) },
 ])
 let releaseReading: (() => void) | undefined
 watch(
@@ -722,11 +748,15 @@ watch(
   { flush: 'sync' },
 )
 onUnmounted(() => releaseReading?.())
-const intervalPlan = computed(() => source.value && nextReadingInterval(source.value, props.now))
+const intervalPlan = computed(
+  () => source.value && nextReadingInterval(source.value, props.now, props.library),
+)
 const scheduleMode = ref<'fixed' | 'adaptive'>('fixed')
 const readingFeedback = ref<ReadingFeedback>('good')
 const adaptivePlan = computed(
-  () => source.value && adaptiveReadingPlan(source.value, readingFeedback.value, props.now),
+  () =>
+    source.value &&
+    adaptiveReadingPlan(source.value, readingFeedback.value, props.now, scheduling.value),
 )
 const selectedPlan = computed(() =>
   scheduleMode.value === 'adaptive' ? adaptivePlan.value : intervalPlan.value,
@@ -814,6 +844,7 @@ async function finishSession() {
   }
 }
 defineExpose({
+  studying: computed(() => Boolean(source.value && !error.value)),
   leaveSession,
   undoArrangement,
   locked: computed(
@@ -873,7 +904,7 @@ async function beginRound(filter?: SourceFilter) {
   try {
     if (source.value && !(await savePosition())) return
     if (!alive || props.scope !== scope) return
-    const next = startReadingRound(props.library.sources, today.value, chosen)
+    const next = startReadingRound(props.library.sources, today.value, chosen, props.library)
     if (!next.entries.length) return
     if (!chosen) {
       view.value = 'ready'
@@ -939,7 +970,7 @@ const queueState = computed(() =>
 )
 function openDefer() {
   emit('clearNotice')
-  deferDate.value = nextReadingDay(props.now)
+  deferDate.value = nextReadingDay(props.now, 1, scheduling.value)
   deferring.value = true
 }
 function openReadSchedule() {
@@ -1018,6 +1049,37 @@ async function arrange(action: SourceQueueAction) {
 function changePriority(priority: string) {
   if (priority !== 'high' && priority !== 'normal' && priority !== 'low') return
   return arrange({ type: 'priority', priority })
+}
+async function changeStudyPriority(value: number | undefined) {
+  if (
+    !source.value ||
+    props.busy ||
+    arranging.value ||
+    moving.value ||
+    !props.workbench?.setPriority
+  )
+    return
+  const target = source.value.id,
+    scope = props.scope
+  arranging.value = true
+  emit('clearNotice')
+  try {
+    if (
+      !(await flushEditor()) ||
+      (reader.value?.ready && !(await savePosition())) ||
+      !alive ||
+      scope !== props.scope ||
+      source.value?.id !== target
+    )
+      return
+    if (await props.workbench.setPriority('source', target, value)) {
+      if (!alive || scope !== props.scope) return
+      const index = filteredSources.value.findIndex((entry) => entry.id === target)
+      if (index >= 0) page.value = Math.floor(index / pageSize)
+    }
+  } finally {
+    if (scope === props.scope) arranging.value = false
+  }
 }
 async function locateExcerpt(id: string) {
   const entry = savedExcerpts.value.find((entry) => entry.source.id === id)
@@ -1607,10 +1669,10 @@ async function download() {
                           : t('待阅读')
               }}</span>
               <span
-                v-if="entry.priority && entry.priority !== 'normal'"
+                v-if="effectivePriorityGroups.get(entry.id) !== 'normal'"
                 class="source-priority-badge"
               >
-                {{ t(priorityBadges[entry.priority]) }}
+                {{ t(priorityBadges[effectivePriorityGroups.get(entry.id) ?? 'normal']) }}
               </span>
               <template v-if="entry.reading">
                 <span>{{
@@ -1788,7 +1850,32 @@ async function download() {
                   ? t('安排于 {date}', { date: readingDate(source.queue.availableOn) })
                   : t('待阅读')
             }}</span>
-            <div class="source-priority-control">
+            <StudyPriorityField
+              v-if="workbench?.setPriority"
+              id="source-study-priority"
+              :model-value="
+                source.studyPriority ??
+                (source.priority ? { high: 1, normal: 5, low: 9 }[source.priority] : undefined)
+              "
+              :inherited-value="
+                effectiveSourcePriority(
+                  { ...source, studyPriority: undefined, priority: undefined },
+                  library,
+                ).value
+              "
+              :inherited-from="
+                studyPriorityOrigin(
+                  library,
+                  effectiveSourcePriority(
+                    { ...source, studyPriority: undefined, priority: undefined },
+                    library,
+                  ),
+                )
+              "
+              :disabled="busy || arranging"
+              @update:model-value="changeStudyPriority"
+            />
+            <div v-else class="source-priority-control">
               <label for="source-reading-priority">{{ t('阅读优先级') }}</label>
               <UiSelect
                 :items="[
@@ -2178,6 +2265,7 @@ async function download() {
       @activity="collecting = $event"
     />
     <SourceBatchDialog
+      :settings="scheduling"
       v-if="batchDraft"
       :titles="batchDraft.entries.map((entry) => entry.title)"
       :now="now"
@@ -2448,7 +2536,7 @@ async function download() {
           v-model="deferDate"
           type="date"
           required
-          :min="nextReadingDay(now)"
+          :min="nextReadingDay(now, 1, scheduling)"
           max="9999-12-31"
           :disabled="busy || arranging"
         />

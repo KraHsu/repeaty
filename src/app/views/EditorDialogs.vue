@@ -4,6 +4,8 @@ import URadioGroup from '@nuxt/ui/components/RadioGroup.vue'
 import { t } from '../../i18n'
 import AppModal from '../../components/AppModal.vue'
 import NoteEditor from '../../components/NoteEditor.vue'
+import StudyPriorityField from '../../components/StudyPriorityField.vue'
+import { studySettings } from '../../core/study-settings'
 import ImportNotes from '../../components/ImportNotes.vue'
 import { colors } from '../../core/model'
 import { useApplication } from '../context'
@@ -81,6 +83,13 @@ const {
           t('评分后自动暂缓同笔记的其他卡片至明天')
         }}</label
       >
+      <StudyPriorityField
+        id="deck-study-priority"
+        v-model="deckForm.studyPriority"
+        :inherited-value="studySettings(library).defaultPriority"
+        :inherited-from="t('默认学习优先级')"
+        :disabled="busy"
+      />
       <div class="limit-fields">
         <label for="leech-threshold"
           >{{ t('顽固卡遗忘阈值')

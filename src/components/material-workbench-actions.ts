@@ -6,6 +6,7 @@ import type {
 import type { MaterialMove } from '../core/material-organization-data'
 
 export interface MaterialWorkbenchActions {
+  setPriority?(kind: 'source' | 'folder', id: string, value: number | undefined): Promise<boolean>
   prepareEditor(
     id: string,
     mediaId: string,

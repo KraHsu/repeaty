@@ -25,9 +25,10 @@ export function nextAdaptiveReading(
   const factor = previous?.factor ?? (configured ? (minimum + maximum) / 2 : 2)
   const today = studyDay(now, settings)
   const elapsed = previous ? calendarDays(today) - calendarDays(previous.lastReadOn) : base
-  // Early rereads do not inflate intervals; overdue reads contribute at most twice the last span.
-  const observed = clamp(elapsed, Math.max(1, base / 2), base * 2)
-  const nextFactor =
+  // Legacy feedback uses elapsed time. Configured growth always applies to the
+  // previous interval so an overdue or easy read cannot exceed the chosen factor.
+  const observed = configured ? base : clamp(elapsed, Math.max(1, base / 2), base * 2)
+  const roundedFactor =
     Math.round(
       clamp(
         factor + (feedback === 'again' ? -0.2 : feedback === 'easy' ? 0.15 : 0),
@@ -35,9 +36,12 @@ export function nextAdaptiveReading(
         maximum,
       ) * 100,
     ) / 100
+  const nextFactor = configured ? clamp(roundedFactor, minimum, maximum) : roundedFactor
   let intervalDays = clamp(
     Math.round(
-      feedback === 'again' ? base / 2 : observed * nextFactor * (feedback === 'easy' ? 1.3 : 1),
+      feedback === 'again'
+        ? base / 2
+        : observed * nextFactor * (!configured && feedback === 'easy' ? 1.3 : 1),
     ),
     1,
     configured ? settings.readingMaxDays : 365,
@@ -47,7 +51,7 @@ export function nextAdaptiveReading(
       feedback === 'again'
         ? Math.max(1, Math.round(settings.readingInitialDays / 2))
         : settings.readingInitialDays
-  if (previous && elapsed < base) intervalDays = Math.min(intervalDays, base)
+  if (!configured && previous && elapsed < base) intervalDays = Math.min(intervalDays, base)
   return {
     intervalDays,
     factor: nextFactor,

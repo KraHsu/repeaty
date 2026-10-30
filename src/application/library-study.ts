@@ -10,8 +10,55 @@ import {
   type Attempt,
 } from '../core/practice-data'
 import type { LibraryContext } from './library-context'
+import { studyDay } from '../core/study-day'
+import { studySettings } from '../core/study-settings'
+import { studyEventSchema } from '../core/study-data'
 export function createStudyCommands(context: LibraryContext) {
   return {
+    async recordPlainPractice(id: string, cardId: string, expectedScope: string) {
+      const now = new Date()
+      if (!expectedScope || context.scope.value !== expectedScope)
+        throw new Error('stale-workspace-session')
+      return context.commit(
+        (base) => {
+          if (
+            context.scope.value !== expectedScope ||
+            !base.cards.some((card) => card.id === cardId)
+          )
+            throw new Error('stale-workspace-session')
+          const existing = base.studyEvents.find((event) => event.id === id)
+          if (existing) {
+            if (existing.kind !== 'practice' || existing.cardId !== cardId)
+              throw new Error('practice-identity-conflict')
+            return base
+          }
+          const event = studyEventSchema.parse({
+            id,
+            cardId,
+            kind: 'practice',
+            occurredAt: now.toISOString(),
+            studyDay: studyDay(now, studySettings(base)),
+          })
+          return { ...base, studyEvents: [...base.studyEvents, event] }
+        },
+        { undoLabel: false, backgroundMetadata: true },
+      )
+    },
+    undoPlainPractice(id: string, expectedScope: string) {
+      return context.commit(
+        (base) => {
+          if (!expectedScope || context.scope.value !== expectedScope)
+            throw new Error('stale-workspace-session')
+          return {
+            ...base,
+            studyEvents: base.studyEvents.filter(
+              (event) => event.id !== id || event.kind !== 'practice',
+            ),
+          }
+        },
+        { undoLabel: false, backgroundMetadata: true },
+      )
+    },
     changeCards(ids: Set<string>, action: CardAction) {
       return context.commit((current) => changeCards(current, ids, action), {
         undoLabel: action === 'bury' ? '今天暂缓' : action === 'suspend' ? '暂停此卡' : '修改',

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { studySettings } from '../core/study-settings'
 import UDropdownMenu, { type DropdownMenuItem } from '@nuxt/ui/components/DropdownMenu.vue'
 import UProgress from '@nuxt/ui/components/Progress.vue'
 import { UiButton } from './ui'
@@ -54,6 +55,8 @@ const props = defineProps<{
   workspaceScope: string
   saveAttempt: (practice: Practice, attempt: Attempt, scope: string) => Promise<void>
   finishPractice: (id: string, cardId: string, assessment?: Assessment) => Promise<boolean>
+  recordPlainPractice: (id: string, cardId: string, scope: string) => Promise<boolean>
+  undoPlainPractice: (id: string, scope: string) => Promise<boolean>
   undo: () => Promise<boolean>
   change: (ids: string[], action: 'suspend' | 'bury') => Promise<boolean>
   getMedia: (id: string) => Promise<Blob | undefined>
@@ -87,7 +90,10 @@ const suggestedName = computed(
   () => grades.find((grade) => grade.value === questionState.suggestedGrade)?.label ?? '',
 )
 const practice = computed(() => Boolean(props.study && !props.study.reschedule))
-const studied = ref<{ id: string; grade: Grade; reviewId?: string; operationId?: string }[]>([])
+const practiceEventIds = new Map<string, string>()
+const studied = ref<
+  { id: string; grade: Grade; reviewId?: string; operationId?: string; practiceEventId?: string }[]
+>([])
 const undoneRatings = new Map<string, (typeof studied.value)[number]>()
 const replayedOutsideSession = ref<{ reviewId: string; cardId: string }[]>([])
 const readViews = createCardViewReader()
@@ -110,7 +116,10 @@ const queue = computed(() =>
 const startedWith = queue.value.length
 const current = computed(() =>
   views.value.find(
-    (card) => card.id === currentId.value && available(card, clock.value) && canReviewCard(card),
+    (card) =>
+      card.id === currentId.value &&
+      available(card, clock.value, studySettings(props.library)) &&
+      canReviewCard(card),
   ),
 )
 const plugin = computed(() => current.value && questionPlugin(current.value))
@@ -210,7 +219,7 @@ const canUndoPractice = computed(
 const deck = computed(() => props.library.decks.find((entry) => entry.id === current.value?.deckId))
 const preview = computed(() =>
   current.value && !practice.value
-    ? previewReview(current.value, clock.value, deck.value)
+    ? previewReview(current.value, clock.value, deck.value, props.library)
     : undefined,
 )
 const nextCard = computed(
@@ -219,7 +228,7 @@ const nextCard = computed(
       .filter(
         (card) =>
           canReviewCard(card) &&
-          available(card, clock.value) &&
+          available(card, clock.value, studySettings(props.library)) &&
           (!props.deckId || card.deckId === props.deckId) &&
           new Date(card.schedule.due) > clock.value,
       )
@@ -240,7 +249,12 @@ function selectNext() {
 function restart(id: string, noteId: string) {
   const target =
     views.value.find((card) => card.id === id) ?? views.value.find((card) => card.noteId === noteId)
-  if (!target || !available(target, new Date()) || !canReviewCard(target)) return selectNext()
+  if (
+    !target ||
+    !available(target, new Date(), studySettings(props.library)) ||
+    !canReviewCard(target)
+  )
+    return selectNext()
   if (
     !props.study &&
     !dueCards(props.library, new Date(), undefined, canReviewCard, views.value).some(
@@ -346,12 +360,18 @@ async function grade(value: Grade) {
   )
     return
   const id = current.value.id
+  let practiceEventId: string | undefined
+  if (practice.value && !questionState.practiceId) {
+    practiceEventId = practiceEventIds.get(id) ?? crypto.randomUUID()
+    practiceEventIds.set(id, practiceEventId)
+  }
   const complete = questionState.complete
   grading.value = true
   try {
     const saved = practice.value
-      ? !questionState.practiceId ||
-        (await props.finishPractice(questionState.practiceId, id, questionState.assessment))
+      ? questionState.practiceId
+        ? await props.finishPractice(questionState.practiceId, id, questionState.assessment)
+        : await props.recordPlainPractice(practiceEventId!, id, props.workspaceScope)
       : await props.submit(id, value, questionState.assessment, questionState.practiceId)
     if (saved) {
       await complete?.()
@@ -370,6 +390,7 @@ async function grade(value: Grade) {
         grade: value,
         reviewId: practice.value ? undefined : props.library.reviews.at(-1)?.id,
         operationId: props.lastOperationId,
+        practiceEventId,
       })
       completed.value++
       if (props.mixedCardId) emit('step', true)
@@ -383,6 +404,9 @@ async function undoLast() {
   if (!canUndo.value || props.busy || props.editing || questionState.busy || grading.value) return
   const id = practice.value ? studied.value.at(-1)?.id : props.library.reviews.at(-1)?.cardId
   const reviewId = props.library.reviews.at(-1)?.id
+  const eventId = studied.value.at(-1)?.practiceEventId
+  if (practice.value && eventId && !(await props.undoPlainPractice(eventId, props.workspaceScope)))
+    return
   if (practice.value || (await props.undo())) {
     if (practice.value) {
       studied.value.pop()
