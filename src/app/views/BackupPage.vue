@@ -176,7 +176,7 @@ function bindUpload(instance: unknown) {
         </UiButton>
       </div>
     </section>
-    <section class="snapshot-section">
+    <section class="snapshot-section backup-section-divider">
       <div class="section-heading">
         <h2>{{ t('自动快照') }}</h2>
         <UiButton
@@ -226,7 +226,7 @@ function bindUpload(instance: unknown) {
         {{ t('暂无快照。添加卡片后可手动创建，也会自动保存。') }}
       </p>
     </section>
-    <div class="about-core">
+    <div class="about-core backup-section-divider">
       <Repeat2 :size="21" />
       <div>
         <h3>Repeaty</h3>
