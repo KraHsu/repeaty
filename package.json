@@ -16,7 +16,8 @@
     "plugins/obsidian",
     "plugins/readwise",
     "plugins/fsrs-optimizer",
-    "plugins/study-statistics"
+    "plugins/study-statistics",
+    "plugins/assistant"
   ],
   "description": "Desktop flashcards and spaced repetition, with your learning library in one folder.",
   "engines": {

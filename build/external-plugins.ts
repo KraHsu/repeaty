@@ -18,6 +18,7 @@ export function externalPlugins(desktop: boolean): Plugin {
           'readwise',
           'fsrs-optimizer',
           'study-statistics',
+          'assistant',
         ]
       : [
           'review-history',
