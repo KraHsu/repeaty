@@ -1,6 +1,5 @@
 import { expect, it, vi } from 'vitest'
 import { createPluginApi } from './sdk'
-import type { PublishingApi } from '@repeaty/plugin-api'
 const native = vi.hoisted(() => {
   vi.resetModules()
   return vi.fn(async (..._args: unknown[]) => ({ status: 200, body: '{}' }))
@@ -14,18 +13,10 @@ function setup() {
   let current = true
   const disposers: (() => void)[] = []
   const consent = vi.fn(async () => true)
-  const host = {
-    list: vi.fn(() => ({})),
-    prepare: vi.fn(async () => ({})),
-    asset: vi.fn(async () => new Blob()),
-    validate: vi.fn(),
-    release: vi.fn(),
-  }
-  const factory = vi.fn(() => host as unknown as PublishingApi)
   const sdk = createPluginApi(
     {
-      id: 'publisher',
-      name: 'Publisher',
+      id: 'network-test',
+      name: 'Network test',
       version: '1.0.0',
       kind: 'frontend',
       apiVersion: 1,
@@ -38,12 +29,10 @@ function setup() {
     undefined,
     undefined,
     undefined,
-    { publishingHost: () => factory, networkConsent: () => consent },
+    { networkConsent: () => consent },
   )
   return {
     sdk,
-    host,
-    factory,
     consent,
     dispose: () => disposers.forEach((f) => f()),
     switch: () => {
@@ -98,7 +87,7 @@ it('binds HTTP identity, cancels a pending request and rejects its late success'
   expect(payload.activationId).toBeTypeOf('string')
   controller.abort()
   expect(native).toHaveBeenLastCalledWith(
-    'publisher',
+    'network-test',
     'http.cancel',
     { activationId: payload.activationId, requestId: payload.requestId },
     'scope',
@@ -107,25 +96,9 @@ it('binds HTTP identity, cancels a pending request and rejects its late success'
   await expect(pending).rejects.toThrow()
   t.dispose()
   expect(native).toHaveBeenLastCalledWith(
-    'publisher',
+    'network-test',
     'http.dispose',
     { activationId: payload.activationId },
     'scope',
   )
-})
-it('binds the public projection once and refuses late attachment results after disposal', async () => {
-  const t = setup()
-  t.sdk.publishing.list()
-  let finish!: (value: Blob) => void
-  t.host.asset.mockImplementationOnce(
-    () =>
-      new Promise((resolve) => {
-        finish = resolve
-      }),
-  )
-  const pending = t.sdk.publishing.asset('snapshot', 'asset')
-  t.dispose()
-  finish(new Blob())
-  await expect(pending).rejects.toThrow('插件已卸载')
-  expect(t.factory).toHaveBeenCalledOnce()
 })

@@ -13,7 +13,7 @@ export * from './collection'
 export * from './study'
 export * from './automation'
 export * from './providers'
-export * from './publishing'
+export * from './network'
 export const automation: import('./automation').AutomationApi
 import type { MaterialLocator } from './materials'
 

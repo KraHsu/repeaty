@@ -98,6 +98,8 @@ export const en = {
   '插件任务进度无效。': 'Invalid plugin task progress.',
   '插件材料扩展定义无效。': 'Invalid plugin material contribution.',
   '插件已卸载或学习库已切换。': 'The plugin was unloaded or the library was switched.',
+  '网站发布功能已移除。已有插件数据会保留，可在插件页卸载。':
+    'Website publishing has been removed. Saved plugin data is retained; you can uninstall this package on the Plugins page.',
   '插件材料扩展标识重复。': 'Duplicate plugin material contribution ID.',
   '材料导入器定义无效。': 'Invalid material importer definition.',
   '材料阅读器定义无效。': 'Invalid material reader definition.',

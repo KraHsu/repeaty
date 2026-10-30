@@ -65,6 +65,10 @@ it.each([false, true])(
       path: string
       installByDefault: boolean
     }[]
+    for (const retired of ['static-publish', 'wordpress-publish', 'discourse-publish']) {
+      expect(catalog.some(({ id }) => id === retired)).toBe(false)
+      expect(files.has(`plugins/${retired}.repeaty-plugin`)).toBe(false)
+    }
     expect(catalog.find(({ id }) => id === 'review-heatmap')).toMatchObject({
       path: 'plugins/review-heatmap.repeaty-plugin',
       installByDefault: false,

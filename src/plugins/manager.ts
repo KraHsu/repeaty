@@ -13,13 +13,14 @@ import {
 import { desktopEdition } from '../edition'
 import { readSetting, writeSetting } from '../settings-store'
 import { bundleSchema, packageHash, pluginIssueMessage, type PluginBundle } from './package'
+import { assertPluginSupported } from './retired-official'
 import { PluginRuntime, type PluginModule } from './runtime'
 import { createPluginApi, evaluatePlugin, nativePluginCall } from './sdk'
 import { currentPluginWorkspace } from '@repeaty-plugin-host'
 import { createPluginPreferences, defaultPluginPreferences } from './preferences'
 import type { PluginStudyHostFactory } from './study'
 import type { PluginAutomationHostFactory } from './automation'
-import type { PluginPublishingHostFactory, PluginNetworkConsent } from './publishing'
+import type { PluginNetworkConsent } from './network'
 import type { PluginMaterialHostFactory } from './materials'
 import { PluginTaskScheduler } from './tasks'
 import type {
@@ -56,7 +57,6 @@ export interface PluginManagerEnvironment {
   materialHost?: PluginMaterialHostFactory
   studyHost?: PluginStudyHostFactory
   automationHost?: PluginAutomationHostFactory
-  publishingHost?: PluginPublishingHostFactory
   networkConsent?: PluginNetworkConsent
 }
 let environmentFactory: (() => PluginManagerEnvironment) | undefined
@@ -104,14 +104,7 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
   const commandScheduler = new PluginTaskScheduler(1)
   let studyHost = environment.studyHost
   let automationHost = environment.automationHost
-  let publishingHost = environment.publishingHost
   let networkConsent = environment.networkConsent
-  function setPublishingHost(factory: PluginPublishingHostFactory) {
-    publishingHost = factory
-    return () => {
-      if (publishingHost === factory) publishingHost = undefined
-    }
-  }
   function setNetworkConsent(consent: PluginNetworkConsent) {
     networkConsent = consent
     return () => {
@@ -503,14 +496,6 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
           registerWidget,
           {
             registrations,
-            publishingHost: () => {
-              const published = materialApis.get(bundle.manifest.id)
-              return published &&
-                published.api === materialApi &&
-                pluginRuntime.installations.includes(published.installation)
-                ? publishingHost
-                : undefined
-            },
             networkConsent: () => {
               const published = materialApis.get(bundle.manifest.id)
               return published &&
@@ -660,6 +645,7 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
       mutable()
       const scope = pluginScope.value,
         bundle = bundleSchema.parse(raw)
+      assertPluginSupported(bundle.manifest.id)
       if (bundle.manifest.kind === 'local' && !desktopEdition)
         throw new Error('此插件仅在桌面版可用。')
       const previous = pluginPackages.find((entry) => entry.id === bundle.manifest.id)
@@ -690,6 +676,7 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
       const entry = pluginPackages.find((entry) => entry.id === id)
       if (!entry?.bundle) throw new Error('插件包不存在。')
       if (enabled) {
+        assertPluginSupported(entry.id)
         if (!entry.trusted) {
           const hash = await packageHash(entry.bundle)
           await assertScope(pluginScope.value, generation)
@@ -748,7 +735,6 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
     materialApis.clear()
     studyHost = undefined
     automationHost = undefined
-    publishingHost = undefined
     networkConsent = undefined
     materialHost = undefined
     pluginPackages.splice(0)
@@ -766,7 +752,6 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
     setMaterialHost,
     setStudyHost,
     setAutomationHost,
-    setPublishingHost,
     setNetworkConsent,
     materialApiFor,
     parseMaterialFile,

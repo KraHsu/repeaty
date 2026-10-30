@@ -21,7 +21,7 @@
     "study.d.ts",
     "automation.d.ts",
     "providers.d.ts",
-    "publishing.d.ts",
+    "network.d.ts",
     "build.d.mts",
     "build.mjs"
   ],

@@ -151,16 +151,16 @@ const commandLabel = (kind: string) =>
     'collection.reorder': t('调整引用顺序', 'Reorder references'),
     'collection.archive': t('归档引用集合', 'Archive reference collection'),
     'collection.restore': t('恢复引用集合', 'Restore reference collection'),
-    'note.create': t('新增笔记', 'Create note'),
-    'note.patch': t('修改笔记', 'Edit note'),
-    'note.move': t('移动笔记', 'Move notes'),
+    'note.create': t('新增制卡内容', 'Create card content'),
+    'note.patch': t('修改制卡内容', 'Edit card content'),
+    'note.move': t('移动制卡内容', 'Move card content'),
     'note.tags': t('调整标签', 'Change tags'),
-    'note.remove': t('移除笔记', 'Remove notes'),
+    'note.remove': t('移除制卡内容', 'Remove card content'),
     'deck.create': t('新建卡组', 'Create deck'),
     'deck.patch': t('修改卡组', 'Edit deck'),
     'history.undo': t('撤销上次修改', 'Undo last change'),
     'history.redo': t('重做上次修改', 'Redo last change'),
-    'retired.restore': t('恢复已移除笔记', 'Restore retired note'),
+    'retired.restore': t('恢复已移除制卡内容', 'Restore retired card content'),
     'checkpoint.restore': t('恢复检查点', 'Restore checkpoint'),
   })[kind] ?? t('修改学习内容', 'Change learning content')
 const preview = (value: unknown) => value as AutomationPreview
@@ -646,8 +646,8 @@ onBeforeUnmount(() => {
             <p>
               {{
                 t(
-                  '选择材料，让助手解释概念、比较内容或提出整理建议。',
-                  'Select material to explain a concept, compare ideas or propose changes.',
+                  '选择材料，让助手解释概念、梳理知识关系或准备复习卡片。',
+                  'Select material to explain concepts, connect ideas or prepare flashcards.',
                 )
               }}
             </p>

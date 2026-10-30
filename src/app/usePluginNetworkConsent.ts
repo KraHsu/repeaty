@@ -1,5 +1,5 @@
 import { shallowRef, watch, onScopeDispose, type Ref } from 'vue'
-import type { PluginNetworkIdentity, PluginNetworkConsent } from '../plugins/publishing'
+import type { PluginNetworkIdentity, PluginNetworkConsent } from '../plugins/network'
 export function usePluginNetworkConsent(scope: Ref<string>) {
   const prompt = shallowRef<{ owner: PluginNetworkIdentity; origin: string }>()
   let pending: ((answer: boolean) => void) | undefined

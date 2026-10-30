@@ -21,6 +21,44 @@ import type { MaterialHostApi, MaterialSearchPage } from '@repeaty/plugin-api'
 
 const managers: PluginManager[] = []
 
+it.each(['static-publish', 'wordpress-publish', 'discourse-publish'])(
+  'retains the installed %s package for explicit removal without running or rewriting it',
+  async (id) => {
+    const previous = { ...bundle('retired'), manifest: { ...bundle().manifest, id } }
+    const register = vi.fn()
+    const env = environment([{ id, bundle: previous, trusted: true }], register)
+    await env.manager.initializePlugins()
+    expect(register).not.toHaveBeenCalled()
+    expect(env.manager.pluginRuntime.installations).toHaveLength(0)
+    expect(env.manager.pluginPackages[0]?.error).toContain('网站发布功能已移除')
+    expect(env.records.get(id)).toEqual(previous)
+    expect(env.calls).toEqual([])
+
+    await expect(env.manager.enablePlugin(id, true)).rejects.toThrow('网站发布功能已移除')
+    await env.manager.enablePlugin(id, false)
+    await env.manager.reloadPlugins()
+    expect(env.records.get(id)).toEqual(previous)
+    expect(register).not.toHaveBeenCalled()
+    await env.manager.removePlugin(id)
+    expect(env.records.has(id)).toBe(false)
+    expect(env.manager.pluginPackages).toHaveLength(0)
+  },
+)
+
+it('rejects a removed publisher before granting trust or replacing persisted package bytes', async () => {
+  const id = 'static-publish'
+  const previous = { ...bundle('untrusted'), manifest: { ...bundle().manifest, id } }
+  const env = environment([{ id, bundle: previous, trusted: false }])
+  await env.manager.initializePlugins()
+  await expect(env.manager.enablePlugin(id, true)).rejects.toThrow('网站发布功能已移除')
+  expect(env.trusted.has('untrusted')).toBe(false)
+  await expect(env.manager.installPlugin({ ...previous, main: 'replacement' })).rejects.toThrow(
+    '网站发布功能已移除',
+  )
+  expect(env.calls).toEqual([])
+  expect(env.records.get(id)).toEqual(previous)
+})
+
 it('opens wildcard material tools for current formats and disposes their context on disable', async () => {
   const env = environment([{ id: 'sample', bundle: bundle(), trusted: true }], (api) => {
     api.registerCommand({
