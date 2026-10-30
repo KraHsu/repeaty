@@ -25,6 +25,7 @@ const kinds = [
   'materialReceipts',
   'automationReceipts',
   'materialFolders',
+  'materialCollections',
   'sourceConnections',
   'sourceCandidates',
   'studySettings',
@@ -44,6 +45,7 @@ const countSchema = z.object({
   sourceConnections: z.number().int().min(0).max(100).default(0),
   sourceCandidates: z.number().int().min(0).max(10_000).default(0),
   materialFolders: z.number().int().min(0).max(10_000).default(0),
+  materialCollections: z.number().int().min(0).max(10_000).default(0),
   materialReceipts: z.number().int().min(0).max(100_000).default(0),
   automationReceipts: z.number().int().min(0).max(100_000).default(0),
   sources: z.number().int().min(0).max(10_000).default(0),
@@ -122,7 +124,10 @@ const manifestSchema = z
   .refine(
     (manifest) =>
       manifest.version >= 16 ||
-      (manifest.counts.automationReceipts === 0 && manifest.parts.automationReceipts === 0),
+      (manifest.counts.automationReceipts === 0 &&
+        manifest.parts.automationReceipts === 0 &&
+        manifest.counts.materialCollections === 0 &&
+        manifest.parts.materialCollections === 0),
   )
   .refine((manifest) =>
     manifest.version === 16

@@ -21,6 +21,7 @@ import { providePluginManager, usePluginManager } from '../plugins/manager'
 import { usePluginViews } from './usePluginViews'
 import { createPluginReviewReader } from '../plugins/activity'
 import { useReadingLeaveGuard } from './useReadingLeaveGuard'
+import { useAutomationConsent } from './useAutomationConsent'
 
 /** One composition root owns UI controllers and connects the selected storage adapter. */
 export function createApplication() {
@@ -29,6 +30,15 @@ export function createApplication() {
   const { clearNotifications, notify } = useNotifications()
 
   const workspace = useLibrary()
+  const automationConsent = useAutomationConsent(workspace.scope)
+  onScopeDispose(
+    plugins.setAutomationHost((owner) =>
+      workspace.automationApi(
+        { ...owner, actorId: `plugin:${owner.pluginId}` },
+        automationConsent.consent,
+      ),
+    ),
+  )
   const releaseMaterials = plugins.setMaterialHost((owner) =>
     workspace.materialApi(owner, (id) =>
       plugins.pluginRuntime.installations
@@ -161,6 +171,7 @@ export function createApplication() {
     ...extensions,
     beforeLeave,
     pluginReviews,
+    automationConsent,
     pageTitle: computed(() =>
       extensions.activePluginPage.value
         ? t(extensions.activePluginPage.value.contribution.title)

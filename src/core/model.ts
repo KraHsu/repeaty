@@ -3,10 +3,18 @@ import { inlineMediaSchema } from './inline-media-data'
 import { z } from 'zod'
 import { studySettingsSchema } from './study-settings'
 import { fsrsModelSchema, studyEventSchema, studyActivitySchema } from './study-data'
-import { sourceConnectionSchema, sourceCandidateSchema } from './collection-data'
+import {
+  sourceConnectionSchema,
+  sourceCandidateSchema,
+  materialCollectionSchema,
+} from './collection-data'
 import { automationReceiptSchema, validateAutomationReceipts } from './automation-data'
 export { automationReceiptSchema } from './automation-data'
-export { sourceConnectionSchema, sourceCandidateSchema } from './collection-data'
+export {
+  sourceConnectionSchema,
+  sourceCandidateSchema,
+  materialCollectionSchema,
+} from './collection-data'
 import { materialFolderSchema, validateMaterialFolders } from './material-organization-data'
 import { createEmptyCard, type Card as FsrsCard } from 'ts-fsrs'
 import { scheduleSchema, librarySchema as legacySchema } from './legacy'
@@ -306,6 +314,7 @@ const libraryContents = z.object({
   studyActivity: z.array(studyActivitySchema).max(500_000).default([]),
   fsrsModels: z.array(fsrsModelSchema).max(200).default([]),
   materialFolders: z.array(materialFolderSchema).max(10_000).default([]),
+  materialCollections: z.array(materialCollectionSchema).max(10_000).default([]),
   materialReceipts: z.array(materialReceiptSchema).max(100_000).default([]),
   automationReceipts: z.array(automationReceiptSchema).max(100_000).default([]),
   sourceConnections: z.array(sourceConnectionSchema).max(100).default([]),
@@ -339,6 +348,7 @@ export function validateLibraryReferences(
     'materialReceipts',
     'automationReceipts',
     'materialFolders',
+    'materialCollections',
     'sourceConnections',
     'sourceCandidates',
     'studySettings',
@@ -536,6 +546,7 @@ export const recordSchemas = {
   sourceConnections: sourceConnectionSchema,
   sourceCandidates: sourceCandidateSchema,
   materialFolders: materialFolderSchema,
+  materialCollections: materialCollectionSchema,
   sources: sourceSchema,
   materialReceipts: materialReceiptSchema,
   automationReceipts: automationReceiptSchema,
@@ -556,6 +567,7 @@ export function emptyLibrary(): Library {
     studyActivity: [],
     fsrsModels: [],
     materialFolders: [],
+    materialCollections: [],
     materialReceipts: [],
     automationReceipts: [],
     sourceConnections: [],

@@ -18,6 +18,7 @@ import { createPluginApi, evaluatePlugin, nativePluginCall } from './sdk'
 import { currentPluginWorkspace } from '@repeaty-plugin-host'
 import { createPluginPreferences, defaultPluginPreferences } from './preferences'
 import type { PluginStudyHostFactory } from './study'
+import type { PluginAutomationHostFactory } from './automation'
 import type { PluginMaterialHostFactory } from './materials'
 import { PluginTaskScheduler } from './tasks'
 import type {
@@ -53,6 +54,7 @@ export interface PluginManagerEnvironment {
   seedOfficial?: boolean
   materialHost?: PluginMaterialHostFactory
   studyHost?: PluginStudyHostFactory
+  automationHost?: PluginAutomationHostFactory
 }
 let environmentFactory: (() => PluginManagerEnvironment) | undefined
 /** Embedded hosts supply a new adapter environment per app; mutable runtimes are never shared. */
@@ -98,6 +100,13 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
   const taskScheduler = new PluginTaskScheduler()
   const commandScheduler = new PluginTaskScheduler(1)
   let studyHost = environment.studyHost
+  let automationHost = environment.automationHost
+  function setAutomationHost(factory: PluginAutomationHostFactory) {
+    automationHost = factory
+    return () => {
+      if (automationHost === factory) automationHost = undefined
+    }
+  }
   function setStudyHost(factory: PluginStudyHostFactory) {
     studyHost = factory
     return () => {
@@ -475,6 +484,14 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
           registerWidget,
           {
             registrations,
+            automationHost: () => {
+              const published = materialApis.get(bundle.manifest.id)
+              return published &&
+                published.api === materialApi &&
+                pluginRuntime.installations.includes(published.installation)
+                ? automationHost
+                : undefined
+            },
             studyHost: () => {
               const published = materialApis.get(bundle.manifest.id)
               return published &&
@@ -695,6 +712,7 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
     await pluginRuntime.close()
     materialApis.clear()
     studyHost = undefined
+    automationHost = undefined
     materialHost = undefined
     pluginPackages.splice(0)
   }
@@ -710,6 +728,7 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
     pluginRuntime,
     setMaterialHost,
     setStudyHost,
+    setAutomationHost,
     materialApiFor,
     parseMaterialFile,
     scanSourceConnector,

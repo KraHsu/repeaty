@@ -14,6 +14,8 @@ Repeaty 在运行时加载外置插件。官方答题历史、LeetCode、复习�
 
 ## 页面与界面扩展边界
 
+SDK 1.13.0 增加带宿主授权、预览、事务及幂等收据的[自动化接口](PLUGIN_AUTOMATION.md)，以及设备模型连接。独立官方[学习助手](../plugins/assistant/README.md)提供会话、授权材料问答和可审查的整理建议；通过插件页面安装、启停和卸载。
+
 SDK 1.7.0 支持通过 `registerPage()` 注册独立页面及对应主侧栏入口，通过 `registerWidget()` 在学习概览的指定位置嵌入组件。题目插件、复习面板插件都可注册；只提供页面或嵌入组件的插件导出 `type: 'extension'` 的 `ExtensionPlugin`，激活时至少注册一项页面或组件。现有题目、答案、编辑器、历史记录渲染以及 `registerSettings()` 保持原接口。
 
 SDK 1.8.0 增加材料导入器、阅读器、命令、搜索提供者及可取消任务；仅注册材料贡献的 `ExtensionPlugin` 也可以激活。独立材料插件通过宿主预览/事务完成导入、阅读、选区、摘录与制卡，保留文本投影供插件缺失时阅读。详细契约与边界见 [材料扩展 SDK](PLUGIN_MATERIALS.md)。

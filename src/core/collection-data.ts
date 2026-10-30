@@ -80,3 +80,17 @@ export const sourceCandidateSchema = z
   )
 export type SourceConnection = z.infer<typeof sourceConnectionSchema>
 export type SourceCandidate = z.infer<typeof sourceCandidateSchema>
+
+/** A named ordered set of references, independent from material parentage. */
+export const materialCollectionSchema = z.object({
+  id: z.string().min(1).max(150),
+  name: z.string().trim().min(1).max(160),
+  sourceIds: z
+    .array(z.string().min(1).max(150))
+    .max(10_000)
+    .refine((ids) => new Set(ids).size === ids.length, 'Duplicate collection member'),
+  archived: z.boolean().default(false),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+})
+export type MaterialCollection = z.infer<typeof materialCollectionSchema>

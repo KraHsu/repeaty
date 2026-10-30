@@ -195,6 +195,9 @@ async fn export_cancel(state: State<'_, Desktop>, token: String) -> Result<(), S
     state.exports.lock().await.cancel(&token)
 }
 fn main() {
+    if std::env::args_os().nth(1).is_some_and(|arg| arg == "--cli") {
+        std::process::exit(mcp::cli::run(std::env::args_os().skip(2).collect()).into());
+    }
     if std::env::args_os()
         .nth(1)
         .is_some_and(|arg| arg == "--mcp-stdio")

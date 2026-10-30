@@ -5,6 +5,7 @@ const id = z.string().min(1).max(150)
 export const automationIdsSchema = z.strictObject({
   sources: z.array(id).max(100_000),
   folders: z.array(id).max(100_000),
+  collections: z.array(id).max(10_000).default([]),
   notes: z.array(id).max(100_000),
   decks: z.array(id).max(100_000),
   cards: z.array(id).max(300_000),

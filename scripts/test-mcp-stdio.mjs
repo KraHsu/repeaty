@@ -22,12 +22,17 @@ try {
     { env },
   )
   assert.equal(client.info.serverInfo.name, 'repeaty')
-  assert.ok(client.info.instructions.includes('a human must review'))
+  assert.ok(client.info.instructions.includes('human review'))
   const names = (await client.listTools()).tools.map((tool) => tool.name).sort()
   assert.deepEqual(names, [
+    'repeaty_apply_changes',
+    'repeaty_automation_status',
     'repeaty_due_cards',
+    'repeaty_operation_status',
     'repeaty_practice_history',
+    'repeaty_preview_changes',
     'repeaty_propose_cards',
+    'repeaty_query_library',
     'repeaty_selected_excerpt',
     'repeaty_study_stats',
   ])
@@ -43,7 +48,11 @@ try {
   await client.close()
   client = undefined
   for (const args of [[], ['--connection-file', 'relative.json']]) {
-    const invalid = spawnSync(command, ['--mcp-stdio', ...args], { env, timeout: 15000 })
+    const invalid = spawnSync(command, ['--mcp-stdio', ...args], {
+      env,
+      timeout: 15000,
+      windowsHide: true,
+    })
     assert.equal(invalid.status, 1)
     assert.equal(invalid.stdout.length, 0)
     assert.ok(invalid.stderr.toString().includes('usage: --mcp-stdio'))

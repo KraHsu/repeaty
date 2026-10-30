@@ -22,6 +22,7 @@ import { editNotes } from './batch'
 import { operationFor } from './operations'
 import { noteLifecycle, type RetiredNote } from '../desktop/retirement'
 import { canonicalAutomationValue, type AutomationIds } from './automation-data'
+import { materialCollectionSchema } from './collection-data'
 export type { AutomationIds, AutomationReceipt, AutomationResult } from './automation-data'
 
 const id = z.string().min(1).max(150)
@@ -32,11 +33,18 @@ const tags = z.array(z.string().trim().min(1).max(40)).max(20)
 const page = {
   revision: revision.optional(),
   offset: z.number().int().min(0).max(1_000_000).default(0),
-  limit: z.number().int().min(1).max(100).default(50),
+  limit: z.number().int().min(1).max(200).default(50),
 }
 export const AutomationQuerySchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('library'), revision: revision.optional() }),
   z.strictObject({ kind: z.literal('decks'), ...page, id: id.optional(), text: text.optional() }),
+  z.strictObject({
+    kind: z.literal('collections'),
+    ...page,
+    id: id.optional(),
+    text: text.optional(),
+    archived: z.boolean().optional(),
+  }),
   z.strictObject({
     kind: z.literal('folders'),
     ...page,
@@ -125,7 +133,31 @@ const ids = z
 const nonempty = (value: object) => Object.keys(value).length > 0
 export const AutomationCommandSchema = z.discriminatedUnion('kind', [
   z.strictObject({
+    kind: z.literal('collection.create'),
+    name: materialCollectionSchema.shape.name,
+    sourceIds: materialCollectionSchema.shape.sourceIds.optional(),
+  }),
+  z.strictObject({
+    kind: z.literal('collection.patch'),
+    collectionId: id,
+    name: materialCollectionSchema.shape.name,
+  }),
+  z.strictObject({
+    kind: z.literal('collection.members'),
+    collectionId: id,
+    add: materialCollectionSchema.shape.sourceIds.optional(),
+    remove: materialCollectionSchema.shape.sourceIds.optional(),
+  }),
+  z.strictObject({
+    kind: z.literal('collection.reorder'),
+    collectionId: id,
+    sourceIds: materialCollectionSchema.shape.sourceIds,
+  }),
+  z.strictObject({ kind: z.literal('collection.archive'), collectionId: id }),
+  z.strictObject({ kind: z.literal('collection.restore'), collectionId: id }),
+  z.strictObject({
     kind: z.literal('source.create'),
+    destination: destination.optional(),
     input: z.strictObject({
       title: sourceDetailsSchema.shape.title,
       body,
@@ -246,6 +278,7 @@ export async function automationFingerprint(input: unknown): Promise<string> {
 export const emptyAutomationIds = (): AutomationIds => ({
   sources: [],
   folders: [],
+  collections: [],
   notes: [],
   decks: [],
   cards: [],
@@ -292,6 +325,64 @@ export function prepareAutomation(
   }
   for (const command of request.commands) {
     switch (command.kind) {
+      case 'collection.create': {
+        if (
+          next.materialCollections.length >= 10_000 ||
+          command.sourceIds?.some((id) => !next.sources.some((v) => v.id === id))
+        )
+          throw new AutomationError('invalid-arguments')
+        const collection = materialCollectionSchema.parse({
+          id: crypto.randomUUID(),
+          name: command.name,
+          sourceIds: command.sourceIds ?? [],
+          archived: false,
+          createdAt: now.toISOString(),
+          updatedAt: now.toISOString(),
+        })
+        next = { ...next, materialCollections: [...next.materialCollections, collection] }
+        break
+      }
+      case 'collection.patch':
+      case 'collection.members':
+      case 'collection.reorder':
+      case 'collection.archive':
+      case 'collection.restore': {
+        const current = next.materialCollections.find((v) => v.id === command.collectionId)
+        if (!current || (current.archived && command.kind !== 'collection.restore'))
+          throw new AutomationError('not-found')
+        let value = { ...current, updatedAt: now.toISOString() }
+        if (command.kind === 'collection.patch') value.name = command.name
+        else if (command.kind === 'collection.archive' || command.kind === 'collection.restore')
+          value.archived = command.kind === 'collection.archive'
+        else if (command.kind === 'collection.members') {
+          const add = command.add ?? [],
+            remove = new Set(command.remove ?? [])
+          if (add.some((id) => remove.has(id) || !next.sources.some((v) => v.id === id)))
+            throw new AutomationError('invalid-arguments')
+          value.sourceIds = [
+            ...current.sourceIds.filter((id) => !remove.has(id)),
+            ...add.filter((id) => !current.sourceIds.includes(id)),
+          ]
+        } else {
+          const live = new Set(next.sources.map((v) => v.id)),
+            members = current.sourceIds.filter((id) => live.has(id))
+          if (
+            members.length !== command.sourceIds.length ||
+            command.sourceIds.some((id) => !members.includes(id))
+          )
+            throw new AutomationError('invalid-arguments')
+          let index = 0
+          value.sourceIds = current.sourceIds.map((id) =>
+            live.has(id) ? command.sourceIds[index++]! : id,
+          )
+        }
+        value = materialCollectionSchema.parse(value)
+        next = {
+          ...next,
+          materialCollections: next.materialCollections.map((v) => (v.id === value.id ? value : v)),
+        }
+        break
+      }
       case 'source.create': {
         const prepared = prepareSource(
           {
@@ -303,6 +394,12 @@ export function prepareAutomation(
           now,
         )
         next = addSource(next, prepared.source, prepared.asset)
+        if (command.destination)
+          next = moveMaterial(next, {
+            kind: 'source',
+            id: prepared.source.id,
+            destination: command.destination,
+          })
         assets.push(prepared.asset)
         break
       }
@@ -442,6 +539,7 @@ export function prepareAutomation(
   const entities = {
     sources: 'sources',
     materialFolders: 'folders',
+    materialCollections: 'collections',
     notes: 'notes',
     decks: 'decks',
     cards: 'cards',
@@ -480,6 +578,7 @@ export function queryAutomation(library: Library, currentRevision: number, input
       counts: {
         sources: library.sources.length,
         folders: library.materialFolders.length,
+        collections: library.materialCollections.filter((v) => !v.archived).length,
         notes: library.notes.length,
         decks: library.decks.length,
         cards: library.cards.length,
@@ -491,6 +590,25 @@ export function queryAutomation(library: Library, currentRevision: number, input
     !search || value.toLocaleLowerCase().includes(search.toLocaleLowerCase())
   let items: unknown[]
   switch (query.kind) {
+    case 'collections': {
+      const sources = new Map(library.sources.map((v) => [v.id, v]))
+      items = library.materialCollections
+        .filter(
+          (v) =>
+            (!query.id || v.id === query.id) &&
+            v.archived === (query.archived ?? false) &&
+            matches(v.name, query.text),
+        )
+        .map((v) => ({
+          ...v,
+          members: v.sourceIds.map((id) => ({
+            id,
+            title: sources.get(id)?.title,
+            available: sources.has(id),
+          })),
+        }))
+      break
+    }
     case 'decks':
       items = library.decks.filter(
         (value) => (!query.id || value.id === query.id) && matches(value.name, query.text),

@@ -12,6 +12,7 @@ import SourceView from './app/views/SourceView.vue'
 import EditorDialogs from './app/views/EditorDialogs.vue'
 import BackupDialogs from './app/views/BackupDialogs.vue'
 import StudyDialogs from './app/views/StudyDialogs.vue'
+import AutomationDialog from './app/views/AutomationDialog.vue'
 import { t, locale } from './i18n'
 import { Database, Repeat2 } from '@lucide/vue'
 import NotificationCenter from './components/NotificationCenter.vue'
@@ -198,7 +199,7 @@ watch(workspace.scope, () => {
         <SourceView v-else-if="tab === 'sources'" @settings="configureSettings" />
         <BackupPage v-else />
       </main>
-      <EditorDialogs /><BackupDialogs /><StudyDialogs />
+      <EditorDialogs /><BackupDialogs /><StudyDialogs /><AutomationDialog />
     </div>
   </UApp>
 </template>

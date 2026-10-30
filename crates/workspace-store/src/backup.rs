@@ -415,7 +415,13 @@ fn counts(db: &Connection) -> Result<BTreeMap<String, u64>> {
         "values_store",
         "assets",
     ]) {
-        if ["source_drafts", "materialFolders"].contains(&table)
+        if [
+            "source_drafts",
+            "materialFolders",
+            "materialCollections",
+            "automationReceipts",
+        ]
+        .contains(&table)
             && !db.query_row(
                 "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
                 [table],

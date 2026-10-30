@@ -16,7 +16,7 @@ use std::{io::Write, sync::Arc};
 #[path = "records_snapshot_tests.rs"]
 mod snapshot_tests;
 
-pub const STORES: [&str; 18] = [
+pub const STORES: [&str; 19] = [
     "decks",
     "notes",
     "cards",
@@ -29,6 +29,7 @@ pub const STORES: [&str; 18] = [
     "materialReceipts",
     "automationReceipts",
     "materialFolders",
+    "materialCollections",
     "sourceConnections",
     "sourceCandidates",
     "studySettings",
@@ -448,7 +449,7 @@ impl Database {
                 "sources" => 10000,
                 "materialReceipts" => 100000,
                 "automationReceipts" => 100000,
-                "materialFolders" => 10000,
+                "materialFolders" | "materialCollections" => 10000,
                 "sourceConnections" => 100,
                 "sourceCandidates" => 10000,
                 "studySettings" => 1,
@@ -594,11 +595,12 @@ impl Database {
             let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
             tx.pragma_update(None, "user_version", version.max(16))?;
         }
-        if commit
-            .patches
-            .iter()
-            .any(|patch| patch.store == "automationReceipts")
-        {
+        if commit.patches.iter().any(|patch| {
+            matches!(
+                patch.store.as_str(),
+                "automationReceipts" | "materialCollections"
+            )
+        }) {
             let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
             tx.pragma_update(None, "user_version", version.max(17))?;
         }
@@ -666,6 +668,19 @@ impl Database {
                 Self::validate_inline_media(tx, patch, previous)
             }
             "materialFolders" => Self::validate_folder(tx, patch),
+            "materialCollections" => {
+                if let Some(value) = &patch.value {
+                    let mut members = HashSet::new();
+                    // These are ordered soft references: deleting a source must not erase
+                    // its collection membership, which can become available after restore.
+                    for id in value["sourceIds"].as_array().into_iter().flatten() {
+                        if !members.insert(id.as_str().unwrap_or("")) {
+                            return Err(Error::invalid());
+                        }
+                    }
+                }
+                Ok(())
+            }
             "sourceConnections" => Self::validate_source_connection(tx, patch),
             "sourceCandidates" => Self::validate_source_candidate(tx, patch, previous),
             "notes" => {

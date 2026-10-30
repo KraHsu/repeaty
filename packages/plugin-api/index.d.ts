@@ -11,6 +11,9 @@ import type {
 export * from './materials'
 export * from './collection'
 export * from './study'
+export * from './automation'
+export * from './providers'
+export const automation: import('./automation').AutomationApi
 import type { MaterialLocator } from './materials'
 
 export type Grade = 1 | 2 | 3 | 4
@@ -227,7 +230,7 @@ export interface PluginManifest {
   dataVersion: number
   kind: 'frontend' | 'local'
   description?: string
-  permissions?: { origins?: string[]; secrets?: boolean; files?: boolean }
+  permissions?: { origins?: string[]; secrets?: boolean; files?: boolean; models?: boolean }
 }
 export declare const locale: DeepReadonly<Ref<'en' | 'zh-CN'>>
 export declare function t(

@@ -41,6 +41,7 @@ export const manifestSchema = z
           .optional(),
         secrets: z.boolean().optional(),
         files: z.boolean().optional(),
+        models: z.boolean().optional(),
       })
       .strict()
       .optional(),

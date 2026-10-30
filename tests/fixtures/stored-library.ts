@@ -66,6 +66,7 @@ export async function storedLibrary(page: Page) {
         'materialReceipts',
         'automationReceipts',
         'materialFolders',
+        'materialCollections',
         'sourceConnections',
         'sourceCandidates',
         'studySettings',

@@ -1,6 +1,6 @@
 //! Headless stdio facade for local AI clients. Every call resolves the current UI-owned listener.
 use super::{
-    MAX_PENDING, MAX_REQUEST_BODY, MAX_RESULT, Reader, connection::Connection, tools,
+    MAX_PENDING, MAX_REQUEST_BODY, MAX_RESULT, Reader, automation, connection::Connection, tools,
     valid_arguments,
 };
 use rmcp::{
@@ -29,24 +29,31 @@ use tokio::{
 };
 
 #[derive(Clone)]
-struct Proxy {
+pub(super) struct Proxy {
     path: PathBuf,
     slots: Arc<Semaphore>,
 }
 impl Proxy {
-    fn new(path: PathBuf) -> Self {
+    pub(super) fn new(path: PathBuf) -> Self {
         Self {
             path,
             slots: Arc::new(Semaphore::new(MAX_PENDING)),
         }
     }
-    async fn call(&self, request: CallToolRequestParams) -> Result<CallToolResult, &'static str> {
+    pub(super) async fn call(
+        &self,
+        request: CallToolRequestParams,
+    ) -> Result<CallToolResult, &'static str> {
         let _slot = self.slots.try_acquire().map_err(|_| "too-many-requests")?;
         let connection = Connection::read(&self.path)?;
         let client = reqwest::Client::builder()
             .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
-            .timeout(Duration::from_secs(8))
+            .timeout(Duration::from_secs(if automation::is_tool(&request.name) {
+                35
+            } else {
+                8
+            }))
             .build()
             .map_err(|_| "library-unavailable")?;
         let config = StreamableHttpClientTransportConfig::with_uri(connection.url)
@@ -96,8 +103,13 @@ impl ServerHandler for Proxy {
                 CallToolResult::structured_error(json!({"code":"invalid-arguments"})).into(),
             );
         }
+        let timeout = Duration::from_secs(if automation::is_tool(&request.name) {
+            40
+        } else {
+            10
+        });
         let result = tokio::select! {
-            response = tokio::time::timeout(Duration::from_secs(10), self.call(request)) => response.unwrap_or(Err("read-timeout")),
+            response = tokio::time::timeout(timeout, self.call(request)) => response.unwrap_or(Err("read-timeout")),
             _ = context.ct.cancelled() => Err("library-unavailable"),
         };
         Ok(match result {
@@ -193,7 +205,7 @@ mod tests {
                 .unwrap()
         });
         let client = ().serve(client_io).await.unwrap();
-        assert_eq!(client.list_tools(None).await.unwrap().tools.len(), 5);
+        assert_eq!(client.list_tools(None).await.unwrap().tools.len(), 10);
         let response = client
             .call_tool(CallToolRequestParams::new("repeaty_study_stats"))
             .await
@@ -213,6 +225,8 @@ mod tests {
                     scope_epoch: 1,
                     sequence: 1,
                     available: true,
+                    ready: Some(true),
+                    automation: Default::default(),
                 },
             )
             .unwrap();

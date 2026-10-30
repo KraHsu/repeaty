@@ -14,6 +14,8 @@ import type { MaterialRegistrations, PluginMaterialHostFactory } from './materia
 import { PluginTaskScheduler, supportsPluginWorkers } from './tasks'
 import { createPluginResources } from './resources'
 import type { PluginStudyHostFactory } from './study'
+import type { PluginAutomationHostFactory } from './automation'
+import type { AutomationApi } from '@repeaty/plugin-api'
 import type { StudyHostApi } from '@repeaty/plugin-api'
 import type { PluginAssets } from './assets'
 import AppPage from '../components/AppPage.vue'
@@ -60,6 +62,7 @@ export function createPluginApi(
     registrations?: MaterialRegistrations
     host?: () => PluginMaterialHostFactory | undefined
     studyHost?: () => PluginStudyHostFactory | undefined
+    automationHost?: () => PluginAutomationHostFactory | undefined
     scheduler?: PluginTaskScheduler
     commandScheduler?: PluginTaskScheduler
     assets?: PluginAssets
@@ -67,10 +70,13 @@ export function createPluginApi(
 ) {
   let alive = true
   const lifetime = new AbortController()
+  const activationId = crypto.randomUUID()
   const taskOwner = Symbol(manifest.id)
   const scheduler = materialOptions.scheduler ?? new PluginTaskScheduler()
   const commandScheduler = materialOptions.commandScheduler ?? new PluginTaskScheduler(1)
   disposers.push(() => {
+    if (manifest.permissions?.models)
+      void nativePluginCall(manifest.id, 'model.dispose', { activationId }, scope).catch(() => {})
     alive = false
     lifetime.abort()
   })
@@ -80,7 +86,13 @@ export function createPluginApi(
   const settingsKey = (key: string) => `plugin:${manifest.id}:${key}`
   const native = async (operation: string, payload: unknown) => {
     guard()
-    return nativePluginCall(manifest.id, operation, payload, scope)
+    if (operation.startsWith('model.')) {
+      if (!manifest.permissions?.models) throw new Error('permission-denied')
+      payload = { ...(payload as Record<string, unknown>), activationId }
+    }
+    const result = await nativePluginCall(manifest.id, operation, payload, scope)
+    guard()
+    return result
   }
   const pluginData = {
     async get(id: string, requestedScope: string) {
@@ -146,6 +158,34 @@ export function createPluginApi(
     search: (query, signal) => materialCall((host) => host.search(query, signal)),
   }
   let boundStudy: StudyHostApi | undefined
+  let boundAutomation: AutomationApi | undefined
+  function automationHost() {
+    guard()
+    const factory = materialOptions.automationHost?.()
+    if (!factory) throw new Error('automation-service-unavailable')
+    return (boundAutomation ??= factory({
+      pluginId: manifest.id,
+      label: manifest.name,
+      scope,
+      signal: lifetime.signal,
+      assertCurrent: guard,
+    }))
+  }
+  async function automationCall<T>(run: (host: AutomationApi) => Promise<T>) {
+    const value = await run(automationHost())
+    guard()
+    return value
+  }
+  const automation: AutomationApi = {
+    context: () => automationHost().context(),
+    capabilities: () => automationHost().capabilities(),
+    authorize: (input) => automationCall((host) => host.authorize(input)),
+    revoke: () => automationHost().revoke(),
+    query: (input, signal) => automationCall((host) => host.query(input, signal)),
+    preview: (input, signal) => automationCall((host) => host.preview(input, signal)),
+    apply: (input, signal) => automationCall((host) => host.apply(input, signal)),
+    operationStatus: (id, signal) => automationCall((host) => host.operationStatus(id, signal)),
+  }
   function studyHost() {
     guard()
     const factory = materialOptions.studyHost?.()
@@ -313,6 +353,7 @@ export function createPluginApi(
     },
     materials,
     study,
+    automation,
     resources: createPluginResources(materialOptions.assets, lifetime.signal, guard),
     tasks: { run: runTask },
     // Host-only command orchestration must not occupy the background parser queue it awaits.

@@ -47,6 +47,7 @@ const limits = {
   materialReceipts: 100_000,
   automationReceipts: 100_000,
   materialFolders: 10_000,
+  materialCollections: 10_000,
   sourceConnections: 100,
   sourceCandidates: 10_000,
   studySettings: 1,
@@ -131,6 +132,7 @@ export class BrowserWorkspaceReader {
             (store) =>
               (store !== 'materialReceipts' || materialReceiptsRequired) &&
               (store !== 'automationReceipts' || databaseVersion >= 17) &&
+              (store !== 'materialCollections' || databaseVersion >= 17) &&
               (store !== 'materialFolders' || databaseVersion >= 13) &&
               (!['sourceConnections', 'sourceCandidates'].includes(store) ||
                 databaseVersion >= 15) &&
@@ -168,6 +170,7 @@ export class BrowserWorkspaceReader {
           !tables.has(store) &&
           ((store === 'materialReceipts' && !materialReceiptsRequired) ||
             (store === 'automationReceipts' && databaseVersion < 17) ||
+            (store === 'materialCollections' && databaseVersion < 17) ||
             (store === 'materialFolders' && databaseVersion < 13) ||
             (['sourceConnections', 'sourceCandidates'].includes(store) && databaseVersion < 15) ||
             (['studySettings', 'studyEvents', 'studyActivity', 'fsrsModels'].includes(store) &&

@@ -248,6 +248,7 @@ export function createBrowserRepository(
             'materialReceipts',
             'automationReceipts',
             'materialFolders',
+            'materialCollections',
             'sourceConnections',
             'sourceCandidates',
             'studySettings',

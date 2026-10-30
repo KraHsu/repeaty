@@ -115,7 +115,7 @@ it('persists study deltas and checkpoint history, and rejects invalid model sele
       studyEvents: [],
     }
     const second = await repo.save(changed, first.revision, { now })
-    const db = await openDB(name, 23)
+    const db = await openDB(name)
     try {
       expect(await db.count('fsrsModels')).toBe(1)
       expect((await db.getAll('history')).map((row) => row.store).sort()).toEqual([
