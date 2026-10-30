@@ -151,6 +151,56 @@ it('invalidates previews on actual library edits and activation cancellation', a
   t.controller.abort()
   expect(() => t.api.validate(next.id)).toThrow()
 })
+it('keeps a preview usable across focus/blur study-activity saves without rereading bodies', async () => {
+  const t = await setup('Visible', 'author: Author')
+  const snapshot = await t.api.prepare(t.request(['author']))
+  const reads = vi.spyOn(t.repo, 'getMedia')
+  await t.service.commands.beginStudyStatistics(t.state.scope.value)
+  await t.service.commands.recordStudyActivity(
+    [
+      {
+        id: 'activity:publishing',
+        kind: 'other',
+        studyDay: '2026-10-30',
+        startedAt: '2026-10-30T00:00:00Z',
+        endedAt: '2026-10-30T00:00:03Z',
+        activeMs: 3000,
+      },
+    ],
+    t.state.scope.value,
+  )
+  expect(t.api.list().revision).toBeGreaterThan(snapshot.revision)
+  expect(() => t.api.validate(snapshot.id)).not.toThrow()
+  expect(reads).not.toHaveBeenCalled()
+  // Editing privacy metadata still invalidates the exact public projection.
+  await t.service.commands.editSourceContent({
+    sourceId: t.first.source.id,
+    mediaId: t.first.source.mediaId,
+    scope: t.state.scope.value,
+    content: 'Visible',
+    properties: 'private: true',
+  })
+  expect(() => t.api.validate(snapshot.id)).toThrow('publishing-library-changed')
+  await expect(t.api.prepare(t.request())).rejects.toThrow('publishing-source-private')
+})
+it('allows a background activity commit during a lazy read but rejects an initially stale revision', async () => {
+  const t = await setup()
+  let finish!: (value: string) => void
+  Object.assign(t.repo, {
+    readSourceProperties: () =>
+      new Promise<string>((resolve) => {
+        finish = resolve
+      }),
+  })
+  const request = t.request()
+  const pending = t.api.prepare(request)
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+  await t.service.commands.beginStudyStatistics(t.state.scope.value)
+  finish('author: Author')
+  const snapshot = await pending
+  expect(() => t.api.validate(snapshot.id)).not.toThrow()
+  await expect(t.api.prepare(request)).rejects.toThrow('publishing-library-changed')
+})
 it('maps referenced internal identities without loading or publishing unselected sources', async () => {
   const t = await setup('[[Unselected]]')
   const reads = vi.spyOn(t.repo, 'getMedia')

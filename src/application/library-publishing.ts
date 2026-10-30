@@ -6,6 +6,43 @@ import { parseSourceProperties } from '../core/source-properties'
 import { inlineReferences } from '../core/inline-media'
 import { sourceContentLinks } from '../core/source-content-links'
 import { parseWikiLinks, resolveWikiTarget } from '../core/wiki-links'
+import type { Library } from '../core/model'
+
+/** Content dependencies only: focus/blur activity saves must not expire a public preview. */
+function publicationSignature(library: Library, selected: ReadonlySet<string>) {
+  const sources = library.sources.filter((source) => selected.has(source.id))
+  const mediaIds = new Set(
+    sources.flatMap((source) => [
+      source.mediaId,
+      ...(source.inlineMedia ?? []).map((item) => item.mediaId),
+      ...(source.document?.resources ?? []).map((item) => item.mediaId),
+    ]),
+  )
+  return JSON.stringify({
+    sources: sources.map((source) => ({
+      id: source.id,
+      title: source.title,
+      mediaId: source.mediaId,
+      format: source.format,
+      properties: source.properties,
+      inlineMedia: source.inlineMedia,
+      resources: source.document?.resources,
+      binding: source.binding,
+      createdAt: source.createdAt,
+      acceptedAt: source.acceptedAt,
+    })),
+    // Unselected names/identities can affect Wiki and imported-link resolution, never their bodies.
+    links: library.sources.map(({ id, title, binding }) => ({
+      id,
+      title,
+      connection: binding?.connectionId,
+      key: binding?.key,
+    })),
+    media: library.media
+      .filter((item) => mediaIds.has(item.id))
+      .map(({ id, type, size }) => ({ id, type, size })),
+  })
+}
 
 const id = z.string().min(1).max(150)
 const inputSchema = z.strictObject({
@@ -69,7 +106,7 @@ export function createPublishingCommands(context: LibraryContext) {
       const snapshots = new Map<
         string,
         {
-          revision: number
+          validate: (signal?: AbortSignal) => void
           expires: number
           assets: Map<string, { mediaId: string; size: number; type: string }>
         }
@@ -96,7 +133,7 @@ export function createPublishingCommands(context: LibraryContext) {
           snapshots.delete(snapshotId)
           return fail('publishing-preview-expired')
         }
-        revision(snapshot.revision)
+        snapshot.validate()
         return snapshot
       }
       owner.signal.addEventListener('abort', () => snapshots.clear(), { once: true })
@@ -117,6 +154,16 @@ export function createPublishingCommands(context: LibraryContext) {
           const request = inputSchema.parse(input)
           revision(request.expectedRevision, signal)
           const baseline = context.library.value
+          const selected = new Set(request.sourceIds)
+          const signature = publicationSignature(baseline, selected)
+          let verifiedRevision = request.expectedRevision
+          const validate = (signal?: AbortSignal) => {
+            current(signal)
+            if (context.revision === verifiedRevision) return
+            if (publicationSignature(context.library.value, selected) !== signature)
+              fail('publishing-library-changed')
+            verifiedRevision = context.revision
+          }
           const chosen = request.sourceIds.map(
             (id) =>
               baseline.sources.find((source) => source.id === id) ??
@@ -138,11 +185,11 @@ export function createPublishingCommands(context: LibraryContext) {
               ('readSourceProperties' in repository
                 ? await repository.readSourceProperties(source.id)
                 : '')
-            revision(request.expectedRevision, signal)
+            validate(signal)
             const properties = parseSourceProperties(rawProperties)
             if (isPrivate(properties)) fail('publishing-source-private')
             const text = await context.getSource(source.id, signal ?? owner.signal, source.mediaId)
-            revision(request.expectedRevision, signal)
+            validate(signal)
             const { body, properties: embedded } = publicBody(text)
             if (isPrivate(embedded)) fail('publishing-source-private')
             bytes += new TextEncoder().encode(body).byteLength
@@ -193,12 +240,12 @@ export function createPublishingCommands(context: LibraryContext) {
               links,
             })
           }
-          revision(request.expectedRevision, signal)
+          validate(signal)
           for (const [key, entry] of snapshots)
             if (entry.expires < Date.now()) snapshots.delete(key)
           if (snapshots.size >= 4) fail('publishing-preview-limit')
           snapshots.set(result.id, {
-            revision: result.revision,
+            validate,
             expires: Date.now() + 10 * 60_000,
             assets,
           })
