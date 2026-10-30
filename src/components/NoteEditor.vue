@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { matchesInputShortcut, useOptionalInputCommands } from '../input/controller'
 import { UiSelect, UiButton, UiTextarea, UiInput, UiCheckbox, UiCollapsible } from './ui'
 import { serverEdition } from '../edition'
 import { t, msg, LocalizedError, type DisplayMessage } from '../i18n'
@@ -154,18 +155,18 @@ function selectQuestionPlugin(id: string) {
   form.type = 'plugin'
   selectedPluginId.value = id
 }
+const inputCommands = useOptionalInputCommands()
 function shortcut(event: KeyboardEvent) {
   // Enter/Shift+C while an IME composition is open belongs to the IME, not to the form.
   if (event.isComposing || event.keyCode === 229) return
-  if (!(event.ctrlKey || event.metaKey) || event.repeat) return
+  if (event.defaultPrevented || event.repeat) return
   if (
-    event.shiftKey &&
-    event.key.toLowerCase() === 'c' &&
+    matchesInputShortcut(inputCommands, 'editor.cloze', event) &&
     event.target === frontInput.value?.textareaRef
   ) {
     event.preventDefault()
     void addCloze()
-  } else if (event.key === 'Enter') {
+  } else if (matchesInputShortcut(inputCommands, 'editor.save', event)) {
     event.preventDefault()
     void save(!props.note && !props.initial?.excerpt)
   }

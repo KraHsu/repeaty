@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { matchesInputShortcut, useOptionalInputCommands } from '../input/controller'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useEventListener } from '@vueuse/core'
 import { UiButton, UiInput, UiTextarea, UiCollapsible } from './ui'
@@ -267,9 +268,10 @@ function edit(action: Parameters<typeof applyMarkdownEdit>[3]) {
   }
   void nextTick(() => input.setSelectionRange(changed.start, changed.end))
 }
+const inputCommands = useOptionalInputCommands()
 function keydown(event: KeyboardEvent) {
   if (event.isComposing || event.keyCode === 229 || locked.value) return
-  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+  if (matchesInputShortcut(inputCommands, 'editor.save', event)) {
     event.preventDefault()
     event.stopPropagation()
     void commit()

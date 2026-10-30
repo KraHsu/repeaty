@@ -1,7 +1,8 @@
 import { defineAsyncComponent, defineComponent, h, markRaw, type Component } from 'vue'
-import { t, locale, setLocale } from '../i18n'
+import { t, languagePreference, languageOptions, isLocale, setLanguagePreference } from '../i18n'
 import { preferences, setPreference, preferenceError } from '../preferences'
 import type { SettingsCategory, SettingsContribution, SettingsEntry, SettingsField } from './types'
+import { createAppearanceSettings } from './appearance'
 
 const AiCardSkill = defineAsyncComponent(() => import('../components/AiCardSkill.vue'))
 const StudySettings = defineAsyncComponent(() => import('../components/StudySettings.vue'))
@@ -11,6 +12,9 @@ const SearchSynonymSettings = defineAsyncComponent(
 const SourceMetadataSettings = defineAsyncComponent(
   () => import('../components/SourceMetadataSettings.vue'),
 )
+const MenuSettings = defineAsyncComponent(() => import('../components/MenuSettings.vue'))
+const InputSettings = defineAsyncComponent(() => import('../components/InputSettings.vue'))
+const LanguageSettings = defineAsyncComponent(() => import('../components/LanguageSettings.vue'))
 
 export interface ApplicationSettingsOptions {
   scope: () => string
@@ -56,14 +60,13 @@ export function createApplicationSettings(options: ApplicationSettingsOptions): 
             return t('界面语言')
           },
           get modelValue() {
-            return locale.value
+            return languagePreference.value
           },
-          options: [
-            { value: 'en', label: 'English' },
-            { value: 'zh-CN', label: '中文（简体）' },
-          ],
+          get options() {
+            return [{ value: 'system', label: t('跟随系统') }, ...languageOptions]
+          },
           onChange(value) {
-            if (isCurrent() && (value === 'en' || value === 'zh-CN')) setLocale(value)
+            if (isCurrent() && (value === 'system' || isLocale(value))) setLanguagePreference(value)
           },
         },
         {
@@ -137,6 +140,9 @@ export function createApplicationSettings(options: ApplicationSettingsOptions): 
     }),
   ]
   for (const [id, title, categoryId, categoryTitle, component] of [
+    ['input', '快捷键与鼠标手势', 'input', '操作', InputSettings],
+    ['language-packs', '语言与翻译', 'language', '语言', LanguageSettings],
+    ['menus', '菜单与工具栏', 'input', '操作', MenuSettings],
     ['material-search', '材料搜索', 'search', '搜索', SearchSynonymSettings],
     ['material-reading', '材料属性', 'reading', '阅读', SourceMetadataSettings],
   ] as const) {
@@ -188,23 +194,27 @@ export function createApplicationSettings(options: ApplicationSettingsOptions): 
   }
   if (options.platformSettings) {
     const PlatformSettings = options.platformSettings
-    for (const section of ['workspace', 'mcp', 'capture'] as const) {
+    for (const section of ['workspace', 'mcp', 'capture', 'experience'] as const) {
       entries.push(
         entry(
           {
             id: section,
             get title() {
-              return section === 'capture'
-                ? '快捷收集'
-                : t(section === 'workspace' ? '工作目录' : 'MCP 连接')
+              return section === 'experience'
+                ? t('桌面')
+                : section === 'capture'
+                  ? '快捷收集'
+                  : t(section === 'workspace' ? '工作目录' : 'MCP 连接')
             },
             category:
-              section === 'workspace'
-                ? [category('workspace', '工作目录')]
-                : [
-                    category('connections', '连接'),
-                    { id: section, title: section === 'capture' ? '快捷收集' : t('MCP 连接') },
-                  ],
+              section === 'experience'
+                ? [category('general', '通用'), category('desktop', '桌面')]
+                : section === 'workspace'
+                  ? [category('workspace', '工作目录')]
+                  : [
+                      category('connections', '连接'),
+                      { id: section, title: section === 'capture' ? '快捷收集' : t('MCP 连接') },
+                    ],
             component: markRaw(
               defineComponent({
                 name: section === 'workspace' ? 'WorkspaceSettingsEntry' : 'McpSettingsEntry',
@@ -230,5 +240,6 @@ export function createApplicationSettings(options: ApplicationSettingsOptions): 
       true,
     ),
   )
+  entries.push(...createAppearanceSettings(options.scope))
   return entries
 }

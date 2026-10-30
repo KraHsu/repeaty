@@ -47,6 +47,10 @@ it('normalizes portable chords, matches the right OS, and detects cross-platform
   expect(chordsOverlap('Control+K', 'Meta+K')).toBe(false)
   expect(chordFromEvent(key('a', { isComposing: true }))).toBeUndefined()
   expect(chordFromEvent(key('+', { shiftKey: true }))).toBe('Shift+Plus')
+  const altGraph = key('e', { ctrlKey: true, altKey: true })
+  vi.spyOn(altGraph, 'getModifierState').mockImplementation((name) => name === 'AltGraph')
+  expect(chordFromEvent(altGraph)).toBeUndefined()
+  expect(matchesChord(altGraph, 'Control+Alt+E', false)).toBe(false)
 })
 it('persists remapped and disabled chords, restores and resets without changing unrelated preferences', async () => {
   const { controller } = setup(),
@@ -75,7 +79,17 @@ it('rejects collisions and reserved editor typing or native clipboard/undo keys'
   await expect(controller.saveShortcuts('app.add', ['R'])).rejects.toThrow('冲突')
   expect(controller.conflicts('app.add', ['Mod+Z']).map((entry) => entry.id)).toContain('app.undo')
   expect(controller.conflicts('app.cards', ['B'])).toEqual([])
-  for (const value of ['A', 'Mod+Z', 'Control+C', 'Meta+A'])
+  for (const value of [
+    'A',
+    'Mod+Z',
+    'Mod+Shift+Z',
+    'Control+Shift+V',
+    'Control+C',
+    'Meta+A',
+    'Control+ArrowLeft',
+    'Meta+Shift+Home',
+    'Alt+Backspace',
+  ])
     await expect(controller.saveShortcuts('editor.save', [value])).rejects.toThrow('原生')
   await controller.saveShortcuts('editor.save', ['Mod+Shift+S'])
   expect(controller.matches('editor.save', key('S', { ctrlKey: true, shiftKey: true }))).toBe(true)

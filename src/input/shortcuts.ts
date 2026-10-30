@@ -101,10 +101,24 @@ export function editorChordAllowed(value: string): boolean {
   return (
     !!chord &&
     (chord.mod || chord.ctrl || chord.meta || chord.alt) &&
+    ![
+      'ArrowLeft',
+      'ArrowRight',
+      'ArrowUp',
+      'ArrowDown',
+      'Home',
+      'End',
+      'PageUp',
+      'PageDown',
+      'Backspace',
+      'Delete',
+      'Escape',
+      'Tab',
+    ].includes(chord.key) &&
     !(
-      !chord.shift &&
       !chord.alt &&
-      ['z', 'y', 'a', 'c', 'v', 'x'].includes(chord.key.toLowerCase())
+      (['z', 'y', 'v', 'x'].includes(chord.key.toLowerCase()) ||
+        (!chord.shift && ['a', 'c'].includes(chord.key.toLowerCase())))
     )
   )
 }
@@ -113,6 +127,7 @@ export function chordFromEvent(event: KeyboardEvent): string | undefined {
     event.isComposing ||
     event.keyCode === 229 ||
     event.repeat ||
+    event.getModifierState('AltGraph') ||
     ['Control', 'Meta', 'Alt', 'Shift', 'Dead', 'Unidentified'].includes(event.key)
   )
     return
@@ -135,7 +150,14 @@ export function matchesChord(
   mac = /Mac|iPhone|iPad/.test(navigator.platform),
 ): boolean {
   const chord = parseChord(value)
-  if (!chord || event.isComposing || event.keyCode === 229 || event.repeat) return false
+  if (
+    !chord ||
+    event.isComposing ||
+    event.keyCode === 229 ||
+    event.repeat ||
+    event.getModifierState('AltGraph')
+  )
+    return false
   const key = aliases[event.key.toLowerCase()] ?? event.key.toLowerCase()
   const match =
     chord.key.toLowerCase() === key.toLowerCase() ||
