@@ -1,8 +1,8 @@
 # 独立页面插件示例
 
-本目录保留为页面与组件注册的开发示例。日常使用热力图，请在软件「插件 → 安装或更新官方插件」中单独安装[官方复习热力图](../../../plugins/review-heatmap/README.md)，无需安装本示例的两个演示页面。
+本目录保留为页面与组件注册的开发示例。日常使用热力图，请打开软件「插件」页面，搜索[官方复习热力图](../../../plugins/review-heatmap/README.md)，点击目录行内的「安装」，再在详情中单独启用，无需安装本示例的两个演示页面。已有插件可在目录中点击「更新」，更新保留原启用状态。
 
-此示例使用公开 SDK 1.7.0 的 `registerPage()` 和 `registerWidget()`，安装后提供两个主侧栏入口和一块概览组件：
+此示例使用公开 SDK 1.7.0 的 `registerPage()` 和 `registerWidget()`，安装后单独启用，即可获得两个主侧栏入口和一块概览组件：
 
 - 「页面容器示例」使用 `AppPage`，复用软件相同的标题、说明、右上角操作区及窄窗布局。计数只保存在页面内，离开后重新开始。
 - 「自定义布局示例」直接渲染自己的布局，说明共享容器为推荐用法，并非强制。
@@ -21,7 +21,7 @@ npm test
 npm run build
 ```
 
-在「插件」页安装 `dist/page-design-example.repeaty-plugin`。运行插件无需 Node.js，也无需重新编译 Repeaty。页面接口需要支持 SDK 1.7.0 的宿主；`apiVersion` 与 `dataVersion` 仍为1。
+在「插件」页选择「安装插件包」，安装 `dist/page-design-example.repeaty-plugin`，然后通过详情右上角的开关启用。运行插件无需 Node.js，也无需重新编译 Repeaty。页面接口需要支持 SDK 1.7.0 的宿主；`apiVersion` 与 `dataVersion` 仍为1。
 
 在独立仓库中使用时，先打包公开 SDK，再将 `package.json` 中的本地文件依赖替换为该 tarball：
 

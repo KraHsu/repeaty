@@ -369,8 +369,6 @@ select {
   width: 100%;
 }
 .form-actions {
-  margin-top: 1.5rem;
-  padding-top: 1rem;
   position: sticky;
   bottom: -1px;
   background: var(--paper);

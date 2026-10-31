@@ -18,8 +18,47 @@ import type { useLibrary } from '../composables/useLibrary'
 import type { createPluginApi } from './sdk'
 import AppPage from '../components/AppPage.vue'
 import type { MaterialHostApi, MaterialSearchPage } from '@repeaty/plugin-api'
+import { createPluginPreferences, PLUGIN_PREFERENCES_KEY } from './preferences'
 
 const managers: PluginManager[] = []
+
+it.each(['static-publish', 'wordpress-publish', 'discourse-publish'])(
+  'retains the installed %s package for explicit removal without running or rewriting it',
+  async (id) => {
+    const previous = { ...bundle('retired'), manifest: { ...bundle().manifest, id } }
+    const register = vi.fn()
+    const env = environment([{ id, bundle: previous, trusted: true }], register)
+    await env.manager.initializePlugins()
+    expect(register).not.toHaveBeenCalled()
+    expect(env.manager.pluginRuntime.installations).toHaveLength(0)
+    expect(env.manager.pluginPackages[0]?.error).toContain('网站发布功能已移除')
+    expect(env.records.get(id)).toEqual(previous)
+    expect(env.calls).toEqual([])
+
+    await expect(env.manager.enablePlugin(id, true)).rejects.toThrow('网站发布功能已移除')
+    await env.manager.enablePlugin(id, false)
+    await env.manager.reloadPlugins()
+    expect(env.records.get(id)).toEqual(previous)
+    expect(register).not.toHaveBeenCalled()
+    await env.manager.removePlugin(id)
+    expect(env.records.has(id)).toBe(false)
+    expect(env.manager.pluginPackages).toHaveLength(0)
+  },
+)
+
+it('rejects a removed publisher before granting trust or replacing persisted package bytes', async () => {
+  const id = 'static-publish'
+  const previous = { ...bundle('untrusted'), manifest: { ...bundle().manifest, id } }
+  const env = environment([{ id, bundle: previous, trusted: false }])
+  await env.manager.initializePlugins()
+  await expect(env.manager.enablePlugin(id, true)).rejects.toThrow('网站发布功能已移除')
+  expect(env.trusted.has('untrusted')).toBe(false)
+  await expect(env.manager.installPlugin({ ...previous, main: 'replacement' })).rejects.toThrow(
+    '网站发布功能已移除',
+  )
+  expect(env.calls).toEqual([])
+  expect(env.records.get(id)).toEqual(previous)
+})
 
 it('opens wildcard material tools for current formats and disposes their context on disable', async () => {
   const env = environment([{ id: 'sample', bundle: bundle(), trusted: true }], (api) => {
@@ -268,6 +307,7 @@ function bundle(main = 'first'): PluginBundle {
     manifest: {
       id: 'sample',
       name: 'Sample',
+      author: 'test-author',
       version: '1.0.0',
       apiVersion: 1,
       dataVersion: 1,
@@ -288,6 +328,9 @@ function environment(
     initial.filter((entry) => entry.trusted).map((entry) => entry.bundle?.main),
   )
   const settings = new Map<string, string>()
+  const persistPreferences = vi.fn(async (key: string, value: string) => {
+    settings.set(key, value)
+  })
   const calls: { main: string; trust: boolean }[] = []
   let workspace = 'local:test'
   const storage: PluginStorage = {
@@ -321,6 +364,7 @@ function environment(
     writeSetting: (key, value) => {
       settings.set(key, value)
     },
+    persistSetting: persistPreferences,
     evaluate: async (code, api) => {
       if (code === 'broken') throw new Error('Broken module')
       register?.(api)
@@ -344,11 +388,239 @@ function environment(
     calls,
     storage,
     settings,
+    persistPreferences,
     switchScope: (scope: string) => {
       workspace = scope
     },
   }
 }
+
+it('installs code disabled, preserves that state after reload, and only runs after explicit enable', async () => {
+  const register = vi.fn()
+  const { manager, records, settings } = environment([], register)
+  await manager.initializePlugins()
+  await manager.installPlugin(bundle())
+  expect(records.get('sample')!.main).toBe('first')
+  expect(manager.pluginPackages).toHaveLength(1)
+  expect(manager.pluginRuntime.installations).toHaveLength(0)
+  expect(register).not.toHaveBeenCalled()
+  expect(JSON.parse(settings.get(PLUGIN_PREFERENCES_KEY)!)).toEqual({ sample: false })
+  await manager.reloadPlugins()
+  expect(register).not.toHaveBeenCalled()
+  expect(manager.pluginRuntime.installations).toHaveLength(0)
+  await manager.enablePlugin('sample', true)
+  expect(register).toHaveBeenCalledTimes(1)
+  expect(manager.pluginRuntime.installations[0]!.plugin.label).toBe('first')
+})
+
+it('rejects a new package without author metadata before writing its preferences or bytes', async () => {
+  const { manager, records, calls, persistPreferences } = environment()
+  await manager.initializePlugins()
+  const incoming = bundle()
+  delete incoming.manifest.author
+  await expect(manager.installPlugin(incoming)).rejects.toThrow()
+  expect(persistPreferences).not.toHaveBeenCalled()
+  expect(records.size).toBe(0)
+  expect(calls).toEqual([])
+  expect(manager.pluginRuntime.installations).toHaveLength(0)
+})
+
+it('keeps an older installed package without author metadata readable and runnable', async () => {
+  const installed = bundle('legacy')
+  delete installed.manifest.author
+  const { manager, calls } = environment([{ id: 'sample', bundle: installed, trusted: true }])
+  await manager.initializePlugins()
+  expect(manager.pluginPackages[0]!.bundle!.manifest.author).toBeUndefined()
+  expect(manager.pluginRuntime.installations[0]!.plugin.label).toBe('legacy')
+  expect(calls).toEqual([])
+})
+
+it('uses the injected preferences own durable adapter before installing code', async () => {
+  const { storage, records } = environment()
+  const settings = new Map<string, string>()
+  let finish!: () => void
+  const persist = vi.fn(async (key: string, value: string) => {
+    await new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    settings.set(key, value)
+  })
+  const preferences = createPluginPreferences({
+    read: (key) => settings.get(key) ?? null,
+    write: (key, value) => {
+      settings.set(key, value)
+    },
+    persist,
+  })
+  const unrelated = vi.fn(async () => {
+    throw new Error('unrelated settings adapter')
+  })
+  const manager = createPluginManager({
+    storage,
+    preferences,
+    seedOfficial: false,
+    readSetting: () => null,
+    writeSetting: unrelated,
+    persistSetting: unrelated,
+  })
+  managers.push(manager)
+  await manager.initializePlugins()
+  const installing = manager.installPlugin(bundle())
+  await vi.waitFor(() => expect(persist).toHaveBeenCalledOnce())
+  expect(records.size).toBe(0)
+  expect(preferences.pluginPreferences.value).toEqual({})
+  finish()
+  await installing
+  expect(unrelated).not.toHaveBeenCalled()
+  expect(JSON.parse(settings.get(PLUGIN_PREFERENCES_KEY)!)).toEqual({ sample: false })
+  expect(manager.pluginRuntime.installations).toHaveLength(0)
+  await manager.reloadPlugins()
+  expect(manager.pluginPreferences.value.sample).toBe(false)
+  expect(manager.pluginRuntime.installations).toHaveLength(0)
+})
+
+it('refuses manual installation with only a best-effort custom settings writer', async () => {
+  const { storage, records } = environment()
+  const write = vi.fn()
+  const manager = createPluginManager({
+    storage,
+    seedOfficial: false,
+    readSetting: () => null,
+    writeSetting: write,
+  })
+  managers.push(manager)
+  await manager.initializePlugins()
+  await expect(manager.installPlugin(bundle())).rejects.toThrow('无法保存插件启停状态')
+  expect(write).not.toHaveBeenCalled()
+  expect(records.size).toBe(0)
+})
+
+it('preserves disabled updates without executing new code, including code that would fail activation', async () => {
+  const register = vi.fn()
+  const { manager, records } = environment([], register)
+  await manager.initializePlugins()
+  await manager.installPlugin(bundle())
+  await manager.installPlugin(bundle('broken'))
+  expect(records.get('sample')!.main).toBe('broken')
+  expect(register).not.toHaveBeenCalled()
+  expect(manager.pluginPreferences.value.sample).toBe(false)
+  await manager.reloadPlugins()
+  expect(register).not.toHaveBeenCalled()
+  await expect(manager.enablePlugin('sample', true)).rejects.toThrow('Broken module')
+  expect(manager.pluginRuntime.installations).toHaveLength(0)
+  expect(manager.pluginPreferences.value.sample).toBe(false)
+  expect(records.get('sample')!.main).toBe('broken')
+})
+
+it.each(['preference', 'default'] as const)(
+  'preserves the effective disabled %s state and cleans a remaining runtime without evaluating the update',
+  async (source) => {
+    const disposed = vi.fn()
+    const register = vi.fn((api: ReturnType<typeof createPluginApi>) => {
+      api.onDispose(disposed)
+      api.registerPage({ id: 'sample', title: 'Sample', component: { render: () => null } })
+    })
+    const { manager, settings, records } = environment(
+      [{ id: 'sample', bundle: bundle(), trusted: true }],
+      register,
+    )
+    await manager.initializePlugins()
+    const active = manager.pluginRuntime.installations[0]!
+    if (source === 'preference') {
+      settings.set(PLUGIN_PREFERENCES_KEY, '{"sample":false}')
+      manager.restorePluginPreferences()
+    } else active.enabledByDefault = false
+    expect(createPluginRegistry(manager).pluginEnabled('sample')).toBe(false)
+    expect(manager.pluginRuntime.installations).toHaveLength(1)
+    await manager.installPlugin(bundle('broken'))
+    expect(records.get('sample')!.main).toBe('broken')
+    expect(register).toHaveBeenCalledOnce()
+    expect(disposed).toHaveBeenCalledOnce()
+    expect(active.pages).toHaveLength(0)
+    expect(manager.pluginRuntime.installations).toHaveLength(0)
+    expect(manager.pluginPreferences.value.sample).toBe(false)
+    expect(manager.materialApiFor('sample')).toBeUndefined()
+    await manager.reloadPlugins()
+    expect(register).toHaveBeenCalledOnce()
+    expect(manager.pluginRuntime.installations).toHaveLength(0)
+  },
+)
+
+it('keeps enabled updates active and treats reinstallation after uninstall as disabled', async () => {
+  const register = vi.fn()
+  const { manager } = environment([], register)
+  await manager.initializePlugins()
+  await manager.installPlugin(bundle())
+  await manager.enablePlugin('sample', true)
+  const previous = manager.pluginRuntime.installations[0]
+  await manager.installPlugin(bundle('updated'))
+  expect(register).toHaveBeenCalledTimes(2)
+  expect(manager.pluginRuntime.installations).toHaveLength(1)
+  expect(manager.pluginRuntime.installations[0]).not.toBe(previous)
+  expect(manager.pluginRuntime.installations[0]!.plugin.label).toBe('updated')
+  expect(manager.pluginPreferences.value.sample).toBe(true)
+  await manager.removePlugin('sample')
+  await manager.installPlugin(bundle('reinstalled'))
+  expect(register).toHaveBeenCalledTimes(2)
+  expect(manager.pluginRuntime.installations).toHaveLength(0)
+  expect(manager.pluginPreferences.value.sample).toBe(false)
+  await manager.reloadPlugins()
+  expect(register).toHaveBeenCalledTimes(2)
+})
+
+it('does not install trusted bytes if the disabled preference cannot be persisted', async () => {
+  const { manager, records, trusted, calls, persistPreferences } = environment()
+  await manager.initializePlugins()
+  persistPreferences.mockRejectedValueOnce(new Error('settings disk failed'))
+  await expect(manager.installPlugin(bundle())).rejects.toThrow('settings disk failed')
+  expect(records.size).toBe(0)
+  expect(calls).toEqual([])
+  expect(trusted.size).toBe(0)
+  expect(manager.pluginPackages).toHaveLength(0)
+  await manager.reloadPlugins()
+  expect(manager.pluginRuntime.installations).toHaveLength(0)
+})
+
+it('waits for a delayed durable settings failure before rejecting installation without writing code', async () => {
+  const { manager, records, calls, persistPreferences } = environment()
+  await manager.initializePlugins()
+  let fail!: (issue: Error) => void
+  persistPreferences.mockImplementationOnce(
+    () =>
+      new Promise<void>((_resolve, reject) => {
+        fail = reject
+      }),
+  )
+  const installing = manager.installPlugin(bundle())
+  const rejected = expect(installing).rejects.toThrow('late settings failure')
+  await vi.waitFor(() => expect(persistPreferences).toHaveBeenCalledOnce())
+  expect(calls).toEqual([])
+  expect(manager.pluginPreferences.value).toEqual({})
+  fail(new Error('late settings failure'))
+  await rejected
+  expect(records.size).toBe(0)
+  expect(calls).toEqual([])
+  expect(manager.pluginRuntime.installations).toHaveLength(0)
+})
+
+it('does not write package bytes after its pending disabled preference is scoped away', async () => {
+  const { manager, records, calls, persistPreferences, switchScope } = environment()
+  await manager.initializePlugins()
+  let finish!: () => void
+  persistPreferences.mockImplementationOnce(
+    () => new Promise<void>((resolve) => (finish = resolve)),
+  )
+  const installing = manager.installPlugin(bundle())
+  await vi.waitFor(() => expect(persistPreferences).toHaveBeenCalledTimes(1))
+  switchScope('local:next')
+  const switching = manager.initializePlugins('local:next')
+  finish()
+  await expect(installing).rejects.toThrow('插件已卸载或学习库已切换')
+  await switching
+  expect(records.size).toBe(0)
+  expect(calls).toEqual([])
+  expect(manager.pluginPackages).toHaveLength(0)
+})
 
 it('isolates registered settings per manager and revokes the old API on disable or library switch', async () => {
   const apis: ReturnType<typeof createPluginApi>[] = []
@@ -512,11 +784,16 @@ it('creates a distinct manager per Pinia while inheriting the configured host ad
   disposePinia(second)
 })
 it('rolls back a failed replacement without trusting the previously unapproved package', async () => {
-  const { manager, records, trusted, calls } = environment([
+  const { manager, records, trusted, calls, storage } = environment([
     { id: 'sample', bundle: bundle('manual'), trusted: false },
   ])
   await manager.initializePlugins()
-  await expect(manager.installPlugin(bundle('broken'))).rejects.toThrow('Broken module')
+  const save = storage.save
+  storage.save = async (value, trust) => {
+    await save(value, trust)
+    if (value.main === 'broken') throw new Error('failed package write')
+  }
+  await expect(manager.installPlugin(bundle('broken'))).rejects.toThrow('failed package write')
   expect(records.get('sample')!.main).toBe('manual')
   expect(trusted.has('manual')).toBe(false)
   expect(calls).toEqual([
@@ -537,6 +814,9 @@ it('restores plain persisted bytes after a failed browser package update and kee
     writeSetting: (key, value) => {
       settings.set(key, value)
     },
+    persistSetting: async (key, value) => {
+      settings.set(key, value)
+    },
     evaluate: async (main) => {
       if (main === 'broken') throw new Error('broken-update')
       return {
@@ -553,6 +833,7 @@ it('restores plain persisted bytes after a failed browser package update and kee
   managers.push(manager)
   await manager.initializePlugins(`local:rollback-${crypto.randomUUID()}`)
   await manager.installPlugin(bundle('before-update'))
+  await manager.enablePlugin('sample', true)
   const old = manager.pluginRuntime.installations[0]
   await expect(manager.installPlugin(bundle('broken'))).rejects.toThrow('broken-update')
   expect(manager.pluginRuntime.installations[0]).toBe(old)
@@ -561,10 +842,15 @@ it('restores plain persisted bytes after a failed browser package update and kee
   expect(manager.pluginRuntime.installations[0]!.plugin.label).toBe('before-update')
   await manager.removePlugin('sample')
 })
-it('removes failed first installations instead of hiding a trusted package until restart', async () => {
-  const { manager, records } = environment()
+it('removes a failed first package write instead of hiding a trusted package until restart', async () => {
+  const { manager, records, storage } = environment()
   await manager.initializePlugins()
-  await expect(manager.installPlugin(bundle('broken'))).rejects.toThrow('Broken module')
+  const save = storage.save
+  storage.save = async (value, trust) => {
+    await save(value, trust)
+    throw new Error('failed package write')
+  }
+  await expect(manager.installPlugin(bundle('broken'))).rejects.toThrow('failed package write')
   expect(records.size).toBe(0)
   expect(manager.pluginPackages).toHaveLength(0)
   await manager.reloadPlugins()
@@ -676,6 +962,7 @@ it('requests only default packages for a fresh library and preserves an empty un
   await manager.initializePlugins()
   expect(official).toHaveBeenCalledExactlyOnceWith({ defaultsOnly: true })
   expect([...records.keys()]).toEqual(['sample'])
+  expect(manager.pluginRuntime.installations).toHaveLength(1)
   await manager.removePlugin('sample')
   await manager.reloadPlugins()
   expect(official).toHaveBeenCalledTimes(1)

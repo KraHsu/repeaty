@@ -319,7 +319,7 @@ onBeforeUnmount(() => {
     :aria-label="t('文档阅读器', 'Document reader')"
     :aria-busy="busy"
   >
-    <div class="document-toolbar">
+    <div class="document-toolbar app-divider-after">
       <UiButton
         v-if="book?.kind === 'epub'"
         variant="ghost"
@@ -364,7 +364,7 @@ onBeforeUnmount(() => {
       >
         <nav
           v-if="book.kind === 'epub' && showContents"
-          class="document-contents"
+          class="document-contents app-divider-after"
           :aria-label="t('书籍目录', 'Book contents')"
         >
           <span class="document-book-title">{{ book.title }}</span>
@@ -421,7 +421,12 @@ onBeforeUnmount(() => {
                 t('查找下一个', 'Find next')
               }}</UiButton>
             </form>
-            <div ref="viewport" class="document-viewport" tabindex="0" @scroll.passive="onScroll">
+            <div
+              ref="viewport"
+              class="document-viewport app-divider-before app-divider-after"
+              tabindex="0"
+              @scroll.passive="onScroll"
+            >
               <article
                 ref="article"
                 class="document-prose"
@@ -492,9 +497,6 @@ onBeforeUnmount(() => {
   gap: 0.75rem;
   padding: 0.75rem 0;
 }
-.document-toolbar {
-  border-bottom: 1px solid var(--ui-border);
-}
 .document-caption {
   flex: 1;
   min-width: 8rem;
@@ -515,6 +517,7 @@ onBeforeUnmount(() => {
   gap: 1.5rem;
 }
 .document-contents {
+  border-block-end: 0;
   padding: 1.25rem 0;
   max-height: 65vh;
   overflow: auto;
@@ -572,7 +575,6 @@ onBeforeUnmount(() => {
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  border-block: 1px solid var(--ui-border);
 }
 .document-prose {
   max-width: var(--reading-width, 48rem);
@@ -667,7 +669,7 @@ onBeforeUnmount(() => {
   }
   .document-contents {
     max-height: 13rem;
-    border-bottom: 1px solid var(--ui-border);
+    border-block-end: revert-layer;
   }
   .document-viewport {
     max-height: 60vh;

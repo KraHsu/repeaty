@@ -40,3 +40,7 @@ npm run build
 公开 `@repeaty/plugin-api` 提供构建、通用材料事务、后台任务、资源和共享 UI；插件不导入宿主 `src/`。构建先执行 `prepare:assets` 打包独立解析 Worker，再输出 `dist/document-reader.repeaty-plugin`。插件包可以单独安装和更新，无需重编译 Repeaty。
 
 依赖：zip.js（BSD-3-Clause）与 parse5（MIT），许可文本位于 `licenses/`。
+
+## 许可证
+
+Copyright (c) 2026 CharlesHsu。此官方插件按 AGPL-3.0-only 分发，完整协议见包内 `assets/licenses/AGPL-3.0.txt`；[对应源代码](https://github.com/KraHsu/repeaty/tree/codex/learning-scope/plugins/document-reader)。第三方组件继续遵循各自许可证。

@@ -10,7 +10,12 @@ import { resolve } from 'node:path'
 import { buildPlugin } from '../../packages/plugin-api/build.mjs'
 import { fixture } from '../../src/core/test-fixtures'
 import type { PluginBundle } from '../../src/plugins/package'
-import { confirmPluginAction, openPluginManager, selectPlugin } from './settings-flow'
+import {
+  confirmPluginAction,
+  enableInstalledPlugin,
+  openPluginManager,
+  selectPlugin,
+} from './settings-flow'
 import { localLibrary } from './source-excerpt-flow'
 import { selectUiValue } from './ui-flow'
 
@@ -27,10 +32,14 @@ const studyDocument = JSON.stringify({
 })
 const nav = (page: Page, name: string) =>
   page.locator('.main-nav').getByRole('button', { name, exact: true })
+const selectionAction = (page: Page, name: string) =>
+  page
+    .getByRole('toolbar', { name: '选区工具栏', exact: true })
+    .getByRole('button', { name, exact: true })
 
 async function install(page: Page, bundle: PluginBundle) {
   await openPluginManager(page)
-  await page.locator('.plugin-actions input[type=file]').setInputFiles({
+  await page.locator('.plugins-page input[type=file]').setInputFiles({
     name: `${id}.repeaty-plugin`,
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(bundle)),
@@ -55,6 +64,7 @@ async function prepare(page: Page, info: TestInfo) {
     outdir: info.outputPath('independent-material-plugin'),
   })
   await install(page, bundle)
+  await enableInstalledPlugin(page, id)
   return bundle
 }
 
@@ -89,7 +99,7 @@ async function selectLastQuote(page: Page) {
     },
     { start: text.lastIndexOf(quote), length: quote.length },
   )
-  await expect(page.getByRole('button', { name: '用摘录制卡', exact: true })).toBeEnabled()
+  await expect(selectionAction(page, '用摘录制卡')).toBeEnabled()
 }
 
 function persistentLearning(library: Awaited<ReturnType<typeof localLibrary>>) {
@@ -144,7 +154,7 @@ export async function materialPluginFlow(page: Page, info: TestInfo) {
   await page.getByRole('button', { name: '使用插件阅读器', exact: true }).click()
   await expect(page.getByTestId('structured-study-reader')).toBeVisible()
   await selectLastQuote(page)
-  await page.getByRole('button', { name: '用摘录制卡', exact: true }).click()
+  await selectionAction(page, '用摘录制卡').click()
   await page.getByLabel('正面 · 问题', { exact: true }).fill('如何保留第二处引用的出处？')
   await expect(page.getByLabel('背面 · 答案', { exact: true })).toHaveValue(quote)
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
@@ -195,7 +205,7 @@ export async function materialPluginFlow(page: Page, info: TestInfo) {
   expect(await readFile(path!, 'utf8')).toBe(studyDocument)
 
   await selectLastQuote(page)
-  await page.getByRole('button', { name: '把选区保存为摘录', exact: true }).click()
+  await selectionAction(page, '把选区保存为摘录').click()
   await expect.poll(async () => (await localLibrary(page)).sources.length).toBe(3)
   const commandExcerpt = (await localLibrary(page)).sources.find((item) => item.kind === 'excerpt')!
   expect(commandExcerpt.origin).toMatchObject({

@@ -27,7 +27,12 @@ const links = computed(() =>
     </blockquote>
     <ul class="lookup-links">
       <li v-for="entry in links" :key="entry.id">
-        <a v-if="entry.href" :href="entry.href" target="_blank" rel="noopener noreferrer"
+        <a
+          v-if="entry.href"
+          class="app-divider-after"
+          :href="entry.href"
+          target="_blank"
+          rel="noopener noreferrer"
           ><strong>{{ entry.label }} ↗</strong><span>{{ entry.host }}</span></a
         >
         <UiNotice v-else tone="warning">{{ entry.error }}</UiNotice>
@@ -69,7 +74,6 @@ const links = computed(() =>
   gap: 0.5rem;
   padding: 1rem 0;
   color: var(--ui-text);
-  border-bottom: 1px solid var(--ui-border);
   text-decoration: none;
 }
 .lookup-links a:hover strong {

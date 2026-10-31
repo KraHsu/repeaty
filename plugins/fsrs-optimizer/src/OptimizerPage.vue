@@ -48,7 +48,11 @@ onMounted(() => {
 </script>
 
 <template>
-  <AppPage :title="text('title')" :description="text('description')" class="optimizer-page">
+  <AppPage
+    :title="text('title')"
+    :description="text('description')"
+    class="optimizer-page app-section-stack"
+  >
     <template #actions>
       <UiButton v-if="phase === 'activating' || phase === 'rollback'" busy>{{
         phaseLabel
@@ -89,14 +93,17 @@ onMounted(() => {
     </div>
     <div v-if="loading && !state" class="optimizer-muted" role="status">{{ text('loading') }}</div>
     <template v-if="scopeMatches">
-      <section class="optimizer-current" :aria-label="text('current')">
+      <section
+        class="optimizer-current app-section-divider app-section-stack"
+        :aria-label="text('current')"
+      >
         <div class="optimizer-readiness">
           <p class="optimizer-count">
             {{ count(state?.reviewCount ?? 0) }} <span>{{ text('records') }}</span>
           </p>
           <p class="optimizer-muted">{{ text('threshold') }}</p>
         </div>
-        <div class="optimizer-baseline">
+        <div class="optimizer-baseline app-section-divider">
           <span class="optimizer-muted">{{ text('current') }}</span>
           <strong>{{ active ? date(active.createdAt) : text('defaults') }}</strong>
           <UiButton v-if="active" :disabled="busy" @click="optimizer.rollback(active.id)">{{
@@ -105,79 +112,81 @@ onMounted(() => {
         </div>
         <p class="optimizer-unchanged">{{ text('unchanged') }}</p>
       </section>
-      <section v-if="busy" class="optimizer-progress" aria-live="polite" :aria-label="phaseLabel">
-        <div>
-          <strong>{{ phaseLabel }}</strong
-          ><span v-if="progress && phase === 'training'"
-            >{{ Math.round((progress.current / progress.total) * 100) }}%</span
-          >
-        </div>
-        <UiProgress
-          :model-value="phase === 'training' && progress ? progress.current : null"
-          :max="progress?.total || 100"
-          :aria-label="phaseLabel"
-        />
-      </section>
-      <section class="optimizer-results" :aria-label="text('comparison')">
-        <h2>{{ text('comparison') }}</h2>
-        <p class="optimizer-muted">{{ text('comparisonHint') }}</p>
-        <div v-if="!models.length" class="optimizer-empty">
-          <strong>{{ text('empty') }}</strong>
-          <p class="optimizer-muted">{{ text('emptyHint') }}</p>
-        </div>
-        <div v-else class="optimizer-table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>{{ text('date') }}</th>
-                <th>
-                  {{ text('loss') }}<small>{{ text('beforeAfter') }}</small>
-                </th>
-                <th>
-                  {{ text('rmse') }}<small>{{ text('beforeAfter') }}</small>
-                </th>
-                <th>{{ text('samples') }}</th>
-                <th>
-                  <span class="optimizer-sr-only">{{ text('adopt') }}</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="model in models" :key="model.id">
-                <td :data-label="text('date')">{{ date(model.createdAt) }}</td>
-                <td :data-label="text('loss')">
-                  <span class="optimizer-muted">{{
-                    model.metrics.baseline.logLoss.toFixed(4)
-                  }}</span
-                  ><span aria-hidden="true"> → </span
-                  ><strong>{{ model.metrics.candidate.logLoss.toFixed(4) }}</strong>
-                </td>
-                <td :data-label="text('rmse')">
-                  <span class="optimizer-muted">{{ model.metrics.baseline.rmse.toFixed(4) }}</span
-                  ><span aria-hidden="true"> → </span
-                  ><strong>{{ model.metrics.candidate.rmse.toFixed(4) }}</strong>
-                </td>
-                <td :data-label="text('samples')">
-                  {{ count(model.counts.training) }} / {{ count(model.counts.validation) }}
-                </td>
-                <td>
-                  <UiStatus v-if="model.id === state?.activeModelId" tone="success">{{
-                    text('active')
-                  }}</UiStatus
-                  ><UiButton
-                    v-else
-                    :variant="model.id === freshCandidate ? 'primary' : 'secondary'"
-                    :disabled="busy"
-                    @click="optimizer.activate(model.id)"
-                    >{{ text('adopt') }}</UiButton
-                  >
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-      <p v-if="option.automatic" class="optimizer-muted optimizer-automatic">
+      <div class="app-section-divider app-section-stack">
+        <section v-if="busy" class="optimizer-progress" aria-live="polite" :aria-label="phaseLabel">
+          <div>
+            <strong>{{ phaseLabel }}</strong
+            ><span v-if="progress && phase === 'training'"
+              >{{ Math.round((progress.current / progress.total) * 100) }}%</span
+            >
+          </div>
+          <UiProgress
+            :model-value="phase === 'training' && progress ? progress.current : null"
+            :max="progress?.total || 100"
+            :aria-label="phaseLabel"
+          />
+        </section>
+        <section class="optimizer-results" :aria-label="text('comparison')">
+          <h2>{{ text('comparison') }}</h2>
+          <p class="optimizer-muted">{{ text('comparisonHint') }}</p>
+          <div v-if="!models.length" class="optimizer-empty">
+            <strong>{{ text('empty') }}</strong>
+            <p class="optimizer-muted">{{ text('emptyHint') }}</p>
+          </div>
+          <div v-else class="optimizer-table-scroll">
+            <table class="app-divider-table">
+              <thead>
+                <tr>
+                  <th>{{ text('date') }}</th>
+                  <th>
+                    {{ text('loss') }}<small>{{ text('beforeAfter') }}</small>
+                  </th>
+                  <th>
+                    {{ text('rmse') }}<small>{{ text('beforeAfter') }}</small>
+                  </th>
+                  <th>{{ text('samples') }}</th>
+                  <th>
+                    <span class="optimizer-sr-only">{{ text('adopt') }}</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="model in models" :key="model.id" class="app-divider-after">
+                  <td :data-label="text('date')">{{ date(model.createdAt) }}</td>
+                  <td :data-label="text('loss')">
+                    <span class="optimizer-muted">{{
+                      model.metrics.baseline.logLoss.toFixed(4)
+                    }}</span
+                    ><span aria-hidden="true"> → </span
+                    ><strong>{{ model.metrics.candidate.logLoss.toFixed(4) }}</strong>
+                  </td>
+                  <td :data-label="text('rmse')">
+                    <span class="optimizer-muted">{{ model.metrics.baseline.rmse.toFixed(4) }}</span
+                    ><span aria-hidden="true"> → </span
+                    ><strong>{{ model.metrics.candidate.rmse.toFixed(4) }}</strong>
+                  </td>
+                  <td :data-label="text('samples')">
+                    {{ count(model.counts.training) }} / {{ count(model.counts.validation) }}
+                  </td>
+                  <td>
+                    <UiStatus v-if="model.id === state?.activeModelId" tone="success">{{
+                      text('active')
+                    }}</UiStatus
+                    ><UiButton
+                      v-else
+                      :variant="model.id === freshCandidate ? 'primary' : 'secondary'"
+                      :disabled="busy"
+                      @click="optimizer.activate(model.id)"
+                      >{{ text('adopt') }}</UiButton
+                    >
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+      <p v-if="option.automatic" class="optimizer-muted app-section-divider">
         {{ text('automaticOn') }} · {{ text(option.apply ? 'autoApplyOn' : 'autoCandidate') }}
       </p>
     </template>
@@ -187,16 +196,11 @@ onMounted(() => {
 <style scoped>
 .optimizer-page {
   color: var(--ink);
-  display: grid;
   grid-template-columns: minmax(0, 1fr);
   container-type: inline-size;
-  gap: var(--space-5, 24px);
 }
 .optimizer-page > * {
   min-width: 0;
-}
-.optimizer-page p {
-  margin: 0;
 }
 .optimizer-muted {
   color: var(--muted);
@@ -220,12 +224,8 @@ onMounted(() => {
   margin-left: auto;
 }
 .optimizer-current {
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  padding: 28px 0;
-  display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(220px, 0.8fr);
-  gap: 20px 40px;
+  column-gap: 40px;
 }
 .optimizer-count {
   font-size: var(--font-size-display);
@@ -279,7 +279,7 @@ onMounted(() => {
   font-weight: 600;
 }
 .optimizer-empty {
-  padding: 40px 0;
+  padding-block-start: var(--app-section-gap);
   display: grid;
   gap: 8px;
 }
@@ -296,11 +296,13 @@ table {
   border-collapse: collapse;
   font-size: var(--font-size-meta);
 }
+tbody tr {
+  border-block-end: 0;
+}
 th,
 td {
   text-align: left;
   padding: 16px 14px;
-  border-bottom: 1px solid var(--line);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
@@ -327,10 +329,6 @@ td strong {
   font-weight: 600;
   color: var(--green);
 }
-.optimizer-automatic {
-  border-top: 1px solid var(--line);
-  padding-top: 16px;
-}
 .optimizer-sr-only {
   position: absolute;
   width: 1px;
@@ -338,18 +336,20 @@ td strong {
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
 }
+@container (width > 55rem) {
+  .optimizer-baseline {
+    border-block-start: 0;
+    margin-block-start: 0;
+    padding-block-start: 0;
+  }
+}
 @container (max-width: 55rem) {
   .optimizer-current {
     grid-template-columns: 1fr;
-    gap: 24px;
   }
   .optimizer-scope > .optimizer-muted {
     margin-left: 0;
     width: 100%;
-  }
-  .optimizer-baseline {
-    border-top: 1px solid var(--line);
-    padding-top: 20px;
   }
   .optimizer-unchanged {
     grid-column: auto;
@@ -371,7 +371,7 @@ td strong {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 20px;
     padding: 20px 0;
-    border-bottom: 1px solid var(--line);
+    border-block-end: revert-layer;
   }
   td,
   td:first-child,

@@ -8,6 +8,18 @@ import type { RegisterPluginPage, PluginPageContribution } from './pages'
 import type { RegisterPluginWidget, PluginWidgetContribution } from './widgets'
 
 const runtimes: PluginRuntime[] = []
+
+it.each(['static-publish', 'wordpress-publish', 'discourse-publish'])(
+  'never evaluates a previously installed %s package or registers its views',
+  async (id) => {
+    const value = runtime()
+    const evaluate = vi.fn(async () => ({ default: definition(id) }))
+    await expect(value.load(bundle(id), evaluate)).rejects.toThrow('网站发布功能已移除')
+    expect(evaluate).not.toHaveBeenCalled()
+    expect(value.installations).toHaveLength(0)
+    expect(styles()).toHaveLength(0)
+  },
+)
 const ownedIds = new Set<string>()
 function runtime() {
   const value = new PluginRuntime()

@@ -247,20 +247,22 @@ async function update(action: 'file' | 'archive' | 'restore') {
             /></UiButton>
           </div>
         </header>
-        <p v-if="loading" role="status">{{ t('正在读取原文…') }}</p>
-        <SourceReader
-          v-else-if="text"
-          :key="`${scope}:${selected.id}:${selected.mediaId}`"
-          :source="selected"
-          :sources="sources"
-          :text="text"
-          :scope="scope"
-          :get-media="getMedia"
-          :busy="busy || saving"
-          read-only
-          @select="select"
-        />
-        <footer class="inbox-content-footer">
+        <div class="app-section-divider app-section-stack">
+          <p v-if="loading" role="status">{{ t('正在读取原文…') }}</p>
+          <SourceReader
+            v-else-if="text"
+            :key="`${scope}:${selected.id}:${selected.mediaId}`"
+            :source="selected"
+            :sources="sources"
+            :text="text"
+            :scope="scope"
+            :get-media="getMedia"
+            :busy="busy || saving"
+            read-only
+            @select="select"
+          />
+        </div>
+        <footer class="inbox-content-footer app-section-divider">
           <span>{{ t('选取原文中的一段内容，即可制作卡片。') }}</span
           ><UiButton
             variant="secondary"
@@ -278,7 +280,7 @@ async function update(action: 'file' | 'archive' | 'restore') {
       :error="error"
       @close="draft = undefined"
     >
-      <form class="inbox-organize" @submit.prevent="update('file')">
+      <form class="inbox-organize app-section-stack" @submit.prevent="update('file')">
         <label for="inbox-title">{{ t('材料标题') }}</label
         ><UiInput
           id="inbox-title"
@@ -394,9 +396,6 @@ async function update(action: 'file' | 'archive' | 'restore') {
 .inbox-content-header {
   display: grid;
   gap: 1rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 1rem;
 }
 .inbox-content-header h2 {
   margin: 0;
@@ -417,9 +416,6 @@ async function update(action: 'file' | 'archive' | 'restore') {
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--line);
 }
 .inbox-content-footer > span {
   color: var(--muted);
@@ -442,8 +438,7 @@ async function update(action: 'file' | 'archive' | 'restore') {
   font-size: var(--font-size-section);
 }
 .inbox-organize {
-  display: grid;
-  gap: 0.75rem;
+  --app-content-gap: 0.75rem;
 }
 @media (max-width: 760px) {
   .inbox-layout {

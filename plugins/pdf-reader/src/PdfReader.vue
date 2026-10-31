@@ -423,7 +423,7 @@ onBeforeUnmount(() => {
       <p class="pdf-description">
         {{ material.document.data?.pageCount }} 页 · 选择章节继续阅读。每章与同一份离线原件关联。
       </p>
-      <ul class="pdf-chapters">
+      <ul class="pdf-chapters app-divider-list">
         <li v-for="child in children" :key="child.id">
           <UiButton variant="ghost" :disabled="!onOpen" @click="onOpen?.(child.id)">{{
             child.title
@@ -432,7 +432,7 @@ onBeforeUnmount(() => {
       </ul>
     </template>
     <template v-else>
-      <div class="pdf-toolbar" aria-label="PDF 阅读工具">
+      <div class="pdf-toolbar app-divider-after" aria-label="PDF 阅读工具">
         <div class="pdf-toolbar-group">
           <UiButton
             variant="ghost"
@@ -559,8 +559,7 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 16px;
-  padding-block: 4px 12px;
-  border-bottom: 1px solid var(--border, #d6dfd0);
+  padding-block: 12px;
 }
 .pdf-toolbar-group,
 .pdf-page-picker,
@@ -616,7 +615,6 @@ onBeforeUnmount(() => {
 }
 .pdf-chapters li {
   padding-block: 8px;
-  border-bottom: 1px solid var(--border, #d6dfd0);
 }
 .pdf-fallback {
   white-space: pre-wrap;

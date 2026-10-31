@@ -1,6 +1,6 @@
 {
   "name": "@repeaty/plugin-visual-occlusion",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -24,5 +24,6 @@
   },
   "dependencies": {
     "katex": "0.19.0"
-  }
+  },
+  "license": "AGPL-3.0-only"
 }

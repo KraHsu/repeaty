@@ -38,7 +38,7 @@ function submit() {
 
 <template>
   <AppModal :title="t('批量安排')" :busy="busy" :error="error" @close="emit('close')">
-    <form class="source-batch-form" @submit.prevent="submit">
+    <form class="source-batch-form app-section-stack" @submit.prevent="submit">
       <p class="source-batch-summary">
         {{ t('将更改所选的 {count} 篇材料。', { count: titles.length }) }}
       </p>
@@ -114,19 +114,19 @@ function submit() {
 
 <style scoped>
 .source-batch-form {
-  display: grid;
-  gap: 1rem;
+  --app-content-gap: 1rem;
   padding: 1.25rem 1.75rem;
   overflow-y: auto;
 }
 .source-batch-form p {
-  margin: 0;
+  margin-block-end: 0;
 }
 .source-batch-summary {
   font-weight: var(--font-weight-semibold);
 }
 .source-batch-titles {
-  margin: 0;
+  margin-inline: 0;
+  margin-block-end: 0;
   padding-left: 1.25rem;
   overflow-wrap: anywhere;
   line-height: var(--line-height-ui);

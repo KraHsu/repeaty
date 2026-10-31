@@ -4,7 +4,13 @@ import { resolve } from 'node:path'
 import { storedLibrary } from './stored-library'
 import { importReading } from './reading-flow'
 import { createSourceDeck } from './source-flow'
-import { confirmPluginAction, openPluginManager, selectPlugin, openSettings } from './settings-flow'
+import {
+  confirmPluginAction,
+  installOfficialPlugin,
+  openPluginManager,
+  selectPlugin,
+  openSettings,
+} from './settings-flow'
 import type { Library } from '../../src/core/model'
 
 const pluginId = 'format-cleanup'
@@ -42,15 +48,12 @@ export async function formatCleanupFlow(page: Page, edition: 'web' | 'desktop') 
   const before = await library(page),
     source = before.sources[0]!
   await openPluginManager(page)
-  await page.getByRole('button', { name: '安装或更新官方插件', exact: true }).click()
-  const picker = page.getByRole('dialog', { name: '安装或更新官方插件', exact: true })
-  await picker
-    .locator(`[data-official-plugin="${pluginId}"]`)
-    .getByRole('button', { name: '安装并启用', exact: true })
-    .click()
-  await expect(picker).toHaveCount(0)
+  await installOfficialPlugin(page, pluginId)
   const details = page.locator(`.plugin-settings[data-plugin-id="${pluginId}"]`)
-  await expect(details.getByRole('switch', { name: '启用 格式清理', exact: true })).toBeChecked()
+  const enabled = details.getByRole('switch', { name: '启用 格式清理', exact: true })
+  await expect(enabled).not.toBeChecked()
+  await enabled.click()
+  await expect(enabled).toBeChecked()
   await expect(details).toContainText('格式清理')
 
   await openSettings(page, 'tools.format-cleanup')

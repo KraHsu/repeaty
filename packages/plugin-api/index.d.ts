@@ -13,7 +13,7 @@ export * from './collection'
 export * from './study'
 export * from './automation'
 export * from './providers'
-export * from './publishing'
+export * from './network'
 export const automation: import('./automation').AutomationApi
 import type { MaterialLocator } from './materials'
 
@@ -226,6 +226,8 @@ export declare const AppPage: DefineComponent<AppPageProps & HTMLAttributes>
 export interface PluginManifest {
   id: string
   name: string
+  /** Publisher or maintainer name, shown after the plugin name. Required when building/installing. */
+  author: string
   version: string
   apiVersion: 1
   dataVersion: number

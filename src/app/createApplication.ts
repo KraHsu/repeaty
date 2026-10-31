@@ -56,7 +56,6 @@ export function createApplication() {
   )
   const networkConsent = usePluginNetworkConsent(workspace.scope)
   onScopeDispose(plugins.setNetworkConsent(networkConsent.consent))
-  onScopeDispose(plugins.setPublishingHost((owner) => workspace.publishingApi(owner)))
   const automationConsent = useAutomationConsent(workspace.scope)
   onScopeDispose(
     plugins.setAutomationHost((owner) =>

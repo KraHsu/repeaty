@@ -6,6 +6,7 @@ import { fixture } from '../../src/core/test-fixtures'
 import type { PluginBundle } from '../../src/plugins/package'
 import {
   confirmPluginAction,
+  enableInstalledPlugin,
   openPluginManager,
   openPluginSettings,
   openSettings,
@@ -18,6 +19,7 @@ function standaloneBundle(version = '1.0.0', id = 'external-check'): PluginBundl
     manifest: {
       id,
       name: 'External Check',
+      author: 'test-author',
       version,
       apiVersion: 1,
       dataVersion: 1,
@@ -89,7 +91,7 @@ async function value(page: Page, namespace: string, id: string) {
   )
 }
 async function install(page: Page, bundle: PluginBundle) {
-  await page.locator('.plugin-actions input[type=file]').setInputFiles({
+  await page.locator('.plugins-page input[type=file]').setInputFiles({
     name: `${bundle.manifest.id}.repeaty-plugin`,
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(bundle)),
@@ -119,6 +121,7 @@ test('installs independent code, reloads versions and retains records and privat
   const original = await storedLibrary(page)
   await openPluginManager(page)
   await install(page, standaloneBundle())
+  await enableInstalledPlugin(page, 'external-check')
   await expect(panel(page).getByTestId('external-version')).toHaveCount(0)
   await openPluginSettings(page, 'external-check')
   await expect(configuration(page).getByTestId('external-version')).toHaveText('1.0.0')

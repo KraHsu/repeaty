@@ -1,7 +1,19 @@
 import { ref } from 'vue'
-import { readSetting, writeSetting } from '../settings-store'
+import { persistSetting, readSetting, writeSetting } from '../settings-store'
 export const PLUGIN_PREFERENCES_KEY = 'repeaty.plugins.v1'
-export function createPluginPreferences(settings = { read: readSetting, write: writeSetting }) {
+interface PluginPreferenceSettings {
+  read: typeof readSetting
+  write: typeof writeSetting
+  /** Unlike the best-effort writer, this resolves only after durable completion. */
+  persist?: (key: string, value: string) => void | Promise<void>
+}
+export function createPluginPreferences(
+  settings: PluginPreferenceSettings = {
+    read: readSetting,
+    write: writeSetting,
+    persist: persistSetting,
+  },
+) {
   const pluginPreferenceError = ref('')
   const pluginPreferences = ref<Record<string, boolean>>({})
   function restorePluginPreferences() {
@@ -28,6 +40,13 @@ export function createPluginPreferences(settings = { read: readSetting, write: w
       fail()
     }
   }
+  /** The manager publishes state only after rechecking ownership of the learning library. */
+  async function persistPluginPreferences(value: Record<string, boolean>) {
+    // A fire-and-forget writer cannot establish a durable disabled state. Custom
+    // adapters must provide their own persister instead of falling through to another store.
+    if (!settings.persist) throw new Error('无法保存插件启停状态。')
+    await settings.persist(PLUGIN_PREFERENCES_KEY, JSON.stringify(value))
+  }
   function listenPluginPreferences() {
     restorePluginPreferences()
     const receive = (event: StorageEvent) => {
@@ -41,6 +60,7 @@ export function createPluginPreferences(settings = { read: readSetting, write: w
     pluginPreferences,
     restorePluginPreferences,
     savePluginPreference,
+    persistPluginPreferences,
     listenPluginPreferences,
   }
 }

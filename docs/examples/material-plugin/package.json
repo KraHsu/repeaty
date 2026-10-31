@@ -16,5 +16,6 @@
     "@repeaty/plugin-api": "file:../../../packages/plugin-api",
     "typescript": "~5.9.3",
     "vue-tsc": "^3.3.13"
-  }
+  },
+  "license": "AGPL-3.0-only"
 }

@@ -1,6 +1,7 @@
 {
   "id": "page-lifecycle-check",
   "name": "Page Lifecycle Check",
+  "author": "test-author",
   "version": "1.0.0",
   "apiVersion": 1,
   "dataVersion": 1,

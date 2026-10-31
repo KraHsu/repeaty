@@ -6,5 +6,6 @@
   "dataVersion": 1,
   "kind": "frontend",
   "main": "main.js",
-  "description": "An independent example of the host's shared settings controls."
+  "description": "An independent example of the host's shared settings controls.",
+  "author": "example-author"
 }

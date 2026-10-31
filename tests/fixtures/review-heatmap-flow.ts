@@ -3,6 +3,7 @@ import { fixture } from '../../src/core/test-fixtures'
 import { storedLibrary } from './stored-library'
 import {
   confirmPluginAction,
+  installOfficialPlugin,
   openPluginManager,
   selectPlugin,
   setInterfaceLanguage,
@@ -18,35 +19,38 @@ const enabled = (page: Page) =>
   details(page).getByRole('switch', { name: '启用 复习热力图', exact: true })
 
 async function pluginIds(page: Page) {
-  return page
+  await page.getByRole('tab', { name: /^(已安装|Installed)$/ }).click()
+  const ids = await page
     .locator('[data-plugin-select]')
     .evaluateAll((entries) =>
       entries.map((entry) => entry.getAttribute('data-plugin-select')!).sort(),
     )
+  await page.getByRole('tab', { name: /^(全部插件|All plugins)$/ }).click()
+  return ids
 }
 
 async function installOfficialHeatmap(page: Page, screenshot?: { info: TestInfo; width: number }) {
   await openPluginManager(page)
   await expect(page.locator('.plugins-page')).toBeVisible()
-  await expect(page.getByRole('button', { name: '安装或更新官方插件', exact: true })).toBeEnabled()
   const before = await pluginIds(page)
   expect(before).not.toContain(pluginId)
-  await page.getByRole('button', { name: '安装或更新官方插件', exact: true }).click()
-  const picker = page.getByRole('dialog', { name: '安装或更新官方插件', exact: true })
-  const entry = picker.locator(`[data-official-plugin="${pluginId}"]`)
+  const browser = page.locator('.plugin-workbench')
+  const entry = browser.locator(`[data-official-plugin="${pluginId}"]`)
   await expect(entry).toContainText('复习热力图')
-  await expect(entry).toContainText('1.1.0')
+  await selectPlugin(page, pluginId)
+  await expect(details(page).locator('.plugin-detail-version')).toHaveText('v1.1.2')
   if (screenshot) {
     await page.setViewportSize({ width: screenshot.width, height: 1000 })
-    expect(await picker.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(
-      true,
-    )
-    await picker.screenshot({ path: screenshot.info.outputPath('official-catalog-narrow.png') })
+    expect(
+      await browser.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+    ).toBe(true)
+    await browser.screenshot({ path: screenshot.info.outputPath('official-catalog-narrow.png') })
     await page.setViewportSize({ width: 1440, height: 1000 })
   }
-  await entry.getByRole('button', { name: '安装并启用', exact: true }).click()
-  await expect(picker).toHaveCount(0)
+  await installOfficialPlugin(page, pluginId)
   await expect(details(page)).toBeVisible()
+  await expect(enabled(page)).not.toBeChecked()
+  await enabled(page).click()
   await expect(enabled(page)).toBeChecked()
   expect(await pluginIds(page)).toEqual([...before, pluginId].sort())
 }
@@ -247,6 +251,9 @@ export async function reviewHeatmapFlow(page: Page, info: TestInfo, edition: 'we
   await selectPlugin(page, pluginId)
   await details(page).getByRole('button', { name: '卸载插件', exact: true }).click()
   await confirmPluginAction(page)
+  await expect(
+    page.locator(`[data-official-plugin="${pluginId}"] .plugin-install-button`),
+  ).toBeEnabled()
   expect(await pluginIds(page)).not.toContain(pluginId)
   expect(await storedLibrary(page)).toEqual(reviewedRecords)
   await page.reload()

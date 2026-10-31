@@ -3,16 +3,9 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick, ref, type App } from 'vue'
 import type { SettingsCategoryNode } from '../../settings/types'
 import BranchedMenu from './BranchedMenu.vue'
-import {
-  branchLength,
-  branchPath,
-  fallbackBranchGeometry,
-  flattenBranchedMenu,
-  menuAncestors,
-  visibleMenuRows,
-} from './branched-menu'
+import { flattenBranchedMenu, menuAncestors, visibleMenuRows } from './branched-menu'
 
-// These tests exercise the adaptation's tree controller and ownership. Nuxt UI's
+// These tests exercise Repeaty's tree controller and ownership. Nuxt UI's
 // real button / collapsible primitives are exercised by the browser regressions.
 vi.mock('@nuxt/ui/components/Button.vue', async () => {
   const { defineComponent, h } = await import('vue')
@@ -232,7 +225,7 @@ it('owns observers and navigation state per instance and releases removed groups
   expect(document.activeElement).toBe(second.row('connections'))
 })
 
-it('retains the upstream curved branch and reach geometry for visible category paths', () => {
+it('keeps category ancestry and visibility independent from rendering', () => {
   const rows = flattenBranchedMenu(categories())
   expect(menuAncestors(rows, 'study.review.history.detail')).toEqual([
     'study',
@@ -245,8 +238,4 @@ it('retains the upstream curved branch and reach geometry for visible category p
     'connections',
     'workspace',
   ])
-  const geometry = fallbackBranchGeometry(3)
-  expect(branchPath(geometry, 0)).toBe('M 14 18 A 10 10 0 0 0 24 28 H 32')
-  expect(branchPath(geometry, 2, true)).toBe('M 14 0 V 106 A 10 10 0 0 0 24 116 H 32')
-  expect(branchLength(geometry, 2)).toBeCloseTo(129.707963)
 })

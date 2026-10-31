@@ -13,10 +13,12 @@
 
 <p align="center">
   <a href="https://github.com/KraHsu/repeaty/actions/workflows/ci.yml"><img src="https://github.com/KraHsu/repeaty/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-37634b" alt="MIT License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-37634b" alt="AGPL-3.0-only License" /></a>
 </p>
 
-Repeaty 是一个开源的记忆卡片工具。把想记住的内容做成卡片，按 FSRS 安排复习。
+Repeaty 是一个开源的持续学习工具。阅读材料、建立知识关联，把需要掌握的内容做成卡片，再通过阅读安排、练习和 FSRS 复习持续巩固。
+
+支持简单的材料编辑和完整的卡片编辑；复杂文章写作交给 VS Code、Obsidian 等外部编辑器，Repeaty 导入材料并接受后续更新。知识网络、学习材料和卡组是主要管理对象，不提供个人网站生成或博客发布。
 
 以桌面客户端为主，一个文件夹保存卡片、材料、附件与学习进度，无需注册。在线版无需后端，提供制卡、复习、阅读等体验。核心免费开源，目前没有订阅或收费服务。
 
@@ -39,14 +41,14 @@ Repeaty 是一个开源的记忆卡片工具。把想记住的内容做成卡片
 - **制卡**：正反面、双向、挖空；Markdown、带样式的 HTML、按语言高亮的代码块、数学公式、图片和音频。正文左对齐，图片、独立公式和表格默认居中。
 - **复习**：FSRS 调度，按卡组设置目标记忆保留率和每日学习量；查看新卡、学习中和待复习数量。支持暂停、暂缓、顽固卡标记，以及复习中添加、编辑和删除笔记。按 `Ctrl / ⌘ + Z` 撤销最近操作，按 `?` 查看快捷键。
 - **整理与练习**：标签、组合搜索、常用筛选、批量编辑；专项练习可选择是否更新复习进度。
-- **阅读与摘录**：在文本 / Markdown 工作区中直接选文摘录、制卡和批注；支持目录整理、正文编辑与草稿、历史版本、YAML 属性、Wiki 链接和全文检索。记住阅读位置，可按理解反馈安排下次阅读，在混合学习中穿插卡片复习。[使用说明](docs/SOURCES.md)。
-- **数据导入导出**：Anki `.apkg` 导入问答、双向和挖空卡及媒体，先预览，已有笔记可逐条比较和更新并保留进度；支持 CSV / TSV，`.repeaty` 备份包含附件和学习进度；工作目录可整体复制。
+- **阅读与知识关联**：在文本 / Markdown 工作区中直接选文摘录、制卡和批注；支持目录整理、简单正文修改、自动保存编辑草稿、历史版本、YAML 属性、Wiki 链接和全文检索。记住阅读位置，可按理解反馈安排下次阅读，在混合学习中穿插卡片复习。[使用说明](docs/SOURCES.md)。
+- **数据导入导出**：Anki `.apkg` 导入问答、双向和挖空卡及媒体，先预览，已有笔记可逐条比较和更新并保留进度；支持 CSV / TSV 导入，材料可导出原文或原件。`.repeaty` 是包含附件和个人学习进度的整库备份，恢复会替换当前学习数据；单独卡组和完整资料包分享尚未提供。[导出与分享范围](docs/SHARING.md)。
 - **插件**：运行时安装、更新、关闭、移除与重新加载，无需重编译主程序。官方答题历史和桌面 LeetCode 也以独立插件包提供。代码和设置随桌面工作目录保存，登录凭据与代码信任留在设备；复制来的未知代码需主动确认启用。关闭或移除插件保留学习进度与完整历史。
 - **MCP**：桌面版支持连接 Codex、Claude Code 和 Claude Desktop，查询学习库；主动分享摘录后，可接收制卡草稿，保存未完成的编辑，重启后继续确认。[连接说明](docs/MCP.md)。
 
 不使用 MCP 时，可从「设置 → 工具 → AI 制卡」复制说明或下载 [制卡 skill](public/skills/repeaty-cards/SKILL.md)，将材料交给 AI 生成 CSV，再在 Repeaty 中预览并导入。通用设置也可分别配置各级通知是否弹出。
 
-目前不支持 Anki 进度迁移、自定义字段 / Anki 卡片模板、图片遮挡或个人 FSRS 参数训练。[Anki 导入范围](docs/ANKI.md) · [完整用法](docs/USAGE.md) · [存储与性能](docs/DEVELOPMENT.md#大数据量存储)
+目前不支持 Anki 进度迁移、自定义字段 / Anki 卡片模板。图片与公式遮挡、个人 FSRS 参数训练通过独立官方插件提供。[Anki 导入范围](docs/ANKI.md) · [完整用法](docs/USAGE.md) · [存储与性能](docs/DEVELOPMENT.md#大数据量存储)
 
 ## 运行与构建
 
@@ -95,7 +97,7 @@ npm run desktop:build
 
 本轮另行授权了外置插件机制：官方插件与第三方插件独立构建、分发和安装，运行在 WebView 的 JavaScript 环境，通过公开 SDK 使用宿主能力。主程序构建只携带固定的预构建插件包，不编译插件源码；其余新功能继续冻结。
 
-本轮将桌面学习存储接入[工作目录](docs/WORKSPACE_MODE.md)，取消桌面本地 / 上游分支。项目暂无其他使用者，因此直接采用新格式，不开发旧库过渡或自动迁移，也不删除旧数据。已支持外部笔记新建、移除、恢复和变体退役，以及材料版本和 Markdown 相对路径图片、音频。旧摘录保留原文和附件快照。外部修改会自动检测并提示，确认后用于学习。在线版已接入本地目录的只读试用，同步仍未完成。
+本轮将桌面学习存储接入[工作目录](docs/WORKSPACE_MODE.md)，取消桌面本地 / 上游分支。项目暂无其他使用者，因此直接采用新格式，不开发旧库过渡或自动迁移，也不删除旧数据。已支持外部笔记新建、移除、恢复和变体退役，以及材料版本和 Markdown 相对路径图片、音频。旧摘录保留原文和附件快照。外部修改会自动检测并提示，确认后用于学习。在线版已接入本地目录的只读试用；[局域网设备同步](docs/DEVICE_SYNC.md)已实现，多设备及各平台原生行为仍待实测。
 
 界面使用 Vue 3、TypeScript、Pinia 和 Vite；原生存储使用 Rust 与 SQLite；调度使用 [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)。页面、应用服务和共享状态的分工见[前端结构](docs/FRONTEND_ARCHITECTURE.md)。
 
@@ -113,4 +115,6 @@ npm run test:e2e:desktop         # 界面回归，连接真实 Rust 存储
 
 ## License
 
-[MIT](LICENSE) © 2026 CharlesHsu
+[GNU AGPL v3 only (AGPL-3.0-only)](LICENSE) © 2026 CharlesHsu
+
+项目原创代码、SDK、官方插件及自制素材采用此协议；第三方依赖保留各自许可证，见 [NOTICE](NOTICE)。对应源代码在[项目仓库](https://github.com/KraHsu/repeaty)。

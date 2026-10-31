@@ -157,7 +157,7 @@ async function fileChanged(event: Event) {
           }}</label
         >
       </div>
-      <div class="form-actions">
+      <div class="form-actions app-section-footer">
         <UiButton variant="secondary" type="button" :disabled="busy" @click="emit('close')">
           {{ t('取消') }}</UiButton
         ><UiButton variant="primary" v-if="!preview.length" type="submit" :disabled="busy">

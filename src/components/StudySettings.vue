@@ -205,7 +205,7 @@ async function save() {
     :title="title"
     :description="t('设置保存在当前学习库中，修改可撤销。新设置用于后续安排。')"
   >
-    <form class="study-settings-form" @submit.prevent="save">
+    <form class="study-settings-form app-section-stack" @submit.prevent="save">
       <SettingField
         v-if="section === 'queue'"
         v-model="form.priorityMode"
@@ -281,7 +281,6 @@ async function save() {
 </template>
 <style scoped>
 .study-settings-form {
-  display: grid;
-  gap: 1rem;
+  --app-content-gap: 1rem;
 }
 </style>

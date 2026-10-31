@@ -1,10 +1,11 @@
 {
   "id": "format-cleanup",
   "name": "格式清理",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "apiVersion": 1,
   "dataVersion": 1,
   "kind": "frontend",
   "main": "main.js",
-  "description": "预览 Markdown 空白、缩进和自定义替换，保护代码与链接，再保存为可撤销的新版本。"
+  "description": "预览 Markdown 空白、缩进和自定义替换，保护代码与链接，再保存为可撤销的新版本。",
+  "author": "repeaty"
 }

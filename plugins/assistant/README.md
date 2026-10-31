@@ -1,6 +1,8 @@
 # 学习助手
 
-围绕选定的学习材料提问、比较内容或准备整理建议。助手使用 Repeaty 的公开 SDK，与第三方插件使用同一安装、授权和启停流程；更新插件无需重新编译 Repeaty。
+围绕选定的学习材料提问、比较概念、整理知识关系、制作卡片或修正材料。助手使用 Repeaty 的公开 SDK，与第三方插件使用同一安装、授权和启停流程；更新插件无需重新编译 Repeaty。
+
+助手服务持续学习与个人知识网络，保留简单材料修改和丰富的题目、答案编辑。长文创作、整体润色、发表排版和网站发布交给 VS Code、Obsidian 等外部工具。材料与知识关系管理、制卡所需的修改仍通过相同授权和确认流程完成。
 
 ## 开始使用
 
@@ -38,3 +40,7 @@ API 连接需要提供方的 API 地址、模型 ID 和自己的 API key。访�
 ## 开发
 
 从项目根目录运行 `npm run typecheck --workspace @repeaty/plugin-assistant`、`npm test --workspace @repeaty/plugin-assistant` 和 `npm run build --workspace @repeaty/plugin-assistant`。插件产物通过公开插件包安装；源码不进入软件本体构建。
+
+## 许可证
+
+Copyright (c) 2026 CharlesHsu。此官方插件按 AGPL-3.0-only 分发，完整协议见包内 `assets/licenses/AGPL-3.0.txt`；[对应源代码](https://github.com/KraHsu/repeaty/tree/codex/learning-scope/plugins/assistant)。第三方组件继续遵循各自许可证。

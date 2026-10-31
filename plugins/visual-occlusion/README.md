@@ -37,3 +37,7 @@ Repeaty 官方外置插件。它与第三方插件使用同一插件包、材料
 在仓库根目录安装依赖后，运行 `npm run typecheck --workspace @repeaty/plugin-visual-occlusion`、`npm test --workspace @repeaty/plugin-visual-occlusion` 和 `npm run build --workspace @repeaty/plugin-visual-occlusion`。输出独立 `.repeaty-plugin` 插件包。
 
 KaTeX 采用 MIT 许可，见 `LICENSE-KATEX.txt`。样式仅保留 WOFF2 字体，以控制独立插件体积。
+
+## 许可证
+
+Copyright (c) 2026 CharlesHsu。此官方插件按 AGPL-3.0-only 分发，完整协议见包内 `assets/licenses/AGPL-3.0.txt`；[对应源代码](https://github.com/KraHsu/repeaty/tree/codex/learning-scope/plugins/visual-occlusion)。第三方组件继续遵循各自许可证。

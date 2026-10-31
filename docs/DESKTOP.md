@@ -23,7 +23,7 @@ npm run desktop:build
 
 ## 窗口标题栏
 
-Windows、macOS 和 Linux 使用同一套应用绘制的标题栏与窗口按钮，跟随 Repeaty 的界面样式。拖动标题栏空白处移动窗口，双击切换最大化和还原；最小化、最大化与关闭通过 Tauri 调用系统窗口操作。窗口边缘缩放、最小尺寸、阴影及最大化后的工作区仍由原生窗口管理，具体外观可能随系统而异。关闭按钮沿用关闭请求流程，不强制销毁窗口，也不改变原有草稿和保存机制。
+Windows、macOS 和 Linux 使用同一套应用绘制的标题栏与窗口按钮，跟随 Repeaty 的界面样式。拖动标题栏空白处移动窗口，双击切换最大化和还原；最小化、最大化与关闭通过 Tauri 调用系统窗口操作。窗口边缘缩放、最小尺寸、阴影及最大化后的工作区仍由原生窗口管理，具体外观可能随系统而异。关闭按钮先发起关闭请求，等待原有草稿和保存检查，再执行托盘或更新策略；确认允许退出后才完成原生窗口销毁。这个最终步骤不再重新发起关闭请求，避免开发页面刷新后残留的旧监听再次拦截。失败时保留关闭检查，并在标题栏提示重试。
 
 Windows 11 的最大化 / 还原按钮接入系统 Snap Layouts 悬停菜单，布局选择由 Windows 处理，不绘制仿制菜单。窗口最小内容区为 500×400 逻辑像素；显示缩放和工作区会影响可用的布局分区。macOS / Linux 不启用 Windows Snap 接入；macOS 的原生交通灯菜单以及系统提供的移动、对齐交互也不能由自绘按钮完整替代。相关平台限制见 [Tauri 窗口定制](https://v2.tauri.app/learn/window-customization/)及 [Windows Snap Layouts 接入要求](https://learn.microsoft.com/windows/apps/desktop/modernize/apply-snap-layout-menu)。
 
