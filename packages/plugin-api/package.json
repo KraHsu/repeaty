@@ -23,7 +23,8 @@
     "providers.d.ts",
     "network.d.ts",
     "build.d.mts",
-    "build.mjs"
+    "build.mjs",
+    "LICENSE"
   ],
   "dependencies": {
     "vite": "^8.3.4",
@@ -32,5 +33,6 @@
   },
   "peerDependencies": {
     "vue": "^3.5.0"
-  }
+  },
+  "license": "AGPL-3.0-only"
 }

@@ -23,6 +23,8 @@
 
 单列内容容器使用 `app-section-stack`，普通内容通过 `--app-content-gap` 设置间隔（默认同为 24px），分区自身保留共享间距，避免 `gap` 再叠加一次。已有多列网格可用 `app-section-grid`：行间距承担线前留白，分区不再重复加 margin。并排布局的竖线仍按列结构处理。
 
+工具栏和滚动面板边缘使用 `app-divider-before` / `app-divider-after`；紧凑列表、表格分别使用 `app-divider-list` / `app-divider-table`。它们复用同一主题边线，不增加页面分区外边距，行内留白仍保持上下对称。官方插件也使用这些公共类，不再各自定义横向边线。
+
 设置注册项、插件详情、备份、学习概览、材料及复习内容使用这套规则。表单的既有 `form-actions` 和已安装插件使用的 `card-answer` / `leetcode-workspace` 也由同一处定义，插件无需复制宿主 CSS。自定义插件页面可以直接使用这些公共样式类；不要从宿主源码导入样式文件。固定编辑器操作栏、列表/表格行边线以及正文中的 Markdown 分割线有各自的布局语义，不添加页面分区外边距。
 
 ## Nuxt UI 基础
@@ -39,7 +41,7 @@
 | UiCheckbox / UiProgress / UiCollapsible | UCheckbox / UProgress / UCollapsible                                                               |
 | AppModal / 复习菜单 / 历史分页          | UModal + UCard / UDropdownMenu / UPagination                                                       |
 
-设置分类适配 [官方 Branched Menu](https://reactbits.dev/micro/branched-menu) 的 Vue 源码，使用 UButton / UCollapsible；保留原分支曲线、路径绘制与折叠动画，并扩展受控分类和键盘树导航。来源版本与许可见 [版权记录](third-party/react-bits-branched-menu.LICENSE.md)，完整许可随静态产物携带。
+设置分类采用 Repeaty 自身实现的树形菜单，使用 UButton / UCollapsible 和 CSS 分支连线，保留分支外观、滑动选中背景、受控分类与键盘导航。原第三方改编已替换，历史来源与通知留存在 [版权记录](third-party/react-bits-branched-menu.LICENSE.md)。
 
 ## 设置控件
 

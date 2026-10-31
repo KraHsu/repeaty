@@ -2,7 +2,7 @@
 name = "repeaty-desktop"
 version = "0.27.0"
 edition = "2024"
-license = "MIT"
+license = "AGPL-3.0-only"
 publish = false
 
 [build-dependencies]

@@ -1,6 +1,6 @@
 {
   "name": "@repeaty/plugin-review-history",
-  "version": "1.6.3",
+  "version": "1.6.4",
   "private": true,
   "type": "module",
   "description": "Display recent saved review ratings without changing scheduling.",
@@ -21,5 +21,6 @@
     "vite": "^8.3.4",
     "vitest": "^5.0.5",
     "vue-tsc": "^3.3.13"
-  }
+  },
+  "license": "AGPL-3.0-only"
 }

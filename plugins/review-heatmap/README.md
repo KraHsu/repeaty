@@ -46,3 +46,7 @@ npm run dev
 ```
 
 构建产物位于 `dist/review-heatmap.repeaty-plugin`。源码只依赖公开 `@repeaty/plugin-api` 和共享 Vue；宿主组件及运行时不会重复打包，插件源码不进入 Repeaty 本体构建图。生命周期测试覆盖午夜刷新、后台恢复及卸载清理。
+
+## 许可证
+
+Copyright (c) 2026 CharlesHsu。此官方插件按 AGPL-3.0-only 分发，完整协议见包内 `assets/licenses/AGPL-3.0.txt`；[对应源代码](https://github.com/KraHsu/repeaty/tree/codex/learning-scope/plugins/review-heatmap)。第三方组件继续遵循各自许可证。

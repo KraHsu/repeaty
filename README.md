@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/KraHsu/repeaty/actions/workflows/ci.yml"><img src="https://github.com/KraHsu/repeaty/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-37634b" alt="MIT License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-37634b" alt="AGPL-3.0-only License" /></a>
 </p>
 
 Repeaty 是一个开源的持续学习工具。阅读材料、建立知识关联，把需要掌握的内容做成卡片，再通过阅读安排、练习和 FSRS 复习持续巩固。
@@ -115,4 +115,6 @@ npm run test:e2e:desktop         # 界面回归，连接真实 Rust 存储
 
 ## License
 
-[MIT](LICENSE) © 2026 CharlesHsu
+[GNU AGPL v3 only (AGPL-3.0-only)](LICENSE) © 2026 CharlesHsu
+
+项目原创代码、SDK、官方插件及自制素材采用此协议；第三方依赖保留各自许可证，见 [NOTICE](NOTICE)。对应源代码在[项目仓库](https://github.com/KraHsu/repeaty)。

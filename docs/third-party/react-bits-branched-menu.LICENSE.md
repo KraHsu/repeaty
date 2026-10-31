@@ -1,8 +1,8 @@
 # Branched Menu attribution and licenses
 
-Repeaty's settings navigation adapts the Branched Menu interaction from React Bits and its official Vue Bits port. This notice applies to that adaptation; it does not change the license of unrelated Repeaty code.
+Historical attribution: this implementation was replaced on 2026-10-31 by Repeaty's own CSS-based settings tree. Current application code does not incorporate these components; the original notices below are retained for historical source revisions.
 
-Both license texts are also distributed with the application as `licenses/branched-menu.txt`, from the [public license asset](../../public/licenses/branched-menu.txt).
+The historical license texts are retained below; they are no longer bundled as a current application dependency.
 
 ## Pinned upstream sources
 

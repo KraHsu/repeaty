@@ -23,7 +23,7 @@ function remove(index: number) {
 </script>
 
 <template>
-  <div class="cleanup-rules">
+  <div class="cleanup-rules app-section-stack">
     <UiNotice v-if="settings.error.value" tone="error">{{ text(settings.error.value) }}</UiNotice>
     <SettingField
       type="switch"
@@ -47,60 +47,71 @@ function remove(index: number) {
       @update:model-value="toggle('normalizeIndent', $event)"
     />
     <SettingSection
+      class="app-section-divider"
       :title="text('自定义替换')"
       :description="text('按顺序执行，始终保护代码、链接地址与 YAML。正则支持捕获组替换，如 $1。')"
     >
-      <div v-for="(rule, index) in settings.options.rules" :key="index" class="cleanup-rule">
-        <div class="cleanup-rule-head">
-          <strong>{{ text('规则') }} {{ index + 1 }}</strong
-          ><UiButton variant="ghost" @click="remove(index)">{{ text('删除') }}</UiButton>
+      <div class="app-section-stack">
+        <div
+          v-for="(rule, index) in settings.options.rules"
+          :key="index"
+          class="cleanup-rule app-section-stack"
+          :class="{ 'app-section-divider': index > 0 }"
+        >
+          <div class="cleanup-rule-head">
+            <strong>{{ text('规则') }} {{ index + 1 }}</strong
+            ><UiButton variant="ghost" @click="remove(index)">{{ text('删除') }}</UiButton>
+          </div>
+          <SettingField
+            type="select"
+            :label="text('匹配方式')"
+            :model-value="rule.kind"
+            :options="[
+              { value: 'literal', label: text('文字') },
+              { value: 'regex', label: text('正则表达式') },
+            ]"
+            @update:model-value="update(index, { kind: $event === 'regex' ? 'regex' : 'literal' })"
+          />
+          <SettingField
+            type="text"
+            :label="text('查找')"
+            :model-value="rule.find"
+            :maxlength="1000"
+            monospace
+            @update:model-value="update(index, { find: String($event) })"
+          />
+          <SettingField
+            type="text"
+            :label="text('替换为')"
+            :model-value="rule.replace"
+            :maxlength="1000"
+            monospace
+            :placeholder="text('留空表示删除')"
+            @update:model-value="update(index, { replace: String($event) })"
+          />
+          <SettingField
+            v-if="rule.kind === 'regex'"
+            type="text"
+            :label="text('正则标志')"
+            :model-value="rule.flags ?? ''"
+            :placeholder="text('i 忽略大小写；m 多行')"
+            :maxlength="4"
+            @update:model-value="update(index, { flags: String($event) })"
+          />
+          <SettingField
+            type="switch"
+            :label="text('启用此规则')"
+            :model-value="rule.enabled !== false"
+            @update:model-value="update(index, { enabled: Boolean($event) })"
+          />
         </div>
-        <SettingField
-          type="select"
-          :label="text('匹配方式')"
-          :model-value="rule.kind"
-          :options="[
-            { value: 'literal', label: text('文字') },
-            { value: 'regex', label: text('正则表达式') },
-          ]"
-          @update:model-value="update(index, { kind: $event === 'regex' ? 'regex' : 'literal' })"
-        />
-        <SettingField
-          type="text"
-          :label="text('查找')"
-          :model-value="rule.find"
-          :maxlength="1000"
-          monospace
-          @update:model-value="update(index, { find: String($event) })"
-        />
-        <SettingField
-          type="text"
-          :label="text('替换为')"
-          :model-value="rule.replace"
-          :maxlength="1000"
-          monospace
-          :placeholder="text('留空表示删除')"
-          @update:model-value="update(index, { replace: String($event) })"
-        />
-        <SettingField
-          v-if="rule.kind === 'regex'"
-          type="text"
-          :label="text('正则标志')"
-          :model-value="rule.flags ?? ''"
-          :placeholder="text('i 忽略大小写；m 多行')"
-          :maxlength="4"
-          @update:model-value="update(index, { flags: String($event) })"
-        />
-        <SettingField
-          type="switch"
-          :label="text('启用此规则')"
-          :model-value="rule.enabled !== false"
-          @update:model-value="update(index, { enabled: Boolean($event) })"
-        />
+        <UiButton
+          variant="secondary"
+          :disabled="settings.options.rules.length >= 32"
+          @click="add"
+          >{{ text('添加规则') }}</UiButton
+        >
       </div>
-      <UiButton variant="secondary" :disabled="settings.options.rules.length >= 32" @click="add">{{
-        text('添加规则')
-      }}</UiButton>
     </SettingSection>
   </div>
 </template>
@@ -108,12 +119,7 @@ function remove(index: number) {
 <style scoped>
 .cleanup-rules,
 .cleanup-rule {
-  display: grid;
-  gap: var(--space-md, 1rem);
-}
-.cleanup-rule {
-  padding-block: var(--space-md, 1rem);
-  border-top: 1px solid var(--ui-border);
+  --app-content-gap: 1rem;
 }
 .cleanup-rule-head {
   display: flex;

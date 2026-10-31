@@ -1,1 +1,4 @@
-assets/
+assets/*
+!assets/licenses/
+assets/licenses/*
+!assets/licenses/AGPL-3.0.txt

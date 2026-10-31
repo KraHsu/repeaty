@@ -77,16 +77,16 @@ export async function settingsAlignmentFlow(page: Page, info: TestInfo, narrowWi
               .querySelector<HTMLElement>(`[data-category-key="${key}"] .branched-menu__label`)!
               .getBoundingClientRect(),
           )
-          const paths = [
-            ...group.querySelectorAll<SVGPathElement>(':scope > svg > .branched-menu__base'),
-          ].slice(1)
+          const branches = [
+            ...group.querySelectorAll<HTMLElement>(
+              ':scope > .branched-menu__section > .branched-menu__row > .branched-menu__branch',
+            ),
+          ]
           const differences = labels.map((label, index) => {
-            const path = paths[index]!
-            const point = path.getPointAtLength(path.getTotalLength())
-            const screen = new DOMPoint(point.x, point.y).matrixTransform(path.getScreenCTM()!)
+            const branch = branches[index]!.getBoundingClientRect()
             return Math.max(
-              Math.abs(screen.y - (label.y + label.height / 2)),
-              Math.abs(label.x - screen.x - 0.5 * rem),
+              Math.abs(branch.bottom - (label.y + label.height / 2)),
+              Math.abs(label.x - branch.right - 0.5 * rem),
               Math.abs(label.x - root.x - 2.5 * rem),
             )
           })

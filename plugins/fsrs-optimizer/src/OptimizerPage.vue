@@ -134,7 +134,7 @@ onMounted(() => {
             <p class="optimizer-muted">{{ text('emptyHint') }}</p>
           </div>
           <div v-else class="optimizer-table-scroll">
-            <table>
+            <table class="app-divider-table">
               <thead>
                 <tr>
                   <th>{{ text('date') }}</th>
@@ -151,7 +151,7 @@ onMounted(() => {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="model in models" :key="model.id">
+                <tr v-for="model in models" :key="model.id" class="app-divider-after">
                   <td :data-label="text('date')">{{ date(model.createdAt) }}</td>
                   <td :data-label="text('loss')">
                     <span class="optimizer-muted">{{
@@ -296,11 +296,13 @@ table {
   border-collapse: collapse;
   font-size: var(--font-size-meta);
 }
+tbody tr {
+  border-block-end: 0;
+}
 th,
 td {
   text-align: left;
   padding: 16px 14px;
-  border-bottom: 1px solid var(--line);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
@@ -369,7 +371,7 @@ td strong {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 20px;
     padding: 20px 0;
-    border-bottom: 1px solid var(--line);
+    border-block-end: revert-layer;
   }
   td,
   td:first-child,

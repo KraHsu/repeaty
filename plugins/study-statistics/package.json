@@ -1,6 +1,6 @@
 {
   "name": "@repeaty/plugin-study-statistics",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "type": "module",
   "description": "Inspect recorded learning activity and current scheduled workload by study day.",
@@ -22,5 +22,6 @@
     "vite": "^8.3.4",
     "vitest": "^5.0.5",
     "vue-tsc": "^3.3.13"
-  }
+  },
+  "license": "AGPL-3.0-only"
 }

@@ -22,6 +22,16 @@
     margin-block-start: 0;
   }
 
+  /* Panel edges and dense list rows share the line without section margins. */
+  .app-divider-before {
+    border-block-start: 1px solid var(--line);
+  }
+  .app-divider-after,
+  .app-divider-list > li,
+  .app-divider-table :is(th, td) {
+    border-block-end: 1px solid var(--line);
+  }
+
   .app-section-stack {
     display: grid;
     row-gap: 0;

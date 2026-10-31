@@ -31,3 +31,7 @@
 ## 致谢
 
 使用 [Mozilla PDF.js 6.4.299](https://github.com/mozilla/pdf.js/releases/tag/v6.4.299)（Apache-2.0）。包内包含其授权文件；文字层样式从官方样式中保留最小必要规则并限定到阅读器作用域。合成双栏测试 PDF 不包含用户资料。
+
+## 许可证
+
+Copyright (c) 2026 CharlesHsu。此官方插件按 AGPL-3.0-only 分发，完整协议见包内 `assets/licenses/AGPL-3.0.txt`；[对应源代码](https://github.com/KraHsu/repeaty/tree/codex/learning-scope/plugins/pdf-reader)。第三方组件继续遵循各自许可证。

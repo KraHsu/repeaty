@@ -415,7 +415,7 @@ onBeforeUnmount(() => {
           </UiNotice>
           <p v-else-if="detailsLoading && !details" role="status">{{ text('detailsLoading') }}</p>
           <template v-if="details">
-            <ol class="statistics-detail-list" v-if="details.items.length">
+            <ol class="statistics-detail-list app-divider-list" v-if="details.items.length">
               <li v-for="entry in details.items" :key="entry.id">
                 <span>{{ entry.title }}</span>
                 <time v-if="entry.occurredAt" :datetime="entry.occurredAt">{{
@@ -686,7 +686,6 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.8rem 0;
-  border-bottom: 1px solid var(--line);
   font-size: var(--font-size-meta);
 }
 .statistics-detail-list li > :first-child {

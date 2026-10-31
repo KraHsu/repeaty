@@ -40,3 +40,7 @@ API 连接需要提供方的 API 地址、模型 ID 和自己的 API key。访�
 ## 开发
 
 从项目根目录运行 `npm run typecheck --workspace @repeaty/plugin-assistant`、`npm test --workspace @repeaty/plugin-assistant` 和 `npm run build --workspace @repeaty/plugin-assistant`。插件产物通过公开插件包安装；源码不进入软件本体构建。
+
+## 许可证
+
+Copyright (c) 2026 CharlesHsu。此官方插件按 AGPL-3.0-only 分发，完整协议见包内 `assets/licenses/AGPL-3.0.txt`；[对应源代码](https://github.com/KraHsu/repeaty/tree/codex/learning-scope/plugins/assistant)。第三方组件继续遵循各自许可证。
