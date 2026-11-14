@@ -213,6 +213,7 @@ const countLabels: Record<string, string> = {
   card_drafts: '制卡草稿',
   source_drafts: '材料草稿',
   materialFolders: '材料文件夹',
+  materialCollections: '材料集合',
   retired_notes: '退役笔记',
   retired_cards: '退役卡片',
   retired_records: '退役记录',
@@ -221,6 +222,11 @@ const countLabels: Record<string, string> = {
   savedSearches: '常用筛选',
   practices: '练习记录',
   materialReceipts: '材料导入记录',
+  automationReceipts: '自动化操作记录',
+  studySettings: '学习设置',
+  studyEvents: '学习活动',
+  studyActivity: '活跃使用时间',
+  fsrsModels: '个人记忆参数',
   values_store: '设置与插件数据',
 }
 const previewCounts = computed(() => {
@@ -289,7 +295,11 @@ const maintain = (vacuum = false) =>
           ><FolderOpen :size="16" />{{ t('选择备份目录') }}</UiButton
         >
       </div>
-      <details v-if="config" class="recovery-policy" :open="!config.targets.length">
+      <details
+        v-if="config"
+        class="recovery-policy app-section-divider"
+        :open="!config.targets.length"
+      >
         <summary>
           <Settings2 :size="17" />{{ t('备份位置与保留规则')
           }}<span>{{ t(config.policy.enabled ? '自动备份已开启' : '自动备份未开启') }}</span>
@@ -365,7 +375,7 @@ const maintain = (vacuum = false) =>
           </template>
         </div>
       </details>
-      <div class="recovery-list-heading">
+      <div class="recovery-list-heading app-section-divider">
         <h3>{{ t('可恢复的备份') }}</h3>
         <UiButton variant="ghost" :disabled="busy" @click="act(refresh)"
           ><RefreshCw :size="15" />{{ t('刷新') }}</UiButton
@@ -416,7 +426,7 @@ const maintain = (vacuum = false) =>
       </details>
     </template>
   </section>
-  <WorkspaceAttachments v-if="!standalone" />
+  <WorkspaceAttachments v-if="!standalone" class="app-section-divider" />
   <AppModal
     v-if="preview"
     :title="t('预览完整备份')"
@@ -513,8 +523,7 @@ const maintain = (vacuum = false) =>
 </template>
 <style scoped>
 .recovery-section {
-  padding-block: 24px 28px;
-  border-bottom: 1px solid var(--line);
+  padding-block-start: 24px;
 }
 .recovery-heading {
   align-items: flex-start;
@@ -530,24 +539,19 @@ const maintain = (vacuum = false) =>
   max-width: 65ch;
 }
 .recovery-empty {
-  padding: 24px 0;
+  padding-block-start: 24px;
 }
 .recovery-empty p {
   margin-bottom: 14px;
   max-width: 65ch;
 }
-.recovery-policy {
-  margin-block: 20px;
-  border-block: 1px solid var(--line);
-}
 summary {
   cursor: pointer;
-  min-height: 48px;
-  align-items: center;
-  padding-block: 14px;
 }
 .recovery-policy summary {
   display: flex;
+  min-height: 44px;
+  align-items: center;
   gap: 10px;
 }
 .recovery-policy summary span {
@@ -556,7 +560,7 @@ summary {
   font-size: var(--font-size-meta);
 }
 .recovery-policy-content {
-  padding: 4px 0 24px;
+  padding-block-start: 12px;
 }
 .recovery-targets {
   list-style: none;
@@ -591,9 +595,6 @@ summary {
   justify-content: space-between;
   gap: 16px;
 }
-.recovery-list-heading {
-  margin-top: 20px;
-}
 .recovery-list li > div {
   min-width: 0;
 }
@@ -604,6 +605,10 @@ summary {
 }
 .recovery-maintenance {
   margin-top: 24px;
+}
+.recovery-maintenance summary {
+  min-height: 44px;
+  padding-block: 11px;
 }
 .recovery-maintenance p {
   margin-block: 12px;

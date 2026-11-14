@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { matchesInputShortcut, useOptionalInputCommands } from '../input/controller'
 import { UiSelect, UiButton, UiTextarea, UiInput, UiCheckbox, UiCollapsible } from './ui'
-import { desktopEdition } from '../edition'
+import { serverEdition } from '../edition'
 import { t, msg, LocalizedError, type DisplayMessage } from '../i18n'
 
 import { computed, defineAsyncComponent, nextTick, reactive, ref } from 'vue'
@@ -17,6 +18,10 @@ import {
 import { prepareMedia } from '../core/media'
 import MediaList from './MediaList.vue'
 import MediaAttachments from './MediaAttachments.vue'
+import StudyPriorityField from './StudyPriorityField.vue'
+import { effectiveSourcePriority } from '../core/study-priority'
+import { studySettings } from '../core/study-settings'
+import { studyPriorityOrigin } from './study-priority-label'
 const CardContent = defineAsyncComponent(() => import('./CardContent.vue'))
 import { usePlugins } from '../plugins'
 import { usePluginManager } from '../plugins/manager'
@@ -56,6 +61,19 @@ const form = reactive<NoteInput>({
   tags: [...(props.note?.tags ?? props.initial?.tags ?? [])],
   frontMedia: [...(props.note?.frontMedia ?? props.initial?.frontMedia ?? [])],
   backMedia: [...(props.note?.backMedia ?? props.initial?.backMedia ?? [])],
+  studyPriority: props.note?.studyPriority ?? props.initial?.studyPriority,
+})
+const inheritedPriority = computed(() => {
+  const source = props.library.sources.find((entry) => entry.id === form.excerpt?.sourceId)
+  if (source) {
+    const resolved = effectiveSourcePriority(source, props.library)
+    if (resolved.kind !== 'default')
+      return { value: resolved.value, from: studyPriorityOrigin(props.library, resolved) }
+  }
+  const deck = props.library.decks.find((entry) => entry.id === form.deckId)
+  return deck?.studyPriority !== undefined
+    ? { value: deck.studyPriority, from: deck.name }
+    : { value: studySettings(props.library).defaultPriority, from: t('默认学习优先级') }
 })
 const pluginChoices = enabledEditorPlugins
 const selectedPluginId = ref(props.note?.plugin?.id ?? pluginChoices.value[0]?.id)
@@ -137,18 +155,18 @@ function selectQuestionPlugin(id: string) {
   form.type = 'plugin'
   selectedPluginId.value = id
 }
+const inputCommands = useOptionalInputCommands()
 function shortcut(event: KeyboardEvent) {
   // Enter/Shift+C while an IME composition is open belongs to the IME, not to the form.
   if (event.isComposing || event.keyCode === 229) return
-  if (!(event.ctrlKey || event.metaKey) || event.repeat) return
+  if (event.defaultPrevented || event.repeat) return
   if (
-    event.shiftKey &&
-    event.key.toLowerCase() === 'c' &&
+    matchesInputShortcut(inputCommands, 'editor.cloze', event) &&
     event.target === frontInput.value?.textareaRef
   ) {
     event.preventDefault()
     void addCloze()
-  } else if (event.key === 'Enter') {
+  } else if (matchesInputShortcut(inputCommands, 'editor.save', event)) {
     event.preventDefault()
     void save(!props.note && !props.initial?.excerpt)
   }
@@ -299,6 +317,13 @@ async function keepDraft() {
             ></UiSelect>
           </div>
         </div>
+        <StudyPriorityField
+          id="note-study-priority"
+          v-model="form.studyPriority"
+          :inherited-value="inheritedPriority.value"
+          :inherited-from="inheritedPriority.from"
+          :disabled="busy"
+        />
         <div v-if="form.type !== 'plugin'" class="editor-hints">
           <p class="form-note">
             {{
@@ -445,7 +470,7 @@ async function keepDraft() {
         <label v-if="removed.length" class="check-line import-warning">
           <UiCheckbox name="confirm-removed-cards" v-model="allowRemove" required />{{
             t(
-              desktopEdition
+              !serverEdition
                 ? '确认让不再生成的 {p0} 张卡片暂不复习，记录保留，重新添加后恢复。'
                 : '确认移除不再生成的 {p0} 张卡片及其复习记录（会先保存快照）。',
               {

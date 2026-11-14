@@ -76,6 +76,7 @@ export function useEditorActions({
       burySiblings: deck?.burySiblings ?? true,
       leechThreshold: deck?.leechThreshold ?? 8,
       desiredRetention: deck?.desiredRetention ?? 0.9,
+      studyPriority: deck?.studyPriority,
     })
     modal.value = 'deck'
   }

@@ -52,7 +52,10 @@ export function sourceContextPath(sources: Source[], source: Source, excerpt?: S
         mediaId: parent.mediaId,
         start: current.origin.start + selection.start,
         end: current.origin.start + selection.end,
-        locator: undefined,
+        locator:
+          selection.start === 0 && selection.end === current.characters
+            ? current.origin.locator
+            : undefined,
       }
     path.push({ source: parent, excerpt: selection })
     seen.add(parent.id)

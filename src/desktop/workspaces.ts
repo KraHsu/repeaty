@@ -28,6 +28,12 @@ export function connectWorkspaceLeaveGuard(beforeLeave: () => boolean | Promise<
   }
 }
 const settings = new Map<string, string>()
+let settingsQueue: Promise<unknown> = Promise.resolve()
+function serializeSettings<T>(operation: () => Promise<T>): Promise<T> {
+  const next = settingsQueue.then(operation)
+  settingsQueue = next.catch(() => {})
+  return next
+}
 export function installWorkspaceStores() {
   // Never read browser storage, including while native startup is still pending.
   useSettingsStore({
@@ -36,25 +42,40 @@ export function installWorkspaceStores() {
       const owner = workspaceStatus.value?.active?.token
       const active = await currentWorkspace()
       if (!owner || active.token !== owner) throw nativeError('stale-workspace-session')
-      await workspaceApi('workspace_write', {
+      // Begin the durable write now so workspace-close's existing write barrier
+      // includes it. Serialize only cache publication with hydration reads.
+      const outcome = workspaceApi('workspace_write', {
         token: active.token,
         request: { type: 'value', namespace: 'settings', id: key, value },
+      }).then(
+        () => ({ ok: true as const }),
+        (error: unknown) => ({ ok: false as const, error }),
+      )
+      await serializeSettings(async () => {
+        const saved = await outcome
+        if (!saved.ok) throw saved.error
+        if (workspaceStatus.value?.active?.token === owner) settings.set(key, value)
       })
-      if (workspaceStatus.value?.active?.token === owner) settings.set(key, value)
     },
   })
 }
-async function hydrateSettings() {
+export async function hydrateSettings() {
+  return serializeSettings(hydrateSettingsNow)
+}
+async function hydrateSettingsNow() {
   const active = workspaceStatus.value?.active
-  settings.clear()
+  const replacement = new Map<string, string>()
   if (active) {
     const values = await workspaceApi<Record<string, unknown>>('workspace_read', {
       token: active.token,
       request: { type: 'settings' },
     })
     for (const [key, value] of Object.entries(values))
-      if (typeof value === 'string') settings.set(key, value)
+      if (typeof value === 'string') replacement.set(key, value)
   }
+  if (workspaceStatus.value?.active?.token !== active?.token) return
+  settings.clear()
+  for (const [key, value] of replacement) settings.set(key, value)
   initI18n()
 }
 export function nativeError(issue: unknown) {

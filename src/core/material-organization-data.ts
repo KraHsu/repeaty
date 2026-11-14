@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 export const materialFolderSchema = z.object({
+  studyPriority: z.number().int().min(0).max(9).optional(),
   id: z.string().min(1).max(100),
   name: z.string().trim().min(1).max(160),
   parentId: z.string().min(1).max(100).optional(),

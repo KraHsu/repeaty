@@ -415,7 +415,13 @@ fn counts(db: &Connection) -> Result<BTreeMap<String, u64>> {
         "values_store",
         "assets",
     ]) {
-        if ["source_drafts", "materialFolders"].contains(&table)
+        if [
+            "source_drafts",
+            "materialFolders",
+            "materialCollections",
+            "automationReceipts",
+        ]
+        .contains(&table)
             && !db.query_row(
                 "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
                 [table],
@@ -651,7 +657,7 @@ fn validate_database_at(root: &Path, database_path: &Path, manifest: &Manifest) 
     db.pragma_update(None, "trusted_schema", "OFF")?;
     let app: i64 = db.pragma_query_value(None, "application_id", |r| r.get(0))?;
     let version: u32 = db.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    if app != 0x52505459 || ![10, 11, 12, 13].contains(&version) {
+    if app != 0x52505459 || ![10, 11, 12, 13, 14, 15, 16, 17, 18].contains(&version) {
         return Err(Error("backup-incompatible"));
     }
     let identity: String = db.query_row("SELECT id FROM workspace_identity", [], |r| r.get(0))?;
@@ -1765,6 +1771,7 @@ mod tests {
             patches: vec![],
             reason: None,
             operation_history: Some(history.clone()),
+            retired: None,
         };
         assert!(library.db.commit(bad).is_err());
         let version: u32 = library
@@ -1780,6 +1787,7 @@ mod tests {
                 patches: vec![],
                 reason: None,
                 operation_history: Some(history.clone()),
+                retired: None,
             })
             .unwrap();
         let version: u32 = library
@@ -1798,6 +1806,7 @@ mod tests {
                 patches: vec![],
                 reason: None,
                 operation_history: None,
+                retired: None,
             })
             .unwrap();
         assert_eq!(library.db.load().unwrap()["operationHistory"], history);

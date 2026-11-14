@@ -9,7 +9,16 @@
     "plugins/leetcode",
     "plugins/typed-answer",
     "plugins/review-heatmap",
-    "plugins/format-cleanup"
+    "plugins/format-cleanup",
+    "plugins/pdf-reader",
+    "plugins/document-reader",
+    "plugins/visual-occlusion",
+    "plugins/obsidian",
+    "plugins/readwise",
+    "plugins/fsrs-optimizer",
+    "plugins/study-statistics",
+    "plugins/assistant",
+    "plugins/web-lookup"
   ],
   "description": "Desktop flashcards and spaced repetition, with your learning library in one folder.",
   "engines": {
@@ -84,7 +93,7 @@
     "vitest": "^5.0.5",
     "vue-tsc": "^3.3.13"
   },
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/KraHsu/repeaty.git"

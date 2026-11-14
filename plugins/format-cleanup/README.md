@@ -11,3 +11,7 @@
 应用后创建新的不可变材料版本，通过应用的撤销／重做恢复。旧摘录、卡片、评分、历史、原始版本和草稿保留。插件停用或卸载不会删除材料或清理记录。本插件不需要网络、文件或凭据权限，不能自动批量改写整库。
 
 开发：`npm run build --workspace @repeaty/plugin-format-cleanup`。使用 SDK 1.9 的 `materials.editContent`，在 Repeaty 更新后独立构建和分发。
+
+## 许可证
+
+Copyright (c) 2026 CharlesHsu。此官方插件按 AGPL-3.0-only 分发，完整协议见包内 `assets/licenses/AGPL-3.0.txt`；[对应源代码](https://github.com/KraHsu/repeaty/tree/codex/learning-scope/plugins/format-cleanup)。第三方组件继续遵循各自许可证。

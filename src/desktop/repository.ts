@@ -24,6 +24,7 @@ import { parseSourceProperties } from '../core/source-properties'
 import { recordStores, type Snapshot, type BackupSummary, type CardPage } from '../core/storage'
 import { compileSearch } from '../core/search'
 import { available } from '../core/scheduler'
+import { studySettings } from '../core/study-settings'
 import {
   createWorkspaceMarkdown,
   readWorkspaceMarkdown,
@@ -133,6 +134,8 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
         scanHash?: string
         assetObservations?: { path: string; hash: string }[]
         operationHistory?: OperationHistory
+        retired?: RetiredNote[]
+        sync?: import('../sync/commit').SyncCommit
       } = {},
     ): Promise<Snapshot> {
       if (!cached) await repository.load()
@@ -150,7 +153,13 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
           'savedSearches',
           'sources',
           'materialReceipts',
+          'automationReceipts',
           'materialFolders',
+          'materialCollections',
+          'sourceConnections',
+          'sourceCandidates',
+          'studySettings',
+          'fsrsModels',
         ] as const
       ).every((key) => previous[key] === library[key])
       if (structural) workspaceLibrarySchema.parse(library)
@@ -158,6 +167,8 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
         validateLibraryReferences(library, () => {
           throw nativeError('invalid-data')
         })
+      if (library.studyEvents.length > 500_000 || library.studyActivity.length > 500_000)
+        throw new Error('study-record-limit')
       const patches: NativePatch[] = []
       let restoredBytes = 0
       for (const store of recordStores) {
@@ -201,7 +212,11 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
         for (const id of prior.keys()) patches.push({ store, id })
       }
       for (const asset of options.assets ?? [])
-        if (library.media.some((meta) => meta.id === asset.meta.id)) await upload(asset)
+        if (
+          library.media.some((meta) => meta.id === asset.meta.id) ||
+          options.retired?.some((entry) => entry.media.some((meta) => meta.id === asset.meta.id))
+        )
+          await upload(asset)
       const contentPatches = patches.filter((patch) => {
         if (patch.positionOnly) return false
         if (patch.store === 'notes') return true
@@ -364,6 +379,8 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
           scanHash: options.scanHash ?? null,
           assetObservations: options.assetObservations ?? [],
           operationHistory: options.operationHistory,
+          retired: options.retired,
+          sync: options.sync,
         },
       })
       if (result.revision !== expectedRevision + 1) throw changed()
@@ -455,6 +472,15 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
       if (result.revision !== cached?.revision) throw changed()
       return result
     },
+    async retiredNotes(backupId?: string): Promise<RetiredNote[]> {
+      const revision = cached?.revision
+      const result = z
+        .array(retiredNoteSchema)
+        .parse(await read({ type: 'retired-notes', revision, ...(backupId ? { backupId } : {}) }))
+      if (revision !== cached?.revision || result.some((entry) => entry.revision !== revision))
+        throw changed()
+      return result
+    },
     async getAttempt(id: string, expectedRevision = cached?.revision, signal?: AbortSignal) {
       signal?.throwIfAborted()
       if (expectedRevision !== cached?.revision) throw changed()
@@ -516,9 +542,10 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
     ): Promise<CardPage> {
       signal?.throwIfAborted()
       if (!cached) await repository.load()
-      const matches = compileSearch(cached!.library.decks, filter, now)
+      const settings = studySettings(cached!.library)
+      const matches = compileSearch(cached!.library.decks, filter, now, settings)
       const cards = cardViews(cached!.library).filter(matches)
-      const eligible = includeStudy ? cards.filter((card) => available(card, now)) : []
+      const eligible = includeStudy ? cards.filter((card) => available(card, now, settings)) : []
       return {
         cards: cards.slice((Math.max(1, page) - 1) * 50, Math.max(1, page) * 50),
         total: cards.length,

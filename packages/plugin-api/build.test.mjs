@@ -4,12 +4,35 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildPlugin } from './build.mjs'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 
 const fixtureRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '../../test-results/plugin-readme-build',
 )
 const projects = []
+test('package CLI builds offline assets and removes stale assets output', async () => {
+  const directory = await project()
+  await mkdir(join(directory, 'assets'))
+  await writeFile(join(directory, 'assets/worker.js'), 'postMessage(42)')
+  await promisify(execFile)(
+    process.execPath,
+    [fileURLToPath(new URL('./build.mjs', import.meta.url)), directory],
+    { windowsHide: true },
+  )
+  const bundle = JSON.parse(
+    await readFile(join(directory, 'dist/readme-example.repeaty-plugin'), 'utf8'),
+  )
+  assert.equal(
+    Buffer.from(bundle.assets['worker.js'].base64, 'base64').toString(),
+    'postMessage(42)',
+  )
+  assert.equal(bundle.assets['worker.js'].type, 'text/javascript')
+  await rm(join(directory, 'assets/worker.js'))
+  await buildPlugin(directory)
+  await assert.rejects(readFile(join(directory, 'dist/assets.json')), { code: 'ENOENT' })
+})
 
 test('material registrations and service ports are supplied by the activating host without bundling host logic', async () => {
   const directory = await project()
@@ -72,6 +95,7 @@ async function project() {
     JSON.stringify({
       id: 'readme-example',
       name: 'README example',
+      author: 'example-author',
       version: '1.0.0',
       apiVersion: 1,
       dataVersion: 1,
@@ -93,6 +117,20 @@ afterEach(async () => {
     )
     await rm(directory, { recursive: true, force: true })
   }
+})
+
+test('new packages require an author before compiling and preserve the normalized author', async () => {
+  const directory = await project()
+  const file = join(directory, 'manifest.json')
+  const manifest = JSON.parse(await readFile(file, 'utf8'))
+  for (const author of [undefined, '', '   ', 123, 'x'.repeat(101)]) {
+    await writeFile(file, JSON.stringify({ ...manifest, author }))
+    await assert.rejects(buildPlugin(directory), /must declare a non-empty author/)
+    await assert.rejects(readFile(join(directory, 'dist/main.js')), { code: 'ENOENT' })
+  }
+  await writeFile(file, JSON.stringify({ ...manifest, author: '  Example author  ' }))
+  const bundle = await buildPlugin(directory)
+  assert.equal(bundle.manifest.author, 'Example author')
 })
 
 test('independent builds include original README bytes and remove a stale output when documentation is removed', async () => {

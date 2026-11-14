@@ -1,5 +1,6 @@
 import { cardViews, type Library, type CardView } from './model'
 import { available, dueCards, isBuried, type CardEligibility } from './scheduler'
+import { studySettings } from './study-settings'
 
 export interface DeckStudyStatus {
   total: number
@@ -22,6 +23,7 @@ export function deckStudyCounts(
 ) {
   queue ??= dueCards(library, now, undefined, eligible, views)
   const ready = new Set(queue.map((card) => card.id))
+  const settings = studySettings(library)
   const result = new Map<string, DeckStudyStatus>(
     library.decks.map((deck) => [
       deck.id,
@@ -44,13 +46,13 @@ export function deckStudyCounts(
     status.total++
     if (card.schedule.state === 0) status.newTotal++
     if (card.suspended) status.suspended++
-    if (isBuried(card, now)) status.buried++
+    if (isBuried(card, now, settings)) status.buried++
     if (ready.has(card.id)) {
       status.ready++
       if (card.schedule.state === 0) status.newReady++
       else if (card.schedule.state === 2) status.reviewReady++
       else status.learningReady++
-    } else if (eligible(card) && available(card, now)) {
+    } else if (eligible(card) && available(card, now, settings)) {
       if (new Date(card.schedule.due) > now) status.future++
       else status.limited++
     }

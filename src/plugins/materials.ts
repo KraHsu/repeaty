@@ -1,5 +1,7 @@
+import { z } from 'zod'
 import { markRaw, shallowReactive } from 'vue'
 import type {
+  SourceConnectorContribution,
   MaterialImporterContribution,
   MaterialReaderContribution,
   MaterialCommandContribution,
@@ -11,6 +13,7 @@ import type {
 import { cancelledTask, retainTaskWork } from './tasks'
 
 export type {
+  SourceConnectorContribution,
   MaterialImporterContribution,
   MaterialReaderContribution,
   MaterialCommandContribution,
@@ -19,6 +22,7 @@ export type {
 } from '@repeaty/plugin-api'
 
 export interface MaterialRegistrations {
+  registerSourceConnector(contribution: SourceConnectorContribution): () => void
   registerImporter(contribution: MaterialImporterContribution): () => void
   registerReader(contribution: MaterialReaderContribution): () => void
   registerCommand(contribution: MaterialCommandContribution): () => void
@@ -58,6 +62,7 @@ function strings(values: readonly string[], validate: (value: string) => boolean
 
 /** Registrations are published only with their containing successful plugin activation. */
 export function createMaterialRegistrations(current: () => boolean) {
+  const connectors = shallowReactive<SourceConnectorContribution[]>([])
   const importers = shallowReactive<MaterialImporterContribution[]>([])
   const readers = shallowReactive<MaterialReaderContribution[]>([])
   const commands = shallowReactive<MaterialCommandContribution[]>([])
@@ -169,6 +174,57 @@ export function createMaterialRegistrations(current: () => boolean) {
     }
   }
   const registrations: MaterialRegistrations = {
+    registerSourceConnector(contribution) {
+      identity(contribution)
+      const { id, title, kind, scan } = contribution
+      const fields =
+        contribution.fields &&
+        z
+          .array(
+            z.strictObject({
+              key: z
+                .string()
+                .regex(/^[a-z][a-zA-Z0-9-]{0,63}$/)
+                .refine((k) => !['input', 'directoryId'].includes(k)),
+              title: z.string().min(1).max(160),
+              type: z.enum(['select', 'text']),
+              options: z
+                .array(
+                  z.strictObject({ value: z.string().max(200), label: z.string().min(1).max(160) }),
+                )
+                .min(1)
+                .max(50)
+                .optional(),
+              default: z.string().max(200).optional(),
+            }),
+          )
+          .max(20)
+          .parse(contribution.fields)
+      const credentialHint = z.string().max(500).optional().parse(contribution.credentialHint)
+      if (
+        fields &&
+        (new Set(fields.map((f) => f.key)).size !== fields.length ||
+          fields.some(
+            (f) =>
+              f.type === 'select' &&
+              (!f.options ||
+                new Set(f.options.map((o) => o.value)).size !== f.options.length ||
+                (f.default !== undefined && !f.options.some((o) => o.value === f.default))),
+          ))
+      )
+        throw new Error('来源配置字段无效。')
+      if (!['directory', 'remote', 'hybrid'].includes(kind) || typeof scan !== 'function')
+        throw new Error('来源连接器定义无效。')
+      return register(connectors, contribution, (signal) => ({
+        id,
+        title,
+        kind,
+        fields,
+        credentialHint,
+        scan: (request, context) =>
+          invoke(context, signal, (scoped) => scan.call(contribution, request, scoped)),
+      }))
+    },
     registerImporter(contribution) {
       identity(contribution)
       const { id, title, parse } = contribution
@@ -188,30 +244,58 @@ export function createMaterialRegistrations(current: () => boolean) {
     },
     registerReader(contribution) {
       identity(contribution)
-      const { id, title, component } = contribution
+      const { id, title, component, supportsTextLocation } = contribution
       const formats = [...contribution.formats]
       if (
         !strings(formats, (value) => /^[a-z0-9][a-z0-9.+_-]{0,63}$/.test(value)) ||
+        (supportsTextLocation !== undefined && typeof supportsTextLocation !== 'boolean') ||
         !component ||
         Array.isArray(component) ||
         !['object', 'function'].includes(typeof component)
       )
         throw new Error('材料阅读器定义无效。')
-      return register(readers, contribution, () => ({ id, title, formats, component }))
+      return register(readers, contribution, () => ({
+        id,
+        title,
+        formats,
+        component,
+        supportsTextLocation,
+      }))
     },
     registerCommand(contribution) {
       identity(contribution)
-      const { id, title, run, shortcut } = contribution
+      const { id, title, run, shortcut, component } = contribution
+      const formats = contribution.formats && [...contribution.formats]
       if (
-        typeof run !== 'function' ||
+        (typeof run === 'function') === !!component ||
+        (run !== undefined && typeof run !== 'function') ||
+        (component &&
+          (Array.isArray(component) || !['object', 'function'].includes(typeof component))) ||
+        (formats &&
+          !strings(
+            formats,
+            (value) => value === '*' || /^[a-z0-9][a-z0-9.+_-]{0,63}$/.test(value),
+          )) ||
         (shortcut !== undefined && (typeof shortcut !== 'string' || shortcut.length > 100))
       )
         throw new Error('插件命令定义无效。')
       return register(commands, contribution, (signal) => ({
         id,
-        title,
+        get title() {
+          // A plugin can localize its label reactively; identity and executable
+          // capabilities remain captured at registration time.
+          try {
+            const next = contribution.title
+            return typeof next === 'string' && next.trim() && next.length <= 200 ? next : title
+          } catch {
+            return title
+          }
+        },
         shortcut,
-        run: (context) => invoke(context, signal, (scoped) => run.call(contribution, scoped)),
+        formats,
+        component: component && markRaw(component),
+        run:
+          run && ((context) => invoke(context, signal, (scoped) => run.call(contribution, scoped))),
       }))
     },
     registerSearchProvider(contribution) {
@@ -227,6 +311,7 @@ export function createMaterialRegistrations(current: () => boolean) {
     },
   }
   return {
+    connectors,
     importers,
     readers,
     commands,
@@ -235,6 +320,7 @@ export function createMaterialRegistrations(current: () => boolean) {
     dispose() {
       for (const controller of controllers) controller.abort()
       controllers.clear()
+      connectors.splice(0)
       importers.splice(0)
       readers.splice(0)
       commands.splice(0)

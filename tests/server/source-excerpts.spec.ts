@@ -47,7 +47,10 @@ test('a service failure keeps the selected text and title for retry without part
       ? route.fulfill({ status: 503, json: { error: 'unavailable' } })
       : route.continue(),
   )
-  await page.getByRole('button', { name: '保存为摘录', exact: true }).click()
+  await page
+    .locator('.source-excerpt-action')
+    .getByRole('button', { name: '保存为摘录', exact: true })
+    .click()
   await page.getByLabel('摘录标题').fill('Remote retry')
   await page.getByRole('button', { name: '保存摘录', exact: true }).click()
   await expect(page.getByRole('dialog').getByRole('alert')).toBeVisible()

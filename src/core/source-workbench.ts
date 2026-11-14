@@ -82,6 +82,7 @@ export interface SourceAnnotationUpdate {
   end: number
   quote: string
   body: string
+  locator?: import('./material-data').MaterialLocator
 }
 export function upsertSourceAnnotation(
   library: Library,
@@ -103,6 +104,7 @@ export function upsertSourceAnnotation(
     end: update.end,
     quote: update.quote,
     body: update.body,
+    locator: update.locator,
     createdAt: existing?.createdAt ?? now.toISOString(),
     updatedAt: now.toISOString(),
   })

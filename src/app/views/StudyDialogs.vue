@@ -3,13 +3,17 @@ import { UiInput, UiButton } from '../../components/ui'
 import { t } from '../../i18n'
 import AppModal from '../../components/AppModal.vue'
 import { useApplication } from '../context'
-const { busy, modal, mixedRatio, startMixed, shortcuts } = useApplication()
+const { busy, modal, mixedRatio, startMixed, shortcuts, navigate } = useApplication()
+function openSettings() {
+  modal.value = null
+  void navigate('settings')
+}
 </script>
 <template>
   <AppModal v-if="modal === 'mixed'" :title="t('开始混合学习')" :busy="busy" @close="modal = null">
     <form class="editor-form" @submit.prevent="startMixed">
       <p>{{ t('按现有复习额度安排卡片，在其中穿插今天待阅读的材料。') }}</p>
-      <label for="mixed-ratio">{{ t('每篇材料之间复习几张卡片？') }}</label>
+      <label for="mixed-ratio">{{ t('每轮先复习几张卡片？') }}</label>
       <UiInput
         id="mixed-ratio"
         v-model.number="mixedRatio"
@@ -44,5 +48,7 @@ const { busy, modal, mixedRatio, startMixed, shortcuts } = useApplication()
     <p class="form-note">
       {{ t('输入框保留文字撤销；学习库支持撤销当前会话最近 20 次修改。评分在重启后仍可撤销。') }}
     </p>
+    <p>{{ t('在设置中调整快捷键、鼠标手势、菜单、阅读字体和配色。选区查询可在插件页面安装。') }}</p>
+    <UiButton variant="secondary" @click="openSettings">{{ t('打开设置') }}</UiButton>
   </AppModal>
 </template>

@@ -40,7 +40,7 @@ defineExpose({ showMatches })
 </script>
 
 <template>
-  <section class="source-excerpts" :aria-label="t('本篇摘录')">
+  <section class="source-excerpts app-section-divider" :aria-label="t('本篇摘录')">
     <h3 ref="heading" tabindex="-1">{{ t('本篇摘录（{count}）', { count: entries.length }) }}</h3>
     <p class="form-note">{{ t('按原文位置排列，包含稍后阅读和已归档的摘录。') }}</p>
     <ol class="source-excerpt-list" :start="page * pageSize + 1">
@@ -98,8 +98,6 @@ defineExpose({ showMatches })
 <style scoped>
 .source-excerpts {
   min-width: 0;
-  border-top: 1px solid var(--line);
-  padding-top: 1rem;
 }
 .source-excerpts h3 {
   margin: 0 0 0.6rem;

@@ -185,6 +185,7 @@ function add(excerpt: SourceExcerpt) {
     end: excerpt.end,
     quote: excerpt.quote,
     body: '',
+    locator: excerpt.locator,
   })
 }
 function edit(annotation: SourceAnnotation) {
@@ -201,6 +202,7 @@ function show(annotation: SourceAnnotation) {
         start: annotation.start,
         end: annotation.end,
         quote: annotation.quote,
+        locator: annotation.locator,
       },
     }
 }

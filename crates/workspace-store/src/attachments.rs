@@ -4,7 +4,7 @@
 use crate::{
     error::{Error, Result},
     files,
-    records::MAX_MEDIA,
+    records::{MAX_DOCUMENT, MAX_MEDIA},
 };
 use cap_std::fs::{Dir, OpenOptions};
 use rusqlite::{Connection, params};
@@ -92,7 +92,15 @@ fn read(dir: &Dir, path: &str) -> Result<Vec<u8>> {
         use cap_std::fs::OpenOptionsExt;
         options.custom_flags(0x00200000);
     }
-    files::read_stable_file(dir.open_with(path, &options)?.into_std(), MAX_MEDIA as u64)
+    let limit = if matches!(
+        path.rsplit('.').next(),
+        Some("pdf" | "epub" | "html" | "bin")
+    ) {
+        MAX_DOCUMENT
+    } else {
+        MAX_MEDIA
+    };
+    files::read_stable_file(dir.open_with(path, &options)?.into_std(), limit as u64)
         .map_err(|_| Error("unsafe-file"))
 }
 fn walk(
@@ -228,6 +236,7 @@ fn collect_refs(
         ("active", "sources"),
         ("active", "media"),
         ("history", "history"),
+        ("history", "retired_history"),
         ("retired", "retired_notes"),
         ("retired", "retired_records"),
         ("retired", "retired_media"),

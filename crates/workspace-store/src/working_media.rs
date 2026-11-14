@@ -45,7 +45,14 @@ pub fn read(root: &Dir, path: &str) -> Result<Option<Vec<u8>>> {
             return match parent.open_with(part.as_os_str(), &options) {
                 Ok(file) => Ok(Some(files::read_stable_file(
                     file.into_std(),
-                    10 * 1024 * 1024,
+                    if matches!(
+                        path.rsplit('.').next(),
+                        Some("pdf" | "epub" | "html" | "bin")
+                    ) {
+                        crate::records::MAX_DOCUMENT as u64
+                    } else {
+                        crate::records::MAX_MEDIA as u64
+                    },
                 )?)),
                 Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
                 Err(error) => Err(error.into()),
