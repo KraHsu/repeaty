@@ -28,8 +28,11 @@ import {
 import { prepareRetiredDocument } from '../core/retired-document'
 import { compileSearch } from '../core/search'
 import { available } from '../core/scheduler'
+import { studySettings } from '../core/study-settings'
+import { studyActivitySchema, studyEventSchema } from '../core/study-data'
 import { validateSourceOrigins } from '../core/sources'
 import { validateMaterialChanges } from '../core/material-data'
+import { validateAutomationReceipts } from '../core/automation-data'
 import { LocalizedError, msg } from '../i18n'
 import { WorkspaceReadError } from './errors'
 import type { BrowserWorkspaceSnapshot } from './workspace-reader'
@@ -224,6 +227,14 @@ export function createBrowserRepository(
       if (options.consumeSourceDraft && !consumedDraft) throw new WorkspaceReadError('invalid')
       const before = current.library
       validateMaterialChanges(before, library)
+      if (before.automationReceipts !== library.automationReceipts)
+        validateAutomationReceipts(
+          before.automationReceipts,
+          library.automationReceipts,
+          (message) => {
+            throw new Error(message)
+          },
+        )
       const progressOnly =
         (
           [
@@ -235,13 +246,31 @@ export function createBrowserRepository(
             'practices',
             'attempts',
             'materialReceipts',
+            'automationReceipts',
             'materialFolders',
+            'materialCollections',
+            'sourceConnections',
+            'sourceCandidates',
+            'studySettings',
+            'fsrsModels',
           ] as const
         ).every((key) => library[key] === before[key]) &&
         library.cards.length === before.cards.length
       let next = library
       const retiredUpdates = new Map<string, RetiredNote | undefined>()
       if (progressOnly) {
+        for (const key of ['studyActivity', 'studyEvents'] as const) {
+          if (library[key] === before[key]) continue
+          if (library[key].length > 500_000) throw new WorkspaceReadError('limit')
+          const ids = new Set<string>(),
+            previous = new Set<unknown>(before[key])
+          for (const record of library[key]) {
+            if (ids.has(record.id)) throw new WorkspaceReadError('invalid')
+            ids.add(record.id)
+            if (!previous.has(record))
+              (key === 'studyActivity' ? studyActivitySchema : studyEventSchema).parse(record)
+          }
+        }
         const previous = new Map(before.cards.map((card) => [card.id, card]))
         const ids = new Set<string>()
         for (const card of library.cards) {
@@ -456,9 +485,10 @@ export function createBrowserRepository(
     ): Promise<CardPage> {
       check()
       signal?.throwIfAborted()
-      const matches = compileSearch(current.library.decks, filter, now)
+      const settings = studySettings(current.library)
+      const matches = compileSearch(current.library.decks, filter, now, settings)
       const cards = cardViews(current.library).filter(matches)
-      const eligible = includeStudy ? cards.filter((card) => available(card, now)) : []
+      const eligible = includeStudy ? cards.filter((card) => available(card, now, settings)) : []
       const offset = (Math.max(1, page) - 1) * 50
       return {
         cards: cards.slice(offset, offset + 50),

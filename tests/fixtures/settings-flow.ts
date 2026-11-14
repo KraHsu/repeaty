@@ -92,3 +92,25 @@ export async function openPluginManager(page: Page) {
     .getByRole('button', { name: /^(插件|Plugins)$/ })
     .click()
 }
+
+/** Install one catalog entry directly from the plugin browser, then wait for its installed details. */
+export async function installOfficialPlugin(page: Page, pluginId: string) {
+  const browser = page.locator('.plugins-page')
+  await browser.getByRole('tab', { name: /^(全部插件|All plugins)$/ }).click()
+  await browser.getByRole('textbox', { name: /^(搜索插件|Search plugins)$/ }).fill('')
+  const row = browser.locator(`[data-official-plugin="${pluginId}"]`)
+  const install = row.locator('.plugin-install-button')
+  await expect(install).toBeEnabled()
+  await install.click()
+  await expect(row.locator('.plugin-version-state')).toHaveText(/^(已安装|Installed)$/)
+  await expect(browser.locator(`.plugin-settings[data-plugin-id="${pluginId}"]`)).toBeVisible()
+}
+
+/** A new installation stays off until the user explicitly enables its code. */
+export async function enableInstalledPlugin(page: Page, pluginId: string) {
+  await selectPlugin(page, pluginId)
+  const enabled = page.locator(`.plugin-settings[data-plugin-id="${pluginId}"]`).getByRole('switch')
+  await expect(enabled).not.toBeChecked()
+  await enabled.click()
+  await expect(enabled).toBeChecked()
+}

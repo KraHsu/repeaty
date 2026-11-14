@@ -2,8 +2,18 @@ import { expect, type Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { fixture } from '../../src/core/test-fixtures'
 import { archive, epubFiles } from '../../plugins/document-reader/test/fixtures'
-import { confirmPluginAction, openPluginManager, selectPlugin } from './settings-flow'
-import { selectUiValue } from './ui-flow'
+import {
+  confirmPluginAction,
+  enableInstalledPlugin,
+  openPluginManager,
+  selectPlugin,
+} from './settings-flow'
+import {
+  openCollection,
+  previewCollection,
+  commitCollection,
+  selectCollectionImporter,
+} from './collection-controls'
 import { localLibrary } from './source-excerpt-flow'
 
 const nav = (page: Page, name: string) =>
@@ -24,9 +34,10 @@ async function prepare(page: Page, plugin: string) {
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await openPluginManager(page)
   await page
-    .locator('.plugin-actions input[type=file]')
+    .locator('.plugins-page input[type=file]')
     .setInputFiles(`plugins/packages/${plugin}.repeaty-plugin`)
   await confirmPluginAction(page)
+  await enableInstalledPlugin(page, plugin)
 }
 async function importFile(
   page: Page,
@@ -36,15 +47,22 @@ async function importFile(
   buffer: Buffer,
 ) {
   await nav(page, '学习材料').click()
-  await page.getByRole('button', { name: '插件导入', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: '导入材料', exact: true })
-  await selectUiValue(dialog.getByRole('combobox', { name: '材料导入器' }), importer)
-  await dialog.getByTestId('material-import-files').setInputFiles({ name, mimeType, buffer })
-  await expect(dialog.getByRole('button', { name: '确认导入', exact: true })).toBeEnabled({
+  const dialog = await openCollection(page)
+  await dialog.getByTestId('collection-files').setInputFiles({ name, mimeType, buffer })
+  await selectCollectionImporter(dialog, importer)
+  await previewCollection(dialog)
+  await expect(dialog.getByRole('button', { name: '保存到阅读材料', exact: true })).toBeEnabled({
     timeout: 30000,
   })
-  await dialog.getByRole('button', { name: '确认导入', exact: true }).click()
-  await expect(dialog).toHaveCount(0)
+  await commitCollection(dialog)
+  // Automatic format recognition must still select the intended independently installed reader.
+  expect(
+    (await localLibrary(page)).sources.some((source) =>
+      `${source.document?.providerId}:${source.document?.readerId}`.startsWith(
+        importer.split(':')[0] + ':',
+      ),
+    ),
+  ).toBe(true)
 }
 async function originalEquals(page: Page, buffer: Buffer) {
   const download = page.waitForEvent('download')
@@ -148,7 +166,10 @@ export async function pdfReaderFlow(page: Page) {
     selection.addRange(range)
     element.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
   })
-  await page.getByRole('button', { name: '用摘录制卡', exact: true }).click()
+  await page
+    .locator('.source-excerpt-action')
+    .getByRole('button', { name: '用摘录制卡', exact: true })
+    .click()
   await page.getByLabel('正面 · 问题', { exact: true }).fill('多页 PDF 选区')
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   const saved = await localLibrary(page)

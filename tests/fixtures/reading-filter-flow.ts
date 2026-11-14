@@ -186,8 +186,8 @@ export async function readingFilterFlow(page: Page, read: () => Promise<Library>
   await expect(page.getByRole('region', { name: '本轮阅读', exact: true })).toContainText(
     '第 1 篇，共 21 篇',
   )
-  await selectUiValue(page.getByLabel('阅读优先级', { exact: true }), 'low')
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'low')
+  await selectUiValue(page.getByLabel('学习优先级', { exact: true }), '9')
+  await expect(page.getByLabel('学习优先级', { exact: true })).toHaveAttribute('value', '9')
   await moveReading(page, 0.6)
   for (let number = 2; number <= 21; number++) {
     await page.getByRole('button', { name: '下一篇', exact: true }).click()
@@ -203,7 +203,7 @@ export async function readingFilterFlow(page: Page, read: () => Promise<Library>
   await expect(page.locator('.reading-round-filter')).toHaveText('摘录 · 高优先级 · topic')
   const saved = (await read()).sources.find((s) => s.title === 'Topic 01')!
   expect(saved.reading!.offset).toBeGreaterThan(500)
-  expect(saved.priority).toBe('low')
+  expect(saved.studyPriority).toBe(9)
   await page.getByRole('button', { name: '再读一轮', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Topic 02', exact: true })).toBeVisible()
   await expect(page.getByRole('region', { name: '本轮阅读', exact: true })).toContainText(
@@ -269,8 +269,8 @@ export async function filteredRoundRetry(
   fail: (enabled: boolean) => Promise<void>,
 ) {
   await importReading(page, 'Retry A', 'plain', readingText)
-  await selectUiValue(page.getByLabel('阅读优先级', { exact: true }), 'high')
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'high')
+  await selectUiValue(page.getByLabel('学习优先级', { exact: true }), '1')
+  await expect(page.getByLabel('学习优先级', { exact: true })).toHaveAttribute('value', '1')
   await importReading(page, 'Retry B', 'plain', readingText)
   await showSourceFilters(page)
   await selectUiValue(page.getByLabel('材料类型', { exact: true }), 'original')

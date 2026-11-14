@@ -7,6 +7,7 @@ import type { PluginPageContribution } from './pages'
 export type { PluginPageContribution, RegisterPluginPage } from './pages'
 import type { PluginWidgetContribution } from './widgets'
 import type {
+  SourceConnectorContribution,
   MaterialImporterContribution,
   MaterialReaderContribution,
   MaterialCommandContribution,
@@ -109,6 +110,7 @@ export interface PluginInstallation {
   settings?: readonly PluginSettingsContribution[]
   pages?: readonly PluginPageContribution[]
   widgets?: readonly PluginWidgetContribution[]
+  connectors?: readonly SourceConnectorContribution[]
   importers?: readonly MaterialImporterContribution[]
   readers?: readonly MaterialReaderContribution[]
   commands?: readonly MaterialCommandContribution[]

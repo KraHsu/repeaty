@@ -99,7 +99,7 @@
     align-items: center;
     justify-content: center;
     flex-wrap: wrap;
-    margin: 1.875rem 0 1.75rem;
+    margin: 1.875rem 0 0;
     gap: 2.1875rem;
   }
   .b-focus-counts > div {
@@ -125,7 +125,7 @@
     color: var(--green);
   }
   .b-focus-state {
-    margin: -0.5rem 0 1rem;
+    margin: 1.25rem 0 0;
   }
   .b-focus-state:empty {
     display: none;
@@ -137,8 +137,6 @@
     display: flex;
     justify-content: center;
     width: 86%;
-    border-top: 1px solid var(--app-soft-line);
-    padding-top: 1.625rem;
   }
   .b-start-review {
     min-width: 15rem;
@@ -381,15 +379,10 @@
   }
   .b-review-space .flashcard .card-question {
     color: var(--ui-text);
-    margin: 2rem 0;
+    margin: 2rem 0 0;
     font-size: 1.25rem;
     line-height: 1.85;
     font-weight: var(--font-weight-semibold);
-  }
-  .b-review-space .flashcard .card-answer {
-    margin-top: 0;
-    padding-top: 1.625rem;
-    border-color: var(--app-soft-line);
   }
   .b-review-space .flashcard .card-answer > .card-content {
     color: var(--ui-text);
@@ -399,7 +392,7 @@
   }
   .b-review-space .flashcard .tag-list {
     justify-content: flex-start;
-    margin: -0.75rem 0 1.875rem;
+    margin: 1.25rem 0 0;
   }
   .b-review-space .flashcard .tag {
     padding: 0.1875rem 0.5625rem;
@@ -510,10 +503,7 @@
       padding: 1.25rem 2rem 1.5rem;
     }
     .b-review-space .flashcard .card-question {
-      margin: 1.25rem 0;
-    }
-    .b-review-space .flashcard .card-answer {
-      padding-top: 1rem;
+      margin: 1.25rem 0 0;
     }
     .b-review-space .flashcard .card-answer > .card-content {
       margin-top: 0.75rem;
@@ -553,7 +543,7 @@
     }
     .b-focus-counts {
       gap: 1.25rem;
-      margin: 1.375rem 0;
+      margin: 1.375rem 0 0;
     }
     .b-focus-counts > div {
       gap: 0.5rem;
@@ -567,7 +557,6 @@
     }
     .b-focus-primary {
       width: 100%;
-      padding-top: 1.25rem;
     }
     .b-start-review {
       min-width: 0;

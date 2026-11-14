@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, shallowRef, watch } from 'vue'
-import { useEventListener, useResizeObserver } from '@vueuse/core'
+import { useEventListener, useMutationObserver, useResizeObserver } from '@vueuse/core'
 import { useNotifications } from '../notifications'
 import { popupEnabled } from '../preferences'
 import NotificationToast from './NotificationToast.vue'
@@ -9,7 +9,9 @@ const { notifications } = useNotifications()
 const floating = computed(() => notifications.value.filter((entry) => popupEnabled(entry.level)))
 const inline = computed(() => notifications.value.filter((entry) => !popupEnabled(entry.level)))
 const top = ref(16)
-const header = shallowRef<HTMLElement | null>(null)
+const center = shallowRef<{ $el: HTMLElement } | null>(null)
+const surface = shallowRef<HTMLElement | null>(null)
+const boundaries = shallowRef<HTMLElement[]>([])
 function dismissing(element: Element) {
   // A fading toast has already been dismissed; it must not remain an interactive
   // or announced duplicate while the visual exit finishes.
@@ -18,21 +20,71 @@ function dismissing(element: Element) {
 }
 function position() {
   if (!notifications.value.length) return
-  const frame = document.querySelector('.desktop-titlebar')?.getBoundingClientRect().bottom ?? 0
-  const tools = header.value?.getBoundingClientRect().bottom ?? frame
-  top.value = Math.max(frame + 16, tools + 12)
+  const frame = Math.max(
+    0,
+    boundaries.value
+      .find((element) => element.matches('.desktop-titlebar'))
+      ?.getBoundingClientRect().bottom ?? 0,
+  )
+  let nextTop = frame + 16
+  for (const element of boundaries.value) {
+    if (element.matches('.desktop-titlebar')) continue
+    const rect = element.getBoundingClientRect()
+    // A partly scrolled-out heading still owns its visible actions. Moving a
+    // toast over them between pointer down and up would steal the click.
+    if (
+      rect.width > 0 &&
+      rect.height > 0 &&
+      rect.bottom > frame &&
+      rect.top < window.innerHeight &&
+      rect.right > 0 &&
+      rect.left < window.innerWidth &&
+      getComputedStyle(element).visibility !== 'hidden'
+    )
+      nextTop = Math.max(nextTop, rect.bottom + 12)
+  }
+  top.value = nextTop
 }
-watch(notifications, position, { flush: 'post' })
-onMounted(() => {
-  header.value = document.querySelector<HTMLElement>('.topbar')
+function refreshBoundaries() {
+  if (!notifications.value.length) return
+  const current = [
+    ...(surface.value?.querySelectorAll<HTMLElement>(
+      '.desktop-titlebar, .topbar, .app-page-header',
+    ) ?? []),
+  ]
+  if (
+    current.length !== boundaries.value.length ||
+    current.some((element, index) => element !== boundaries.value[index])
+  )
+    boundaries.value = current
   position()
+}
+watch(notifications, refreshBoundaries, { flush: 'post' })
+onMounted(() => {
+  surface.value = center.value?.$el.closest<HTMLElement>('.app-layout') ?? document.body
+  refreshBoundaries()
 })
-useResizeObserver(header, position)
+useMutationObserver(
+  surface,
+  (records) => {
+    if (
+      records.some(
+        ({ target }) =>
+          target instanceof Element &&
+          !target.closest('.notification-center, .inline-notifications'),
+      )
+    )
+      refreshBoundaries()
+  },
+  { childList: true, subtree: true },
+)
+useResizeObserver(boundaries, position)
 useEventListener(window, 'resize', position)
 useEventListener(window, 'scroll', position, { passive: true, capture: true })
 </script>
 <template>
   <TransitionGroup
+    ref="center"
     tag="div"
     name="notification-toast"
     class="notification-center"

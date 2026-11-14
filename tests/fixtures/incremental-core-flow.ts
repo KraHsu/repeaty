@@ -260,9 +260,11 @@ export async function nestedDailyFlow(page: Page, read: () => Promise<Library>, 
       .evaluate((el) => el.previousSibling?.textContent?.length),
   ).toBe(start + at)
   await setResponsiveViewport(page, 390, 844)
-  expect(await page.getByRole('dialog').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
-    true,
-  )
+  expect(
+    await page
+      .getByRole('dialog', { name: root.title, exact: true })
+      .evaluate((el) => el.scrollWidth <= el.clientWidth),
+  ).toBe(true)
   await page.screenshot({ path: info.outputPath('nested-source-context.png'), fullPage: true })
   await page
     .getByRole('navigation', { name: '出处路径', exact: true })

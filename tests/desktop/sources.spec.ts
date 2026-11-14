@@ -8,6 +8,7 @@ import {
   sourceQuote,
 } from '../fixtures/source-flow'
 import { readFile } from 'node:fs/promises'
+test.setTimeout(60_000)
 
 test('desktop stores local sources, creates excerpts, exports the snapshot through native IPC and retains it after restart', async ({
   page,

@@ -6,6 +6,9 @@ import { ArrowUpFromLine, Pencil, Plus, Trash2 } from '@lucide/vue'
 import CollectionPanel from '../../components/CollectionPanel.vue'
 import DeckStatus from '../../components/DeckStatus.vue'
 import AppPage from '../../components/AppPage.vue'
+import NewCardBalanceDialog from '../../components/NewCardBalanceDialog.vue'
+import { ref } from 'vue'
+import { studySettings } from '../../core/study-settings'
 import { useApplication } from '../context'
 const {
   workspace,
@@ -30,6 +33,7 @@ const {
   batchEdit,
   startReview,
 } = useApplication()
+const balanceIds = ref<string[]>()
 </script>
 <template>
   <AppPage
@@ -81,6 +85,18 @@ const {
       @delete="confirmDeleteNotes"
       @review="startReview(selectedDeck || undefined)"
       @history="openHistory"
+      @balance="balanceIds = $event"
+    />
+    <NewCardBalanceDialog
+      v-if="balanceIds"
+      :key="workspace.scope.value"
+      :ids="balanceIds"
+      :scope="workspace.scope.value"
+      :window-days="studySettings(library).newCardWindowDays"
+      :preview="workspace.previewNewCardBalance"
+      :apply="workspace.balanceNewCards"
+      @close="balanceIds = undefined"
+      @applied="balanceIds = undefined"
     />
   </AppPage>
 </template>

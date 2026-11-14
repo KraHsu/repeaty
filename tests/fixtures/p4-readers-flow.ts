@@ -1,3 +1,4 @@
+import { openCollection, previewCollection, commitCollection } from './collection-controls'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
@@ -6,7 +7,12 @@ import { fixture } from '../../src/core/test-fixtures'
 import { addSource, prepareSource } from '../../src/core/sources'
 import { exportBackup, parseBackup } from '../../src/core/backups'
 import { parseArchive } from '../../src/core/archive'
-import { confirmPluginAction, openPluginManager, selectPlugin } from './settings-flow'
+import {
+  confirmPluginAction,
+  enableInstalledPlugin,
+  openPluginManager,
+  selectPlugin,
+} from './settings-flow'
 import { localLibrary } from './source-excerpt-flow'
 import { selectUiValue } from './ui-flow'
 
@@ -34,12 +40,13 @@ async function prepare(page: Page, info: TestInfo) {
     outdir: info.outputPath('visual-occlusion'),
   })
   await openPluginManager(page)
-  await page.locator('.plugin-actions input[type=file]').setInputFiles({
+  await page.locator('.plugins-page input[type=file]').setInputFiles({
     name: 'visual-occlusion.repeaty-plugin',
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(bundle)),
   })
   await confirmPluginAction(page)
+  await enableInstalledPlugin(page, 'visual-occlusion')
   const notifications = page
     .locator('.notification-center')
     .getByRole('button', { name: '关闭提示', exact: true })
@@ -177,13 +184,13 @@ export async function imageOcclusionFlow(page: Page, info: TestInfo) {
     }),
     bytes = Buffer.from(encoded, 'base64')
   await nav(page, '学习材料').click()
-  await page.getByRole('button', { name: '插件导入', exact: true }).click()
-  const imported = page.getByRole('dialog', { name: '导入材料', exact: true })
+  const imported = await openCollection(page)
   await imported
-    .getByTestId('material-import-files')
+    .getByTestId('collection-files')
     .setInputFiles({ name: 'p4-regions.png', mimeType: 'image/png', buffer: bytes })
   await expect(imported).toContainText('p4-regions.png')
-  await imported.getByRole('button', { name: '确认导入', exact: true }).click()
+  await previewCollection(imported)
+  await commitCollection(imported)
   await expect(imported).toHaveCount(0)
   await page.locator('.source-list-title').filter({ hasText: 'p4-regions.png' }).click()
   const reader = page.locator('.vo-reader')

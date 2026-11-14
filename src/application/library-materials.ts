@@ -1,3 +1,5 @@
+import { studyDay } from '../core/study-day'
+import { studySettings } from '../core/study-settings'
 import { z } from 'zod'
 import type {
   MaterialHostApi,
@@ -41,7 +43,7 @@ const MAX_FILES = 20
 const MAX_ORIGINAL_BYTES = MAX_DOCUMENT_BYTES
 const MAX_BATCH_BYTES = 128 * 1024 * 1024
 const MAX_CANDIDATES = 1000
-const candidateSchema = z.strictObject({
+export const candidateSchema = z.strictObject({
   key: z.string().min(1).max(200),
   title: z.string().trim().min(1).max(160),
   text: z.string().min(1).max(250_000),
@@ -139,7 +141,7 @@ function record(source: Source, sources: readonly Source[]): MaterialRecord {
     locked: materialLocked(source, sources),
   })
 }
-function validateTree(candidates: readonly MaterialImportCandidate[]) {
+export function validateTree(candidates: readonly MaterialImportCandidate[]) {
   const keys = new Map(candidates.map((candidate) => [candidate.key, candidate]))
   if (keys.size !== candidates.length) throw new Error('导入材料的标识重复。')
   const groups = new Map<string, { mode: 'free' | 'sequential'; indices: Set<number> }>()
@@ -413,7 +415,23 @@ export function createMaterialCommands(context: LibraryContext) {
                   : entry,
               )
               return withReceipt(
-                { ...current, sources },
+                {
+                  ...current,
+                  sources,
+                  studyEvents:
+                    request.completed === true && !source.studySequence?.completed
+                      ? [
+                          ...current.studyEvents,
+                          {
+                            id: crypto.randomUUID(),
+                            kind: 'reading' as const,
+                            sourceId: source.id,
+                            occurredAt: new Date().toISOString(),
+                            studyDay: studyDay(new Date(), studySettings(current)),
+                          },
+                        ]
+                      : current.studyEvents,
+                },
                 id,
                 request,
                 fingerprint,

@@ -21,6 +21,27 @@ it('adds a direction without changing the existing card or rating', () => {
   expect(plan.library.cards[0]).toBe(rated.cards[0])
   expect(plan.library.reviews).toEqual(rated.reviews)
 })
+it('preserves priority when external edits omit it and clears it only for an explicit inherit choice', () => {
+  const before = fixture({ studyPriority: 0 }),
+    id = before.notes[0]!.id
+  const external = { ...input, front: 'Externally edited question' }
+  const edited = noteLifecycle(before, external, id, empty()).library
+  expect(edited.notes[0]!.studyPriority).toBe(0)
+  expect(edited.cards[0]!.schedule).toEqual(before.cards[0]!.schedule)
+  const inherit = noteLifecycle(
+    edited,
+    { ...external, studyPriority: undefined },
+    id,
+    empty(),
+  ).library
+  expect(inherit.notes[0]!.studyPriority).toBeUndefined()
+
+  const archive = { ...empty(), note: before.notes[0]!, cards: before.cards }
+  const removed = { ...before, notes: [], cards: [] }
+  const restored = noteLifecycle(removed, external, id, archive).library
+  expect(restored.notes[0]!.studyPriority).toBe(0)
+  expect(restored.cards[0]!.id).toBe(before.cards[0]!.id)
+})
 it('retiring and re-adding a cloze number restores its original identity, schedule and history', () => {
   let before = fixture({ type: 'cloze', front: '{{c1::A}} {{c2::B}}', back: 'Details' })
   before.decks[0]!.burySiblings = false

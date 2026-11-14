@@ -120,6 +120,7 @@ export const materialReceiptSchema = z.strictObject({
   operationId: z.string().min(1).max(150),
   kind: z.enum([
     'import',
+    'collect',
     'create-note',
     'create-excerpt',
     'edit-content',

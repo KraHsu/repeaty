@@ -34,13 +34,20 @@ export async function selectForExcerpt(
     },
     { start, end },
   )
-  await expect(page.getByRole('button', { name: /^(保存为摘录|Save as excerpt)$/ })).toBeEnabled()
+  await expect(
+    page
+      .locator('.source-excerpt-action')
+      .getByRole('button', { name: /^(保存为摘录|Save as excerpt)$/ }),
+  ).toBeEnabled()
 }
 export async function saveIndependentExcerpt(page: Page, title: string) {
-  await page.getByRole('button', { name: '保存为摘录', exact: true }).click()
+  await page
+    .locator('.source-excerpt-action')
+    .getByRole('button', { name: '保存为摘录', exact: true })
+    .click()
   await page.getByLabel('摘录标题', { exact: true }).fill(title)
   await page.getByRole('button', { name: '保存摘录', exact: true }).click()
-  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: '保存为摘录', exact: true })).toHaveCount(0)
   await showSourceText(page)
 }
 async function checkRootHighlight(page: Page) {
@@ -54,8 +61,13 @@ export async function sourceExcerptFlow(page: Page, read: () => Promise<Library>
   await previewSource(page)
   await saveSource(page)
   await selectForExcerpt(page)
-  await expect(page.getByRole('button', { name: '用摘录制卡', exact: true })).toBeDisabled()
-  await page.getByRole('button', { name: '保存为摘录', exact: true }).click()
+  await expect(
+    page.locator('.source-excerpt-action').getByRole('button', { name: '用摘录制卡', exact: true }),
+  ).toBeDisabled()
+  await page
+    .locator('.source-excerpt-action')
+    .getByRole('button', { name: '保存为摘录', exact: true })
+    .click()
   const dialog = page.getByRole('dialog', { name: '保存为摘录', exact: true })
   await expect(dialog.getByLabel('选中的原文')).toHaveValue(sourceQuote)
   await expect(dialog.getByLabel('选中的原文')).toHaveAttribute('readonly', '')
@@ -74,7 +86,9 @@ export async function sourceExcerptFlow(page: Page, read: () => Promise<Library>
   await expect(page.getByRole('heading', { name: '独立摘录🙂', exact: true })).toBeVisible()
   await showSourceText(page)
   await expect(page.locator('.source-text')).toHaveValue(sourceQuote)
-  await expect(page.getByRole('button', { name: '保存为摘录', exact: true })).toBeDisabled()
+  await expect(
+    page.locator('.source-excerpt-action').getByRole('button', { name: '保存为摘录', exact: true }),
+  ).toBeDisabled()
   const first = await read()
   const root = first.sources.find((source) => !source.kind)!,
     child = first.sources.find((source) => source.kind === 'excerpt')!
@@ -102,15 +116,15 @@ export async function sourceExcerptFlow(page: Page, read: () => Promise<Library>
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await page.locator('.source-list-title').filter({ hasText: child.title }).click()
   await page.setViewportSize({ width: 1280, height: 900 })
-  await selectUiValue(page.getByLabel('阅读优先级', { exact: true }), 'high')
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'high')
+  await selectUiValue(page.getByLabel('学习优先级', { exact: true }), '1')
+  await expect(page.getByLabel('学习优先级', { exact: true })).toHaveAttribute('value', '1')
   expect((await read()).sources.find((source) => source.id === root.id)!.priority).toBeUndefined()
   await page.reload()
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await page.locator('.source-list-title').filter({ hasText: child.title }).click()
   await showSourceText(page)
   await expect(page.locator('.source-text')).toHaveValue(sourceQuote)
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'high')
+  await expect(page.getByLabel('学习优先级', { exact: true })).toHaveAttribute('value', '1')
 
   await page.getByRole('button', { name: '学习概览', exact: true }).click()
   await createSourceDeck(page)
@@ -143,7 +157,10 @@ export async function sourceExcerptFlow(page: Page, read: () => Promise<Library>
     element.setSelectionRange(start, start + 4)
     element.dispatchEvent(new Event('select', { bubbles: true }))
   }, partialStart)
-  await page.getByRole('button', { name: '用摘录制卡', exact: true }).click()
+  await page
+    .locator('.source-excerpt-action')
+    .getByRole('button', { name: '用摘录制卡', exact: true })
+    .click()
   await selectUiValue(page.getByLabel('笔记类型', { exact: true }), 'cloze')
   await page
     .getByLabel('正面 · 问题', { exact: true })
@@ -186,7 +203,9 @@ export async function sourceExcerptFlow(page: Page, read: () => Promise<Library>
   await showSourceText(page)
   await expect(page.locator('.source-text')).toHaveValue(sourceQuote)
   await expect(page.getByText('原文已删除，摘录内容仍保留。', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: '保存为摘录', exact: true })).toBeDisabled()
+  await expect(
+    page.locator('.source-excerpt-action').getByRole('button', { name: '保存为摘录', exact: true }),
+  ).toBeDisabled()
   const detached = await read()
   expect(detached.sources).toHaveLength(1)
   expect(detached.sources[0]!.kind).toBe('excerpt')

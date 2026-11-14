@@ -1,4 +1,5 @@
 import { openDB } from 'idb'
+import { z } from 'zod'
 import { defineStore, getActivePinia, type Pinia } from 'pinia'
 import {
   hasInjectionContext,
@@ -11,12 +12,24 @@ import {
   type InjectionKey,
 } from 'vue'
 import { desktopEdition } from '../edition'
-import { readSetting, writeSetting } from '../settings-store'
-import { bundleSchema, packageHash, pluginIssueMessage, type PluginBundle } from './package'
+import { persistSetting, readSetting, writeSetting } from '../settings-store'
+import {
+  bundleSchema,
+  installBundleSchema,
+  manifestSchema,
+  packageHash,
+  pluginIssueMessage,
+  type PluginBundle,
+  type PluginManifest,
+} from './package'
+import { assertPluginSupported } from './retired-official'
 import { PluginRuntime, type PluginModule } from './runtime'
 import { createPluginApi, evaluatePlugin, nativePluginCall } from './sdk'
 import { currentPluginWorkspace } from '@repeaty-plugin-host'
 import { createPluginPreferences, defaultPluginPreferences } from './preferences'
+import type { PluginStudyHostFactory } from './study'
+import type { PluginAutomationHostFactory } from './automation'
+import type { PluginNetworkConsent } from './network'
 import type { PluginMaterialHostFactory } from './materials'
 import { PluginTaskScheduler } from './tasks'
 import type {
@@ -47,10 +60,14 @@ export interface PluginManagerEnvironment {
   preferences?: ReturnType<typeof createPluginPreferences>
   readSetting?: typeof readSetting
   writeSetting?: typeof writeSetting
+  persistSetting?: typeof persistSetting
   officialBundles?: typeof officialPluginBundles
   evaluate?: (code: string, api: ReturnType<typeof createPluginApi>) => Promise<PluginModule>
   seedOfficial?: boolean
   materialHost?: PluginMaterialHostFactory
+  studyHost?: PluginStudyHostFactory
+  automationHost?: PluginAutomationHostFactory
+  networkConsent?: PluginNetworkConsent
 }
 let environmentFactory: (() => PluginManagerEnvironment) | undefined
 /** Embedded hosts supply a new adapter environment per app; mutable runtimes are never shared. */
@@ -65,28 +82,64 @@ async function database() {
     },
   })
 }
-export async function officialPluginBundles(options: { defaultsOnly?: boolean } = {}) {
+export type OfficialPluginEntry = PluginManifest & {
+  path: string
+  installByDefault?: boolean
+}
+const officialEntrySchema = manifestSchema
+  .extend({ path: z.string(), installByDefault: z.boolean().optional() })
+  .refine((entry) => entry.path === `plugins/${entry.id}.repeaty-plugin`)
+const officialCatalogSchema = z
+  .array(officialEntrySchema)
+  .max(1000)
+  .refine((entries) => new Set(entries.map(({ id }) => id)).size === entries.length)
+
+/** Read only lightweight manifests; browsing never downloads or evaluates package code. */
+export async function officialPluginCatalog(): Promise<OfficialPluginEntry[]> {
   const base = import.meta.env.BASE_URL
   const response = await fetch(base + 'plugins/catalog.json')
   if (!response.ok) throw new Error('无法读取官方插件包。')
-  const entries = (await response.json()) as { path: string; installByDefault?: boolean }[]
+  const result = officialCatalogSchema.safeParse(await response.json())
+  if (!result.success) throw new Error('插件目录清单无效。')
+  return result.data
+}
+
+/** Fetch one package for its README or an explicit install; this does not execute it. */
+export async function loadOfficialPlugin(entry: OfficialPluginEntry): Promise<PluginBundle> {
+  const parsed = officialEntrySchema.safeParse(entry)
+  if (!parsed.success) throw new Error('插件目录清单无效。')
+  const { path, ...metadata } = parsed.data
+  delete metadata.installByDefault
+  const expected = manifestSchema.parse(metadata)
+  const response = await fetch(import.meta.env.BASE_URL + path)
+  if (!response.ok) throw new Error('无法读取官方插件包。')
+  const bundle = bundleSchema.parse(await response.json())
+  if (JSON.stringify(bundle.manifest) !== JSON.stringify(expected))
+    throw new Error('官方插件包与目录信息不一致，请刷新后重试。')
+  return bundle
+}
+
+export async function officialPluginBundles(options: { defaultsOnly?: boolean } = {}) {
+  const entries = await officialPluginCatalog()
   return Promise.all(
     entries
       .filter((entry) => !options.defaultsOnly || entry.installByDefault !== false)
-      .map(async ({ path }) => {
-        if (!/^plugins\/[a-z][a-z0-9-]{0,63}\.repeaty-plugin$/.test(path))
-          throw new Error('插件目录清单无效。')
-        const response = await fetch(base + path)
-        if (!response.ok) throw new Error('无法读取官方插件包。')
-        return bundleSchema.parse(await response.json())
-      }),
+      .map(loadOfficialPlugin),
   )
 }
 export function createPluginManager(options: PluginManagerEnvironment = {}) {
   const environment = { ...environmentFactory?.(), ...options }
   const read = environment.readSetting ?? readSetting,
     write = environment.writeSetting ?? writeSetting
-  const preferences = environment.preferences ?? createPluginPreferences({ read, write })
+  const preferences =
+    environment.preferences ??
+    createPluginPreferences({
+      read,
+      write,
+      persist:
+        environment.persistSetting ??
+        (environment.readSetting || environment.writeSetting ? undefined : persistSetting),
+    })
   let storage = environment.storage
   const pluginRuntime = new PluginRuntime()
   const materialApis = new Map<
@@ -95,6 +148,27 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
   >()
   const taskScheduler = new PluginTaskScheduler()
   const commandScheduler = new PluginTaskScheduler(1)
+  let studyHost = environment.studyHost
+  let automationHost = environment.automationHost
+  let networkConsent = environment.networkConsent
+  function setNetworkConsent(consent: PluginNetworkConsent) {
+    networkConsent = consent
+    return () => {
+      if (networkConsent === consent) networkConsent = undefined
+    }
+  }
+  function setAutomationHost(factory: PluginAutomationHostFactory) {
+    automationHost = factory
+    return () => {
+      if (automationHost === factory) automationHost = undefined
+    }
+  }
+  function setStudyHost(factory: PluginStudyHostFactory) {
+    studyHost = factory
+    return () => {
+      if (studyHost === factory) studyHost = undefined
+    }
+  }
   let materialHost = environment.materialHost
   function setMaterialHost(factory: PluginMaterialHostFactory) {
     materialHost = factory
@@ -120,14 +194,53 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
     pluginId: string,
     importerId: string,
     file: File,
-    options: Pick<MaterialTaskOptions, 'signal' | 'onProgress'> = {},
+    options: Pick<MaterialTaskOptions, 'signal' | 'onProgress'> & { files?: readonly File[] } = {},
   ) {
     const { api, installation } = materialContribution(pluginId)
     const importer = installation.importers?.find((entry) => entry.id === importerId)
     if (!importer) throw new Error('材料导入器不可用。')
     return api.tasks.run(
       { id: `parse-${crypto.randomUUID()}`, title: importer.title, ...options },
-      (context) => importer.parse(file, context),
+      (context) => importer.parse(file, { ...context, files: options.files }),
+    )
+  }
+  async function scanSourceConnector(
+    pluginId: string,
+    connectorId: string,
+    request: import('@repeaty/plugin-api').SourceConnectorRequest,
+    options: Pick<MaterialTaskOptions, 'signal' | 'onProgress'> = {},
+  ) {
+    const { api, installation } = materialContribution(pluginId)
+    const connector = installation.connectors?.find((entry) => entry.id === connectorId)
+    if (!connector) throw new Error('来源连接器不可用，请先启用对应插件。')
+    return api.tasks.run(
+      { id: `source-${crypto.randomUUID()}`, title: connector.title, ...options },
+      (context) => {
+        const current = () => {
+          context.signal.throwIfAborted()
+          const active = materialContribution(pluginId)
+          if (active.installation !== installation || !installation.connectors?.includes(connector))
+            throw new Error('来源连接器已停用或替换。')
+        }
+        const directory = request.directory
+        const owned = {
+          ...request,
+          settings: structuredClone(request.settings),
+          directory: directory
+            ? {
+                files: structuredClone(directory.files),
+                async read(path: string) {
+                  current()
+                  const blob = await directory.read(path)
+                  current()
+                  return blob
+                },
+              }
+            : undefined,
+        }
+        current()
+        return connector.scan(owned, context)
+      },
     )
   }
   async function executeMaterialCommand(
@@ -170,7 +283,9 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
     const source = snapshot.sources.find((source) => source.id === request.sourceId)
     if (
       !source ||
-      (command.formats && !command.formats.includes(source.document?.format ?? source.format))
+      (command.formats &&
+        !command.formats.includes('*') &&
+        !command.formats.includes(source.document?.format ?? source.format))
     )
       throw new Error('此命令不支持当前材料。')
     const scope = api.resources.createScope()
@@ -427,6 +542,30 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
           registerWidget,
           {
             registrations,
+            networkConsent: () => {
+              const published = materialApis.get(bundle.manifest.id)
+              return published &&
+                published.api === materialApi &&
+                pluginRuntime.installations.includes(published.installation)
+                ? networkConsent
+                : undefined
+            },
+            automationHost: () => {
+              const published = materialApis.get(bundle.manifest.id)
+              return published &&
+                published.api === materialApi &&
+                pluginRuntime.installations.includes(published.installation)
+                ? automationHost
+                : undefined
+            },
+            studyHost: () => {
+              const published = materialApis.get(bundle.manifest.id)
+              return published &&
+                published.api === materialApi &&
+                pluginRuntime.installations.includes(published.installation)
+                ? studyHost
+                : undefined
+            },
             assets: bundle.assets,
             host: () => {
               // Evaluation/factory code may register contributions, but cannot mutate or read
@@ -551,15 +690,45 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
       check(generation)
       mutable()
       const scope = pluginScope.value,
-        bundle = bundleSchema.parse(raw)
+        bundle = installBundleSchema.parse(raw)
+      assertPluginSupported(bundle.manifest.id)
       if (bundle.manifest.kind === 'local' && !desktopEdition)
         throw new Error('此插件仅在桌面版可用。')
       const previous = pluginPackages.find((entry) => entry.id === bundle.manifest.id)
       const entry: PackageEntry = { id: bundle.manifest.id, bundle, trusted: true }
+      const active = pluginRuntime.installations.find(
+        (installed) => installed.plugin.id === entry.id,
+      )
+      const enabled =
+        !!previous &&
+        !!active &&
+        (active.plugin.kind === 'frontend' || desktopEdition) &&
+        ((Object.hasOwn(preferences.pluginPreferences.value, entry.id)
+          ? preferences.pluginPreferences.value[entry.id]
+          : active.enabledByDefault) ??
+          true)
+      if (!enabled) {
+        // Persist the closed state before writing trusted executable bytes. A failed
+        // preference save must never turn a new installation into an enabled plugin
+        // on the next launch, where legacy/default packages may omit a preference.
+        await assertScope(scope, generation)
+        const nextPreferences = { ...preferences.pluginPreferences.value, [entry.id]: false }
+        await preferences.persistPluginPreferences(nextPreferences)
+        await assertScope(scope, generation)
+        preferences.pluginPreferences.value = nextPreferences
+        preferences.pluginPreferenceError.value = ''
+        mutable()
+      }
       try {
         await persist(bundle, scope, generation)
         mutable()
-        await activate(entry, generation, true)
+        if (enabled) await activate(entry, generation, true)
+        else if (active) {
+          // Restored preferences can disable a still-present activation (for example
+          // after a browser storage event). Updating it must not run the new module.
+          await pluginRuntime.unload(entry.id).catch(() => {})
+          materialApis.delete(entry.id)
+        }
       } catch (error) {
         if (current(generation)) {
           if (previous?.bundle) await persist(previous.bundle, scope, generation, false)
@@ -571,7 +740,6 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
       const position = pluginPackages.findIndex((installed) => installed.id === entry.id)
       if (position === -1) pluginPackages.push(entry)
       else pluginPackages.splice(position, 1, entry)
-      preferences.savePluginPreference(entry.id, true)
     })
   }
   function enablePlugin(id: string, enabled: boolean) {
@@ -582,6 +750,7 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
       const entry = pluginPackages.find((entry) => entry.id === id)
       if (!entry?.bundle) throw new Error('插件包不存在。')
       if (enabled) {
+        assertPluginSupported(entry.id)
         if (!entry.trusted) {
           const hash = await packageHash(entry.bundle)
           await assertScope(pluginScope.value, generation)
@@ -638,6 +807,9 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
     pluginManagerBusy.value = false
     await pluginRuntime.close()
     materialApis.clear()
+    studyHost = undefined
+    automationHost = undefined
+    networkConsent = undefined
     materialHost = undefined
     pluginPackages.splice(0)
   }
@@ -652,8 +824,12 @@ export function createPluginManager(options: PluginManagerEnvironment = {}) {
   return {
     pluginRuntime,
     setMaterialHost,
+    setStudyHost,
+    setAutomationHost,
+    setNetworkConsent,
     materialApiFor,
     parseMaterialFile,
+    scanSourceConnector,
     executeMaterialCommand,
     openMaterialTool,
     searchMaterialProvider,

@@ -14,6 +14,11 @@ export function externalPlugins(desktop: boolean): Plugin {
           'pdf-reader',
           'document-reader',
           'visual-occlusion',
+          'obsidian',
+          'readwise',
+          'fsrs-optimizer',
+          'study-statistics',
+          'assistant',
         ]
       : [
           'review-history',
@@ -22,7 +27,12 @@ export function externalPlugins(desktop: boolean): Plugin {
           'pdf-reader',
           'document-reader',
           'visual-occlusion',
+          'obsidian',
+          'readwise',
+          'fsrs-optimizer',
+          'study-statistics',
         ]
+    ids.push('web-lookup')
     const files = new Map<string, string>()
     const catalog = ids.map((id) => {
       const bundle = JSON.parse(

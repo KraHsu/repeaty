@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { UiButton } from './ui'
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import type { MaterialSelection } from '@repeaty/plugin-api'
 import { t, locale, type DisplayMessage } from '../i18n'
 import type { Source, SourceExcerpt } from '../core/source-data'
+import type { MaterialLocator } from '../core/material-data'
 import { sourceContextPath } from '../core/source-tree'
 import AppModal from './AppModal.vue'
 import CardContent from './CardContent.vue'
@@ -26,11 +28,29 @@ const path = computed(() =>
   ),
 )
 const current = computed(() => path.value[Math.min(level.value, path.value.length - 1)]!)
-const shown = computed(() => current.value.source)
-const selected = computed(() => current.value.excerpt)
+const linkedSource = ref<Source>()
+const shown = computed(() => linkedSource.value ?? current.value.source)
+const selected = computed(() => (linkedSource.value ? undefined : current.value.excerpt))
 watch([() => props.source.id, () => props.source.mediaId], () => {
   level.value = 0
+  linkedSource.value = undefined
 })
+function openLinkedSource(id: string, locator?: MaterialLocator) {
+  const source = props.sources?.find((source) => source.id === id)
+  linkedSource.value =
+    source && locator?.kind === 'text'
+      ? {
+          ...source,
+          reading: {
+            offset: locator.start,
+            fraction: 0,
+            view: 'preview',
+            locator,
+            updatedAt: new Date().toISOString(),
+          },
+        }
+      : source
+}
 const highlight = ref<HTMLElement>()
 const text = ref(''),
   error = ref<DisplayMessage>(''),
@@ -65,12 +85,36 @@ const matches = computed(
     !!selected.value &&
     text.value.slice(selected.value.start, selected.value.end) === selected.value.quote,
 )
+const initialSelection = computed<MaterialSelection | undefined>(() => {
+  const excerpt = selected.value
+  if (!excerpt || !matches.value) return
+  return {
+    locator: excerpt.locator ?? {
+      schemaVersion: 1,
+      kind: 'text',
+      sourceId: shown.value.id,
+      versionId: shown.value.mediaId,
+      start: excerpt.start,
+      end: excerpt.end,
+      quote: excerpt.quote,
+    },
+    text: excerpt.quote,
+    projection: { start: excerpt.start, end: excerpt.end },
+  }
+})
 </script>
 
 <template>
   <AppModal wide :title="shown.title" @close="emit('close')">
     <div class="source-context">
-      <nav v-if="path.length > 2" class="source-context-path" :aria-label="t('出处路径')">
+      <UiButton v-if="linkedSource" variant="ghost" @click="linkedSource = undefined">{{
+        t('返回摘录')
+      }}</UiButton>
+      <nav
+        v-if="!linkedSource && path.length > 2"
+        class="source-context-path"
+        :aria-label="t('出处路径')"
+      >
         <UiButton
           variant="ghost"
           v-for="(entry, index) in [...path].reverse()"
@@ -82,7 +126,7 @@ const matches = computed(
           {{ entry.source.title }}
         </UiButton>
       </nav>
-      <div v-if="path.length > 1" class="source-context-navigation">
+      <div v-if="!linkedSource && path.length > 1" class="source-context-navigation">
         <UiButton variant="ghost" v-if="level < path.length - 1" type="button" @click="level++">
           {{ t('查看出处') }}
         </UiButton>
@@ -135,15 +179,8 @@ const matches = computed(
           scope="readonly-source-context"
           :get-media="getMedia"
           read-only
-          :initial-selection="
-            selected?.locator
-              ? {
-                  locator: selected.locator,
-                  text: selected.quote,
-                  projection: { start: selected.start, end: selected.end },
-                }
-              : undefined
-          "
+          @open="openLinkedSource"
+          :initial-selection="initialSelection"
         />
         <UiButton
           variant="ghost"
@@ -162,6 +199,9 @@ const matches = computed(
           format="markdown"
           :inline-media="shown.inlineMedia"
           :get-media="getMedia"
+          :source="shown"
+          :sources="sources"
+          :open-source="openLinkedSource"
         />
         <div
           v-else-if="

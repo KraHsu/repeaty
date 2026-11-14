@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick, ref, type App } from 'vue'
+import type { CollectionHostApi } from '@repeaty/plugin-api'
 import SourcePanel from './SourcePanel.vue'
+import { emptyLibrary } from '../core/model'
 import { addSource, prepareSource, prepareSourceExcerpt, sourceExcerpt } from '../core/sources'
 import { fixture, now } from '../core/test-fixtures'
 import type { ReadingProgress } from '../composables/useReadingProgress'
@@ -10,11 +12,25 @@ import type { MaterialWorkbenchActions } from './material-workbench-actions'
 const annotation = vi.hoisted(() => ({ canLeave: true }))
 const readerLocation = vi.hoisted(() => vi.fn(async () => true))
 const readerState = vi.hoisted(() => ({ ready: undefined as { value: boolean } | undefined }))
+const collectionView = vi.hoisted(() => ({ show: vi.fn() }))
 vi.mock('../composables/material-knowledge', () => ({
   createMaterialKnowledge: () => ({ dispose: vi.fn() }),
 }))
 vi.mock('./MaterialSearch.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('./MaterialImport.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('./CollectionImport.vue', async () => {
+  const { defineComponent, h } = await import('vue')
+  return {
+    default: defineComponent({
+      props: ['api', 'scope', 'busy'],
+      setup(props, { expose }) {
+        expose({ show: collectionView.show })
+        return () =>
+          h('div', { 'data-testid': 'collection-import', 'data-busy': String(props.busy) })
+      },
+    }),
+  }
+})
 vi.mock('./SourceLinks.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('./SourceMetadata.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('./SourceAnnotations.vue', async () => {
@@ -100,6 +116,7 @@ afterEach(() => {
   annotation.canLeave = true
   readerLocation.mockClear()
   readerState.ready = undefined
+  collectionView.show.mockClear()
 })
 async function settle() {
   for (let i = 0; i < 7; i++) {
@@ -107,6 +124,78 @@ async function settle() {
     await nextTick()
   }
 }
+it('opens first collection when background persistence begins between pointer down and pointer up', async () => {
+  const library = emptyLibrary(),
+    busy = ref(false),
+    collection: CollectionHostApi = {
+      snapshot: () => ({ revision: 1, workspaceScope: 'local:empty-collection' }),
+      prepareCollection: vi.fn(async () => ({
+        id: 'plan',
+        revision: 1,
+        candidates: [],
+        skipped: [],
+      })),
+      commitCollection: vi.fn(async () => ({ sourceIds: [], revision: 2 })),
+      discardCollection: vi.fn(),
+      organizeInbox: vi.fn(async () => ({ revision: 2 })),
+    },
+    reading = {
+      pending: new Map(),
+      errors: new Map(),
+      hold: () => () => {},
+      record: vi.fn(),
+      acknowledge: vi.fn(),
+      flush: vi.fn(async () => true),
+    } as unknown as ReadingProgress,
+    host = document.createElement('div')
+  document.body.append(host)
+  app = createApp({
+    render: () =>
+      h(SourcePanel, {
+        library,
+        collection,
+        scope: 'local:empty-collection',
+        busy: busy.value,
+        reading,
+        now,
+        canUndoReading: false,
+        arrangeBatch: async () => true,
+        undoReading: async () => true,
+        read: async () => '',
+        save: async () => true,
+        updateDetails: async () => true,
+        saveExcerpt: async () => true,
+        remove: async () => true,
+        arrange: async () => true,
+        saveReading: async () => true,
+      }),
+  })
+  app.mount(host)
+  await settle()
+  const button = [...host.querySelectorAll('button')].find(
+    (element) => element.textContent?.trim() === '收集材料',
+  )!
+  expect(button).toBeDefined()
+  expect(button.disabled).toBe(false)
+  button.focus()
+  button.dispatchEvent(
+    new PointerEvent('pointerdown', { bubbles: true, button: 0, isPrimary: true }),
+  )
+  busy.value = true
+  await settle()
+  expect(button.disabled).toBe(false)
+  expect(document.activeElement).toBe(button)
+  expect(host.querySelector('[data-testid="collection-import"]')?.getAttribute('data-busy')).toBe(
+    'true',
+  )
+  button.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, isPrimary: true }))
+  button.click()
+  await settle()
+  expect(collectionView.show).toHaveBeenCalledOnce()
+  expect(collection.prepareCollection).not.toHaveBeenCalled()
+  expect(collection.commitCollection).not.toHaveBeenCalled()
+  expect(library.sources).toHaveLength(0)
+})
 it('drops late old-scope text and prevents leaving a reader with unsaved annotations', async () => {
   const prepared = prepareSource(
     { title: 'Material', url: '', format: 'markdown', content: 'Original' },
