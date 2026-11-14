@@ -17,7 +17,10 @@ vi.mock('../plugins', async () => {
   return { usePlugins: () => ({ enabledEditorPlugins: ref([]), canReviewCard: () => true }) }
 })
 vi.mock('../plugins/manager', () => ({
-  usePluginManager: () => ({ holdPluginRuntime: () => () => {} }),
+  usePluginManager: () => ({
+    holdPluginRuntime: () => () => {},
+    pluginRuntime: { installations: [] },
+  }),
 }))
 vi.mock('./AppModal.vue', () => ({
   default: {

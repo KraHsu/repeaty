@@ -3,8 +3,9 @@ import { z } from 'zod'
 import { format } from 'prettier'
 import { readFile, writeFile } from 'node:fs/promises'
 const vite = await createServer({
-  configFile: 'config/vite.config.ts',
-  server: { middlewareMode: true, watch: null },
+  configFile: false,
+  optimizeDeps: { noDiscovery: true, include: [] },
+  server: { middlewareMode: true, watch: null, hmr: false, ws: false },
   appType: 'custom',
 })
 try {
@@ -13,7 +14,17 @@ try {
   const sources = await vite.ssrLoadModule('/src/core/source-data.ts')
   const schemas = {}
   for (const [store, name] of Object.entries({
+    studySettings: 'studySettingsSchema',
+    studyEvents: 'studyEventSchema',
+    studyActivity: 'studyActivitySchema',
+    fsrsModels: 'fsrsModelSchema',
     sources: 'sourceSchema',
+    materialReceipts: 'materialReceiptSchema',
+    automationReceipts: 'automationReceiptSchema',
+    materialFolders: 'materialFolderSchema',
+    materialCollections: 'materialCollectionSchema',
+    sourceConnections: 'sourceConnectionSchema',
+    sourceCandidates: 'sourceCandidateSchema',
     decks: 'deckSchema',
     notes: 'noteSchema',
     cards: 'cardSchema',

@@ -6,6 +6,13 @@ import type { PluginSettingsContribution } from './settings'
 import type { PluginPageContribution } from './pages'
 export type { PluginPageContribution, RegisterPluginPage } from './pages'
 import type { PluginWidgetContribution } from './widgets'
+import type {
+  SourceConnectorContribution,
+  MaterialImporterContribution,
+  MaterialReaderContribution,
+  MaterialCommandContribution,
+  MaterialSearchProviderContribution,
+} from './materials'
 export type {
   PluginWidgetContribution,
   PluginWidgetPlacement,
@@ -80,7 +87,7 @@ export interface ReviewPanelPlugin {
   settings?: Component
   dispose?: () => void | Promise<void>
 }
-/** An extension plugin registers at least one page or widget during activation. */
+/** An extension plugin registers at least one page, widget, or material contribution. */
 export interface ExtensionPlugin {
   type: 'extension'
   id: string
@@ -98,9 +105,16 @@ export function isQuestionPlugin(plugin: PluginDefinition): plugin is QuestionPl
 /** Installed by the deployment, then optionally enabled by each browser. */
 export interface PluginInstallation {
   plugin: PluginDefinition
+  /** Changes on every runtime activation; views use it to discard replaced component state. */
+  instanceId?: string
   settings?: readonly PluginSettingsContribution[]
   pages?: readonly PluginPageContribution[]
   widgets?: readonly PluginWidgetContribution[]
+  connectors?: readonly SourceConnectorContribution[]
+  importers?: readonly MaterialImporterContribution[]
+  readers?: readonly MaterialReaderContribution[]
+  commands?: readonly MaterialCommandContribution[]
+  searchProviders?: readonly MaterialSearchProviderContribution[]
   enabledByDefault?: boolean
   builtin?: boolean
 }

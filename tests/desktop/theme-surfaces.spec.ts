@@ -1,3 +1,10 @@
+import {
+  openCollection,
+  fillCollectionText,
+  previewCollection,
+  commitCollection,
+} from '../fixtures/collection-controls'
+import { showSourceText } from '../fixtures/source-controls'
 import type { Locator } from '@playwright/test'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -161,22 +168,22 @@ test('system dark covers workspace, settings and independent official plugin sur
 
 test('system dark covers source importing, reading and editing dialogs', async ({ page }, info) => {
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
-  await page.getByRole('button', { name: '导入材料', exact: true }).click()
-  const importing = page.getByRole('dialog', { name: '导入材料', exact: true })
-  await importing.getByLabel('材料标题', { exact: true }).fill('深色模式学习材料')
-  await selectUiValue(importing.getByLabel('内容格式', { exact: true }), 'markdown')
-  await importing
-    .getByLabel('粘贴正文', { exact: true })
-    .fill('# 阅读材料\n\n保留清晰的文字与层级。\n\n```js\nconst answer = "可读代码"\n```')
+  const importing = await openCollection(page)
+  await fillCollectionText(importing, {
+    title: '深色模式学习材料',
+    format: 'markdown',
+    text: '# 阅读材料\n\n保留清晰的文字与层级。\n\n```js\nconst answer = "可读代码"\n```',
+  })
   await darkSurface(importing.locator('.modal-content'))
-  await darkSurface(importing.locator('.form-actions'))
-  await darkSurface(importing.getByLabel('粘贴正文', { exact: true }))
-  await readable(importing.getByLabel('材料标题', { exact: true }))
-  await readable(importing.getByLabel('粘贴正文', { exact: true }))
-  await readable(importing.getByRole('button', { name: '保存材料', exact: true }))
+  await darkSurface(importing.locator('.collection-footer'))
+  await darkSurface(importing.getByRole('textbox', { name: '正文', exact: true }))
+  await readable(importing.getByLabel('标题（可选）', { exact: true }))
+  await readable(importing.getByRole('textbox', { name: '正文', exact: true }))
+  await readable(importing.getByRole('button', { name: '预览材料', exact: true }))
   await page.screenshot({ path: info.outputPath('dark-source-import.png'), animations: 'disabled' })
-  await importing.getByRole('button', { name: '保存材料', exact: true }).click()
-  await expect(importing).toHaveCount(0)
+  await previewCollection(importing)
+  await commitCollection(importing)
+  await showSourceText(page)
   const reader = page.getByRole('textbox', { name: '材料正文', exact: true })
   await darkSurface(reader)
   await readable(reader)

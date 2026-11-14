@@ -1,8 +1,13 @@
 <script setup lang="ts">
+import SourceConnections from '../../components/SourceConnections.vue'
 import { useApplication } from '../context'
 import { SourcePanel } from '../view-components'
+const emit = defineEmits<{ settings: [category: string] }>()
 const {
   workspace,
+  collection,
+  sourceConnections,
+  capture,
   autoStartReading,
   mcpSelection,
   cards,
@@ -21,6 +26,8 @@ function bindActiveSource(instance: unknown) {
 <template>
   <SourcePanel
     :get-media="workspace.getMedia"
+    :collection="collection"
+    :read-clipboard="capture.readClipboard"
     :ref="bindActiveSource"
     :key="workspace.scope.value"
     v-bind="sourceBindings"
@@ -31,5 +38,16 @@ function bindActiveSource(instance: unknown) {
     @share="mcpSelection = $event"
     @edit="(id) => editCard(cards.find((card) => card.noteId === id))"
     @clear-notice="notice = null"
-  />
+    @settings="emit('settings', $event)"
+  >
+    <template #connections>
+      <SourceConnections
+        :controller="sourceConnections"
+        :collection="collection"
+        :sources="workspace.library.value.sources"
+        :get-source="workspace.getSource"
+        @settings="emit('settings', 'connections')"
+      />
+    </template>
+  </SourcePanel>
 </template>

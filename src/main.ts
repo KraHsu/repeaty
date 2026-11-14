@@ -8,6 +8,7 @@ import { restorePreferences } from './preferences'
 import 'katex/dist/katex.min.css'
 import './style.css'
 import './styles/controls.css'
+import './styles/sections.css'
 import './styles/shell.css'
 
 const initializing = initializePlatform()

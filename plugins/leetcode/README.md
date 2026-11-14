@@ -49,3 +49,7 @@ npm run dev
 在主侧栏「插件」中安装 `dist/leetcode.repeaty-plugin` 即可更新插件，无需重编译 Repeaty。也可通过 `npm run dev -- --outdir /path/to/test-library/.repeaty/plugins/leetcode` 输出到专用测试学习库，再在该页面重新扫描并确认启用。
 
 独立 SDK 的安装方式见 [插件开发文档](https://github.com/KraHsu/repeaty/blob/main/docs/PLUGINS.md#独立开发与构建)。
+
+## 许可证
+
+Copyright (c) 2026 CharlesHsu。此官方插件按 AGPL-3.0-only 分发，完整协议见包内 `assets/licenses/AGPL-3.0.txt`；[对应源代码](https://github.com/KraHsu/repeaty/tree/codex/learning-scope/plugins/leetcode)。第三方组件继续遵循各自许可证。

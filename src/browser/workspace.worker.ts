@@ -8,6 +8,7 @@ export type WorkspaceRequest =
   | { type: 'open'; selection: WorkspaceSelection }
   | { type: 'media'; id: string }
   | { type: 'attempts'; ids: string[] }
+  | { type: 'retired-notes'; ids?: string[] }
 export type WorkspaceReply =
   | { id: number; type: 'progress'; percent: number }
   | { id: number; type: 'result'; value: unknown }
@@ -30,7 +31,11 @@ context.onmessage = async ({ data: { id, request } }) => {
     } else {
       if (!reader) throw new WorkspaceReadError('closed')
       value =
-        request.type === 'media' ? await reader.media(request.id) : reader.attempts(request.ids)
+        request.type === 'media'
+          ? await reader.media(request.id)
+          : request.type === 'retired-notes'
+            ? await reader.retiredNotes(request.ids)
+            : reader.attempts(request.ids)
     }
     context.postMessage({ id, type: 'result', value })
   } catch (error) {

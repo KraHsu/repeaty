@@ -1,5 +1,5 @@
 import { msg, LocalizedError } from '../i18n'
-import { MAX_MEDIA_BYTES, mediaSchema, type MediaUpload } from './model'
+import { MAX_MEDIA_BYTES, mediaSchema, mediaTypes, type MediaUpload } from './model'
 
 export function prepareMedia(file: File): MediaUpload {
   if (!file.size || file.size > MAX_MEDIA_BYTES)
@@ -11,7 +11,7 @@ export function prepareMedia(file: File): MediaUpload {
     size: file.size,
     createdAt: new Date().toISOString(),
   })
-  if (!result.success || file.type.startsWith('text/'))
+  if (!result.success || !mediaTypes.includes(file.type as (typeof mediaTypes)[number]))
     throw new LocalizedError(
       msg('支持 PNG、JPEG、WebP、GIF 图片及 MP3、WAV、OGG、M4A、WebM、FLAC、AAC 音频。'),
     )

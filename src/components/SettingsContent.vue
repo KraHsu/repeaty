@@ -81,7 +81,12 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="panel" class="settings-content">
-    <template v-for="entry in entries" :key="registrationKey(entry.contribution)">
+    <div
+      v-for="(entry, index) in entries"
+      :key="registrationKey(entry.contribution)"
+      class="settings-entry"
+      :class="{ 'app-section-divider': index > 0 }"
+    >
       <div v-if="entry.standalone" class="settings-view">
         <component :is="entry.contribution.component" />
       </div>
@@ -111,7 +116,7 @@ onBeforeUnmount(() => {
         />
         <component v-if="entry.contribution.component" :is="entry.contribution.component" />
       </SettingGroup>
-    </template>
+    </div>
     <UiNotice v-if="!entries.length">{{ t('此分类暂时没有可配置的选项。') }}</UiNotice>
   </div>
 </template>

@@ -107,6 +107,33 @@ impl Secrets {
         })
         .transpose()
     }
+    /// Internal provider profiles share the device-private store. Their reserved namespace is
+    /// not a valid plugin ID, so generic plugin credentials APIs cannot read or replace them.
+    pub(super) fn model_slots(&self) -> Result<Vec<String>> {
+        let mut statement = self.0.prepare("SELECT slot FROM plugin_secrets WHERE plugin='@models' AND values_json IS NOT NULL ORDER BY slot").map_err(failed)?;
+        statement
+            .query_map([], |row| row.get(0))
+            .map_err(failed)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(failed)
+    }
+    pub(super) fn save_model(
+        &mut self,
+        id: &str,
+        values: Option<BTreeMap<String, String>>,
+    ) -> Result<()> {
+        let permissions = Permissions {
+            origins: vec!["https://models.repeaty.invalid".into()],
+            ..Default::default()
+        };
+        let payload = match values {
+            Some(values) => {
+                json!({"action":"set","slot":id,"origin":"https://models.repeaty.invalid","values":values})
+            }
+            None => json!({"action":"clear","slot":id}),
+        };
+        self.operation("@models", &permissions, payload).map(|_| ())
+    }
     fn state(&self, id: &str, slot: Option<&str>) -> Result<Value> {
         if slot.is_some_and(|slot| !slot_valid(slot)) {
             return Err("invalid-data".into());

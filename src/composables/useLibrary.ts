@@ -24,6 +24,8 @@ export function useLibrary(pinia?: Pinia) {
     readingUndo: readonly(state.readingUndo),
     lastOperation: state.lastOperation,
     canUndoOperation: state.canUndoOperation,
+    canRedoOperation: state.canRedoOperation,
+    lastRedoOperation: state.lastRedoOperation,
     canUndoReading: state.canUndoReading,
   }
 }

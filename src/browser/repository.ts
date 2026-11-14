@@ -18,17 +18,35 @@ import {
 } from '../core/practice-data'
 import type { Snapshot, AutoBackup, BackupSummary, CardPage } from '../core/storage'
 import { MAX_AUTO_BACKUPS } from '../core/storage'
+import { retiredNoteSchema, type RetiredNote } from '../desktop/retirement'
+import {
+  captureRetiredNote,
+  retiredNoteIds,
+  retiredSourceRisk,
+  validateRetiredSources,
+} from '../core/retired-updates'
+import { prepareRetiredDocument } from '../core/retired-document'
 import { compileSearch } from '../core/search'
 import { available } from '../core/scheduler'
+import { studySettings } from '../core/study-settings'
+import { studyActivitySchema, studyEventSchema } from '../core/study-data'
 import { validateSourceOrigins } from '../core/sources'
+import { validateMaterialChanges } from '../core/material-data'
+import { validateAutomationReceipts } from '../core/automation-data'
 import { LocalizedError, msg } from '../i18n'
 import { WorkspaceReadError } from './errors'
 import type { BrowserWorkspaceSnapshot } from './workspace-reader'
+import {
+  checkSourceDraftVersion,
+  sourceDraftSchema,
+  type SourceDraft,
+} from '../core/source-workbench'
 
 export interface BrowserWorkspaceSource {
   snapshot: BrowserWorkspaceSnapshot
   media(id: string): Promise<Blob | undefined>
   attempts(ids: string[]): Promise<Attempt[]>
+  retiredNotes?(ids?: string[]): Promise<RetiredNote[]>
   close(): void
 }
 
@@ -40,10 +58,34 @@ export function createBrowserRepository(
   const scope = `local:web-workspace:${crypto.randomUUID()}`
   const original = source.snapshot.library
   const baselineMedia = new Map(original.media.map((item) => [item.id, item]))
+  // A read-only trial can also undo a deletion saved by the desktop app.
+  for (const entry of [
+    ...(source.snapshot.operationHistory?.undo ?? []),
+    ...(source.snapshot.operationHistory?.redo ?? []),
+  ])
+    for (const change of entry.changes)
+      if (change.store === 'media')
+        for (const value of [change.before, change.after])
+          if (value) baselineMedia.set(value.id, value as Library['media'][number])
   let bodies = new WeakMap<AttemptRecord, Attempt>()
   const blobs = new Map<string, Blob>()
+  const drafts = new Map<string, SourceDraft>(
+    (source.snapshot.sourceDrafts ?? []).map((draft) => [
+      draft.sourceId,
+      sourceDraftSchema.parse({ ...draft, scope }),
+    ]),
+  )
   const backups: AutoBackup[] = []
-  let current: Snapshot = { revision: source.snapshot.revision, library: original }
+  const retiredBaseline = new Map<string, RetiredNote>()
+  const retiredLoaded = new Set<string>()
+  let allRetiredLoaded = false
+  const retired = new Map<string, RetiredNote | undefined>()
+  const backupRetired = new Map<string, Map<string, RetiredNote | undefined>>()
+  let current: Snapshot = {
+    revision: source.snapshot.revision,
+    library: original,
+    operationHistory: source.snapshot.operationHistory,
+  }
   let closed = false
   const check = (revision?: number) => {
     if (closed) throw new WorkspaceReadError('closed')
@@ -74,6 +116,40 @@ export function createBrowserRepository(
       return value
     })
   }
+  async function loadRetired(ids?: string[]) {
+    check()
+    const missing = ids?.filter((id) => !retiredLoaded.has(id))
+    if (allRetiredLoaded || missing?.length === 0) return
+    const values: RetiredNote[] = []
+    if (missing) {
+      for (let offset = 0; offset < missing.length; offset += 128) {
+        values.push(...((await source.retiredNotes?.(missing.slice(offset, offset + 128))) ?? []))
+        check()
+      }
+    } else values.push(...((await source.retiredNotes?.()) ?? []))
+    check()
+    const seen = new Set<string>()
+    for (const raw of values) {
+      const value = retiredNoteSchema.parse(raw),
+        id = value.note?.id ?? value.cards[0]?.noteId
+      if (
+        !id ||
+        seen.has(id) ||
+        (missing && !missing.includes(id)) ||
+        value.attempts.some((attempt) => !hasAttemptBody(attempt))
+      )
+        throw new WorkspaceReadError('invalid')
+      seen.add(id)
+      retiredBaseline.set(id, value)
+      retiredLoaded.add(id)
+      for (const meta of value.media) baselineMedia.set(meta.id, meta)
+    }
+    for (const id of missing ?? []) retiredLoaded.add(id)
+    if (!ids) allRetiredLoaded = true
+  }
+  function retiredValue(id: string) {
+    return retired.has(id) ? retired.get(id) : retiredBaseline.get(id)
+  }
   function backup(reason: string, force: boolean, now = new Date()) {
     check()
     if (
@@ -83,11 +159,46 @@ export function createBrowserRepository(
         now.getTime() - new Date(backups[0].createdAt).getTime() < 30 * 60_000)
     )
       return
-    backups.unshift({ ...current, id: crypto.randomUUID(), createdAt: now.toISOString(), reason })
-    backups.splice(MAX_AUTO_BACKUPS)
+    const id = crypto.randomUUID()
+    backups.unshift({ ...current, id, createdAt: now.toISOString(), reason })
+    backupRetired.set(id, new Map(retired))
+    for (const removed of backups.splice(MAX_AUTO_BACKUPS)) backupRetired.delete(removed.id)
   }
   return {
     scope: () => scope,
+    async retiredNote(id: string): Promise<RetiredNote> {
+      const revision = current.revision
+      await loadRetired([id])
+      check(revision)
+      return retiredNoteSchema.parse({
+        ...(retiredValue(id) ?? {
+          note: null,
+          document: null,
+          cards: [],
+          reviews: [],
+          practices: [],
+          attempts: [],
+          media: [],
+        }),
+        revision,
+      })
+    },
+    async retiredNotes(backupId?: string): Promise<RetiredNote[]> {
+      const revision = current.revision
+      await loadRetired()
+      check(revision)
+      const snapshot = backupId ? backups.find((entry) => entry.id === backupId) : current
+      const overrides = backupId ? backupRetired.get(backupId) : retired
+      if (!snapshot || !overrides) throw new WorkspaceReadError('invalid')
+      const values = new Map(retiredBaseline)
+      for (const [id, value] of overrides) {
+        if (value) values.set(id, value)
+        else values.delete(id)
+      }
+      return [...values.values()].map((value) =>
+        retiredNoteSchema.parse({ ...value, revision: snapshot.revision }),
+      )
+    },
     async load(): Promise<Snapshot> {
       check()
       return current
@@ -95,18 +206,71 @@ export function createBrowserRepository(
     async save(
       library: Library,
       expectedRevision: number,
-      options: { assets?: MediaUpload[]; reason?: string; consumeCardDraft?: string } = {},
+      options: {
+        assets?: MediaUpload[]
+        reason?: string
+        consumeCardDraft?: string
+        consumeSourceDraft?: string
+        operationHistory?: OperationHistory
+        retired?: RetiredNote[]
+      } = {},
     ): Promise<Snapshot> {
       check(expectedRevision)
+      const operationHistory =
+        options.operationHistory === undefined
+          ? current.operationHistory
+          : parseOperationHistory(options.operationHistory)
       if (options.consumeCardDraft) throw new WorkspaceReadError('invalid')
+      const consumedDraft = options.consumeSourceDraft
+        ? [...drafts.values()].find((draft) => draft.id === options.consumeSourceDraft)
+        : undefined
+      if (options.consumeSourceDraft && !consumedDraft) throw new WorkspaceReadError('invalid')
       const before = current.library
+      validateMaterialChanges(before, library)
+      if (before.automationReceipts !== library.automationReceipts)
+        validateAutomationReceipts(
+          before.automationReceipts,
+          library.automationReceipts,
+          (message) => {
+            throw new Error(message)
+          },
+        )
       const progressOnly =
         (
-          ['decks', 'notes', 'media', 'savedSearches', 'sources', 'practices', 'attempts'] as const
+          [
+            'decks',
+            'notes',
+            'media',
+            'savedSearches',
+            'sources',
+            'practices',
+            'attempts',
+            'materialReceipts',
+            'automationReceipts',
+            'materialFolders',
+            'materialCollections',
+            'sourceConnections',
+            'sourceCandidates',
+            'studySettings',
+            'fsrsModels',
+          ] as const
         ).every((key) => library[key] === before[key]) &&
         library.cards.length === before.cards.length
       let next = library
+      const retiredUpdates = new Map<string, RetiredNote | undefined>()
       if (progressOnly) {
+        for (const key of ['studyActivity', 'studyEvents'] as const) {
+          if (library[key] === before[key]) continue
+          if (library[key].length > 500_000) throw new WorkspaceReadError('limit')
+          const ids = new Set<string>(),
+            previous = new Set<unknown>(before[key])
+          for (const record of library[key]) {
+            if (ids.has(record.id)) throw new WorkspaceReadError('invalid')
+            ids.add(record.id)
+            if (!previous.has(record))
+              (key === 'studyActivity' ? studyActivitySchema : studyEventSchema).parse(record)
+          }
+        }
         const previous = new Map(before.cards.map((card) => [card.id, card]))
         const ids = new Set<string>()
         for (const card of library.cards) {
@@ -142,9 +306,67 @@ export function createBrowserRepository(
           }
         }
       } else next = workspaceLibrarySchema.parse(library)
+      if (options.retired !== undefined) {
+        await loadRetired()
+        for (const id of new Set([...retiredBaseline.keys(), ...retired.keys()]))
+          retiredUpdates.set(id, undefined)
+        const incoming = new Set<string>()
+        for (const raw of options.retired) {
+          const value = retiredNoteSchema.parse(raw),
+            id = value.note?.id ?? value.cards[0]?.noteId
+          if (!id || incoming.has(id) || value.attempts.some((attempt) => !hasAttemptBody(attempt)))
+            throw new WorkspaceReadError('invalid')
+          incoming.add(id)
+          retiredUpdates.set(id, { ...value, revision: expectedRevision + 1 })
+        }
+      } else if (!progressOnly) {
+        const ids = [...retiredNoteIds(before, next)]
+        await loadRetired(ids)
+        for (const id of ids) {
+          const prior = retiredValue(id),
+            note = before.notes.find((entry) => entry.id === id),
+            document =
+              prior?.document && note
+                ? await prepareRetiredDocument(note, prior.document, media)
+                : undefined
+          retiredUpdates.set(
+            id,
+            await captureRetiredNote(
+              before,
+              next,
+              id,
+              prior,
+              expectedRevision + 1,
+              async (attemptId) => {
+                const record = before.attempts.find((attempt) => attempt.id === attemptId)
+                if (!record) throw new WorkspaceReadError('invalid')
+                return (await expand([record]))[0]!
+              },
+              document,
+            ),
+          )
+        }
+      }
+      if (options.retired === undefined && retiredSourceRisk(before, next)) {
+        await loadRetired()
+        const values = new Map(retiredBaseline)
+        for (const [id, value] of [...retired, ...retiredUpdates]) {
+          if (value) values.set(id, value)
+          else values.delete(id)
+        }
+        validateRetiredSources(before, next, [...values.values()])
+      }
       const uploads = new Map<string, Blob>()
+      const retainedMedia = new Map(next.media.map((meta) => [meta.id, meta]))
+      for (const value of retiredUpdates.values())
+        for (const meta of value?.media ?? []) {
+          const existing = retainedMedia.get(meta.id)
+          if (existing && (existing.type !== meta.type || existing.size !== meta.size))
+            throw new WorkspaceReadError('invalid')
+          retainedMedia.set(meta.id, meta)
+        }
       for (const asset of options.assets ?? []) {
-        const meta = next.media.find((entry) => entry.id === asset.meta.id)
+        const meta = retainedMedia.get(asset.meta.id)
         if (!meta) continue
         if (uploads.has(meta.id) || blobs.has(meta.id) || baselineMedia.has(meta.id))
           throw new LocalizedError(msg('媒体 ID 冲突，未覆盖已有文件。'))
@@ -152,7 +374,7 @@ export function createBrowserRepository(
           throw new WorkspaceReadError('invalid')
         uploads.set(meta.id, asset.blob)
       }
-      for (const meta of next.media) {
+      for (const meta of retainedMedia.values()) {
         const baseline = baselineMedia.get(meta.id)
         const blob = uploads.get(meta.id) ?? blobs.get(meta.id)
         if (
@@ -206,7 +428,9 @@ export function createBrowserRepository(
       check(expectedRevision)
       backup(options.reason ?? '自动备份', Boolean(options.reason))
       for (const [id, blob] of uploads) blobs.set(id, blob)
-      current = { revision: expectedRevision + 1, library: next }
+      for (const [id, value] of retiredUpdates) retired.set(id, value)
+      current = { revision: expectedRevision + 1, library: next, operationHistory }
+      if (consumedDraft) drafts.delete(consumedDraft.sourceId)
       onChange()
       return current
     },
@@ -261,9 +485,10 @@ export function createBrowserRepository(
     ): Promise<CardPage> {
       check()
       signal?.throwIfAborted()
-      const matches = compileSearch(current.library.decks, filter, now)
+      const settings = studySettings(current.library)
+      const matches = compileSearch(current.library.decks, filter, now, settings)
       const cards = cardViews(current.library).filter(matches)
-      const eligible = includeStudy ? cards.filter((card) => available(card, now)) : []
+      const eligible = includeStudy ? cards.filter((card) => available(card, now, settings)) : []
       const offset = (Math.max(1, page) - 1) * 50
       return {
         cards: cards.slice(offset, offset + 50),
@@ -273,13 +498,50 @@ export function createBrowserRepository(
       }
     },
     getMedia: media,
+    async readSourceProperties(sourceId: string) {
+      check()
+      if (!current.library.sources.some((source) => source.id === sourceId))
+        throw new WorkspaceReadError('invalid')
+      return source.snapshot.sourceProperties?.[sourceId] ?? ''
+    },
+    async readSourceDraft(sourceId: string) {
+      check()
+      const draft = drafts.get(sourceId)
+      return draft ? sourceDraftSchema.parse(draft) : undefined
+    },
+    async writeSourceDraft(input: SourceDraft) {
+      check()
+      const draft = sourceDraftSchema.parse(input)
+      if (draft.scope !== scope) throw new WorkspaceReadError('invalid')
+      checkSourceDraftVersion(
+        current.library.sources.find((source) => source.id === draft.sourceId),
+        draft,
+      )
+      if (!drafts.has(draft.sourceId) && drafts.size >= 50)
+        throw new Error('材料草稿已达到 50 份上限。')
+      drafts.set(draft.sourceId, draft)
+      onChange()
+    },
+    async discardSourceDraft(sourceId: string, id: string) {
+      check()
+      if (drafts.get(sourceId)?.id === id) {
+        drafts.delete(sourceId)
+        onChange()
+      }
+    },
     async close() {
       if (closed) return
       closed = true
       source.close()
       bodies = new WeakMap()
       blobs.clear()
+      drafts.clear()
       backups.splice(0)
+      retired.clear()
+      retiredBaseline.clear()
+      retiredLoaded.clear()
+      backupRetired.clear()
     },
   }
 }
+import { parseOperationHistory, type OperationHistory } from '../core/operation-history'

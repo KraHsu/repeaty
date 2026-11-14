@@ -22,6 +22,10 @@ export function createCollectionsCommands(context: LibraryContext) {
           if (id && !previous) throw new LocalizedError(msg('卡组已不存在。'))
           const deck = deckSchema.parse({
             ...input,
+            studyPriority: Object.hasOwn(input, 'studyPriority')
+              ? input.studyPriority
+              : previous?.studyPriority,
+            activeFsrsModelId: previous?.activeFsrsModelId,
             id: id ?? crypto.randomUUID(),
             createdAt: previous?.createdAt ?? new Date().toISOString(),
           })

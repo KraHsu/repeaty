@@ -2,8 +2,24 @@ import { readSetting, writeSetting } from '../settings-store'
 import { readonly, ref } from 'vue'
 import { ZodError } from 'zod'
 import { en } from './en'
+import {
+  isLocale,
+  resolveLocale,
+  translateCatalog,
+  type Locale,
+  type LanguagePreference,
+  type TranslationCatalogs,
+} from './locales'
+import { languagePacks, restoreLanguagePacks } from './language-packs'
+import { interfaceCatalogs } from './interface-catalogs'
+export {
+  languageOptions,
+  isLocale,
+  type Locale,
+  type LanguagePreference,
+  type TranslationCatalogs,
+} from './locales'
 
-export type Locale = 'en' | 'zh-CN'
 export type MessageKey = keyof typeof en
 export type Message = {
   key: MessageKey
@@ -13,12 +29,14 @@ export type DisplayMessage = string | Message | Error
 export const LOCALE_STORAGE_KEY = 'repeaty.locale'
 const currentLocale = ref<Locale>('zh-CN')
 export const locale = readonly(currentLocale)
+const preference = ref<LanguagePreference>('system')
+export const languagePreference = readonly(preference)
 
 export function detectLocale(saved: string | null, languages: readonly string[]): Locale {
-  if (saved === 'en' || saved === 'zh-CN') return saved
+  if (isLocale(saved)) return saved
   for (const language of languages) {
-    if (/^zh(?:-|$)/i.test(language)) return 'zh-CN'
-    if (/^en(?:-|$)/i.test(language)) return 'en'
+    const match = resolveLocale(language)
+    if (match) return match
   }
   return 'en'
 }
@@ -35,7 +53,12 @@ export function t(input: DisplayMessage, params: Message['params'] = {}): string
   const key = typeof input === 'string' ? input : input.key
   if (typeof input !== 'string') params = input.params
   const english = Object.hasOwn(en, key) ? en[key as MessageKey] : undefined
-  const template = currentLocale.value === 'en' && english ? english : key
+  const custom = languagePacks.value[currentLocale.value]
+  const builtin = interfaceCatalogs[currentLocale.value]
+  const template =
+    (custom && Object.hasOwn(custom, key) ? custom[key] : undefined) ??
+    (builtin && Object.hasOwn(builtin, key) ? builtin[key] : undefined) ??
+    (currentLocale.value !== 'zh-CN' && english ? english : key)
   // Only named placeholders are interpolated. Cloze braces and inserted user text stay literal.
   return template.replace(/(?<!\{)\{(\w+)\}(?!\})/g, (placeholder, name: string) => {
     const value = Object.hasOwn(params, name) ? params[name] : undefined
@@ -80,7 +103,7 @@ function updateDocument() {
   if (manifest)
     manifest.href = manifest.href.replace(
       /manifest(?:\.en)?\.webmanifest$/,
-      currentLocale.value === 'en' ? 'manifest.en.webmanifest' : 'manifest.webmanifest',
+      currentLocale.value.startsWith('zh') ? 'manifest.webmanifest' : 'manifest.en.webmanifest',
     )
   document.title = `Repeaty · ${t('卡片与间隔复习')}`
   document
@@ -91,7 +114,15 @@ function updateDocument() {
     )
 }
 export function setLocale(value: Locale) {
-  currentLocale.value = value
+  setLanguagePreference(value)
+}
+export function setLanguagePreference(value: LanguagePreference) {
+  if (value !== 'system' && !isLocale(value)) return
+  preference.value = value
+  currentLocale.value = detectLocale(
+    value,
+    typeof navigator === 'undefined' ? [] : navigator.languages,
+  )
   try {
     writeSetting(LOCALE_STORAGE_KEY, value)
   } catch {
@@ -106,9 +137,33 @@ export function initI18n() {
   } catch {
     /* Fall back to browser preferences. */
   }
+  preference.value = isLocale(saved) ? saved : 'system'
+  restoreLanguagePacks()
   currentLocale.value = detectLocale(
     saved,
     typeof navigator === 'undefined' ? [] : navigator.languages,
   )
   updateDocument()
+}
+export function connectSystemLanguage() {
+  const update = () => {
+    if (preference.value === 'system') {
+      currentLocale.value = detectLocale(null, navigator.languages)
+      updateDocument()
+    }
+  }
+  window.addEventListener('languagechange', update)
+  return () => window.removeEventListener('languagechange', update)
+}
+/** Isolated plugin catalogs never replace host text or another plugin's translations. */
+export function createTranslator(catalogs: TranslationCatalogs, fallback: Locale = 'en') {
+  return (key: string, params: Record<string, string | number | undefined> = {}) =>
+    translateCatalog(catalogs, locale.value, key, params, fallback)
+}
+export function currentLanguagePack() {
+  return {
+    version: 1 as const,
+    locale: locale.value,
+    messages: Object.fromEntries(Object.keys(en).map((key) => [key, t(key)])),
+  }
 }

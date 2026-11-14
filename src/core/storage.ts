@@ -1,4 +1,20 @@
+import { studySettings, studySettingsSchema } from './study-settings'
+import { fsrsModelSchema, studyEventSchema, studyActivitySchema } from './study-data'
+import {
+  sourceConnectionSchema,
+  sourceCandidateSchema,
+  materialCollectionSchema,
+} from './collection-data'
 import { msg, LocalizedError } from '../i18n'
+import { retiredNoteSchema, type RetiredNote } from '../desktop/retirement'
+import {
+  captureRetiredNote,
+  retiredNoteIds,
+  retiredSourceRisk,
+  validateRetiredSources,
+} from './retired-updates'
+import { prepareRetiredDocument } from './retired-document'
+import { parseOperationHistory, type OperationHistory } from './operation-history'
 import { openDB, type DBSchema, type IDBPTransaction } from 'idb'
 import {
   emptyLibrary,
@@ -19,8 +35,12 @@ import {
   renderCard,
 } from './model'
 import { sourceSchema, type Source } from './source-data'
+import { materialReceiptSchema, validateMaterialChanges } from './material-data'
+import { automationReceiptSchema, validateAutomationReceipts } from './automation-data'
 import { validateSourceOrigins } from './sources'
 import { cardDraftSchema, MAX_DRAFTS, type CardDraft } from './card-draft-data'
+import { checkSourceDraftVersion, sourceDraftSchema, type SourceDraft } from './source-workbench'
+import { materialFolderSchema } from './material-organization-data'
 import { compileSearch } from './search'
 import { available } from './scheduler'
 import {
@@ -34,6 +54,7 @@ import {
 export interface Snapshot {
   revision: number
   library: Library
+  operationHistory?: OperationHistory
 }
 export interface AutoBackup {
   id: string
@@ -53,6 +74,16 @@ export const recordStores = [
   'practices',
   'attempts',
   'sources',
+  'materialReceipts',
+  'automationReceipts',
+  'materialFolders',
+  'materialCollections',
+  'sourceConnections',
+  'sourceCandidates',
+  'studySettings',
+  'studyEvents',
+  'studyActivity',
+  'fsrsModels',
 ] as const
 export type RecordStore = (typeof recordStores)[number]
 type Entity = Library[RecordStore][number]
@@ -101,7 +132,30 @@ interface RepeatyDB extends DBSchema {
   attempts: RecordTable
   attemptSummaries: RecordTable
   sources: RecordTable
+  materialReceipts: RecordTable
+  automationReceipts: RecordTable
+  sourceConnections: RecordTable
+  studySettings: RecordTable
+  studyEvents: RecordTable
+  studyActivity: RecordTable
+  fsrsModels: RecordTable
+  sourceCandidates: RecordTable
+  materialFolders: RecordTable
+  materialCollections: RecordTable
   cardDrafts: { key: string; value: CardDraft }
+  sourceDrafts: { key: string; value: SourceDraft }
+  operationHistory: { key: string; value: OperationHistory }
+  retiredNotes: { key: string; value: RetiredNote }
+  retiredChanges: {
+    key: [number, string]
+    value: { revision: number; id: string; before?: RetiredNote }
+    indexes: { revision: number }
+  }
+  retiredAssets: {
+    key: string
+    value: { revision: number; ids: string[] }
+    indexes: { revision: number }
+  }
 }
 const stores = [
   'workspace',
@@ -112,11 +166,26 @@ const stores = [
   'history',
   'attemptSummaries',
   'cardDrafts',
+  'sourceDrafts',
+  'operationHistory',
+  'retiredNotes',
+  'retiredChanges',
+  'retiredAssets',
   ...recordStores,
 ] as const
 type Transaction = IDBPTransaction<RepeatyDB, typeof stores, 'readwrite'>
 const schemas = {
   sources: sourceSchema,
+  materialReceipts: materialReceiptSchema,
+  automationReceipts: automationReceiptSchema,
+  sourceConnections: sourceConnectionSchema,
+  sourceCandidates: sourceCandidateSchema,
+  studySettings: studySettingsSchema,
+  studyEvents: studyEventSchema,
+  studyActivity: studyActivitySchema,
+  fsrsModels: fsrsModelSchema,
+  materialFolders: materialFolderSchema,
+  materialCollections: materialCollectionSchema,
   decks: deckSchema,
   notes: noteSchema,
   cards: cardSchema,
@@ -147,7 +216,7 @@ export function createRepository(
 ) {
   // save() shadows `options` with its own parameter, so keep the repository setting here.
   const compactHistory = Boolean(options.compactHistory)
-  const database = openDB<RepeatyDB>(name, 16, {
+  const database = openDB<RepeatyDB>(name, 24, {
     async upgrade(db, _oldVersion, _newVersion, tx) {
       try {
         for (const store of stores)
@@ -159,12 +228,16 @@ export function createRepository(
             table.createIndex('deckId', ['deckId', 'position'])
         }
         const history = tx.objectStore('history')
+        for (const name of ['retiredChanges', 'retiredAssets'] as const) {
+          const table = tx.objectStore(name)
+          if (!table.indexNames.contains('revision')) table.createIndex('revision', 'revision')
+        }
         if (!history.indexNames.contains('revision')) history.createIndex('revision', 'revision')
         if (!history.indexNames.contains('store')) history.createIndex('store', 'store')
         const summaries = tx.objectStore('attemptSummaries')
         if (!summaries.indexNames.contains('position'))
           summaries.createIndex('position', 'position')
-        let cursor = await tx.objectStore('attempts').openCursor()
+        let cursor = _oldVersion < 16 ? await tx.objectStore('attempts').openCursor() : null
         while (cursor) {
           const row = cursor.value
           await summaries.put({ ...row, value: summarizeAttempt(row.value as Attempt) }, row.id)
@@ -266,6 +339,17 @@ export function createRepository(
       await cursor.delete()
       cursor = await cursor.continue()
     }
+    // Key-only pruning never loads retired attempt bodies during an ordinary checkpoint.
+    for (const name of oldest >= 1 ? (['retiredChanges', 'retiredAssets'] as const) : []) {
+      let retired = await tx
+        .objectStore(name)
+        .index('revision')
+        .openKeyCursor(IDBKeyRange.bound(1, oldest))
+      while (retired) {
+        await tx.objectStore(name).delete(retired.primaryKey as never)
+        retired = await retired.continue()
+      }
+    }
     return expired.length > 0
   }
   async function checkpoint(
@@ -296,6 +380,11 @@ export function createRepository(
   }
   async function collectUnusedAssets(tx: Transaction) {
     const used = new Set(await tx.objectStore('media').getAllKeys())
+    for (const entry of await tx.objectStore('retiredAssets').getAll())
+      for (const id of entry.ids) used.add(id)
+    for (const id of (await tx.objectStore('operationHistory').get('main'))?.mediaIds ?? [])
+      used.add(id)
+    for (const draft of await tx.objectStore('sourceDrafts').getAll()) used.add(draft.mediaId)
     // Only media changes and legacy snapshots can retain deleted blobs, not the entire study history.
     for (const change of await tx.objectStore('history').index('store').getAll('media'))
       if (change.before) used.add(change.id)
@@ -310,6 +399,16 @@ export function createRepository(
       meta.counts.sources ??= 0
       meta.counts.practices ??= 0
       meta.counts.attempts ??= 0
+      meta.counts.materialReceipts ??= 0
+      meta.counts.automationReceipts ??= 0
+      meta.counts.materialFolders ??= 0
+      meta.counts.materialCollections ??= 0
+      meta.counts.sourceConnections ??= 0
+      meta.counts.sourceCandidates ??= 0
+      meta.counts.studySettings ??= 0
+      meta.counts.studyEvents ??= 0
+      meta.counts.studyActivity ??= 0
+      meta.counts.fsrsModels ??= 0
       return meta
     }
     const old = await tx.objectStore('workspace').get('main')
@@ -365,6 +464,93 @@ export function createRepository(
     return next
   }
   return {
+    async retiredNote(id: string): Promise<RetiredNote> {
+      const tx = (await database).transaction(['meta', 'retiredNotes'], 'readonly')
+      const [meta, value] = await Promise.all([
+        tx.objectStore('meta').get('main'),
+        tx.objectStore('retiredNotes').get(id),
+      ])
+      await tx.done
+      if (cached && cached.revision !== meta?.revision) throw changed()
+      return retiredNoteSchema.parse({
+        ...(value ?? {
+          note: null,
+          document: null,
+          cards: [],
+          reviews: [],
+          practices: [],
+          attempts: [],
+          media: [],
+        }),
+        revision: meta?.revision ?? 0,
+      })
+    },
+    async retiredNotes(checkpointId?: string): Promise<RetiredNote[]> {
+      const tx = (await database).transaction(
+        ['meta', 'retiredNotes', 'retiredChanges', 'checkpoints'],
+        'readonly',
+      )
+      const meta = await tx.objectStore('meta').get('main')
+      if (cached && cached.revision !== meta?.revision) {
+        await tx.done
+        throw changed()
+      }
+      const table = new Map(
+        (await tx.objectStore('retiredNotes').getAll()).map((value) => [
+          value.note?.id ?? value.cards[0]!.noteId,
+          value,
+        ]),
+      )
+      let revision = meta?.revision ?? 0
+      if (checkpointId) {
+        const checkpoint = await tx.objectStore('checkpoints').get(checkpointId)
+        if (!checkpoint) {
+          await tx.done
+          throw changed()
+        }
+        revision = checkpoint.revision
+        let cursor = await tx
+          .objectStore('retiredChanges')
+          .index('revision')
+          .openCursor(IDBKeyRange.lowerBound(revision, true), 'prev')
+        while (cursor) {
+          if (cursor.value.before) table.set(cursor.value.id, cursor.value.before)
+          else table.delete(cursor.value.id)
+          cursor = await cursor.continue()
+        }
+      }
+      await tx.done
+      return [...table.values()].map((value) => retiredNoteSchema.parse({ ...value, revision }))
+    },
+    async readSourceDraft(sourceId: string) {
+      const draft = await (await database).get('sourceDrafts', sourceId)
+      return draft ? sourceDraftSchema.parse(draft) : undefined
+    },
+    async writeSourceDraft(input: SourceDraft) {
+      const draft = sourceDraftSchema.parse(input)
+      if (draft.scope !== `local:${name}`) throw changed()
+      const tx = (await database).transaction(['sourceDrafts', 'sources'], 'readwrite')
+      try {
+        checkSourceDraftVersion(
+          (await tx.objectStore('sources').get(draft.sourceId))?.value as
+            Library['sources'][number] | undefined,
+          draft,
+        )
+        const store = tx.objectStore('sourceDrafts')
+        if (!(await store.get(draft.sourceId)) && (await store.count()) >= 50)
+          throw new Error('材料草稿已达到 50 份上限。')
+        await store.put(draft, draft.sourceId)
+        await tx.done
+      } catch (error) {
+        await abort(tx)
+        throw error
+      }
+    },
+    async discardSourceDraft(sourceId: string, id: string) {
+      const tx = (await database).transaction('sourceDrafts', 'readwrite')
+      if ((await tx.store.get(sourceId))?.id === id) await tx.store.delete(sourceId)
+      await tx.done
+    },
     scope: () => `local:${name}`,
     async readCardDrafts() {
       const tx = (await database).transaction('cardDrafts', 'readonly')
@@ -423,9 +609,11 @@ export function createRepository(
       try {
         const meta = await migrate(tx)
         const library = await readLibrary(tx)
+        const history = await tx.objectStore('operationHistory').get('main')
+        const operationHistory = history === undefined ? undefined : parseOperationHistory(history)
         await checkpoint(tx, meta, '自动备份', new Date(), false)
         await tx.done
-        return remember({ revision: meta.revision, library })
+        return remember({ revision: meta.revision, library, operationHistory })
       } catch (error) {
         await abort(tx)
         throw error
@@ -439,16 +627,44 @@ export function createRepository(
         reason?: string
         now?: Date
         consumeCardDraft?: string
+        consumeSourceDraft?: string
+        operationHistory?: OperationHistory
+        retired?: RetiredNote[]
       } = {},
     ): Promise<Snapshot> {
       if (!cached) await this.load()
+      const operationHistory =
+        options.operationHistory === undefined
+          ? cached!.operationHistory
+          : parseOperationHistory(options.operationHistory)
       const previous = cached!.library
+      validateMaterialChanges(previous, library)
+      if (previous.automationReceipts !== library.automationReceipts)
+        validateAutomationReceipts(
+          previous.automationReceipts,
+          library.automationReceipts,
+          (message) => {
+            throw new Error(message)
+          },
+        )
       // The frequent grading path validates only changed cards/reviews. Structural edits and
       // external restores still receive complete cross-reference validation at the boundary.
       const progressOnly =
-        ['decks', 'notes', 'media', 'savedSearches', 'sources'].every(
-          (key) => previous[key as RecordStore] === library[key as RecordStore],
-        ) &&
+        [
+          'decks',
+          'notes',
+          'media',
+          'savedSearches',
+          'sources',
+          'materialReceipts',
+          'automationReceipts',
+          'materialFolders',
+          'materialCollections',
+          'sourceConnections',
+          'sourceCandidates',
+          'studySettings',
+          'fsrsModels',
+        ].every((key) => previous[key as RecordStore] === library[key as RecordStore]) &&
         library.cards.length === previous.cards.length &&
         library.cards.every((card) => {
           const prior = maps.get('cards')!.get(card.id)?.value as
@@ -459,6 +675,8 @@ export function createRepository(
         workspaceLibrarySchema.parse(library)
       if (library.reviews.length > 500_000)
         throw new LocalizedError(msg('复习记录已达到 50 万条上限，请先导出备份。'))
+      if (library.studyEvents.length > 500_000 || library.studyActivity.length > 500_000)
+        throw new Error('study-record-limit')
       const patches: { store: RecordStore; id: string; row?: Row; positionOnly?: number }[] = []
       const next = { ...library }
       const noteDecks = new Map(library.notes.map((note) => [note.id, note.deckId]))
@@ -583,6 +801,24 @@ export function createRepository(
         )
       }
       const db = await database
+      const retiredIds =
+        options.retired === undefined && !progressOnly
+          ? retiredNoteIds(previous, next)
+          : new Set<string>()
+      const retiredDocuments = new Map<string, RetiredNote['document']>()
+      // Hashing and Blob reads must finish before opening the IndexedDB write transaction.
+      // The revision guard inside that transaction still rejects a concurrent writer.
+      for (const id of retiredIds) {
+        const prior = await db.get('retiredNotes', id),
+          note = previous.notes.find((entry) => entry.id === id)
+        if (prior?.document && note)
+          retiredDocuments.set(
+            id,
+            await prepareRetiredDocument(note, prior.document, (mediaId) =>
+              db.get('assets', mediaId),
+            ),
+          )
+      }
       const tx = db.transaction(stores, 'readwrite')
       try {
         const current = await migrate(tx)
@@ -591,6 +827,13 @@ export function createRepository(
         if (options.consumeCardDraft) {
           if (!(await tx.objectStore('cardDrafts').get(options.consumeCardDraft))) throw changed()
           await tx.objectStore('cardDrafts').delete(options.consumeCardDraft)
+        }
+        if (options.consumeSourceDraft) {
+          const draft = (await tx.objectStore('sourceDrafts').getAll()).find(
+            (item) => item.id === options.consumeSourceDraft,
+          )
+          if (!draft) throw changed()
+          await tx.objectStore('sourceDrafts').delete(draft.sourceId)
         }
         const expired =
           current.revision > 0 &&
@@ -603,14 +846,81 @@ export function createRepository(
           ))
         const revision = expectedRevision + 1
         const retain = (await tx.objectStore('checkpoints').getAll()).some((entry) => !entry.legacy)
+        async function writeRetired(id: string, value: RetiredNote | undefined) {
+          const table = tx.objectStore('retiredNotes'),
+            before = await table.get(id)
+          if (!before && !value) return
+          if (retain) {
+            await tx.objectStore('retiredChanges').put({ revision, id, before }, [revision, id])
+            await tx
+              .objectStore('retiredAssets')
+              .put(
+                { revision, ids: before?.media.map((meta) => meta.id) ?? [] },
+                `${revision}:${id}`,
+              )
+          }
+          if (value) {
+            await table.put(retiredNoteSchema.parse({ ...value, revision }), id)
+            await tx
+              .objectStore('retiredAssets')
+              .put({ revision: 0, ids: value.media.map((meta) => meta.id) }, `current:${id}`)
+          } else {
+            await table.delete(id)
+            await tx.objectStore('retiredAssets').delete(`current:${id}`)
+          }
+        }
+        if (options.retired !== undefined) {
+          const incoming = new Map<string, RetiredNote>()
+          for (const raw of options.retired) {
+            const value = retiredNoteSchema.parse(raw),
+              id = value.note?.id ?? value.cards[0]?.noteId
+            if (!id || incoming.has(id)) throw changed()
+            value.attempts = value.attempts.map((attempt) => attemptSchema.parse(attempt))
+            incoming.set(id, value)
+          }
+          for (const id of new Set([
+            ...(await tx.objectStore('retiredNotes').getAllKeys()),
+            ...incoming.keys(),
+          ]))
+            await writeRetired(id, incoming.get(id))
+        } else if (!progressOnly) {
+          for (const id of retiredIds) {
+            const prior = await tx.objectStore('retiredNotes').get(id)
+            const value = await captureRetiredNote(
+              previous,
+              next,
+              id,
+              prior,
+              revision,
+              async (attemptId) => {
+                const body = await tx.objectStore('attempts').get(attemptId)
+                if (!body) throw changed()
+                return attemptSchema.parse(body.value)
+              },
+              retiredDocuments.get(id),
+            )
+            await writeRetired(id, value)
+          }
+        }
+        if (options.retired === undefined && retiredSourceRisk(previous, next))
+          validateRetiredSources(previous, next, await tx.objectStore('retiredNotes').getAll())
+        const retiredMedia = new Map<string, Library['media'][number]>()
+        for (const entry of options.retired ?? [])
+          for (const meta of entry.media) retiredMedia.set(meta.id, meta)
         for (const asset of options.assets ?? []) {
-          const meta = next.media.find((entry) => entry.id === asset.meta.id)
+          const meta =
+            next.media.find((entry) => entry.id === asset.meta.id) ??
+            retiredMedia.get(asset.meta.id)
           if (!meta) continue
           if (meta.type !== asset.blob.type || meta.size !== asset.blob.size)
             throw new LocalizedError(msg('媒体内容与文件信息不一致。'))
           if (await tx.objectStore('assets').getKey(meta.id))
             throw new LocalizedError(msg('媒体 ID 冲突，未覆盖已有文件。'))
           await tx.objectStore('assets').put(asset.blob, meta.id)
+        }
+        for (const meta of retiredMedia.values()) {
+          const asset = await tx.objectStore('assets').get(meta.id)
+          if (!asset || asset.type !== meta.type || asset.size !== meta.size) throw changed()
         }
         for (let start = 0; start < patches.length; start += 256) {
           await Promise.all(
@@ -674,10 +984,16 @@ export function createRepository(
           )
         }
         await tx.objectStore('meta').put({ revision, counts: counts(next) }, 'main')
-        if (expired || patches.some((patch) => patch.store === 'media'))
+        if (operationHistory !== undefined)
+          await tx.objectStore('operationHistory').put(operationHistory, 'main')
+        if (
+          expired ||
+          options.retired !== undefined ||
+          patches.some((patch) => patch.store === 'media')
+        )
           await collectUnusedAssets(tx)
         await tx.done
-        return remember({ revision, library: next }, patches)
+        return remember({ revision, library: next, operationHistory }, patches)
       } catch (error) {
         await abort(tx)
         throw error
@@ -789,11 +1105,16 @@ export function createRepository(
     ): Promise<CardPage> {
       signal?.throwIfAborted()
       const db = await database
-      const tx = db.transaction(['decks', 'notes', 'cards'], 'readonly')
+      const tx = db.transaction(['decks', 'notes', 'cards', 'studySettings'], 'readonly')
       const decks = (await tx.objectStore('decks').getAll()).map(
         (row) => row.value,
       ) as Library['decks']
-      const matches = compileSearch(decks, filter, now)
+      const settings = studySettings({
+        studySettings: (await tx.objectStore('studySettings').getAll()).map(
+          (row) => row.value,
+        ) as Library['studySettings'],
+      })
+      const matches = compileSearch(decks, filter, now, settings)
       const result: CardPage = { cards: [], total: 0, eligible: 0, studyIds: [] }
       const notes = new Map<string, Library['notes'][number]>()
       const source = filter.deckId
@@ -826,7 +1147,7 @@ export function createRepository(
           if ((simple || result.total >= offset) && result.cards.length < 50)
             result.cards.push(view)
           if (!simple) result.total++
-          if (includeStudy && available(card, now)) {
+          if (includeStudy && available(card, now, settings)) {
             result.eligible++
             if (result.studyIds.length < 500) result.studyIds.push(card.id)
           }

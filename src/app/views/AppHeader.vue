@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { UiButton } from '../../components/ui'
 import { t } from '../../i18n'
-import { ChevronRight, Undo2 } from '@lucide/vue'
+import { ChevronRight, Undo2, Redo2 } from '@lucide/vue'
 import { remoteWorkspace, desktopEdition } from '../../edition'
 import { AccountControls, DraftWorkbench } from '@repeaty-platform'
 import { useApplication } from '../context'
@@ -15,6 +15,9 @@ const {
   canUndoAction,
   undoTitle,
   undoLastAction,
+  canRedoAction,
+  redoTitle,
+  redoLastAction,
 } = useApplication()
 </script>
 <template>
@@ -34,6 +37,15 @@ const {
         @click="undoLastAction"
       >
         <Undo2 :size="18" />{{ t('撤销') }}
+      </UiButton>
+      <UiButton
+        variant="ghost"
+        :disabled="shortcutLocked || !canRedoAction"
+        :title="redoTitle"
+        aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y"
+        @click="redoLastAction"
+      >
+        <Redo2 :size="18" />{{ t('重做') }}
       </UiButton>
       <component
         v-if="DraftWorkbench"

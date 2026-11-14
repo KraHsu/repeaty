@@ -2,6 +2,7 @@ import { isAlias, isMap, isScalar, isSeq, parseDocument, stringify } from 'yaml'
 import { z } from 'zod'
 import { clozes } from '../core/model'
 import { pluginDataSchema } from '../plugins/data'
+import { parseSourceProperties, sourcePropertyReserved } from '../core/source-properties'
 
 // M0 prototype: no filesystem, repository, UI, or global storage access.
 export const MAX_WORKSPACE_TEXT_BYTES = 2 * 1024 * 1024
@@ -168,6 +169,8 @@ function validateContent(header: WorkspaceHeader, content: WorkspaceContent): st
       return fail('invalid-cloze')
     }
   }
+  if (header.type === 'plugin' && header.plugin?.variants)
+    return header.plugin.variants.map((key) => `plugin:${key}`)
   return header.type === 'reversed' ? ['forward', 'reverse'] : ['forward']
 }
 
@@ -379,6 +382,7 @@ export function rewriteWorkspaceDocument(
   document: WorkspaceDocument,
   properties: JsonObject,
   content: WorkspaceContent,
+  replaceSourceProperties?: string,
 ): string {
   const opening = /^(?:\uFEFF)?---(\r?\n)/.exec(document.headerRaw)!
   const closing = /^---(\r?\n|$)/gm
@@ -388,6 +392,12 @@ export function rewriteWorkspaceDocument(
     schema: 'core',
     uniqueKeys: true,
   })
+  if (replaceSourceProperties !== undefined) {
+    const replacement = parseSourceProperties(replaceSourceProperties)
+    for (const key of Object.keys(document.properties))
+      if (!sourcePropertyReserved(key) && !Object.hasOwn(replacement, key)) yaml.delete(key)
+    for (const [key, value] of Object.entries(replacement)) yaml.set(key, value)
+  }
   for (const [key, value] of Object.entries(properties)) {
     if (key === 'repeaty' && object(value))
       for (const [field, item] of Object.entries(value)) yaml.setIn(['repeaty', field], item)
@@ -413,4 +423,18 @@ export function rewriteWorkspaceDocument(
   const parsed = readWorkspaceMarkdown(result)
   if (parsed.status !== 'managed') fail(parsed.status === 'pending' ? parsed.reason : parsed.status)
   return result
+}
+
+export function workspaceSourceProperties(document: WorkspaceDocument): string {
+  const opening = /^(?:\uFEFF)?---(\r?\n)/.exec(document.headerRaw)!
+  const closing = /^---(\r?\n|$)/gm
+  closing.lastIndex = opening[0].length
+  const end = closing.exec(document.headerRaw)!
+  const yaml = parseDocument(document.headerRaw.slice(opening[0].length, end.index), {
+    schema: 'core',
+  })
+  for (const key of Object.keys(document.properties))
+    if (sourcePropertyReserved(key)) yaml.delete(key)
+  const result = yaml.toString({ lineWidth: 0 })
+  return result.trim() === '{}' ? '' : result
 }

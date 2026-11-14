@@ -12,12 +12,32 @@ fn bundle(id: &str) -> Value {
     json!({"manifest":{"id":id,"name":"Sample","version":"1.0.0","apiVersion":1,"dataVersion":1,"kind":"local","permissions":{"origins":["https://example.org"],"files":true,"secrets":true}},"main":"export default {};"})
 }
 fn call(host: &Plugins, root: &Dir, id: &str, op: &str, value: Value) -> Result<Value> {
-    host.operation(root.try_clone().unwrap(), id, op, value)
+    host.operation(root.try_clone().unwrap(), id, op, value, None)
 }
 fn install_trusted(host: &Plugins, root: &Dir, id: &str) {
     call(host, root, id, "install", bundle(id)).unwrap();
     let hash = package(root, id).unwrap().hash();
     call(host, root, id, "trust", json!({"hash":hash})).unwrap();
+}
+#[test]
+fn models_permission_is_explicit_and_requires_trust_in_the_current_package() {
+    let (_workspace, _device, host, root) = fixture();
+    install_trusted(&host, &root, "sample");
+    assert_eq!(
+        host.models_authorized(&root, "sample").unwrap_err(),
+        "permission-denied"
+    );
+    let mut enabled = bundle("sample");
+    enabled["manifest"]["permissions"]["models"] = json!(true);
+    call(&host, &root, "sample", "install", enabled).unwrap();
+    assert_eq!(
+        host.models_authorized(&root, "sample").unwrap_err(),
+        "plugin-not-trusted"
+    );
+    let hash = package(&root, "sample").unwrap().hash();
+    call(&host, &root, "sample", "trust", json!({"hash":hash})).unwrap();
+    host.models_authorized(&root, "sample").unwrap();
+    assert!(host.models_authorized(&root, "../escape").is_err());
 }
 #[test]
 fn install_update_remove_are_independent_of_plugin_data_and_require_exact_device_trust() {
@@ -330,6 +350,108 @@ fn canonical_package_hash_matches_sorted_json_and_normalizes_absent_styles() {
     assert_eq!(
         Package::parse(explicit, "sample").unwrap().hash(),
         package.hash()
+    );
+}
+
+#[test]
+fn offline_assets_roundtrip_and_every_asset_byte_is_covered_by_device_trust() {
+    let (workspace, _device, host, root) = fixture();
+    let mut original = bundle("sample");
+    original["assets"] = json!({"worker.mjs":{"type":"text/javascript","base64":"Ly8geAo="},"fonts/demo.bin":{"type":"application/octet-stream","base64":"AAEC/w=="}});
+    call(&host, &root, "sample", "install", original.clone()).unwrap();
+    let hash = package(&root, "sample").unwrap().hash();
+    call(&host, &root, "sample", "trust", json!({"hash":hash})).unwrap();
+    assert_eq!(
+        call(&host, &root, "sample", "read", Value::Null).unwrap(),
+        original
+    );
+    let mut changed = original.clone();
+    changed["assets"]["worker.mjs"]["base64"] = json!("Ly8geQo=");
+    std::fs::write(
+        workspace.path().join(".repeaty/plugins/sample/assets.json"),
+        changed["assets"].to_string(),
+    )
+    .unwrap();
+    assert_ne!(package(&root, "sample").unwrap().hash(), hash);
+    assert_eq!(
+        call(&host, &root, "sample", "trust", json!({"hash":hash})).unwrap_err(),
+        "plugin-file-changed"
+    );
+    call(&host, &root, "sample", "install", bundle("sample")).unwrap();
+    assert!(
+        !workspace
+            .path()
+            .join(".repeaty/plugins/sample/assets.json")
+            .exists()
+    );
+}
+
+#[test]
+fn offline_asset_validation_matches_frontend_paths_base64_mime_and_byte_limits() {
+    for path in [
+        "",
+        "../worker.mjs",
+        "/worker.mjs",
+        "font\\data",
+        "con",
+        "x/NUL.txt",
+        "font/..",
+        "font/name.",
+        "a//b",
+    ] {
+        assert!(
+            validate_assets(&json!({path:{"type":"application/octet-stream","base64":"AA=="}}))
+                .is_err(),
+            "{path}"
+        );
+    }
+    for encoded in ["A", "AA=", "AB==", "AA?=", "AAA===", " AA=="] {
+        assert!(
+            validate_assets(
+                &json!({"data.bin":{"type":"application/octet-stream","base64":encoded}})
+            )
+            .is_err(),
+            "{encoded}"
+        );
+    }
+    for mime in [
+        "",
+        "text/javascript; charset=utf-8",
+        "a/b/c",
+        "application/",
+    ] {
+        assert!(validate_assets(&json!({"data.bin":{"type":mime,"base64":"AA=="}})).is_err());
+    }
+    assert!(
+        validate_assets(
+            &json!({"data.bin":{"type":"application/octet-stream","base64":"AA==","extra":true}})
+        )
+        .is_err()
+    );
+    let large = STANDARD.encode(vec![0; 8 * 1024 * 1024]);
+    assert!(
+        validate_assets(&json!({"data.bin":{"type":"application/octet-stream","base64":large}}))
+            .is_ok()
+    );
+    assert!(validate_assets(&json!({"data.bin":{"type":"application/octet-stream","base64":STANDARD.encode(vec![0;8*1024*1024+1])}})).is_err());
+    let assets: serde_json::Map<String, Value> = (0..4)
+        .map(|index| {
+            (
+                format!("data{index}.bin"),
+                json!({"type":"application/octet-stream","base64":large}),
+            )
+        })
+        .collect();
+    assert!(validate_assets(&Value::Object(assets)).is_err());
+}
+
+#[test]
+fn offline_asset_hash_matches_javascript_sorted_utf8_golden_fixture() {
+    // Computed independently with Node crypto + the frontend sorted JSON algorithm.
+    let value = json!({"manifest":{"id":"asset-golden","name":"Offline","version":"1.0.0","apiVersion":1,"dataVersion":1,"kind":"frontend"},"main":"export default {};","assets":{"worker.mjs":{"type":"text/javascript","base64":"Ly8geAo="},"fonts/demo.bin":{"type":"application/octet-stream","base64":"AAEC/w=="}}});
+    assert_eq!(
+        Package::parse(value, "asset-golden").unwrap().hash(),
+        "9f2e5bab05dffd68e9b8920c5d79d5ffff0d3d6ab8c6d442341879d873a23ac2"
     );
 }
 

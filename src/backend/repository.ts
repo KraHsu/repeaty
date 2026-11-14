@@ -19,6 +19,7 @@ import {
 import { z } from 'zod'
 import { compileSearch } from '../core/search'
 import { available } from '../core/scheduler'
+import { studySettings } from '../core/study-settings'
 import { recordStores, type Snapshot, type BackupSummary, type CardPage } from '../core/storage'
 
 type Patch = { store: string; id: string; position?: number; value?: unknown }
@@ -66,7 +67,11 @@ export function createServerRepository(source = location.origin) {
     async save(
       library: Library,
       expectedRevision: number,
-      options: { assets?: MediaUpload[]; reason?: string } = {},
+      options: {
+        assets?: MediaUpload[]
+        reason?: string
+        operationHistory?: OperationHistory
+      } = {},
     ): Promise<Snapshot> {
       if (!cached) await this.load()
       if (cached!.revision !== expectedRevision) throw new ServerError('revision-conflict')
@@ -126,6 +131,9 @@ export function createServerRepository(source = location.origin) {
       if (result.revision !== expectedRevision + 1) throw new ServerError('revision-conflict')
       cached = {
         revision: result.revision,
+        // The retired account server has no journal protocol. Keep session undo
+        // usable; durable journals belong to local desktop/IndexedDB libraries.
+        operationHistory: options.operationHistory ?? cached!.operationHistory,
         library:
           compactHistory && library.attempts.some(hasAttemptBody)
             ? {
@@ -234,9 +242,10 @@ export function createServerRepository(source = location.origin) {
     ): Promise<CardPage> {
       signal?.throwIfAborted()
       if (!cached) await this.load()
-      const matches = compileSearch(cached!.library.decks, filter, now)
+      const settings = studySettings(cached!.library)
+      const matches = compileSearch(cached!.library.decks, filter, now, settings)
       const cards = cardViews(cached!.library).filter(matches)
-      const eligible = includeStudy ? cards.filter((card) => available(card, now)) : []
+      const eligible = includeStudy ? cards.filter((card) => available(card, now, settings)) : []
       const offset = (Math.max(1, page) - 1) * 50
       signal?.throwIfAborted()
       return {
@@ -251,3 +260,4 @@ export function createServerRepository(source = location.origin) {
     },
   }
 }
+import type { OperationHistory } from '../core/operation-history'

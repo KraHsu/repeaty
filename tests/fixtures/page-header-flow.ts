@@ -231,7 +231,7 @@ export async function pageHeaderFlow(
     ['学习概览', '添加卡片', '添加卡片'],
     ['全部卡片', '添加卡片', '添加卡片'],
     ['全部卡片', '批量导入', '批量导入笔记'],
-    ['学习材料', '导入材料', '导入材料'],
+    ['学习材料', '收集材料', '收集材料'],
   ]) {
     await navigate(page, name!)
     const button = page.locator('.app-page-header__actions').getByRole('button', {

@@ -12,18 +12,21 @@ import { arrangeSource } from './source-queue'
 export interface ReadingUndo {
   id: string
   scope: string
+  eventIds?: string[]
   changes: { id: string; mediaId: string; before: SourceArrangement; after: SourceArrangement }[]
 }
 export function sourceArrangement(source: Source): SourceArrangement {
   return {
     ...(source.queue ? { queue: { ...source.queue } } : {}),
     ...(source.priority ? { priority: source.priority } : {}),
+    ...(source.studyPriority !== undefined ? { studyPriority: source.studyPriority } : {}),
     ...(source.readingIntervalDays ? { readingIntervalDays: source.readingIntervalDays } : {}),
     ...(source.adaptiveReading ? { adaptiveReading: { ...source.adaptiveReading } } : {}),
   }
 }
 const same = (a: SourceArrangement, b: SourceArrangement) =>
   a.priority === b.priority &&
+  a.studyPriority === b.studyPriority &&
   a.readingIntervalDays === b.readingIntervalDays &&
   a.adaptiveReading?.intervalDays === b.adaptiveReading?.intervalDays &&
   a.adaptiveReading?.factor === b.adaptiveReading?.factor &&
@@ -88,10 +91,26 @@ export function readingUndoFor(
         after: sourceArrangement(source),
       })
   }
-  return changes.length ? { id: crypto.randomUUID(), scope, changes } : undefined
+  if (!changes.length) return undefined
+  const previousEvents = new Set(before.studyEvents.map((entry) => entry.id))
+  const changedSources = new Set(changes.map((entry) => entry.id))
+  const eventIds = after.studyEvents
+    .filter(
+      (entry) =>
+        entry.kind === 'reading' &&
+        entry.sourceId &&
+        changedSources.has(entry.sourceId) &&
+        !previousEvents.has(entry.id),
+    )
+    .map((entry) => entry.id)
+  return { id: crypto.randomUUID(), scope, changes, ...(eventIds.length ? { eventIds } : {}) }
 }
 export function canUndoReading(library: Library, undo?: ReadingUndo) {
-  if (!undo?.changes.length) return false
+  if (
+    !undo?.changes.length ||
+    undo.eventIds?.some((id) => !library.studyEvents.some((event) => event.id === id))
+  )
+    return false
   const sources = new Map(library.sources.map((s) => [s.id, s]))
   return undo.changes.every((change) => {
     const source = sources.get(change.id)
@@ -104,12 +123,16 @@ export function undoReading(library: Library, undo: ReadingUndo): Library {
   const changes = new Map(undo.changes.map((change) => [change.id, change]))
   return {
     ...library,
+    ...(undo.eventIds?.length
+      ? { studyEvents: library.studyEvents.filter((entry) => !undo.eventIds!.includes(entry.id)) }
+      : {}),
     sources: library.sources.map((source) => {
       const change = changes.get(source.id)
       if (!change) return source
       const {
         queue: _queue,
         priority: _priority,
+        studyPriority: _studyPriority,
         readingIntervalDays: _interval,
         adaptiveReading: _adaptive,
         ...rest

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { defineAsyncComponent, ref, watch } from 'vue'
+import { defineAsyncComponent, ref, watch, onScopeDispose } from 'vue'
 import UApp from '@nuxt/ui/components/App.vue'
-import { en, zh_cn as zhCN } from '@nuxt/ui/locale'
+import { en, zh_cn, zh_tw, de, es, fr, it, ja, ko, pl, pt_br, ru } from '@nuxt/ui/locale'
 import AppSidebar from './app/views/AppSidebar.vue'
 import AppHeader from './app/views/AppHeader.vue'
 import OverviewPage from './app/views/OverviewPage.vue'
@@ -12,7 +12,9 @@ import SourceView from './app/views/SourceView.vue'
 import EditorDialogs from './app/views/EditorDialogs.vue'
 import BackupDialogs from './app/views/BackupDialogs.vue'
 import StudyDialogs from './app/views/StudyDialogs.vue'
-import { t, locale } from './i18n'
+import AutomationDialog from './app/views/AutomationDialog.vue'
+import NetworkConsentDialog from './app/views/NetworkConsentDialog.vue'
+import { t, locale, connectSystemLanguage } from './i18n'
 import { Database, Repeat2 } from '@lucide/vue'
 import NotificationCenter from './components/NotificationCenter.vue'
 import PluginViewBoundary from './components/PluginViewBoundary.vue'
@@ -31,6 +33,21 @@ import { PracticeHistoryPanel, SettingsPage } from './app/view-components'
 import { SIDEBAR_MIN_WIDTH, useSidebarLayout } from './app/useSidebarLayout'
 import { useColorTheme } from './app/useColorTheme'
 useColorTheme()
+onScopeDispose(connectSystemLanguage())
+const componentLocales = {
+  en,
+  'zh-CN': zh_cn,
+  'zh-TW': zh_tw,
+  de,
+  es,
+  fr,
+  it,
+  ja,
+  ko,
+  pl,
+  'pt-BR': pt_br,
+  ru,
+}
 const PluginPanel = defineAsyncComponent(() => import('./components/PluginPanel.vue'))
 const application = createApplication()
 provideApplication(application)
@@ -65,26 +82,38 @@ const {
   resetWidth,
 } = useSidebarLayout({ desktop: !!DesktopTitlebar, scope: workspace.scope, ready })
 const settingsTarget = ref<string>()
+const settingsCategory = ref<string>()
 const detailsTarget = ref<string>()
 function configurePlugin(id: string) {
-  settingsTarget.value = id
-  navigate('settings')
+  navigate('settings', () => {
+    settingsCategory.value = undefined
+    settingsTarget.value = id
+  })
+}
+function configureSettings(category: string) {
+  navigate('settings', () => {
+    settingsTarget.value = undefined
+    settingsCategory.value = category
+  })
 }
 function showPluginDetails(id: string) {
-  detailsTarget.value = id
-  navigate('plugins')
+  navigate('plugins', () => {
+    detailsTarget.value = id
+  })
 }
 watch(tab, (page) => {
   if (page !== 'settings') settingsTarget.value = undefined
+  if (page !== 'settings') settingsCategory.value = undefined
   if (page !== 'plugins') detailsTarget.value = undefined
 })
 watch(workspace.scope, () => {
   settingsTarget.value = undefined
+  settingsCategory.value = undefined
   detailsTarget.value = undefined
 })
 </script>
 <template>
-  <UApp :locale="locale === 'en' ? en : zhCN" :toaster="null">
+  <UApp :locale="componentLocales[locale]" :toaster="null">
     <div
       class="app-layout"
       :class="{
@@ -133,6 +162,7 @@ watch(workspace.scope, () => {
               (!workspaceAvailable && tab !== 'settings' && tab !== 'plugins'))
           "
           :workspace="workspace"
+          :before-change="application.beforeLeave"
           @changed="refreshClock"
         />
         <SettingsPage
@@ -140,6 +170,7 @@ watch(workspace.scope, () => {
           :key="workspace.scope.value"
           :platform-settings="PlatformSettings"
           :focus-plugin="settingsTarget"
+          :focus-category="settingsCategory"
           @plugin-details="showPluginDetails"
         />
         <PluginPanel
@@ -181,10 +212,10 @@ watch(workspace.scope, () => {
           :get-attempt="workspace.getAttempt"
           @reveal="(id) => run(() => workspace.revealPracticeHistory(id, workspace.scope.value))"
         />
-        <SourceView v-else-if="tab === 'sources'" />
+        <SourceView v-else-if="tab === 'sources'" @settings="configureSettings" />
         <BackupPage v-else />
       </main>
-      <EditorDialogs /><BackupDialogs /><StudyDialogs />
+      <EditorDialogs /><BackupDialogs /><StudyDialogs /><AutomationDialog /><NetworkConsentDialog />
     </div>
   </UApp>
 </template>

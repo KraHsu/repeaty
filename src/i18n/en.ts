@@ -1,5 +1,121 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
+import { recoveryMessages } from './recovery'
+import { attachmentMessages } from './attachments'
+import { organizationMessages } from './organization'
+import { workbenchMessages } from './workbench'
+import { materialSearchMessages } from './material-search'
+import { readingWorkbenchMessages } from './reading-workbench'
+import { collectionMessages } from './collection'
+import { captureMessages } from './capture'
+import { studySchedulingMessages } from './study-scheduling'
+import { studyControlMessages } from './study-controls'
+import { desktopExperienceMessages } from './desktop-experience'
+import { personalizationMessages } from './personalization'
+import { inputEnglish } from './input.en'
+import { appearanceMessages } from './appearance'
+import { syncMessages } from './sync'
 export const en = {
+  ...syncMessages,
+  ...inputEnglish,
+  ...appearanceMessages,
+  ...desktopExperienceMessages,
+  ...personalizationMessages,
+  ...studyControlMessages,
+  ...studySchedulingMessages,
+  调整学习设置: 'Change study settings',
+  调整学习优先级: 'Change study priority',
+  均衡安排新卡: 'Balance new cards',
+  保存个人记忆参数: 'Save personal memory parameters',
+  采用个人记忆参数: 'Apply personal memory parameters',
+  回退个人记忆参数: 'Restore previous memory parameters',
+  ...captureMessages,
+  ...collectionMessages,
+  调整章节阅读安排: 'Change chapter reading order',
+  保存材料批注: 'Save material annotation',
+  删除材料批注: 'Delete material annotation',
+  '本地资源文件夹（可选）': 'Local resource folder (optional)',
+  '选择 HTML 旁的资源文件夹以保留本地图片；网页中的远程资源不会自动下载。':
+    'Select the resource folder next to the HTML file to retain local images. Remote resources are not downloaded automatically.',
+  '已选择 {count} 个关联文件': '{count} related files selected',
+  '请先完成前面的章节，再安排此章节学习。':
+    'Complete earlier chapters before scheduling this chapter.',
+  ...readingWorkbenchMessages,
+  ...materialSearchMessages,
+  ...organizationMessages,
+  ...workbenchMessages,
+  ...recoveryMessages,
+  ...attachmentMessages,
+  插件导入: 'Import with plugin',
+  材料导入器: 'Material importer',
+  导入预览: 'Import preview',
+  搜索: 'Search',
+  '解析后先预览，再一次保存所选文件。原始文件和文本副本一起保留。':
+    'Preview the parsed files before saving them together. Both originals and text copies are kept.',
+  '正在解析材料…': 'Parsing materials…',
+  '已导入，将保留已有材料': 'Already imported; existing material will be kept',
+  '确认后使用新的材料格式，旧版本软件将无法打开此学习库。已有学习内容保留。':
+    'Confirming uses a new material format. Older app versions will no longer open this library. Existing study content is retained.',
+  查看文本副本: 'View text copy',
+  使用插件阅读器: 'Use plugin reader',
+  导出原件: 'Export original',
+  '阅读器插件未启用，显示保留的文本副本。':
+    'The reader plugin is unavailable. Showing the retained text copy.',
+  '插件阅读器暂时无法显示，已切换到文本副本。':
+    'The plugin reader could not display this material. Showing the text copy.',
+  '正在读取原始文件…': 'Loading original file…',
+  材料命令: 'Material commands',
+  插件材料搜索: 'Plugin material search',
+  材料搜索提供方: 'Material search provider',
+  '搜索材料内容…': 'Search material content…',
+  插件材料搜索词: 'Plugin material search query',
+  材料搜索结果: 'Material search results',
+  加载更多: 'Load more',
+  '原始文件缺失，请从备份恢复。': 'The original file is missing. Restore it from a backup.',
+  '导入材料的标识重复。': 'Imported materials contain duplicate identifiers.',
+  '导入材料的层级无效。': 'The imported material hierarchy is invalid.',
+  '学习库已变化，请重新操作。': 'The library has changed. Please try again.',
+  '学习库内容已变化，请重新预览。': 'The library has changed. Preview the import again.',
+  '材料版本已不存在。': 'This material version no longer exists.',
+  '操作标识已用于不同的内容。': 'This operation ID was already used for different content.',
+  '此操作已保存，但其结果已撤销或删除；请使用新的操作标识。':
+    'This operation was saved, but its result was undone or deleted. Use a new operation ID.',
+  '材料操作记录已达上限。': 'The material operation record limit has been reached.',
+  '此选区缺少文本投影位置。': 'This selection has no position in the text copy.',
+  '待确认的导入过多，请先确认或取消。':
+    'Too many imports are pending. Confirm or cancel them first.',
+  '材料导入器已不可用。': 'The material importer is no longer available.',
+  '请选择非空的受支持文件；每批最多20个文件、64 MB，单文件最多10 MB。':
+    'Choose non-empty supported files: up to 20 files and 64 MB per batch, with 10 MB per file.',
+  '材料导入器已变化。': 'The material importer has changed.',
+  '每批应包含1至100份材料。': 'Each batch must contain 1 to 100 materials.',
+  '导入预览已过期，请重新选择文件。': 'The import preview has expired. Choose the files again.',
+  '材料导入器已变化，请重新预览。': 'The material importer has changed. Preview the import again.',
+  '材料检索请求无效。': 'Invalid material search request.',
+  '搜索结果已变化，请重新搜索。': 'Search results have changed. Search again.',
+  '插件任务定义无效。': 'Invalid plugin task definition.',
+  '插件任务标识正在使用。': 'This plugin task ID is already in use.',
+  '插件任务队列已满。': 'The plugin task queue is full.',
+  '插件任务进度无效。': 'Invalid plugin task progress.',
+  '插件材料扩展定义无效。': 'Invalid plugin material contribution.',
+  '插件已卸载或学习库已切换。': 'The plugin was unloaded or the library was switched.',
+  '网站发布功能已移除。已有插件数据会保留，可在插件页卸载。':
+    'Website publishing has been removed. Saved plugin data is retained; you can uninstall this package on the Plugins page.',
+  '插件材料扩展标识重复。': 'Duplicate plugin material contribution ID.',
+  '材料导入器定义无效。': 'Invalid material importer definition.',
+  '材料阅读器定义无效。': 'Invalid material reader definition.',
+  '插件命令定义无效。': 'Invalid plugin command definition.',
+  '材料搜索扩展定义无效。': 'Invalid material search provider definition.',
+  '当前学习库尚未提供材料服务。': 'Material services are not available yet for this library.',
+  '当前宿主不支持材料扩展。': 'This app version does not support material extensions.',
+  '材料导入器不可用。': 'The material importer is unavailable.',
+  '插件命令不可用。': 'The plugin command is unavailable.',
+  '插件命令请求无效。': 'Invalid plugin command request.',
+  '学习库已更新，请重新打开命令。': 'The library has changed. Open the command again.',
+  '材料搜索扩展不可用。': 'The material search provider is unavailable.',
+  '材料搜索请求无效。': 'Invalid material search request.',
+  '材料搜索结果无效。': 'Invalid material search result.',
+  '当前环境不支持插件后台解析。': 'Plugin background parsing is not supported in this environment.',
+  '插件 Worker 定义无效或超过1 MB。': 'Invalid plugin Worker definition or source exceeds 1 MB.',
   展开侧栏: 'Expand sidebar',
   收起侧栏: 'Collapse sidebar',
   学习与管理: 'Study and management',
@@ -1242,7 +1358,44 @@ export const en = {
   联网域名: 'Allowed websites',
   设备凭据: 'Device credentials',
   插件文件: 'Plugin files',
+  设备模型连接: 'Device model connections',
+  经确认的自定义网站: 'Custom websites after confirmation',
+  '允许 CLI / MCP 查询整库': 'Allow CLI / MCP library queries',
+  '读取当前库的材料、目录、笔记与学习记录；关闭连接或切库后失效。':
+    'Read materials, folders, notes and learning records in the current library. Access ends when the connection closes or the library changes.',
+  '允许 CLI / MCP 批量修改': 'Allow CLI / MCP batch changes',
+  '外部工具可预览并应用整库修改，包括恢复快照。每次修改需携带预览和当前修订号，并保留恢复点。只向你信任的本机工具开放。':
+    'External tools may preview and apply changes across the library, including snapshot restores. Each change requires a preview and the current revision, and retains a recovery point. Enable only for local tools you trust.',
   无原生能力: 'No native capabilities',
+  全部插件: 'All',
+  可更新: 'Updates',
+  插件目录: 'Plugin catalog',
+  搜索插件: 'Search plugins',
+  搜索插件名称或功能: 'Search plugins by name or feature',
+  '正在加载插件目录…': 'Loading plugin catalog…',
+  '正在加载插件详情…': 'Loading plugin details…',
+  '没有找到匹配的插件。': 'No matching plugins.',
+  '所有插件均已是目录中的最新版本。': 'All plugins match or exceed the catalog version.',
+  选择一个插件: 'Select a plugin',
+  '查看介绍与权限，安装后可单独启用。':
+    'Read its documentation and permissions. Enable it separately after installing.',
+  '确认安装 {name}？新插件默认关闭，更新保留原启停状态。':
+    'Install {name}? New plugins start disabled. Updates keep their enabled state.',
+  安装: 'Install',
+  更新: 'Update',
+  '无法保存插件启停状态。': 'Unable to save the plugin enabled state.',
+  '插件包必须提供作者（author），长度为 1–100 个字符。':
+    'Plugin packages must declare an author of 1–100 characters.',
+  未声明作者: 'Author not specified',
+  作者: 'Author',
+  启用: 'Enable',
+  '目录版本 {version}': 'Catalog version {version}',
+  官方插件: 'Official plugin',
+  尚未安装: 'Not installed',
+  尚未信任: 'Not trusted',
+  加载失败: 'Failed to load',
+  '官方插件包与目录信息不一致，请刷新后重试。':
+    'The plugin package does not match the catalog. Refresh and try again.',
   安装或更新官方插件: 'Install or update official plugins',
   重新扫描插件: 'Rescan plugins',
   '请先结束复习或关闭编辑器，再修改插件。':
@@ -1730,4 +1883,9 @@ export const en = {
   '选择要安装的官方插件，仅修改所选插件。安装后会自动启用。':
     'Choose an official plugin. Only that plugin will be installed or updated, then enabled.',
   '暂无可安装的官方插件。': 'No official plugins are available.',
+  '插件工具暂时无法显示，请重试或检查插件是否已启用。':
+    'The plugin tool could not be displayed. Try again or check that the plugin is enabled.',
+  文档目录: 'Document contents',
+  本章已完成: 'Chapter completed',
+  待前章完成: 'Waiting for earlier chapters',
 } as const

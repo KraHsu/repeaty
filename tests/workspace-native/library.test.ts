@@ -10,6 +10,8 @@ import { statusSchema, type NativeApi } from '../../src/desktop/workspaces'
 import { fixture, input, now } from '../../src/core/test-fixtures'
 import { initializeWorkspace } from '../../src/core/onboarding'
 import { reviewCard, undoReview } from '../../src/core/scheduler'
+import { operationFor, revertOperation, replayOperation } from '../../src/core/operations'
+import { operationHistory } from '../../src/core/operation-history'
 import { saveNote, removeNotes } from '../../src/core/model'
 import { noteLifecycle } from '../../src/desktop/retirement'
 import {
@@ -23,9 +25,17 @@ import {
 } from '../../src/core/sources'
 import { sourceAtVersion } from '../../src/core/source-data'
 import { exportBackup, parseBackup, rekeyBackup } from '../../src/core/backups'
+import { prepareBackupRestore } from '../../src/core/backup-restore'
 import { readWorkspaceMarkdown, registerWorkspaceNote } from '../../src/workspace/markdown'
 import { sha256 } from '../../src/workspace/source-revisions'
 import type { CardDraft } from '../../src/core/card-draft-data'
+import { materialFixture } from '../fixtures/material-model'
+import {
+  editSourceContent,
+  upsertSourceAnnotation,
+  type SourceDraft,
+} from '../../src/core/source-workbench'
+import { parseSourceProperties } from '../../src/core/source-properties'
 let binary: string
 const roots: string[] = []
 const processes: ChildProcessWithoutNullStreams[] = []
@@ -95,7 +105,11 @@ function host(device: string) {
   const api: NativeApi = <T>(command: string, args: Record<string, unknown> = {}) =>
     new Promise<T>((resolve, reject) => {
       const id = ++next
-      waiting.set(id, { resolve: resolve as (value: unknown) => void, reject })
+      const caller = new Error(`Native call: ${command}`)
+      waiting.set(id, {
+        resolve: resolve as (value: unknown) => void,
+        reject: (error) => reject(new Error(`${command}: ${error.message}`, { cause: caller })),
+      })
       child.stdin.write(JSON.stringify({ id, command, args }) + '\n')
     })
   return {
@@ -129,6 +143,123 @@ async function docs(env: Awaited<ReturnType<typeof workspace>>) {
   })
 }
 describe('the desktop workspace is the learning store', () => {
+  it('persists source drafts and consumes them with versioned text, YAML properties and exact annotation history', async () => {
+    const env = await workspace()
+    const text = '保留旧版本🙂\n可批注正文'
+    const prepared = prepareSource({ title: '材料', url: '', format: 'markdown', content: text })
+    prepared.source.properties = 'author: Old\nunknown:\n  preserved: true\n'
+    const library = addSource(fixture(), prepared.source, prepared.asset)
+    const first = await env.repo.save(library, 0, { assets: [prepared.asset] })
+    const draft: SourceDraft = {
+      id: crypto.randomUUID(),
+      sourceId: prepared.source.id,
+      mediaId: prepared.source.mediaId,
+      scope: env.repo.scope(),
+      title: '材料',
+      url: '',
+      content: '新正文',
+      properties: 'author: New\nunknown:\n  preserved: true\n',
+      updatedAt: new Date().toISOString(),
+    }
+    await env.repo.writeSourceDraft(draft)
+    expect((await env.repo.load()).revision).toBe(first.revision)
+    await env.runtime.stop()
+    const runtime = host(env.device)
+    const status = statusSchema.parse(await runtime.api('workspace_status'))
+    expect(status.active).not.toBeNull()
+    const repo = createNativeRepository(status.active!, runtime.api)
+    expect(await repo.readSourceDraft(prepared.source.id)).toEqual(draft)
+    const reopened = await repo.load()
+    const edited = editSourceContent(reopened.library, draft)
+    const marked = upsertSourceAnnotation(
+      edited.library,
+      {
+        sourceId: draft.sourceId,
+        mediaId: draft.mediaId,
+        scope: repo.scope(),
+        start: 0,
+        end: 5,
+        quote: '保留旧版本',
+        body: '原始出处',
+      },
+      text,
+    )
+    const entry = operationFor(reopened.library, marked, repo.scope(), '编辑材料正文')!
+    await expect(
+      repo.save(marked, 0, { assets: [edited.asset], consumeSourceDraft: draft.id }),
+    ).rejects.toThrow()
+    expect(await repo.readSourceDraft(prepared.source.id)).toEqual(draft)
+    const saved = await repo.save(marked, reopened.revision, {
+      assets: [edited.asset],
+      consumeSourceDraft: draft.id,
+      operationHistory: operationHistory([entry]),
+    })
+    expect(await repo.readSourceDraft(prepared.source.id)).toBeUndefined()
+    expect(parseSourceProperties(await repo.readSourceProperties(prepared.source.id))).toEqual({
+      author: 'New',
+      unknown: { preserved: true },
+    })
+    await repo.save(revertOperation(saved.library, entry), saved.revision, {
+      operationHistory: operationHistory([], [entry]),
+    })
+    expect(parseSourceProperties(await repo.readSourceProperties(prepared.source.id))).toEqual({
+      author: 'Old',
+      unknown: { preserved: true },
+    })
+    const old = await repo.getMedia(prepared.source.mediaId)
+    expect(await old!.text()).toBe(text)
+    expect((await repo.load()).library.cards).toEqual(first.library.cards)
+    await runtime.stop()
+  })
+  it('persists material originals, reading locators and retry receipts through the real workspace and restart', async () => {
+    const env = await workspace(),
+      material = materialFixture()
+    await env.repo.load()
+    const saved = await env.repo.save(material.library, 0, { assets: material.assets })
+    expect(saved.library).toEqual(material.library)
+    expect((await docs(env)).filter((doc) => doc.kind === 'source')).toHaveLength(2)
+    await env.runtime.stop()
+    const runtime = host(env.device)
+    const status = statusSchema.parse(await runtime.api('workspace_status'))
+    const repo = createNativeRepository(status.active!, runtime.api)
+    expect(await repo.load()).toEqual(saved)
+    expect(await (await repo.getMedia(material.original.meta.id))!.text()).toBe(
+      await material.original.blob.text(),
+    )
+    const restored = parseBackup(await exportBackup(saved.library, repo.getMedia))
+    expect(restored.library).toEqual(saved.library)
+    expect(
+      await restored.assets
+        .find((asset) => asset.meta.id === material.original.meta.id)!
+        .blob.text(),
+    ).toBe(await material.original.blob.text())
+    const updated = saveReadingPosition(
+      saved.library,
+      material.root.source.id,
+      material.root.source.mediaId,
+      {
+        offset: 0,
+        fraction: 0,
+        view: 'source',
+        locator: { ...material.locator, regions: [{ page: 3, x: 0, y: 0, width: 1, height: 1 }] },
+      },
+    )
+    const moved = await repo.save(updated, saved.revision)
+    expect(moved.library.sources[0]!.reading!.locator).toEqual(updated.sources[0]!.reading!.locator)
+    await expect(
+      repo.save(
+        {
+          ...moved.library,
+          materialReceipts: moved.library.materialReceipts.map((receipt) => ({
+            ...receipt,
+            operationId: 'rewritten',
+          })),
+        },
+        moved.revision,
+      ),
+    ).rejects.toThrow()
+    expect(await repo.load()).toEqual(moved)
+  })
   it('observes OS hints incrementally, distinguishes accepted self writes and leaves pending text alone when grading', async () => {
     const env = await workspace()
     await env.repo.load()
@@ -433,6 +564,52 @@ describe('the desktop workspace is the learning store', () => {
     const undone = await repo.save(undoReview(reopened.library), reopened.revision)
     expect(undone.library).toEqual(first.library)
     expect(await readFile(join(env.path, document.path), 'utf8')).toBe(before)
+  })
+  it('persists undo and redo journals atomically across native process restarts', async () => {
+    const env = await workspace()
+    const first = await env.repo.save(fixture({ format: 'markdown', type: 'reversed' }), 0)
+    const next = reviewCard(first.library, first.library.cards[0]!.id, 3, now)
+    const entry = operationFor(first.library, next, env.repo.scope(), '评分', 'review')!
+    const rated = await env.repo.save(next, first.revision, {
+      operationHistory: operationHistory([entry]),
+    })
+    const documents = await docs(env)
+    await env.runtime.stop()
+    const runtime = host(env.device)
+    const status = statusSchema.parse(await runtime.api('workspace_status'))
+    const repo = createNativeRepository(status.active!, runtime.api)
+    const reopened = await repo.load()
+    expect(reopened).toEqual(rated)
+    const undone = await repo.save(revertOperation(reopened.library, entry), reopened.revision, {
+      operationHistory: operationHistory([], [entry]),
+    })
+    expect(undone.library).toEqual(first.library)
+    const other = createNativeRepository(status.active!, runtime.api)
+    const reread = await other.load()
+    expect(reread.operationHistory!.redo[0]).toEqual(entry)
+    const document = documents[0]!
+    const path = join(env.path, document.path)
+    await writeFile(path, document.raw + '\nExternal edit must survive')
+    const conflicting = saveNote(
+      reread.library,
+      { ...input, type: 'reversed', front: 'Conflicting edit' },
+      reread.library.notes[0]!.id,
+    )
+    await expect(
+      other.save(conflicting, reread.revision, { operationHistory: operationHistory() }),
+    ).rejects.toThrow()
+    expect((await other.load()).operationHistory).toEqual(reread.operationHistory)
+    expect((await other.load()).revision).toBe(reread.revision)
+    const redone = await other.save(replayOperation(reread.library, entry), reread.revision, {
+      operationHistory: operationHistory([entry]),
+    })
+    expect(redone.library).toEqual(rated.library)
+    expect(await readFile(path, 'utf8')).toContain('External edit must survive')
+    await runtime.stop()
+    const restarted = host(env.device)
+    const restoredStatus = statusSchema.parse(await restarted.api('workspace_status'))
+    const final = await createNativeRepository(restoredStatus.active!, restarted.api).load()
+    expect(final).toEqual(redone)
   })
   it('keeps external edits and ratings separate, accepts a renamed Markdown file, and preserves card identity and comments', async () => {
     const env = await workspace()
@@ -999,6 +1176,118 @@ describe('native note file lifecycle', () => {
 })
 
 describe('bounded retirement work', () => {
+  it('exports exact retired checkpoints and restores keyed plugin variants through a portable backup in another native workspace', async () => {
+    const env = await workspace()
+    await env.repo.load()
+    const plugin = { id: 'visual-occlusion', version: 1, variants: ['a', 'b'], data: {} }
+    let library = fixture({ type: 'plugin', plugin, format: 'markdown' })
+    library.decks[0]!.burySiblings = false
+    const note = library.notes[0]!,
+      removed = library.cards[1]!
+    const image = {
+      id: crypto.randomUUID(),
+      name: 'diagram.png',
+      type: 'image/png' as const,
+      size: 4,
+      createdAt: now.toISOString(),
+    }
+    library.media = [image]
+    note.frontMedia = [image.id]
+    library = reviewCard(library, removed.id, 3, now)
+    library.practices = [
+      {
+        id: 'portable-practice',
+        cardId: removed.id,
+        contentRevision: 'p4',
+        startedAt: now.toISOString(),
+        question: { front: 'diagram', back: '', format: 'markdown', plugin },
+      },
+    ]
+    library.attempts = [
+      {
+        id: 'portable-attempt',
+        practiceId: 'portable-practice',
+        submittedAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+        language: 'typescript',
+        code: '// complete archived body 中文🙂',
+        elapsedMs: 20,
+        status: 'completed',
+        submissionId: '401',
+        result: {
+          outcome: 'accepted',
+          status: 'ok',
+          runtime: '1',
+          memory: '2',
+          detail: 'full archived diagnostics',
+        },
+      },
+    ]
+    let saved = await env.repo.save(library, 0, {
+      assets: [
+        { meta: image, blob: new Blob([new Uint8Array([1, 2, 3, 4])], { type: image.type }) },
+      ],
+    })
+    await env.repo.backupNow(true)
+    const before = (await env.repo.listBackups())[0]!.id
+    saved = await env.repo.save(
+      saveNote(saved.library, { ...note, plugin: { ...plugin, variants: ['a'] } }, note.id, true),
+      saved.revision,
+    )
+    const archived = await env.repo.retiredNotes()
+    expect(archived).toHaveLength(1)
+    expect(archived[0]!.cards[0]!.variant).toBe('plugin:b')
+    expect(archived[0]!.attempts[0]).toEqual(library.attempts[0])
+    expect(archived[0]!.document?.raw).toContain(image.id)
+    expect(await env.repo.retiredNotes(before)).toEqual([])
+    await env.repo.backupNow(true)
+    const checkpoint = (await env.repo.listBackups())[0]!.id
+    saved = await env.repo.save(
+      reviewCard(saved.library, saved.library.cards[0]!.id, 3, new Date(now.getTime() + 1000)),
+      saved.revision,
+    )
+    expect((await env.repo.retiredNotes(checkpoint))[0]!.attempts).toEqual(archived[0]!.attempts)
+    const parsed = parseBackup(
+      await exportBackup(saved.library, env.repo.getMedia, await env.repo.retiredNotes()),
+    )
+    const portable = await prepareBackupRestore(parsed)
+    const target = await workspace()
+    await target.repo.load()
+    const restored = await target.repo.save(portable.library, 0, {
+      assets: portable.assets,
+      retired: portable.retired,
+    })
+    const retired = await target.repo.retiredNotes()
+    expect(retired[0]!.cards).toEqual(archived[0]!.cards)
+    expect(retired[0]!.attempts).toEqual(archived[0]!.attempts)
+    expect(restored.library.notes[0]!.frontMedia[0]).not.toBe(image.id)
+    expect(retired[0]!.document!.raw).toContain(restored.library.notes[0]!.frontMedia[0]!)
+    expect(retired[0]!.document!.raw).not.toContain(image.id)
+    expect(await sha256(new TextEncoder().encode(retired[0]!.document!.raw))).toBe(
+      retired[0]!.document!.hash,
+    )
+    const bytes = await target.repo.getMedia(restored.library.notes[0]!.frontMedia[0]!)
+    expect(new Uint8Array(await bytes!.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3, 4]))
+    const reinstated = noteLifecycle(
+      restored.library,
+      { ...restored.library.notes[0]!, plugin },
+      note.id,
+      retired[0]!,
+      true,
+    ).library
+    const final = await target.repo.save(reinstated, restored.revision)
+    expect(final.library.cards.find((card) => card.id === removed.id)).toEqual(
+      archived[0]!.cards[0],
+    )
+    expect((await target.repo.getAttempt('portable-attempt')).code).toBe(library.attempts[0]!.code)
+    expect(await target.repo.retiredNotes()).toEqual([])
+    await expect(
+      target.runtime.api('workspace_read', {
+        token: env.active.token,
+        request: { type: 'retired-notes', revision: final.revision },
+      }),
+    ).rejects.toThrow()
+  })
   it('reindexes surviving long submissions in SQLite without reading or publishing their bodies', async () => {
     const env = await workspace()
     const calls: {

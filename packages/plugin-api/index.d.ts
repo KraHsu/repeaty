@@ -8,12 +8,23 @@ import type {
   TextareaHTMLAttributes,
   HTMLAttributes,
 } from 'vue'
+export * from './materials'
+export * from './collection'
+export * from './study'
+export * from './automation'
+export * from './providers'
+export * from './network'
+export const automation: import('./automation').AutomationApi
+import type { MaterialLocator } from './materials'
 
 export type Grade = 1 | 2 | 3 | 4
 export interface PluginData {
   id: string
   version: number
   data: Record<string, unknown>
+  /** Stable independent cards survive missing/disabled plugins and removed regions. */
+  variants?: string[]
+  variantLocators?: Record<string, MaterialLocator>
 }
 export interface NoteInput {
   deckId: string
@@ -25,7 +36,14 @@ export interface NoteInput {
   frontMedia: string[]
   backMedia: string[]
   plugin?: PluginData
-  excerpt?: { sourceId: string; mediaId: string; start: number; end: number; quote: string }
+  excerpt?: {
+    sourceId: string
+    mediaId: string
+    start: number
+    end: number
+    quote: string
+    locator?: MaterialLocator
+  }
 }
 export interface CardView extends Omit<NoteInput, 'format'> {
   id: string
@@ -67,6 +85,7 @@ export interface Practice {
   startedAt: string
   answerSeen?: boolean
   completedAt?: string
+  studyDay?: string
   completion?: 'review' | 'practice'
   assessment?: Assessment
   rating?: Grade
@@ -207,20 +226,37 @@ export declare const AppPage: DefineComponent<AppPageProps & HTMLAttributes>
 export interface PluginManifest {
   id: string
   name: string
+  /** Publisher or maintainer name, shown after the plugin name. Required when building/installing. */
+  author: string
   version: string
   apiVersion: 1
   dataVersion: number
   kind: 'frontend' | 'local'
   description?: string
-  permissions?: { origins?: string[]; secrets?: boolean; files?: boolean }
+  permissions?: {
+    origins?: string[]
+    secrets?: boolean
+    files?: boolean
+    models?: boolean
+    network?: boolean
+  }
 }
-export declare const locale: DeepReadonly<Ref<'en' | 'zh-CN'>>
+export type Locale =
+  'en' | 'zh-CN' | 'zh-TW' | 'de' | 'es' | 'fr' | 'it' | 'ja' | 'ko' | 'pl' | 'pt-BR' | 'ru'
+export declare const locale: DeepReadonly<Ref<Locale>>
+/** Reacts to host locale changes; catalogs are isolated to the caller. Missing keys use fallback. */
+export declare function createTranslator(
+  catalogs: Partial<Record<Locale, Readonly<Record<string, string>>>>,
+  fallback?: Locale,
+): (key: string, params?: Record<string, string | number | undefined>) => string
 export declare function t(
   input: string | Error,
   params?: Record<string, string | number | undefined>,
 ): string
 export declare function readSetting(key: string): string | null
 export declare function writeSetting(key: string, value: string, onError?: () => void): void
+/** Waits for the current library's settings adapter and rejects after disposal or a switch. */
+export declare function persistSetting(key: string, value: string): Promise<void>
 export declare function practiceContentRevision(
   card: Pick<CardView, 'front' | 'back' | 'plugin'>,
 ): Promise<string>
