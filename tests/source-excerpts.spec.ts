@@ -40,7 +40,10 @@ test('a quota failure preserves the excerpt form and leaves no partial snapshot 
       return original.apply(this, args)
     }
   })
-  await page.getByRole('button', { name: '保存为摘录', exact: true }).click()
+  await page
+    .locator('.source-excerpt-action')
+    .getByRole('button', { name: '保存为摘录', exact: true })
+    .click()
   await page.getByLabel('摘录标题').fill('Retry excerpt')
   await page.getByRole('button', { name: '保存摘录', exact: true }).click()
   await expect(page.getByRole('dialog').getByRole('alert')).toContainText('存储空间不足')

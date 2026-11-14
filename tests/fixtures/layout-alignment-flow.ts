@@ -163,8 +163,17 @@ export async function dashboardAndBackupAlignmentFlow(
     [1440, 2],
   ] as const) {
     await page.setViewportSize({ width, height: 1000 })
-    await page.evaluate((value) => {
+    await page.evaluate(async (value) => {
       document.documentElement.style.fontSize = `${value * 100}%`
+      await document.fonts.ready
+      await Promise.allSettled(
+        document
+          .querySelector('.main-content')!
+          .getAnimations()
+          .map((animation) => animation.finished),
+      )
+      await new Promise(requestAnimationFrame)
+      await new Promise(requestAnimationFrame)
     }, scale)
     await overview.click()
     const primary = page.locator('.b-start-review')

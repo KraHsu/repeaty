@@ -1,5 +1,5 @@
 import { expect, type Page, type TestInfo } from '@playwright/test'
-import heatmapManifest from '../../plugins/review-heatmap/manifest.json'
+import { readFileSync } from 'node:fs'
 import { fixture } from '../../src/core/test-fixtures'
 import { storedLibrary } from './stored-library'
 import {
@@ -11,6 +11,9 @@ import {
 } from './settings-flow'
 
 const pluginId = 'review-heatmap'
+const heatmapManifest = JSON.parse(
+  readFileSync(new URL('../../plugins/review-heatmap/manifest.json', import.meta.url), 'utf8'),
+)
 const nav = (page: Page, title: string) =>
   page.locator('.main-nav').getByRole('button', { name: title, exact: true })
 const heatmap = (page: Page) =>

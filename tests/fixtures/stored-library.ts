@@ -1,4 +1,26 @@
-import type { Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
+import type { StudyActivity } from '../../src/core/study-data'
+
+/** UI navigation may extend foreground time, but must preserve every other learning record. */
+export function expectLearningPreserved(
+  actual: Awaited<ReturnType<typeof storedLibrary>>,
+  before: Awaited<ReturnType<typeof storedLibrary>>,
+) {
+  expect({ ...actual, studyActivity: before.studyActivity }).toEqual(before)
+  const values = (rows: unknown) => (rows as { value: StudyActivity }[]).map((row) => row.value)
+  const activity = values(actual.studyActivity)
+  for (const previous of values(before.studyActivity)) {
+    const current = activity.find((entry) => entry.id === previous.id)!
+    expect(current).toMatchObject({
+      ...previous,
+      activeMs: expect.any(Number),
+      endedAt: expect.any(String),
+    })
+    expect(current.activeMs).toBeGreaterThanOrEqual(previous.activeMs)
+    expect(Date.parse(current.endedAt)).toBeGreaterThanOrEqual(Date.parse(previous.endedAt))
+  }
+}
+
 export async function storedLibrary(page: Page) {
   return page.evaluate(async () => {
     const native = (

@@ -1,3 +1,4 @@
+import { expectLearningPreserved } from '../fixtures/stored-library'
 import { test, expect, storedLibrary } from './fixture'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -129,7 +130,7 @@ test('installs independent code, reloads versions and retains records and privat
     'color',
     'rgb(17, 34, 51)',
   )
-  expect(await storedLibrary(page)).toEqual(original)
+  expectLearningPreserved(await storedLibrary(page), original)
   const directory = (await workspace(page)).active.path
   const packageDirectory = join(directory, '.repeaty', 'plugins', 'external-check')
   expect(JSON.parse(await readFile(join(packageDirectory, 'manifest.json'), 'utf8')).version).toBe(
@@ -166,7 +167,7 @@ test('installs independent code, reloads versions and retains records and privat
   await expect(configuration(page).getByTestId('external-version')).toHaveText('1.0.0')
   await expect(configuration(page).getByTestId('external-saved')).toHaveText('saved-1.0.0')
 
-  await page.getByRole('button', { name: '全部卡片' }).click()
+  await page.locator('.main-nav').getByRole('button', { name: '全部卡片', exact: true }).click()
   await page.getByRole('button', { name: '复习', exact: true }).click()
   await expect(page.getByTestId('external-review')).toContainText(
     '1.0.0: External plugin review check',
@@ -201,7 +202,7 @@ test('installs independent code, reloads versions and retains records and privat
   expect(await readFile(join(packageDirectory, 'main.js'), 'utf8')).toBe(
     standaloneBundle('2.0.0').main,
   )
-  expect(await storedLibrary(page)).toEqual(studied)
+  expectLearningPreserved(await storedLibrary(page), studied)
   await configuration(page).getByRole('button', { name: 'Save external marker' }).click()
   await expect
     .poll(() => value(page, 'settings', 'plugin:external-check:marker'))
@@ -233,7 +234,7 @@ test('installs independent code, reloads versions and retains records and privat
   await openSettings(page)
   await expect(configuration(page)).toHaveCount(0)
   await expect(page.locator('style[data-repeaty-plugin="external-check"]')).toHaveCount(0)
-  expect(await storedLibrary(page)).toEqual(studied)
+  expectLearningPreserved(await storedLibrary(page), studied)
   expect(await value(page, 'settings', 'plugin:external-check:marker')).toBe('saved-2.0.0')
   expect(await value(page, 'plugin:external-check', 'saved-data')).toEqual({ preserve: true })
   await expect(readFile(join(packageDirectory, 'main.js'), 'utf8')).rejects.toMatchObject({
@@ -242,7 +243,7 @@ test('installs independent code, reloads versions and retains records and privat
   await page.reload()
   await openPluginManager(page)
   await expect(panel(page)).toHaveCount(0)
-  expect(await storedLibrary(page)).toEqual(studied)
+  expectLearningPreserved(await storedLibrary(page), studied)
 })
 
 test('discovers copied package files without executing them until their exact content is trusted', async ({
@@ -326,5 +327,5 @@ test('discovers copied package files without executing them until their exact co
   await expect(configuration(page, 'manual-check').getByTestId('external-version')).toHaveText(
     '2.0.0',
   )
-  expect(await storedLibrary(page)).toEqual(before)
+  expectLearningPreserved(await storedLibrary(page), before)
 })

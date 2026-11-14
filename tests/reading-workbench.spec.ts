@@ -87,7 +87,9 @@ async function selectSecondBold(page: Page, quote: string) {
       selection.addRange(range)
       element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
     })
-  await expect(page.getByRole('button', { name: '保存为摘录', exact: true })).toBeEnabled()
+  await expect(
+    page.locator('.source-excerpt-action').getByRole('button', { name: '保存为摘录', exact: true }),
+  ).toBeEnabled()
 }
 
 test('Markdown preview selections retain exact duplicate-text offsets in excerpts, cloze cards and annotations across draft reload and version edits', async ({
@@ -103,19 +105,25 @@ test('Markdown preview selections retain exact duplicate-text offsets in excerpt
   const start = markdown.lastIndexOf(quote)
   const expected = { mediaId: source.mediaId, start, end: start + quote.length }
   await selectSecondBold(page, quote)
-  await page.getByRole('button', { name: '保存为摘录', exact: true }).click()
+  await page
+    .locator('.source-excerpt-action')
+    .getByRole('button', { name: '保存为摘录', exact: true })
+    .click()
   await page.getByLabel('摘录标题').fill('第二处摘录')
   await expect(page.getByLabel('选中的原文')).toHaveValue(quote)
   await page.getByRole('button', { name: '保存摘录', exact: true }).click()
-  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: '保存为摘录', exact: true })).toHaveCount(0)
   expect(
     (await read(page)).sources.find((item) => item.title === '第二处摘录')?.origin,
   ).toMatchObject({ sourceId: source.id, ...expected })
 
   await open(page, source.title)
   await selectSecondBold(page, quote)
-  await page.getByRole('button', { name: '制作挖空卡', exact: true }).click()
-  const editor = page.getByRole('dialog')
+  await page
+    .locator('.source-excerpt-action')
+    .getByRole('button', { name: '制作挖空卡', exact: true })
+    .click()
+  const editor = page.getByRole('dialog', { name: '添加卡片', exact: true })
   await expect(editor.locator('#card-front')).toHaveValue(`{{c1::${quote}}}`)
   await editor.getByRole('button', { name: '保存卡片', exact: true }).click()
   await expect(editor).toHaveCount(0)
@@ -125,7 +133,10 @@ test('Markdown preview selections retain exact duplicate-text offsets in excerpt
   })
 
   await selectSecondBold(page, quote)
-  await page.getByRole('button', { name: '添加批注', exact: true }).click()
+  await page
+    .locator('.source-excerpt-action')
+    .getByRole('button', { name: '添加批注', exact: true })
+    .click()
   const annotation = page.getByRole('dialog', { name: '编辑批注', exact: true })
   await annotation.getByLabel('批注内容').fill('标记第二次出现，原文改版后仍指向此处。')
   await screenshot(page, 'reading-workbench-annotation-light.png')

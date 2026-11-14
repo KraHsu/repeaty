@@ -202,7 +202,9 @@ export async function pluginPagesFlow(page: Page, info: TestInfo, edition: 'web'
   await details.getByRole('button', { name: '卸载插件', exact: true }).click()
   await confirmPluginAction(page)
   await expect(nav(page, 'Plugin notebook')).toHaveCount(0)
-  expect(await storedLibrary(page)).toEqual(learningRecords)
+  expect({ ...(await storedLibrary(page)), studyActivity: learningRecords.studyActivity }).toEqual(
+    learningRecords,
+  )
   await install(page, bundle)
   await nav(page, 'Plugin notebook').click()
   await expect(page.getByRole('textbox', { name: 'Plugin note', exact: true })).toHaveValue(
@@ -231,6 +233,9 @@ export async function pluginPagesFlow(page: Page, info: TestInfo, edition: 'web'
     await nav(page, 'Plugin notebook').click()
     await expect(page.getByTestId('plugin-page-scope')).toHaveText(originalScope!)
     await expect(page.getByTestId('private-plugin-note')).toHaveText('saved in original library')
-    expect(await storedLibrary(page)).toEqual(learningRecords)
+    expect({
+      ...(await storedLibrary(page)),
+      studyActivity: learningRecords.studyActivity,
+    }).toEqual(learningRecords)
   }
 }

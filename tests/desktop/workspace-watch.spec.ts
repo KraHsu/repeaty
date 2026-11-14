@@ -5,7 +5,25 @@ import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 import { createSourceDeck } from '../fixtures/source-flow'
 import type { Note } from '../../src/core/model'
+import type { StudyActivity } from '../../src/core/study-data'
 const values = <T>(rows: unknown) => (rows as { value: T }[]).map((row) => row.value)
+function unchangedLearning(
+  actual: Awaited<ReturnType<typeof storedLibrary>>,
+  before: Awaited<ReturnType<typeof storedLibrary>>,
+) {
+  // Navigation and focus flush foreground time; file detection must preserve all learning data.
+  expect({ ...actual, studyActivity: before.studyActivity }).toEqual(before)
+  const activity = values<StudyActivity>(actual.studyActivity)
+  for (const previous of values<StudyActivity>(before.studyActivity)) {
+    const current = activity.find((entry) => entry.id === previous.id)!
+    expect(current).toMatchObject({
+      ...previous,
+      activeMs: expect.any(Number),
+      endedAt: expect.any(String),
+    })
+    expect(current.activeMs).toBeGreaterThanOrEqual(previous.activeMs)
+  }
+}
 async function storage(page: Page) {
   return page.evaluate(async () => {
     const native = (
@@ -51,10 +69,10 @@ test('automatically detects saves and renames, keeps a review stable, and refuse
   await separator.press('Home')
   await expect(page.locator('.app-layout')).toHaveClass(/sidebar-collapsed/)
   await expect(pending(page)).toBeVisible()
-  await expect(sidebar(page)).toHaveAttribute('title', '工作目录 · 1 项文件修改待检查')
+  await expect(sidebar(page)).toHaveAttribute('aria-description', '1 项文件修改待检查')
   await separator.press('End')
   await expect(page.locator('.card-question')).toContainText('保存时的原题目')
-  expect(await storedLibrary(page)).toEqual(before)
+  unchangedLearning(await storedLibrary(page), before)
   await openFiles(page)
   await page.locator('.workspace-file').filter({ hasText: doc.path }).click()
   await expect(page.locator('.workspace-raw')).toContainText('外部第一次修改')
@@ -66,7 +84,7 @@ test('automatically detects saves and renames, keeps a review stable, and refuse
   await modal.getByRole('button', { name: '确认接受', exact: true }).click()
   await expect(modal.getByRole('alert')).toContainText('文件已在外部修改')
   await expect(modal.getByLabel('内容格式')).toHaveAttribute('value', 'markdown')
-  expect(await storedLibrary(page)).toEqual(before)
+  unchangedLearning(await storedLibrary(page), before)
   await modal.getByRole('button', { name: '取消', exact: true }).click()
   await expect(page.locator('.workspace-raw')).toContainText('外部第二次修改')
   await page.getByRole('button', { name: '接受修改', exact: true }).click()
@@ -120,7 +138,7 @@ test('detects referenced attachment replacements without changing accepted bytes
   )
   await expect(pending(page)).toHaveText('1')
   await expect(page.locator('.workspace-document')).toContainText('正文引用的附件已变化')
-  expect(await storedLibrary(page)).toEqual(accepted)
+  unchangedLearning(await storedLibrary(page), accepted)
   await writeFile(join(root, 'assets/picture.png'), first)
   await expect(pending(page)).toHaveCount(0)
   // Focus is also a reconciliation path, independent of OS event delivery.
@@ -141,5 +159,5 @@ test('detects referenced attachment replacements without changing accepted bytes
   await expect(page.locator('.workspace-raw')).not.toContainText('重新聚焦后看到的修改')
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
   await expect(page.locator('.workspace-raw')).toContainText('重新聚焦后看到的修改')
-  expect(await storedLibrary(page)).toEqual(accepted)
+  unchangedLearning(await storedLibrary(page), accepted)
 })

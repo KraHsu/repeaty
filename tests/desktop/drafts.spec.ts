@@ -1,3 +1,4 @@
+import { expectLearningPreserved } from '../fixtures/stored-library'
 import type { Page } from '@playwright/test'
 import { test, expect, storedLibrary } from './fixture'
 import { richLibrary } from '../fixtures/rich-library'
@@ -109,7 +110,7 @@ test('shared excerpts become editable drafts, save all three types with provenan
       cards: [{ type: 'basic', front: 'Changed', back: 'Answer' }],
     }),
   ).toMatchObject({ status: 'error', code: 'request-conflict' })
-  expect(await storedLibrary(page)).toEqual(before)
+  expectLearningPreserved(await storedLibrary(page), before)
   await queue().getByRole('button', { name: '检查并编辑' }).first().click()
   let editor = page.getByRole('dialog', { name: '确认制卡草稿' })
   await expect(editor.locator('#card-tags')).toHaveValue('FSRS, 待确认')
@@ -119,7 +120,7 @@ test('shared excerpts become editable drafts, save all three types with provenan
   ).toBeUndefined()
   await editor.getByRole('button', { name: '关闭弹窗' }).click()
   await expect(queue().locator('.draft-list li')).toHaveCount(3)
-  expect(await storedLibrary(page)).toEqual(before)
+  expectLearningPreserved(await storedLibrary(page), before)
   // Stopping sharing closes external access but keeps received drafts reviewable.
   await queue().getByRole('button', { name: '停止分享' }).click()
   expect(await query(page, 'repeaty_selected_excerpt')).toMatchObject({
@@ -135,7 +136,7 @@ test('shared excerpts become editable drafts, save all three types with provenan
   })
   await editor.getByRole('button', { name: '确认并保存卡片' }).click()
   await expect(editor.getByRole('alert')).toContainText('无法读写工作目录')
-  expect(await storedLibrary(page)).toEqual(before)
+  expectLearningPreserved(await storedLibrary(page), before)
   await expect(editor.getByLabel('正面 · 问题', { exact: true })).toHaveValue('用户修改后的问题')
   await page.evaluate(() => {
     ;(window as unknown as { failDraftSave: boolean }).failDraftSave = false
@@ -166,7 +167,7 @@ test('shared excerpts become editable drafts, save all three types with provenan
     cards: [cards[0]],
   })
   await expect(queue().locator('.draft-list li')).toHaveCount(1)
-  expect(await storedLibrary(page)).toEqual(saved)
+  expectLearningPreserved(await storedLibrary(page), saved)
   await queue().getByRole('button', { name: '关闭弹窗' }).click()
   await setInterfaceLanguage(page, 'en')
   await page.getByRole('button', { name: 'Sources', exact: true }).click()
@@ -190,7 +191,7 @@ test('shared excerpts become editable drafts, save all three types with provenan
     code: 'selection-unavailable',
   })
   await page.getByRole('button', { name: 'Overview', exact: true }).click()
-  expect(await storedLibrary(page)).toEqual(saved)
+  expectLearningPreserved(await storedLibrary(page), saved)
   // Provenance is ordinary saved card data and remains available during review.
   await page.getByRole('button', { name: 'Start review', exact: true }).first().click()
   await page.getByRole('button', { name: 'Show answer', exact: true }).click()
@@ -236,7 +237,7 @@ test('failed storage refuses a batch, lost replies retain durable drafts, and de
   const receipt = await query(page, 'repeaty_propose_cards', input)
   await expect(queue.locator('.draft-list li')).toHaveCount(1)
   expect(await query(page, 'repeaty_propose_cards', input)).toEqual(receipt)
-  expect(await storedLibrary(page)).toEqual(before)
+  expectLearningPreserved(await storedLibrary(page), before)
   await queue.getByRole('button', { name: '关闭弹窗' }).click()
   await page.getByRole('button', { name: '删除材料', exact: true }).click()
   await page.getByRole('button', { name: '确认删除', exact: true }).click()
@@ -300,7 +301,7 @@ test('unfinished edits, long text, image and audio survive restart and workspace
   })
   await editor().getByRole('button', { name: '保存草稿', exact: true }).click()
   await expect(queue().locator('.draft-list li')).toHaveCount(1)
-  expect(await storedLibrary(page)).toEqual(before)
+  expectLearningPreserved(await storedLibrary(page), before)
   await page.reload()
   await page.getByRole('button', { name: '制卡草稿（1）', exact: true }).click()
   await queue().getByRole('button', { name: '检查并编辑' }).click()
@@ -347,7 +348,7 @@ test('unfinished edits, long text, image and audio survive restart and workspace
   expect(saved.reviews).toEqual(before.reviews)
   await page.reload()
   await expect(page.getByRole('button', { name: /^制卡草稿/ })).toHaveCount(0)
-  expect(await storedLibrary(page)).toEqual(saved)
+  expectLearningPreserved(await storedLibrary(page), saved)
 })
 
 test('unreadable drafts remain intact, recovery can retry, and failed discard keeps the pending draft', async ({
@@ -368,7 +369,7 @@ test('unreadable drafts remain intact, recovery can retry, and failed discard ke
   await expect(queue.getByRole('alert')).toContainText('已有草稿未被覆盖')
   await queue.getByRole('button', { name: '重新读取草稿' }).click()
   await expect(queue.getByRole('alert')).toContainText('已有草稿未被覆盖')
-  expect(await storedLibrary(page)).toEqual(before)
+  expectLearningPreserved(await storedLibrary(page), before)
   await setDraftVersion(page, 1)
   await queue.getByRole('button', { name: '重新读取草稿' }).click()
   await expect(queue.locator('.draft-list li')).toHaveCount(1)
@@ -386,5 +387,5 @@ test('unreadable drafts remain intact, recovery can retry, and failed discard ke
   await expect(queue.locator('.draft-list li')).toHaveCount(0)
   await page.reload()
   await expect(page.getByRole('button', { name: /^制卡草稿/ })).toHaveCount(0)
-  expect(await storedLibrary(page)).toEqual(before)
+  expectLearningPreserved(await storedLibrary(page), before)
 })

@@ -10,6 +10,7 @@ import { readFile } from 'node:fs/promises'
 import type { Library } from '../../src/core/model'
 import { parseArchive } from '../../src/core/archive'
 import { createSourceDeck } from './source-flow'
+import { showSourceText } from './source-controls'
 
 export const readingText = Array.from(
   { length: 180 },
@@ -38,9 +39,9 @@ export async function importReading(
     .getByRole('navigation', { name: '阅读队列', exact: true })
     .getByRole('button', { name: /^待阅读/ })
     .click()
-  await page.locator('.source-list-title').filter({ hasText: title }).click()
-  if (format === 'markdown')
-    await page.getByRole('button', { name: '查看 Markdown 原文', exact: true }).click()
+  // Collection opens the imported material even if its list row is on a later page.
+  await expect(page.locator('.source-reader h2')).toHaveText(title)
+  await showSourceText(page)
   await expect(page.locator('.source-text')).toHaveValue(text)
   await expect(page.locator('.source-text')).toHaveAttribute('aria-busy', 'false')
 }
