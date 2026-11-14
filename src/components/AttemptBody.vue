@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { UiButton } from './ui'
 import { onUnmounted, shallowRef, ref, watch } from 'vue'
 import { t } from '../i18n'
 import { hasAttemptBody, type Attempt, type AttemptRecord } from '../core/practice-data'
@@ -55,11 +57,17 @@ onUnmounted(() => {
       </template>
       <pre class="attempt-code"><code>{{ body.code }}</code></pre>
     </template>
-    <div v-else-if="failed" role="alert">
-      <p>{{ t('无法读取这次提交，请重试。') }}</p>
-      <button type="button" class="button secondary" @click="load">{{ t('重试') }}</button>
-    </div>
-    <p v-else class="form-note" role="status">{{ t('正在读取提交…') }}</p>
+    <UAlert
+      v-else-if="failed"
+      role="alert"
+      color="error"
+      :description="t('无法读取这次提交，请重试。')"
+    >
+      <template #actions
+        ><UiButton @click="load">{{ t('重试') }}</UiButton></template
+      >
+    </UAlert>
+    <UAlert v-else role="status" color="neutral" variant="soft" :description="t('正在读取提交…')" />
   </div>
 </template>
 <style scoped>
@@ -73,8 +81,8 @@ onUnmounted(() => {
   background: var(--paper, #f7f8f4);
   border: 1px solid var(--line);
   border-radius: 8px;
-  font:
-    0.9375rem/1.6 ui-monospace,
-    monospace;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-code);
 }
 </style>

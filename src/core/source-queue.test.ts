@@ -233,7 +233,10 @@ it('retains reading arrangements in archives, JSON, rekeying, stored revisions a
     expect(restored.library.sources[0]!.queue).toEqual(archived.sources[0]!.queue)
     expect(restored.library.sources[0]!.priority).toBe('high')
     expect(restored.library.sources[0]!.reading).toEqual(archived.sources[0]!.reading)
-    expect(restored.library.notes[0]!.excerpt).toEqual(archived.notes[0]!.excerpt)
+    expect(restored.library.notes[0]!.excerpt).toEqual({
+      ...archived.notes[0]!.excerpt,
+      mediaId: restored.library.sources[0]!.mediaId,
+    })
     expect(restored.library.sources[0]!.mediaId).not.toBe(source.mediaId)
   }
   const repo = createRepository(`reading-queue-${crypto.randomUUID()}`)

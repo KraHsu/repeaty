@@ -139,7 +139,7 @@ test('checks all frontend, Rust, Tauri and lockfile versions; enforces the stabl
     'package-lock.json',
     'src-tauri/tauri.conf.json',
     'docs/RELEASE_1_0.md',
-    ...['server', 'src-tauri', 'crates/leetcode-local'].flatMap((directory) => [
+    ...['server', 'src-tauri', 'crates/workspace-store'].flatMap((directory) => [
       directory + '/Cargo.toml',
       directory + '/Cargo.lock',
     ]),
@@ -155,6 +155,16 @@ test('checks all frontend, Rust, Tauri and lockfile versions; enforces the stabl
   )
   await assert.rejects(checkVersions(root), /server\/Cargo.toml/)
   await writeFile(join(root, 'server/Cargo.toml'), original)
+  const desktopLock = await readFile(join(root, 'src-tauri/Cargo.lock'), 'utf8')
+  await writeFile(
+    join(root, 'src-tauri/Cargo.lock'),
+    desktopLock.replace(
+      'name = "repeaty-workspace"\nversion = "' + currentVersion + '"',
+      'name = "repeaty-workspace"\nversion = "0.0.0-test.mismatch"',
+    ),
+  )
+  await assert.rejects(checkVersions(root), /src-tauri\/Cargo.lock repeaty-workspace/)
+  await writeFile(join(root, 'src-tauri/Cargo.lock'), desktopLock)
   for (const file of files)
     await writeFile(
       join(root, file),
@@ -303,7 +313,14 @@ test('rejects empty files and symlinks instead of publishing misleading installe
   await writeFile(path, '')
   await assert.rejects(installerFiles(directory, version), /empty/)
   await rm(path)
-  await symlink('/etc/passwd', path)
+  const windows = process.platform === 'win32'
+  const target = join(directory, platforms[1].artifact, 'bundle')
+  // Junctions exercise the same link guard without requiring Windows symlink privileges.
+  await symlink(
+    windows ? target : join(target, 'Repeaty_' + version + '_' + platforms[1].suffix),
+    path,
+    windows ? 'junction' : 'file',
+  )
   await assert.rejects(installerFiles(directory, version), /symlinks/)
 })
 

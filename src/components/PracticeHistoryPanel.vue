@@ -1,10 +1,15 @@
 <script setup lang="ts">
+import UInput from '@nuxt/ui/components/Input.vue'
+import USelect from '@nuxt/ui/components/Select.vue'
+import UPagination from '@nuxt/ui/components/Pagination.vue'
+import { UiButton } from './ui'
+import AppPage from './AppPage.vue'
 import { computed, ref, watch } from 'vue'
-import { Search } from '@lucide/vue'
 import { t } from '../i18n'
 import type { Library } from '../core/model'
 import type { Attempt, AttemptRecord } from '../core/practice-data'
-import { questionPlugin } from '../plugins'
+import { usePlugins } from '../plugins'
+const { questionPlugin } = usePlugins()
 import PracticeHistory from './PracticeHistory.vue'
 
 const props = defineProps<{
@@ -15,6 +20,18 @@ const emit = defineEmits<{ reveal: [practiceId: string] }>()
 const cardId = defineModel<string>('cardId', { default: '' })
 const query = ref('')
 const deckId = ref('')
+const cardFilter = computed<string | null>({
+  get: () => cardId.value || null,
+  set: (value) => {
+    cardId.value = value ?? ''
+  },
+})
+const deckFilter = computed<string | null>({
+  get: () => deckId.value || null,
+  set: (value) => {
+    deckId.value = value ?? ''
+  },
+})
 const outcome = ref('all')
 const page = ref(1)
 const pageSize = 20
@@ -81,46 +98,56 @@ watch(questions, (entries) => {
 })
 </script>
 <template>
-  <section class="page practice-history-page">
-    <header class="page-heading">
-      <div>
-        <h1>{{ t('练习历史') }}</h1>
-        <p>{{ t('按题目查看历次代码、判题结果和复习评分。') }}</p>
-      </div>
-    </header>
+  <AppPage
+    class="practice-history-page"
+    :title="t('练习历史')"
+    :description="t('按题目查看历次代码、判题结果和复习评分。')"
+  >
     <div class="history-filters">
-      <label class="search-field"
-        ><Search :size="18" /><input
+      <div class="history-search">
+        <UInput
           v-model="query"
+          icon="i-lucide-search"
           :aria-label="t('搜索练习历史')"
           :placeholder="t('搜索题目')"
           maxlength="1000"
-      /></label>
-      <label
-        >{{ t('题目')
-        }}<select v-model="cardId" :aria-label="t('筛选题目')">
-          <option value="">{{ t('全部题目') }}</option>
-          <option v-for="[id, title] in questions" :key="id" :value="id">{{ title }}</option>
-        </select></label
-      >
-      <label
-        >{{ t('卡组')
-        }}<select v-model="deckId" :aria-label="t('筛选卡组')">
-          <option value="">{{ t('全部卡组') }}</option>
-          <option v-for="deck in library.decks" :key="deck.id" :value="deck.id">
-            {{ deck.name }}
-          </option>
-        </select></label
-      >
-      <label
-        >{{ t('判题结果')
-        }}<select v-model="outcome" :aria-label="t('判题结果')">
-          <option value="all">{{ t('全部结果') }}</option>
-          <option value="accepted">{{ t('通过') }}</option>
-          <option value="rejected">{{ t('未通过') }}</option>
-          <option value="unconfirmed">{{ t('尚未确认') }}</option>
-        </select></label
-      >
+        />
+      </div>
+      <div>
+        <USelect
+          v-model="cardFilter"
+          :aria-label="t('筛选题目')"
+          :placeholder="t('全部题目')"
+          :items="[
+            { value: null, label: t('全部题目') },
+            ...questions.map(([value, label]) => ({ value, label })),
+          ]"
+        />
+      </div>
+      <div>
+        <USelect
+          v-model="deckFilter"
+          :aria-label="t('筛选卡组')"
+          :placeholder="t('全部卡组')"
+          :items="[
+            { value: null, label: t('全部卡组') },
+            ...library.decks.map((deck) => ({ value: deck.id, label: deck.name })),
+          ]"
+        />
+      </div>
+      <div>
+        <USelect
+          v-model="outcome"
+          :aria-label="t('判题结果')"
+          :placeholder="t('全部结果')"
+          :items="[
+            { value: 'all', label: t('全部结果') },
+            { value: 'accepted', label: t('通过') },
+            { value: 'rejected', label: t('未通过') },
+            { value: 'unconfirmed', label: t('尚未确认') },
+          ]"
+        />
+      </div>
     </div>
     <p class="form-note" role="status">{{ t('{count} 次练习', { count: filtered.length }) }}</p>
     <p v-if="library.practices.some((entry) => !entry.completedAt)" class="form-note">
@@ -150,15 +177,22 @@ watch(questions, (entries) => {
       />
     </div>
     <nav v-if="pages > 1" class="pagination" :aria-label="t('练习历史分页')">
-      <button class="button secondary" :disabled="page <= 1" @click="page--">
-        {{ t('上一页') }}
-      </button>
-      <span>{{ t('第 {page} / {pages} 页', { page, pages }) }}</span>
-      <button class="button secondary" :disabled="page >= pages" @click="page++">
-        {{ t('下一页') }}
-      </button>
+      <UPagination
+        v-model:page="page"
+        :total="filtered.length"
+        :items-per-page="pageSize"
+        :show-controls="false"
+      >
+        <template #prev
+          ><UiButton :aria-label="t('上一页')">{{ t('上一页') }}</UiButton></template
+        >
+        <template #next
+          ><UiButton :aria-label="t('下一页')">{{ t('下一页') }}</UiButton></template
+        >
+      </UPagination>
+      <span role="status">{{ t('第 {page} / {pages} 页', { page, pages }) }}</span>
     </nav>
-  </section>
+  </AppPage>
 </template>
 <style scoped>
 .history-filters {
@@ -167,14 +201,10 @@ watch(questions, (entries) => {
   align-items: end;
   gap: 1rem;
 }
-.history-filters label {
+.history-filters > * {
   min-width: 0;
 }
-.search-field {
-  margin: 0;
-  height: 46px;
-}
-.history-filters select {
+.history-filters :deep([data-slot='root']) {
   width: 100%;
 }
 .history-records {
@@ -183,7 +213,7 @@ watch(questions, (entries) => {
 }
 .history-empty {
   padding: 2rem 0;
-  line-height: 1.7;
+  line-height: var(--line-height-ui);
 }
 @media (max-width: 1000px) {
   .history-filters {

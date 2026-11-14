@@ -1,3 +1,5 @@
+import { selectUiValue } from './fixtures/ui-flow'
+import { setInterfaceLanguage } from './fixtures/settings-flow'
 import { test, expect } from './fixtures/empty-workspace'
 import { createImportDeck, previewAnki, confirmAnki } from './fixtures/anki-flow'
 import { parseArchive } from '../src/core/archive'
@@ -30,10 +32,10 @@ test('modern Anki import previews, cancels, imports media, reviews offline and d
   await page.reload()
   await previewAnki(page)
   await confirmAnki(page)
-  await page.getByRole('textbox', { name: '搜索卡片' }).fill('What')
+  await page.getByLabel('搜索卡片', { exact: true }).fill('What')
   await expect(page.locator('tbody tr')).toHaveCount(1)
-  await page.getByText('高级搜索、常用筛选与专项练习', { exact: true }).click()
-  await page.getByLabel('练习模式').selectOption('true')
+  await page.getByRole('button', { name: '专项练习', exact: true }).click()
+  await selectUiValue(page.getByLabel('练习模式'), 'true')
   await page.getByRole('button', { name: '开始专项练习', exact: true }).click()
   await expect(page.locator('.card-question')).toContainText('What is 2 + 2?')
   await expect(page.locator('.card-question .katex')).toHaveCount(1)
@@ -91,7 +93,7 @@ test('legacy packages import, malformed input preserves data, and the preview fi
   await previewAnki(page, 'legacy')
   await confirmAnki(page)
   await page.getByRole('button', { name: '批量导入', exact: true }).click()
-  await page.getByLabel('导入格式').selectOption('anki')
+  await selectUiValue(page.getByLabel('导入格式'), 'anki')
   await page.getByLabel('选择 Anki 文件').setInputFiles({
     name: 'broken.apkg',
     mimeType: 'application/zip',
@@ -100,13 +102,15 @@ test('legacy packages import, malformed input preserves data, and the preview fi
   await expect(page.getByRole('alert')).toContainText('Anki 文件损坏')
   await page.getByRole('button', { name: '取消', exact: true }).click()
   await expect(page.locator('tbody tr')).toHaveCount(6)
+  await setInterfaceLanguage(page, 'en')
   await previewAnki(page)
-  await page.locator('.language-picker select').selectOption('en')
   await page.setViewportSize({ width: 320, height: 844 })
   await expect(page.locator('.anki-preview')).toContainText('4 already present, 3 skipped')
   await page.getByText('Import report', { exact: false }).click()
   await expect(page.locator('.anki-report')).toContainText(
     'Missing, damaged, or unsupported attachments',
   )
-  expect(await page.locator('dialog').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
+  expect(await page.getByRole('dialog').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+    true,
+  )
 })

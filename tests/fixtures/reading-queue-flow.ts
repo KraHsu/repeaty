@@ -1,3 +1,7 @@
+import { selectUiValue } from './ui-flow'
+import { setResponsiveViewport } from './viewport-flow'
+import { setInterfaceLanguage } from './settings-flow'
+import { notesAfterSourceRekey } from './source-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import type { Library } from '../../src/core/model'
@@ -19,7 +23,10 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
     element.setSelectionRange(0, 12)
     element.dispatchEvent(new Event('select', { bubbles: true }))
   })
-  await page.getByRole('button', { name: '用摘录制卡', exact: true }).click()
+  await page
+    .locator('.source-excerpt-action')
+    .getByRole('button', { name: '用摘录制卡', exact: true })
+    .click()
   await page.getByLabel('正面 · 问题', { exact: true }).fill('Queue control card')
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   await page.getByRole('button', { name: '学习概览', exact: true }).click()
@@ -30,14 +37,14 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
   await importReading(page, 'Queue B', 'plain', 'Another material\n'.repeat(500))
   const baseline = await read()
   const first = baseline.sources.find((source) => source.title === 'Queue A')!
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveValue('normal')
+  await expect(page.getByLabel('学习优先级', { exact: true })).toHaveAttribute('value', 'inherit')
   expect(baseline.sources.every((source) => source.priority === undefined)).toBe(true)
   await page.locator('.source-list-title').filter({ hasText: 'Queue A' }).click()
   await expect(page.locator('.source-text')).toHaveAttribute('aria-busy', 'false')
   await moveReading(page, 0.55)
-  const priority = page.getByLabel('阅读优先级', { exact: true })
-  await priority.selectOption('low')
-  await expect(priority).toHaveValue('low')
+  const priority = page.getByLabel('学习优先级', { exact: true })
+  await selectUiValue(priority, '9')
+  await expect(priority).toHaveAttribute('value', '9')
   await expect(page.locator('.source-list-title')).toHaveText(['Queue B', 'Queue A'])
   await expect(page.getByRole('heading', { name: 'Queue A', exact: true })).toBeVisible()
   const lowered = (await read()).sources.find((source) => source.id === first.id)!
@@ -46,8 +53,8 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
   expect(
     await page.locator('.source-text').evaluate((element) => element.scrollTop),
   ).toBeGreaterThan(500)
-  await priority.selectOption('high')
-  await expect(priority).toHaveValue('high')
+  await selectUiValue(priority, '1')
+  await expect(priority).toHaveAttribute('value', '1')
   await expect(page.locator('.source-list-title')).toHaveText(['Queue A', 'Queue B'])
   await moveReading(page, 0.6)
   // Do not wait for the idle save: archiving must capture the current position.
@@ -55,7 +62,7 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
   await expect(page.getByRole('heading', { name: 'Queue B', exact: true })).toBeVisible()
   const archived = (await read()).sources.find((source) => source.id === first.id)!
   expect(archived.queue?.state).toBe('archived')
-  expect(archived.priority).toBe('high')
+  expect(archived.studyPriority).toBe(1)
   expect(archived.reading!.offset).toBeGreaterThan(500)
   await queueView(page, '已归档')
   await expect(page.getByRole('heading', { name: 'Queue A', exact: true })).toBeVisible()
@@ -116,7 +123,7 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
     today,
   )
   await dialog.getByRole('button', { name: '取消', exact: true }).click()
-  await page.setViewportSize({ width: 390, height: 844 })
+  await setResponsiveViewport(page, 390, 844)
   await page.getByRole('button', { name: '稍后阅读', exact: true }).click()
   await expect(dialog.getByLabel('下次阅读日期')).toHaveValue(tomorrow)
   expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
@@ -147,23 +154,33 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
   await expect(page.locator('.source-list-title')).toHaveText(['Queue A'])
   const planned = (await read()).sources.find((source) => source.id === first.id)!
   expect(planned.queue).toEqual({ state: 'active', availableOn: later })
-  expect(planned.priority).toBe('high')
+  expect(planned.studyPriority).toBe(1)
   expect(planned.reading!.offset).toBeGreaterThan(500)
-  await page.setViewportSize({ width: 390, height: 844 })
+  await setResponsiveViewport(page, 390, 844)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: info.outputPath('reading-queue-zh.png'), fullPage: true })
-  await page.getByLabel('界面语言').selectOption('en')
+  await setInterfaceLanguage(page, 'en')
+  await page.getByRole('button', { name: 'Sources', exact: true }).click()
+  await page
+    .getByRole('navigation', { name: 'Reading queue', exact: true })
+    .getByRole('button', { name: /^Read later/ })
+    .click()
+  await page.locator('.source-list-title').filter({ hasText: 'Queue A' }).click()
   await expect(
     page
       .getByRole('navigation', { name: 'Reading queue' })
       .getByRole('button', { name: /^Read later/ }),
   ).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('button', { name: 'Read now', exact: true })).toBeVisible()
-  await expect(page.getByLabel('Reading priority', { exact: true })).toHaveValue('high')
-  await expect(page.getByRole('option', { name: 'High', exact: true })).toHaveAttribute(
-    'value',
-    'high',
-  )
+  await expect(page.getByLabel('Study priority', { exact: true })).toHaveAttribute('value', '1')
+  await page.getByLabel('Study priority', { exact: true }).click()
+  await expect(
+    page.getByRole('option').filter({ has: page.locator('[data-select-value="1"]') }),
+  ).toHaveAttribute('aria-selected', 'true')
+  await page
+    .getByRole('option')
+    .filter({ has: page.locator('[data-select-value="1"]') })
+    .press('Escape')
   await page.getByRole('button', { name: 'Read later', exact: true }).click()
   const englishDialog = page.getByRole('dialog', { name: 'Read later', exact: true })
   const englishShortcuts = englishDialog.getByRole('group', { name: 'Quick schedule' })
@@ -190,7 +207,7 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
   expect((await read()).sources.find((source) => source.id === first.id)!.queue).toEqual(
     planned.queue,
   )
-  await page.getByLabel('Interface language').selectOption('zh-CN')
+  await setInterfaceLanguage(page, 'zh-CN')
 
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
   const download = page.waitForEvent('download')
@@ -200,7 +217,7 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
   expect(backup.library.sources.find((source) => source.id === first.id)!.queue).toEqual(
     planned.queue,
   )
-  expect(backup.library.sources.find((source) => source.id === first.id)!.priority).toBe('high')
+  expect(backup.library.sources.find((source) => source.id === first.id)!.studyPriority).toBe(1)
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await queueView(page, '稍后阅读')
   await page.getByRole('button', { name: '归档材料', exact: true }).click()
@@ -214,7 +231,7 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
   expect((await read()).sources.find((source) => source.id === first.id)!.queue).toEqual(
     planned.queue,
   )
-  expect((await read()).sources.find((source) => source.id === first.id)!.priority).toBe('high')
+  expect((await read()).sources.find((source) => source.id === first.id)!.studyPriority).toBe(1)
 
   // Changing only wall-clock time leaves real timers running. The application's
   // regular clock tick must make the deferred material available without a write.
@@ -226,7 +243,9 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
   const after = await read()
   expect(after.sources.find((source) => source.id === first.id)!.queue).toEqual(planned.queue)
   for (const store of ['notes', 'cards', 'reviews', 'practices', 'attempts'] as const)
-    expect(after[store]).toEqual(baseline[store])
+    expect(after[store]).toEqual(
+      store === 'notes' ? notesAfterSourceRekey(baseline, after) : baseline[store],
+    )
   await page.locator('.source-list-title').filter({ hasText: 'Queue A' }).click()
   await expect(page.locator('.source-text')).toHaveAttribute('aria-busy', 'false')
   expect(

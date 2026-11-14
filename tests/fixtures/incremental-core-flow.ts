@@ -1,3 +1,6 @@
+import { selectUiValue } from './ui-flow'
+import { setResponsiveViewport } from './viewport-flow'
+import { setInterfaceLanguage } from './settings-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import type { Library } from '../../src/core/model'
@@ -9,12 +12,29 @@ import { changeSourceDetails } from './source-details-flow'
 import { createSourceDeck } from './source-flow'
 import { importReading } from './reading-flow'
 import { saveIndependentExcerpt, selectForExcerpt } from './source-excerpt-flow'
+import { showSourceFilters, showSourceSelection, showSourceText } from './source-controls'
 
 async function openBatch(page: Page, operation: 'priority' | 'defer' | 'archive' | 'restore') {
-  await page.getByRole('button', { name: '批量安排', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: '批量安排', exact: true })
-  await dialog.getByLabel('批量操作', { exact: true }).selectOption(operation)
+  await page.getByRole('button', { name: /^(批量安排|Arrange selected sources)$/ }).click()
+  const dialog = page.getByRole('dialog', { name: /^(批量安排|Arrange selected sources)$/ })
+  await selectUiValue(dialog.getByLabel(/^(批量操作|Batch action)$/), operation)
   return dialog
+}
+async function selectTopicBatch(page: Page) {
+  await page.getByRole('button', { name: /^(学习材料|Sources)$/ }).click()
+  await showSourceFilters(page)
+  await selectUiValue(page.getByLabel(/^(材料类型|Source type)$/), 'excerpt')
+  await selectUiValue(page.getByLabel(/^(优先级筛选|Filter by priority)$/), 'high')
+  await page.getByLabel(/^(搜索材料|Search sources)$/).fill('Topic')
+  await showSourceSelection(page)
+  await page.getByRole('button', { name: /^(选择本页|Select this page)$/ }).click()
+  await page
+    .locator('.source-list-pages')
+    .getByRole('button', { name: /^(下一页|Next)$/ })
+    .click()
+  await page
+    .getByRole('checkbox', { name: /^(选择材料「Topic 21」|Select source “Topic 21”)$/ })
+    .check()
 }
 async function confirmBatch(page: Page) {
   const dialog = page.getByRole('dialog', { name: '批量安排', exact: true })
@@ -24,9 +44,10 @@ async function confirmBatch(page: Page) {
 export async function batchReadingFlow(page: Page, read: () => Promise<Library>, info: TestInfo) {
   await restoreFilters(page)
   const baseline = await read()
-  await page.getByLabel('材料类型', { exact: true }).selectOption('excerpt')
-  await page.getByLabel('优先级筛选', { exact: true }).selectOption('high')
+  await selectUiValue(page.getByLabel('材料类型', { exact: true }), 'excerpt')
+  await selectUiValue(page.getByLabel('优先级筛选', { exact: true }), 'high')
   await page.getByLabel('搜索材料', { exact: true }).fill('Topic')
+  await showSourceSelection(page)
   await page.getByRole('button', { name: '选择本页', exact: true }).click()
   await expect(page.locator('.source-selection-toolbar')).toContainText('已选 20 篇材料')
   await page
@@ -36,27 +57,35 @@ export async function batchReadingFlow(page: Page, read: () => Promise<Library>,
   await page.getByRole('checkbox', { name: '选择材料「Topic 21」', exact: true }).check()
   await expect(page.locator('.source-selection-toolbar')).toContainText('已选 21 篇材料')
   let dialog = await openBatch(page, 'priority')
-  await dialog.getByLabel('阅读优先级', { exact: true }).selectOption('low')
+  await selectUiValue(dialog.getByLabel('阅读优先级', { exact: true }), 'low')
   await dialog.getByRole('button', { name: '取消', exact: true }).click()
   expect((await read()).sources.map(sourceArrangement)).toEqual(
     baseline.sources.map(sourceArrangement),
   )
   dialog = await openBatch(page, 'priority')
-  await dialog.getByLabel('阅读优先级', { exact: true }).selectOption('low')
-  await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByLabel('界面语言').selectOption('en')
+  await selectUiValue(dialog.getByLabel('阅读优先级', { exact: true }), 'low')
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await setResponsiveViewport(page, 390, 844)
+  await setInterfaceLanguage(page, 'en')
+  await selectTopicBatch(page)
+  await openBatch(page, 'priority')
   const english = page.getByRole('dialog', { name: 'Arrange selected sources', exact: true })
+  await selectUiValue(english.getByLabel('Reading priority', { exact: true }), 'low')
   await expect(english).toContainText('21 selected sources')
   expect(await english.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   expect(
     await english
-      .locator('select')
+      .getByRole('combobox')
       .first()
       .evaluate((el) => parseFloat(getComputedStyle(el).fontSize)),
   ).toBeGreaterThanOrEqual(16)
   await page.screenshot({ path: info.outputPath('batch-reading-en.png'), fullPage: true })
-  await page.getByLabel('Interface language').selectOption('zh-CN')
+  await english.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await setInterfaceLanguage(page, 'zh-CN')
+  await selectTopicBatch(page)
+  dialog = await openBatch(page, 'priority')
+  await selectUiValue(dialog.getByLabel('阅读优先级', { exact: true }), 'low')
   await confirmBatch(page)
   await page.setViewportSize({ width: 1280, height: 900 })
   await expect(page.getByRole('heading', { name: '没有匹配的材料', exact: true })).toBeVisible()
@@ -86,10 +115,12 @@ export async function batchReadingFlow(page: Page, read: () => Promise<Library>,
   expect(undone.reviews).toEqual(rated.reviews)
 
   await queueView(page, '全部材料')
-  await page.getByLabel('材料类型', { exact: true }).selectOption('excerpt')
+  await showSourceFilters(page)
+  await selectUiValue(page.getByLabel('材料类型', { exact: true }), 'excerpt')
   const count = undone.sources.filter((source) => source.kind === 'excerpt').length
   const all = page.getByRole('button', { name: `选择全部筛选结果（${count}）`, exact: true })
   for (const operation of ['archive', 'defer', 'restore'] as const) {
+    await showSourceSelection(page)
     await all.click()
     dialog = await openBatch(page, operation)
     await expect(dialog).toContainText(`所选的 ${count} 篇材料`)
@@ -117,6 +148,7 @@ export async function batchReadingFlow(page: Page, read: () => Promise<Library>,
       undone.sources.map(sourceArrangement),
     )
   }
+  await showSourceSelection(page)
   await all.click()
   await openBatch(page, 'archive')
   await confirmBatch(page)
@@ -126,7 +158,21 @@ export async function batchReadingFlow(page: Page, read: () => Promise<Library>,
   expect((await read()).sources.map(sourceArrangement)).toEqual(
     persisted.sources.map(sourceArrangement),
   )
-  await expect(page.getByRole('button', { name: '撤销阅读安排', exact: true })).toHaveCount(0)
+  // Reading arrangements share the durable operation journal and survive reopening.
+  const undoReading = page.getByRole('button', { name: '撤销阅读安排', exact: true })
+  await expect(undoReading).toBeVisible()
+  await undoReading.click()
+  await expect(undoReading).toHaveCount(0)
+  const reopenedUndo = await read()
+  expect(reopenedUndo.sources.map(sourceArrangement)).toEqual(undone.sources.map(sourceArrangement))
+  expect(reopenedUndo.cards).toEqual(persisted.cards)
+  expect(reopenedUndo.reviews).toEqual(persisted.reviews)
+  await page.getByRole('button', { name: '重做', exact: true }).click()
+  await expect(undoReading).toBeVisible()
+  const replayed = await read()
+  expect(replayed.sources.map(sourceArrangement)).toEqual(persisted.sources.map(sourceArrangement))
+  expect(replayed.cards).toEqual(persisted.cards)
+  expect(replayed.reviews).toEqual(persisted.reviews)
 }
 
 export async function nestedDailyFlow(page: Page, read: () => Promise<Library>, info: TestInfo) {
@@ -147,8 +193,18 @@ export async function nestedDailyFlow(page: Page, read: () => Promise<Library>, 
   const root = tree.sources.find((source) => source.title === 'Original🙂')!
   const child = tree.sources.find((source) => source.title === 'Paragraph🙂')!
   const leaf = tree.sources.find((source) => source.title === 'Key idea🙂')!
-  expect(child.origin).toEqual({ sourceId: root.id, start, end: start + sentence.length })
-  expect(leaf.origin).toEqual({ sourceId: child.id, start: at, end: at + 4 })
+  expect(child.origin).toEqual({
+    sourceId: root.id,
+    mediaId: root.mediaId,
+    start,
+    end: start + sentence.length,
+  })
+  expect(leaf.origin).toEqual({
+    sourceId: child.id,
+    mediaId: child.mediaId,
+    start: at,
+    end: at + 4,
+  })
   await page.getByRole('button', { name: '用此摘录制卡', exact: true }).click()
   await page.getByLabel('正面 · 问题', { exact: true }).fill('What is the key idea?')
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
@@ -161,6 +217,7 @@ export async function nestedDailyFlow(page: Page, read: () => Promise<Library>, 
   await page.getByRole('button', { name: '开始今日阅读', exact: true }).click()
   await expect(page.locator('.reading-round strong')).toHaveText('第 1 篇，共 3 篇')
   await expect(page.getByRole('heading', { name: root.title, exact: true })).toBeVisible()
+  await showSourceText(page)
   await expect(page.locator('.source-text')).toHaveAttribute('aria-busy', 'false')
   await page.getByRole('button', { name: '归档材料', exact: true }).click()
   await expect(page.getByRole('heading', { name: child.title, exact: true })).toBeVisible()
@@ -202,10 +259,12 @@ export async function nestedDailyFlow(page: Page, read: () => Promise<Library>, 
       .locator('.source-original mark')
       .evaluate((el) => el.previousSibling?.textContent?.length),
   ).toBe(start + at)
-  await page.setViewportSize({ width: 390, height: 844 })
-  expect(await page.getByRole('dialog').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
-    true,
-  )
+  await setResponsiveViewport(page, 390, 844)
+  expect(
+    await page
+      .getByRole('dialog', { name: root.title, exact: true })
+      .evaluate((el) => el.scrollWidth <= el.clientWidth),
+  ).toBe(true)
   await page.screenshot({ path: info.outputPath('nested-source-context.png'), fullPage: true })
   await page
     .getByRole('navigation', { name: '出处路径', exact: true })
@@ -223,6 +282,7 @@ export async function nestedDailyFlow(page: Page, read: () => Promise<Library>, 
   await page.getByRole('button', { name: '删除材料', exact: true }).click()
   await page.getByRole('button', { name: '确认删除', exact: true }).click()
   await page.locator('.source-list-title').filter({ hasText: leaf.title }).click()
+  await showSourceText(page)
   await expect(page.locator('.source-text')).toHaveValue('变量🙂')
   await expect(page.getByText('原文已删除，摘录内容仍保留。', { exact: true })).toBeVisible()
   const detached = await read()
@@ -249,6 +309,7 @@ export async function batchRetryFlow(
 ) {
   await importReading(page, 'Batch A', 'plain', 'First context\n'.repeat(100))
   await importReading(page, 'Batch B', 'plain', 'Second context\n'.repeat(100))
+  await showSourceSelection(page)
   await page.getByRole('button', { name: '选择本页', exact: true }).click()
   const before = await read()
   const dialog = await openBatch(page, 'archive')
@@ -263,6 +324,11 @@ export async function batchRetryFlow(
   await confirmBatch(page)
   const after = await read()
   expect(after.sources.every((source) => source.queue?.state === 'archived')).toBe(true)
+  // Errors stay visible until acknowledged; close the first failure before retrying the header action.
+  await page
+    .locator('.notification.error')
+    .getByRole('button', { name: '关闭提示', exact: true })
+    .click()
   await reject(true)
   await page.getByRole('button', { name: '撤销阅读安排', exact: true }).click()
   await expect(page.locator('.notification.error').last()).toBeVisible()
@@ -270,6 +336,10 @@ export async function batchRetryFlow(
     after.sources.map(sourceArrangement),
   )
   await expect(page.getByRole('button', { name: '撤销阅读安排', exact: true })).toBeEnabled()
+  await page
+    .locator('.notification.error')
+    .getByRole('button', { name: '关闭提示', exact: true })
+    .click()
   await reject(false)
   await page.getByRole('button', { name: '撤销阅读安排', exact: true }).click()
   await expect(page.getByRole('button', { name: '撤销阅读安排', exact: true })).toHaveCount(0)

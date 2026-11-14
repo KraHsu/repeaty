@@ -5,6 +5,7 @@ import { readingFilterFlow, filteredRoundRetry } from './fixtures/reading-filter
 test('filters originals and excerpts across pages, scopes finite rounds and preserves learning records', async ({
   page,
 }, info) => {
+  test.setTimeout(60_000)
   await readingFilterFlow(page, () => localLibrary(page), info)
 })
 

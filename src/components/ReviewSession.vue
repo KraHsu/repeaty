@@ -1,19 +1,18 @@
 <script setup lang="ts">
+import { studySettings } from '../core/study-settings'
+import UDropdownMenu, { type DropdownMenuItem } from '@nuxt/ui/components/DropdownMenu.vue'
+import UProgress from '@nuxt/ui/components/Progress.vue'
+import { UiButton } from './ui'
 import { t, msg } from '../i18n'
-import { notify } from '../notifications'
+import { useNotifications } from '../notifications'
 
 import { defineAsyncComponent, computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import {
-  ArrowLeft,
-  Check,
-  CornerDownLeft,
-  RotateCcw,
-  Ellipsis,
-  Pencil,
-  Plus,
-  Trash2,
-} from '@lucide/vue'
+import { ArrowLeft, Check, CornerDownLeft, RotateCcw, Ellipsis, Layers } from '@lucide/vue'
+import '../styles/review-deck.css'
 import { shortcutBlocked } from '../shortcuts'
+import { useOptionalInputCommands } from '../input/controller'
+import { inputDefaults } from '../input/defaults'
+import { arrangeMenu, defaultMenus, useMenuPreferences } from '../input/menus'
 import type { Operation } from '../core/operations'
 import {
   available,
@@ -30,10 +29,18 @@ import {
   type StudySession,
 } from '../core/model'
 import { studyCards } from '../core/search'
-import { questionPlugin, canReviewCard, enabledReviewPanels } from '../plugins'
+import { usePlugins } from '../plugins'
+import { usePluginManager } from '../plugins/manager'
+const { questionPlugin, canReviewCard, enabledReviewPanels } = usePlugins()
+const { holdPluginRuntime } = usePluginManager()
+const releasePluginRuntime = holdPluginRuntime()
+onUnmounted(releasePluginRuntime)
 import type { QuestionState } from '../plugins/types'
 import type { Assessment } from '../plugins/data'
 import type { Practice, Attempt } from '../core/practice-data'
+const { notify } = useNotifications()
+const inputCommands = useOptionalInputCommands()
+const menuPreferences = useMenuPreferences()
 
 const SourceContext = defineAsyncComponent(() => import('./SourceContext.vue'))
 const props = defineProps<{
@@ -53,10 +60,12 @@ const props = defineProps<{
   workspaceScope: string
   saveAttempt: (practice: Practice, attempt: Attempt, scope: string) => Promise<void>
   finishPractice: (id: string, cardId: string, assessment?: Assessment) => Promise<boolean>
+  recordPlainPractice: (id: string, cardId: string, scope: string) => Promise<boolean>
+  undoPlainPractice: (id: string, scope: string) => Promise<boolean>
   undo: () => Promise<boolean>
   change: (ids: string[], action: 'suspend' | 'bury') => Promise<boolean>
   getMedia: (id: string) => Promise<Blob | undefined>
-  getSource: (id: string, signal?: AbortSignal) => Promise<string>
+  getSource: (id: string, signal?: AbortSignal, mediaId?: string) => Promise<string>
   getAttempt: (id: string, signal?: AbortSignal) => Promise<Attempt>
 }>()
 const emit = defineEmits<{
@@ -79,14 +88,19 @@ const currentOrigin = computed(() =>
 )
 const completed = ref(0)
 const revision = ref(0)
-const menu = ref<HTMLDetailsElement>()
+const menuOpen = ref(false)
 const currentId = ref<string>()
 const automatic = computed(() => questionState.assessment?.mode === 'automatic')
 const suggestedName = computed(
   () => grades.find((grade) => grade.value === questionState.suggestedGrade)?.label ?? '',
 )
 const practice = computed(() => Boolean(props.study && !props.study.reschedule))
-const studied = ref<{ id: string; grade: Grade; reviewId?: string; operationId?: string }[]>([])
+const practiceEventIds = new Map<string, string>()
+const studied = ref<
+  { id: string; grade: Grade; reviewId?: string; operationId?: string; practiceEventId?: string }[]
+>([])
+const undoneRatings = new Map<string, (typeof studied.value)[number]>()
+const replayedOutsideSession = ref<{ reviewId: string; cardId: string }[]>([])
 const readViews = createCardViewReader()
 const views = computed(() => readViews(props.library))
 const queue = computed(() =>
@@ -94,7 +108,10 @@ const queue = computed(() =>
     ? studyCards(
         props.library,
         props.study.ids,
-        studied.value.map((entry) => entry.id),
+        [
+          ...studied.value.map((entry) => entry.id),
+          ...replayedOutsideSession.value.map((entry) => entry.cardId),
+        ],
         clock.value,
       ).filter(canReviewCard)
     : dueCards(props.library, clock.value, props.deckId, canReviewCard, views.value).filter(
@@ -104,7 +121,10 @@ const queue = computed(() =>
 const startedWith = queue.value.length
 const current = computed(() =>
   views.value.find(
-    (card) => card.id === currentId.value && available(card, clock.value) && canReviewCard(card),
+    (card) =>
+      card.id === currentId.value &&
+      available(card, clock.value, studySettings(props.library)) &&
+      canReviewCard(card),
   ),
 )
 const plugin = computed(() => current.value && questionPlugin(current.value))
@@ -117,6 +137,70 @@ const cardHistory = computed(() => {
   }
 })
 const questionState = reactive<QuestionState>({ allowedGrades: [], busy: false })
+const actionsLocked = computed(
+  () => props.busy || props.editing || questionState.busy || grading.value,
+)
+function bindingLabel(id: string, fallback: string) {
+  return inputCommands ? inputCommands.bindings(id).join(' / ') : fallback
+}
+const menuItems = computed<DropdownMenuItem[]>(() => {
+  const bindings = (id: string, fallback: string[]) =>
+    inputCommands ? inputCommands.bindings(id) : fallback
+  const items: (DropdownMenuItem & { id: string; essential?: boolean })[] = [
+    {
+      id: 'app.add',
+      label: t('添加'),
+      icon: 'i-lucide-plus',
+      kbds: bindings('app.add', ['A']),
+      disabled: actionsLocked.value,
+      onSelect: addCurrent,
+    },
+    {
+      id: 'review.edit',
+      essential: true,
+      label: t('编辑'),
+      icon: 'i-lucide-pencil',
+      kbds: bindings('review.edit', ['E']),
+      disabled: actionsLocked.value,
+      onSelect: editCurrent,
+    },
+    {
+      id: 'review.delete',
+      label: t('删除'),
+      icon: 'i-lucide-trash-2',
+      kbds: bindings('review.delete', ['Ctrl', 'Del']),
+      color: 'error',
+      disabled: actionsLocked.value,
+      onSelect: deleteCurrent,
+    },
+    ...(!practice.value
+      ? [
+          {
+            id: 'review.bury',
+            label: t('今天暂缓'),
+            kbds: bindings('review.bury', ['B']),
+            disabled: actionsLocked.value,
+            onSelect: () => {
+              void changeCurrent('bury')
+            },
+          },
+          {
+            id: 'review.suspend',
+            label: t('暂停此卡'),
+            kbds: bindings('review.suspend', ['S']),
+            disabled: actionsLocked.value,
+            onSelect: () => {
+              void changeCurrent('suspend')
+            },
+          },
+        ]
+      : []),
+  ]
+  return arrangeMenu(
+    items,
+    (menuPreferences?.value.value ?? defaultMenus()).surfaces['review-menu'],
+  )
+})
 watch(
   () => props.busy || props.editing || questionState.busy || grading.value,
   (value) => emit('activity', value),
@@ -157,7 +241,7 @@ const canUndoPractice = computed(
 const deck = computed(() => props.library.decks.find((entry) => entry.id === current.value?.deckId))
 const preview = computed(() =>
   current.value && !practice.value
-    ? previewReview(current.value, clock.value, deck.value)
+    ? previewReview(current.value, clock.value, deck.value, props.library)
     : undefined,
 )
 const nextCard = computed(
@@ -166,7 +250,7 @@ const nextCard = computed(
       .filter(
         (card) =>
           canReviewCard(card) &&
-          available(card, clock.value) &&
+          available(card, clock.value, studySettings(props.library)) &&
           (!props.deckId || card.deckId === props.deckId) &&
           new Date(card.schedule.due) > clock.value,
       )
@@ -187,7 +271,12 @@ function selectNext() {
 function restart(id: string, noteId: string) {
   const target =
     views.value.find((card) => card.id === id) ?? views.value.find((card) => card.noteId === noteId)
-  if (!target || !available(target, new Date()) || !canReviewCard(target)) return selectNext()
+  if (
+    !target ||
+    !available(target, new Date(), studySettings(props.library)) ||
+    !canReviewCard(target)
+  )
+    return selectNext()
   if (
     !props.study &&
     !dueCards(props.library, new Date(), undefined, canReviewCard, views.value).some(
@@ -207,17 +296,54 @@ function restart(id: string, noteId: string) {
   revision.value++
 }
 function reconcileUndo(operation: Operation) {
+  if (operation.reviewId) rememberRatingUndo(operation.reviewId)
   if (current.value && operation.noteIds.includes(current.value.noteId))
     return restart(current.value.id, current.value.noteId)
   const restored = views.value.find((card) => card.id === operation.cardId)
   if (restored) restart(restored.id, restored.noteId)
   else if (!current.value) selectNext()
 }
+function rememberRatingUndo(reviewId: string) {
+  replayedOutsideSession.value = replayedOutsideSession.value.filter(
+    (entry) => entry.reviewId !== reviewId,
+  )
+  const entry = studied.value.find((entry) => entry.reviewId === reviewId)
+  if (!entry) return
+  studied.value = studied.value.filter((item) => item !== entry)
+  undoneRatings.set(reviewId, entry)
+  if (undoneRatings.size > 20) undoneRatings.delete(undoneRatings.keys().next().value!)
+  completed.value = Math.max(0, completed.value - 1)
+}
+function reconcileRedo(operation: Operation) {
+  if (operation.kind !== 'review') return reconcileUndo(operation)
+  const review = props.library.reviews.find((review) => review.id === operation.reviewId)
+  if (!review) return
+  const entry = undoneRatings.get(review.id)
+  // Only ratings made in this mounted session contribute to its counter.
+  // Replaying persisted history from another session must not invent progress.
+  if (entry) {
+    undoneRatings.delete(review.id)
+    if (!studied.value.some((item) => item.reviewId === review.id)) {
+      studied.value.push(entry)
+      completed.value++
+    }
+  } else if (
+    props.study &&
+    !practice.value &&
+    props.study.ids.includes(review.cardId) &&
+    !studied.value.some((item) => item.reviewId === review.id) &&
+    !replayedOutsideSession.value.some((item) => item.reviewId === review.id)
+  ) {
+    replayedOutsideSession.value.push({ reviewId: review.id, cardId: review.cardId })
+  }
+  if (entry || current.value?.id === review.cardId || !current.value) selectNext()
+}
 defineExpose({
   restart,
   undoLast,
   canUndo,
   reconcileUndo,
+  reconcileRedo,
   addCurrent,
   current,
   canUndoPractice,
@@ -225,17 +351,17 @@ defineExpose({
 })
 function addCurrent() {
   if (!current.value || props.busy || props.editing || questionState.busy || grading.value) return
-  if (menu.value) menu.value.open = false
+  menuOpen.value = false
   emit('add', current.value)
 }
 function deleteCurrent() {
   if (!current.value || props.busy || props.editing || questionState.busy || grading.value) return
-  if (menu.value) menu.value.open = false
+  menuOpen.value = false
   emit('delete', current.value)
 }
 function editCurrent() {
   if (!current.value || props.busy || props.editing || questionState.busy || grading.value) return
-  if (menu.value) menu.value.open = false
+  menuOpen.value = false
   emit('edit', current.value)
 }
 watch(queue, (cards) => {
@@ -256,12 +382,18 @@ async function grade(value: Grade) {
   )
     return
   const id = current.value.id
+  let practiceEventId: string | undefined
+  if (practice.value && !questionState.practiceId) {
+    practiceEventId = practiceEventIds.get(id) ?? crypto.randomUUID()
+    practiceEventIds.set(id, practiceEventId)
+  }
   const complete = questionState.complete
   grading.value = true
   try {
     const saved = practice.value
-      ? !questionState.practiceId ||
-        (await props.finishPractice(questionState.practiceId, id, questionState.assessment))
+      ? questionState.practiceId
+        ? await props.finishPractice(questionState.practiceId, id, questionState.assessment)
+        : await props.recordPlainPractice(practiceEventId!, id, props.workspaceScope)
       : await props.submit(id, value, questionState.assessment, questionState.practiceId)
     if (saved) {
       await complete?.()
@@ -275,13 +407,13 @@ async function grade(value: Grade) {
         )
       if (effects?.markedLeech)
         notify('这张卡已标记为顽固卡，可在卡片列表中筛选并改写问题。', 'warning', context)
-      if (props.study)
-        studied.value.push({
-          id,
-          grade: value,
-          reviewId: practice.value ? undefined : props.library.reviews.at(-1)?.id,
-          operationId: props.lastOperationId,
-        })
+      studied.value.push({
+        id,
+        grade: value,
+        reviewId: practice.value ? undefined : props.library.reviews.at(-1)?.id,
+        operationId: props.lastOperationId,
+        practiceEventId,
+      })
       completed.value++
       if (props.mixedCardId) emit('step', true)
       selectNext()
@@ -293,16 +425,22 @@ async function grade(value: Grade) {
 async function undoLast() {
   if (!canUndo.value || props.busy || props.editing || questionState.busy || grading.value) return
   const id = practice.value ? studied.value.at(-1)?.id : props.library.reviews.at(-1)?.cardId
+  const reviewId = props.library.reviews.at(-1)?.id
+  const eventId = studied.value.at(-1)?.practiceEventId
+  if (practice.value && eventId && !(await props.undoPlainPractice(eventId, props.workspaceScope)))
+    return
   if (practice.value || (await props.undo())) {
-    if (props.study) studied.value.pop()
-    completed.value = Math.max(0, completed.value - 1)
+    if (practice.value) {
+      studied.value.pop()
+      completed.value = Math.max(0, completed.value - 1)
+    } else if (reviewId) rememberRatingUndo(reviewId)
     selectNext()
     if (queue.value.some((card) => card.id === id)) currentId.value = id
   }
 }
 async function changeCurrent(action: 'suspend' | 'bury') {
   if (props.busy || props.editing || grading.value || questionState.busy || !current.value) return
-  if (menu.value) menu.value.open = false
+  menuOpen.value = false
   grading.value = true
   try {
     if (await props.change([current.value.id], action)) {
@@ -314,6 +452,10 @@ async function changeCurrent(action: 'suspend' | 'bury') {
   }
 }
 function keydown(event: KeyboardEvent) {
+  if (inputCommands) {
+    inputCommands.dispatch(event)
+    return
+  }
   // Keys pressed while an IME composition is open are meant for the IME (e.g. typing "e"
   // in pinyin) and must not reveal answers or grade cards.
   if (shortcutBlocked(event)) return
@@ -362,19 +504,68 @@ function keydown(event: KeyboardEvent) {
   if (!automatic.value && [1, 2, 3, 4].includes(value) && revealed.value) void grade(value as Grade)
   if (event.key === 'Escape') {
     event.preventDefault()
-    if (menu.value?.open) menu.value.open = false
+    if (menuOpen.value) menuOpen.value = false
     else emit('close')
   }
 }
 let timer: ReturnType<typeof setInterval>
+let releaseInput: (() => void)[] = []
 onMounted(() => {
   selectNext()
+  if (inputCommands) {
+    const actions: Record<string, { available?: () => boolean; execute: () => unknown }> = {
+      'review.edit': { execute: editCurrent },
+      'review.delete': { execute: deleteCurrent },
+      'review.bury': { available: () => !practice.value, execute: () => changeCurrent('bury') },
+      'review.suspend': {
+        available: () => !practice.value,
+        execute: () => changeCurrent('suspend'),
+      },
+      'review.reveal': {
+        available: () => !revealed.value,
+        execute: () => {
+          revealed.value = true
+        },
+      },
+      ...Object.fromEntries(
+        ['again', 'hard', 'good', 'easy'].map((name, index) => [
+          `review.${name}`,
+          {
+            available: () => !automatic.value && revealed.value,
+            execute: () => grade((index + 1) as Grade),
+          },
+        ]),
+      ),
+      'review.close': {
+        execute: () => {
+          if (menuOpen.value) menuOpen.value = false
+          else emit('close')
+        },
+      },
+    }
+    releaseInput = Object.entries(actions).map(([id, action]) =>
+      inputCommands.register({
+        ...inputDefaults.find((entry) => entry.id === id)!,
+        available: () =>
+          !props.busy &&
+          !questionState.busy &&
+          !grading.value &&
+          !props.editing &&
+          (id === 'review.close' || !!current.value) &&
+          action.available?.() !== false,
+        execute: async () => {
+          await action.execute()
+        },
+      }),
+    )
+  }
   window.addEventListener('keydown', keydown)
   timer = setInterval(() => {
     clock.value = new Date()
   }, 10_000)
 })
 onUnmounted(() => {
+  releaseInput.forEach((release) => release())
   clearInterval(timer)
   window.removeEventListener('keydown', keydown)
   emit('activity', false)
@@ -382,15 +573,26 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="review-space">
+  <section class="review-space b-review-space">
     <header v-if="!mixedCardId" class="review-header">
-      <button
+      <UiButton
+        variant="ghost"
         class="text-button"
         :disabled="busy || questionState.busy || grading"
         @click="emit('close')"
       >
         <ArrowLeft :size="17" /> {{ study ? t('结束专项练习') : t('结束复习') }}
-      </button>
+      </UiButton>
+      <span
+        v-if="deck || deckId"
+        class="b-review-deck"
+        :title="deck?.name ?? library.decks.find((entry) => entry.id === deckId)?.name"
+      >
+        <Layers :size="18" aria-hidden="true" />
+        <span class="b-review-deck-name">{{
+          deck?.name ?? library.decks.find((entry) => entry.id === deckId)?.name
+        }}</span>
+      </span>
       <span class="muted">{{
         t('已复习 {p0} 次 · 当前待学 {p1} 张', { p0: completed, p1: queue.length })
       }}</span>
@@ -404,95 +606,82 @@ onUnmounted(() => {
         })
       }}
     </p>
-    <div v-if="!mixedCardId" class="review-progress">
-      <span
-        :style="{
-          width: `${Math.min(100, (completed / Math.max(startedWith, completed + queue.length, 1)) * 100)}%`,
-        }"
-      />
-    </div>
+    <UProgress
+      v-if="!mixedCardId"
+      class="b-review-progress"
+      :ui="{
+        base: 'h-[3px] rounded-sm bg-[var(--ui-bg-elevated)]',
+        indicator:
+          'bg-[var(--green)] transition-transform duration-160 ease-out motion-reduce:transition-none',
+      }"
+      :model-value="
+        Math.min(100, (completed / Math.max(startedWith, completed + queue.length, 1)) * 100)
+      "
+      :aria-label="t('复习')"
+    />
 
     <div class="review-tools">
-      <details v-if="current" ref="menu" class="review-menu">
-        <summary :aria-label="t('更多操作')"><Ellipsis :size="22" /></summary>
-        <div>
-          <button
-            class="text-button"
-            :disabled="busy || editing || questionState.busy || grading"
-            @click="addCurrent"
-          >
-            <Plus :size="17" />{{ t('添加') }} <kbd>A</kbd>
-          </button>
-          <button
-            class="text-button"
-            :disabled="busy || editing || questionState.busy || grading"
-            @click="editCurrent"
-          >
-            <Pencil :size="17" />{{ t('编辑') }} <kbd>E</kbd>
-          </button>
-          <button
-            class="text-button danger"
-            :disabled="busy || editing || questionState.busy || grading"
-            @click="deleteCurrent"
-          >
-            <Trash2 :size="17" />{{ t('删除') }} <kbd>Ctrl / ⌘ Del</kbd>
-          </button>
-          <template v-if="!practice">
-            <button
-              class="text-button"
-              :disabled="busy || editing || questionState.busy || grading"
-              @click="changeCurrent('bury')"
-            >
-              {{ t('今天暂缓') }} <kbd>B</kbd>
-            </button>
-            <button
-              class="text-button"
-              :disabled="busy || editing || questionState.busy || grading"
-              @click="changeCurrent('suspend')"
-            >
-              {{ t('暂停此卡') }} <kbd>S</kbd>
-            </button>
-          </template>
-        </div>
-      </details>
-      <button
+      <UDropdownMenu
+        v-if="current"
+        v-model:open="menuOpen"
+        :items="menuItems"
+        :content="{
+          align: 'start',
+          onEscapeKeyDown: (event: KeyboardEvent) => event.stopPropagation(),
+        }"
+      >
+        <UiButton
+          variant="ghost"
+          icon
+          class="review-menu"
+          :aria-label="t('更多操作')"
+          :disabled="actionsLocked"
+        >
+          <Ellipsis :size="22" />
+        </UiButton>
+      </UDropdownMenu>
+      <UiButton
+        variant="ghost"
         v-if="!mixedCardId"
         class="text-button"
         :disabled="busy || questionState.busy || grading || !canUndo"
         @click="undoLast"
       >
         {{ t('撤销上次评分') }}
-      </button>
+      </UiButton>
       <template v-if="current && !practice"
-        ><button
+        ><UiButton
+          variant="ghost"
           class="text-button"
           :disabled="busy || questionState.busy || grading"
           @click="changeCurrent('bury')"
         >
-          {{ t('今天暂缓') }}</button
-        ><button
+          {{ t('今天暂缓') }}</UiButton
+        ><UiButton
+          variant="ghost"
           class="text-button"
           :disabled="busy || questionState.busy || grading"
           @click="changeCurrent('suspend')"
         >
           {{ t('暂停此卡') }}
-        </button></template
+        </UiButton></template
       >
     </div>
     <template v-if="current && plugin">
       <div class="review-context">
-        <span class="pill">{{ deck?.name }}</span
+        <span v-if="!deckId" class="pill" :title="deck?.name">{{ deck?.name }}</span
         ><span>{{ current.schedule.state === 0 ? t('新卡片') : t('复习卡片') }}</span>
         <span v-if="current.leech" class="status-chip leech">{{ t('顽固卡 · 多次遗忘') }}</span>
       </div>
-      <component
-        v-for="panel in enabledReviewPanels"
-        :is="panel.reviewPanel"
-        :key="panel.id"
-        :card="current"
-        :reviews="library.reviews"
-        :revealed="revealed"
-      />
+      <div v-for="panel in enabledReviewPanels" :key="panel.id" class="b-review-panel">
+        <component
+          :is="panel.reviewPanel"
+          :key="panel.id"
+          :card="current"
+          :reviews="library.reviews"
+          :revealed="revealed"
+        />
+      </div>
       <article
         :key="`${current.id}:${revision}`"
         class="flashcard"
@@ -514,6 +703,9 @@ onUnmounted(() => {
           :get-attempt="getAttempt"
           :save-attempt="saveAttempt"
         />
+        <div v-if="current.tags.length" class="tag-list">
+          <span v-for="tag in current.tags" :key="tag" class="tag">{{ tag }}</span>
+        </div>
         <div
           v-if="revealed"
           class="card-answer"
@@ -530,8 +722,8 @@ onUnmounted(() => {
           />
         </div>
         <div v-if="revealed && currentSource" class="review-source">
-          <button type="button" class="text-button" @click="sourceOpen = true">
-            {{ t('查看原文') }} · {{ currentSource.title }}</button
+          <UiButton variant="ghost" type="button" class="text-button" @click="sourceOpen = true">
+            {{ t('查看原文') }} · {{ currentSource.title }}</UiButton
           ><SourceContext
             v-if="sourceOpen"
             :source="currentSource"
@@ -539,18 +731,23 @@ onUnmounted(() => {
             :sources="library.sources"
             :excerpt="current.excerpt"
             :read="getSource"
+            :get-media="getMedia"
             @close="sourceOpen = false"
           />
         </div>
-        <div v-if="current.tags.length" class="tag-list">
-          <span v-for="tag in current.tags" :key="tag" class="tag">{{ tag }}</span>
-        </div>
       </article>
       <div v-if="!revealed" class="reveal-action">
-        <button class="button primary" :disabled="questionState.busy" @click="revealed = true">
+        <UiButton
+          variant="primary"
+          class="button primary min-h-12 justify-center gap-3 px-6"
+          :disabled="questionState.busy"
+          @click="revealed = true"
+        >
           {{ t(current.type === 'plugin' ? '结束作答并查看答案' : '显示答案')
-          }}<CornerDownLeft :size="17" /></button
-        ><span class="muted">{{ t('或按空格键') }}</span>
+          }}<CornerDownLeft :size="17" /></UiButton
+        ><span v-if="bindingLabel('review.reveal', 'Space')" class="muted">{{
+          t('或按 {keys}', { keys: bindingLabel('review.reveal', 'Space') })
+        }}</span>
       </div>
       <div v-else class="grade-area">
         <p>{{ t('根据回答情况评分') }}</p>
@@ -558,7 +755,8 @@ onUnmounted(() => {
           <p v-if="!questionState.suggestedGrade">
             {{ t('尚无判题结果。可以继续作答，或将本次记为“重来”。') }}
           </p>
-          <button
+          <UiButton
+            variant="primary"
             class="button primary"
             :disabled="
               busy ||
@@ -568,13 +766,18 @@ onUnmounted(() => {
             @click="grade(questionState.suggestedGrade ?? 1)"
           >
             {{ t('保存评分：{grade}', { grade: t(suggestedName || '重来') }) }}
-          </button>
+          </UiButton>
         </template>
         <div v-else class="grade-buttons">
-          <button
+          <UiButton
+            variant="rating"
+            :tone="item.class"
             v-for="item in grades"
             :key="item.value"
-            :class="['grade-button', item.class]"
+            :class="[
+              'grade-button p-4 text-[var(--rating-foreground)] bg-[var(--rating-background)] hover:bg-[var(--rating-hover)]',
+              item.class,
+            ]"
             :disabled="
               busy ||
               questionState.busy ||
@@ -584,7 +787,10 @@ onUnmounted(() => {
             @click="grade(item.value)"
           >
             <span class="grade-title"
-              >{{ t(item.label) }} <kbd>{{ item.value }}</kbd></span
+              >{{ t(item.label) }}
+              <kbd v-if="bindingLabel(`review.${item.class}`, String(item.value))">{{
+                bindingLabel(`review.${item.class}`, String(item.value))
+              }}</kbd></span
             >
             <small>{{ t(item.hint) }}</small>
             <strong>{{
@@ -592,7 +798,7 @@ onUnmounted(() => {
                 ? t('不改进度')
                 : preview && intervalLabel(preview[item.value].card.due, clock)
             }}</strong>
-          </button>
+          </UiButton>
         </div>
       </div>
     </template>
@@ -635,58 +841,24 @@ onUnmounted(() => {
           })
         }}
       </p>
-      <button class="button primary" @click="emit('close')">
+      <UiButton variant="primary" class="button primary" @click="emit('close')">
         {{ t('返回') }}<ArrowLeft :size="16" />
-      </button>
-      <button v-if="!study" class="text-button" @click="selectNext">
+      </UiButton>
+      <UiButton variant="ghost" v-if="!study" class="text-button" @click="selectNext">
         <RotateCcw :size="15" />{{ t('检查到期卡片') }}
-      </button>
+      </UiButton>
     </div>
   </section>
 </template>
 <style scoped>
 .review-menu {
-  position: relative;
   margin-right: auto;
-}
-.review-menu summary {
-  list-style: none;
-  min-width: 44px;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-}
-.review-menu summary::-webkit-details-marker {
-  display: none;
-}
-.review-menu > div {
-  position: absolute;
-  z-index: 10;
-  top: calc(100% + 0.4rem);
-  left: 0;
-  min-width: 240px;
-  max-width: calc(100vw - 3rem);
-  padding: 0.5rem;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px #20351b18;
-}
-.review-menu button {
-  display: flex;
-  gap: 0.7rem;
-  width: 100%;
-  padding: 0.6rem;
 }
 kbd {
   margin-left: auto;
   font: inherit;
-  font-size: 0.9rem;
-  color: #65785f;
+  font-size: var(--font-size-meta);
+  color: var(--ui-text-muted);
   white-space: nowrap;
 }
 </style>

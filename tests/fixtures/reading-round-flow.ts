@@ -1,3 +1,6 @@
+import { selectUiValue } from './ui-flow'
+import { setResponsiveViewport } from './viewport-flow'
+import { setInterfaceLanguage } from './settings-flow'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import type { Library } from '../../src/core/model'
 import { readFile } from 'node:fs/promises'
@@ -27,7 +30,10 @@ export async function readingRoundFlow(page: Page, read: () => Promise<Library>,
     element.setSelectionRange(0, 12)
     element.dispatchEvent(new Event('select', { bubbles: true }))
   })
-  await page.getByRole('button', { name: '用摘录制卡', exact: true }).click()
+  await page
+    .locator('.source-excerpt-action')
+    .getByRole('button', { name: '用摘录制卡', exact: true })
+    .click()
   await page.getByLabel('正面 · 问题', { exact: true }).fill('Reading round control card')
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   await page.getByRole('button', { name: '学习概览', exact: true }).click()
@@ -37,11 +43,11 @@ export async function readingRoundFlow(page: Page, read: () => Promise<Library>,
   await expect(page.getByRole('heading', { name: '本轮复习结束' })).toBeVisible()
   await importReading(page, 'Round B', 'plain', readingText)
   await importReading(page, 'Round C', 'plain', readingText)
-  await page.getByLabel('阅读优先级', { exact: true }).selectOption('low')
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveValue('low')
+  await selectUiValue(page.getByLabel('学习优先级', { exact: true }), '9')
+  await expect(page.getByLabel('学习优先级', { exact: true })).toHaveAttribute('value', '9')
   await page.locator('.source-list-title').filter({ hasText: 'Round A' }).click()
-  await page.getByLabel('阅读优先级', { exact: true }).selectOption('high')
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveValue('high')
+  await selectUiValue(page.getByLabel('学习优先级', { exact: true }), '1')
+  await expect(page.getByLabel('学习优先级', { exact: true })).toHaveAttribute('value', '1')
   await page.getByRole('button', { name: '阅读 Markdown 预览', exact: true }).click()
   await moveReading(page, 0.2)
   await saveReading(page)
@@ -50,8 +56,8 @@ export async function readingRoundFlow(page: Page, read: () => Promise<Library>,
   await startRound(page, 'Round A')
   await expect(page.getByRole('region', { name: '本轮阅读' })).toContainText('第 1 篇，共 3 篇')
   // Reordering the live list must not change this round or skip its next source.
-  await page.getByLabel('阅读优先级', { exact: true }).selectOption('low')
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveValue('low')
+  await selectUiValue(page.getByLabel('学习优先级', { exact: true }), '9')
+  await expect(page.getByLabel('学习优先级', { exact: true })).toHaveAttribute('value', '9')
   await moveReading(page, 0.6)
   await page.getByRole('button', { name: '下一篇', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Round B', exact: true })).toBeVisible()
@@ -85,7 +91,7 @@ export async function readingRoundFlow(page: Page, read: () => Promise<Library>,
     await page.locator('.source-markdown-preview').evaluate((element) => element.scrollTop),
   ).toBeGreaterThan(500)
   await expect(page.getByRole('region', { name: '本轮阅读' })).toContainText('第 1 篇，共 1 篇')
-  await page.setViewportSize({ width: 390, height: 844 })
+  await setResponsiveViewport(page, 390, 844)
   await expect(page.locator('.source-markdown-preview')).toHaveAttribute('aria-busy', 'false')
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.locator('.source-markdown-preview').scrollIntoViewIfNeeded()
@@ -96,7 +102,10 @@ export async function readingRoundFlow(page: Page, read: () => Promise<Library>,
     }),
   ).toBe(true)
   await page.screenshot({ path: info.outputPath('reading-round-zh.png'), fullPage: true })
-  await page.getByLabel('界面语言').selectOption('en')
+  await page.getByRole('button', { name: '结束本轮', exact: true }).click()
+  await setInterfaceLanguage(page, 'en')
+  await page.getByRole('button', { name: 'Sources', exact: true }).click()
+  await page.getByRole('button', { name: 'Start a reading round', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Reading round', exact: true })).toContainText(
     'Source 1 of 1',
   )
@@ -108,7 +117,7 @@ export async function readingRoundFlow(page: Page, read: () => Promise<Library>,
   await page.getByRole('button', { name: 'Start another round', exact: true }).click()
   await page.getByRole('button', { name: 'End round', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Reading round', exact: true })).toHaveCount(0)
-  await page.getByLabel('Interface language').selectOption('zh-CN')
+  await setInterfaceLanguage(page, 'zh-CN')
 
   await page.getByRole('button', { name: '数据与备份', exact: true }).click()
   const download = page.waitForEvent('download')

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { UiButton, UiInput, UiSelect, UiCheckbox, UiTextarea, UiCollapsible } from './ui'
+import URadioGroup from '@nuxt/ui/components/RadioGroup.vue'
 import { computed, nextTick, onUnmounted, reactive, ref, shallowRef, watch } from 'vue'
 import { FileText, Plus, Upload } from '@lucide/vue'
 import { t, locale, duration, type DisplayMessage } from '../i18n'
@@ -14,20 +16,30 @@ import {
   type SourceExcerpt,
   type SourceQueueAction,
   type SourceQueueUpdate,
-  type SourcePriority,
   type ReadingUpdate,
   type Source,
   type SourceTarget,
   type SourceBatchUpdate,
   type SourceBatchAction,
   type ReadingFeedback,
+  referencedSource,
+  sourceAtVersion,
 } from '../core/source-data'
 import { adaptiveReadingPlan } from '../core/adaptive-reading'
+import { materialLocked } from '../core/material-sequence'
 import { sourceExcerpt, recentSource } from '../core/sources'
 import { sourceArrangement } from '../core/reading-operations'
 import { sourceContextPath } from '../core/source-tree'
 import SourceBatchDialog from './SourceBatchDialog.vue'
-import { localDay } from '../core/model'
+import StudyPriorityField from './StudyPriorityField.vue'
+import { studyPriorityOrigin } from './study-priority-label'
+import {
+  createPriorityResolver,
+  effectiveSourcePriority,
+  sourcePriorityGroup,
+} from '../core/study-priority'
+import { studyDay } from '../core/study-day'
+import { studySettings } from '../core/study-settings'
 import {
   filterSources,
   queuedSources,
@@ -46,10 +58,28 @@ import {
 } from '../core/reading-round'
 import { createExportFile } from '@repeaty-platform'
 import AppModal from './AppModal.vue'
+import AppPage from './AppPage.vue'
 import SourceReader from './SourceReader.vue'
+import SourceContentEditor from './SourceContentEditor.vue'
+import SourceMetadata from './SourceMetadata.vue'
+import MaterialTree from './MaterialTree.vue'
+import SourceAnnotations from './SourceAnnotations.vue'
+import type { MaterialWorkbenchActions } from './material-workbench-actions'
+import { useReadingPanels } from '../composables/useReadingPanels'
+import MaterialImport from './MaterialImport.vue'
+import CollectionImport from './CollectionImport.vue'
+import InboxPanel from './InboxPanel.vue'
+import MaterialSections from './MaterialSections.vue'
+import MaterialSearch from './MaterialSearch.vue'
+import SourceLinks from './SourceLinks.vue'
+import { createMaterialKnowledge } from '../composables/material-knowledge'
+import type { MaterialSearchHit, CollectionHostApi } from '@repeaty/plugin-api'
+import type { MaterialLocator } from '../core/material-data'
 import SourceContext from './SourceContext.vue'
 import SourceExcerptList from './SourceExcerptList.vue'
 import { excerptsForSource, matchingExcerpts } from '../core/source-navigation'
+import type { CollectionInput } from '../core/collection-input'
+import type { MenuAction } from '../input/menus'
 
 const props = defineProps<{
   library: Library
@@ -65,16 +95,21 @@ const props = defineProps<{
   arrangeBatch: (update: SourceBatchUpdate) => Promise<boolean>
   undoReading: () => Promise<boolean>
   actionError?: string
-  read: (id: string, signal?: AbortSignal) => Promise<string>
+  getMedia?: (id: string) => Promise<Blob | undefined>
+  read: (id: string, signal?: AbortSignal, mediaId?: string) => Promise<string>
   save: (input: SourceInput, scope: string) => Promise<boolean>
   updateDetails: (update: SourceDetailsUpdate) => Promise<boolean>
   saveExcerpt: (input: SaveSourceExcerptInput) => Promise<boolean>
   remove: (id: string, scope: string) => Promise<boolean>
   arrange: (update: SourceQueueUpdate) => Promise<boolean>
   saveReading: (update: ReadingUpdate) => Promise<boolean>
+  workbench?: MaterialWorkbenchActions
+  readProperties?: (id: string) => Promise<string>
+  collection?: CollectionHostApi
+  readClipboard?: () => Promise<CollectionInput>
 }>()
 const emit = defineEmits<{
-  create: [excerpt: SourceExcerpt, format: 'plain' | 'markdown']
+  create: [excerpt: SourceExcerpt, format: 'plain' | 'markdown', type?: 'cloze']
   edit: [noteId: string]
   share: [excerpt: SourceExcerpt]
   clearNotice: []
@@ -82,8 +117,109 @@ const emit = defineEmits<{
   startHandled: []
   sessionDone: [arranged: boolean]
   activity: [busy: boolean]
+  settings: [category: string]
 }>()
-const today = computed(() => localDay(props.now))
+const newKnowledge = () =>
+  createMaterialKnowledge({
+    sources: () => props.library.sources,
+    scope: () => props.scope,
+    read: (id, signal, mediaId) => props.read(id, signal, mediaId),
+  })
+const knowledge = shallowRef(newKnowledge())
+const wikiTarget = ref<string>()
+watch(
+  () => props.scope,
+  () => {
+    knowledge.value.dispose()
+    knowledge.value = newKnowledge()
+    wikiTarget.value = undefined
+  },
+  { flush: 'sync' },
+)
+onUnmounted(() => knowledge.value.dispose())
+const scheduling = computed(() => studySettings(props.library))
+const today = computed(() => studyDay(props.now, scheduling.value))
+const section = ref<'library' | 'inbox' | 'connections'>('library')
+const collectionImport = ref<InstanceType<typeof CollectionImport>>()
+const collecting = ref(false)
+const inboxCount = computed(
+  () => props.library.sources.filter((source) => source.inbox?.state === 'new').length,
+)
+async function changeSection(value: 'library' | 'inbox' | 'connections') {
+  if (value === section.value || props.busy || moving.value || inRound.value) return
+  const scope = props.scope
+  if (section.value === 'library') {
+    if (!(await flushEditor()) || (reader.value?.ready && !(await savePosition()))) return
+    if (!alive || scope !== props.scope) return
+  }
+  section.value = value
+}
+async function openCollection() {
+  const scope = props.scope
+  if (!(await flushEditor()) || (reader.value?.ready && !(await savePosition()))) return
+  if (!alive || scope !== props.scope) return
+  collectionImport.value?.show()
+}
+function collected(ids: readonly string[], destination: 'inbox' | 'library') {
+  if (destination === 'inbox') section.value = 'inbox'
+  else {
+    section.value = 'library'
+    resetFilters()
+    view.value = 'all'
+    page.value = 0
+    selectedId.value = ids[0] ?? ''
+  }
+}
+async function filed(id: string) {
+  section.value = 'library'
+  resetFilters()
+  view.value = 'all'
+  await nextTick()
+  await openSource(id)
+}
+const editingContent = ref(false)
+const contentEditor = ref<InstanceType<typeof SourceContentEditor>>()
+const annotations = ref<InstanceType<typeof SourceAnnotations>>()
+const filtersOpen = ref(false),
+  bulkOpen = ref(false)
+const panels = useReadingPanels(computed(() => props.scope))
+const organizationView = panels.organizationView
+const contextOpen = panels.contextOpen
+function toggleBulk() {
+  bulkOpen.value = !(bulkOpen.value || selection.value.size)
+  if (!bulkOpen.value) selection.value = new Map()
+}
+function clearBulk() {
+  selection.value = new Map()
+  bulkOpen.value = false
+}
+function openWiki(target: string) {
+  contextOpen.value = true
+  wikiTarget.value = target
+}
+function addAnnotation() {
+  contextOpen.value = true
+  if (excerpt.value) annotations.value?.add(excerpt.value)
+}
+async function beginEdit() {
+  if (!props.workbench || !editableText.value || props.busy || loading.value || error.value) return
+  const current = source.value,
+    scope = props.scope
+  if (!((await annotations.value?.flush()) ?? true)) return
+  if (reader.value?.ready && !(await savePosition())) return
+  if (
+    !alive ||
+    props.scope !== scope ||
+    source.value?.id !== current?.id ||
+    source.value?.mediaId !== current?.mediaId
+  )
+    return
+  editingContent.value = true
+}
+async function flushEditor() {
+  if (!((await annotations.value?.flush()) ?? true)) return false
+  return !editingContent.value || !!(await contentEditor.value?.flush())
+}
 const round = shallowRef<ReadingRound>()
 const inRound = computed(() => !!round.value || !!props.session)
 const roundFilter = shallowRef<SourceFilter>()
@@ -113,18 +249,38 @@ const filters = computed<SourceFilter>(() => ({
 const hasFilters = computed(
   () => !!query.value.trim() || kind.value !== 'all' || priority.value !== 'all',
 )
-const matchingSources = computed(() => filterSources(props.library.sources, filters.value))
+const matchingSources = computed(() =>
+  filterSources(props.library.sources, filters.value, props.library),
+)
+const effectivePriorityGroups = computed(() => {
+  const resolver = createPriorityResolver(props.library)
+  return new Map(
+    props.library.sources.map((source) => {
+      const priority = resolver.source(source)
+      return [
+        source.id,
+        priority.numeric || scheduling.value.priorityMode === 'weighted'
+          ? sourcePriorityGroup(priority.value)
+          : (source.priority ?? 'normal'),
+      ]
+    }),
+  )
+})
 const readyCount = computed(
   () =>
-    props.library.sources.filter((source) => sourceQueueState(source, today.value) === 'ready')
-      .length,
+    props.library.sources.filter(
+      (source) => sourceQueueState(source, today.value, props.library.sources) === 'ready',
+    ).length,
 )
 const counts = computed(() =>
   Object.fromEntries(
     queueViews.map((value) => [
       value,
       matchingSources.value.filter(
-        (entry) => value === 'all' || sourceQueueState(entry, today.value) === value,
+        (entry) =>
+          value === 'all' ||
+          (!entry.document?.container &&
+            sourceQueueState(entry, today.value, props.library.sources) === value),
       ).length,
     ]),
   ),
@@ -154,7 +310,8 @@ function resetFilters() {
 }
 const selectedId = ref(
   props.session?.sourceId ??
-    recentSource(queuedSources(props.library.sources, 'ready', today.value))?.id ??
+    recentSource(queuedSources(props.library.sources, 'ready', today.value, {}, props.library))
+      ?.id ??
     '',
 )
 const source = computed(() =>
@@ -163,6 +320,23 @@ const source = computed(() =>
       entry.id === selectedId.value && (!props.session || entry.mediaId === props.session.mediaId),
   ),
 )
+const editableText = computed(
+  () =>
+    !!source.value &&
+    (!source.value.document ||
+      ['markdown', 'md', 'plain', 'text', 'txt'].includes(source.value.document.format)),
+)
+watch(
+  () => source.value?.id,
+  () => {
+    wikiTarget.value = undefined
+  },
+)
+async function searchSettings() {
+  if (!(await flushEditor())) return
+  if (reader.value?.ready && !(await savePosition())) return
+  emit('settings', 'general.search')
+}
 const linked = computed(() =>
   props.library.notes.filter((note) => note.excerpt?.sourceId === selectedId.value),
 )
@@ -170,9 +344,11 @@ const text = ref(''),
   error = ref<DisplayMessage>(''),
   loading = ref(false),
   excerpt = ref<SourceExcerpt>()
-const original = computed(() =>
-  props.library.sources.find((entry) => entry.id === source.value?.origin?.sourceId),
-)
+const original = computed(() => {
+  const entry = props.library.sources.find((entry) => entry.id === source.value?.origin?.sourceId)
+  return entry && source.value?.origin ? referencedSource(entry, source.value.origin) : undefined
+})
+const versionsOpen = ref(false)
 const savedExcerpts = computed(() => excerptsForSource(props.library, selectedId.value))
 const duplicates = computed(() => matchingExcerpts(savedExcerpts.value, excerpt.value))
 const excerptList = ref<InstanceType<typeof SourceExcerptList>>()
@@ -184,11 +360,17 @@ const ancestry = computed(() =>
   source.value ? sourceContextPath(props.library.sources, source.value).reverse() : [],
 )
 const ancestrySource = shallowRef<Source>()
+function openVersion(mediaId: string) {
+  if (source.value) ancestrySource.value = sourceAtVersion(source.value, mediaId)
+  versionsOpen.value = false
+}
 const viewedSelection = computed<SourceExcerpt | undefined>(() => {
   const child = viewedExcerpt.value
-  if (!child?.origin || loading.value || error.value || !text.value) return undefined
+  if (!child?.origin || child.derived || loading.value || error.value || !text.value)
+    return undefined
   return {
     sourceId: child.id,
+    mediaId: child.mediaId,
     start: 0,
     end: child.characters,
     quote: text.value.slice(child.origin.start, child.origin.end),
@@ -208,9 +390,10 @@ const importing = ref(false),
   importError = ref<DisplayMessage>('')
 const pageSize = 20
 const filteredSources = computed(() =>
-  queuedSources(props.library.sources, view.value, today.value, filters.value),
+  queuedSources(props.library.sources, view.value, today.value, filters.value, props.library),
 )
 const pages = computed(() => Math.max(1, Math.ceil(filteredSources.value.length / pageSize)))
+const filteredSourceIds = computed(() => new Set(filteredSources.value.map((item) => item.id)))
 const visibleSources = computed(() =>
   filteredSources.value.slice(page.value * pageSize, (page.value + 1) * pageSize),
 )
@@ -309,12 +492,24 @@ let controller: AbortController | undefined,
   alive = true
 let readingLoad: Promise<void> = Promise.resolve()
 watch(filteredSources, (sources) => {
+  if (editingContent.value || annotations.value?.dirty || organizationView.value === 'tree') return
   if (!inRound.value && !sources.some((entry) => entry.id === selectedId.value)) {
     selectedId.value = sources[page.value * pageSize]?.id ?? sources[0]?.id ?? ''
   }
   page.value = Math.min(page.value, pages.value - 1)
 })
-watch([() => source.value?.id, () => source.value?.mediaId], load, { immediate: true })
+watch([() => source.value?.id, () => source.value?.mediaId, () => props.scope], load, {
+  immediate: true,
+})
+watch(
+  () => props.scope,
+  () => {
+    editingContent.value = false
+    section.value = 'library'
+    navigationGeneration++
+  },
+  { flush: 'sync' },
+)
 onUnmounted(() => {
   alive = false
   controller?.abort()
@@ -340,18 +535,31 @@ async function readSelected() {
     return
   }
   loading.value = true
+  const id = source.value.id,
+    mediaId = source.value.mediaId,
+    scope = props.scope
   try {
-    text.value = await props.read(source.value.id, current.signal)
+    const result = await props.read(id, current.signal, mediaId)
+    if (
+      alive &&
+      controller === current &&
+      !current.signal.aborted &&
+      props.scope === scope &&
+      source.value?.id === id &&
+      source.value.mediaId === mediaId
+    )
+      text.value = result
   } catch (issue) {
     if (!current.signal.aborted) error.value = issue as Error
   } finally {
     if (controller === current) loading.value = false
   }
 }
-function select(sourceId: string, start: number, end: number) {
+function select(sourceId: string, start: number, end: number, locator?: MaterialLocator) {
   if (!source.value || source.value.id !== sourceId) return
   try {
     excerpt.value = sourceExcerpt(source.value, text.value, start, end)
+    if (locator) excerpt.value.locator = locator
   } catch {
     excerpt.value = undefined
   }
@@ -401,13 +609,26 @@ function createFromWholeExcerpt() {
 }
 async function resume(id: string) {
   const scope = props.scope
-  openSource(id)
+  if (!(await openSource(id))) return
   await nextTick()
   await readingLoad
   await nextTick()
   if (scope === props.scope && source.value?.id === id) await reader.value?.resume()
 }
-function openSource(id: string) {
+let navigationGeneration = 0
+async function openSource(id: string) {
+  if (id === selectedId.value) return true
+  const generation = ++navigationGeneration,
+    scope = props.scope
+  if (!(await flushEditor())) return false
+  if (
+    !alive ||
+    generation !== navigationGeneration ||
+    props.scope !== scope ||
+    !props.library.sources.some((item) => item.id === id)
+  )
+    return false
+  editingContent.value = false
   selectedId.value = id
   const entry = props.library.sources.find((source) => source.id === id)
   if (entry?.reading)
@@ -415,6 +636,76 @@ function openSource(id: string) {
       { sourceId: id, mediaId: entry.mediaId, scope: props.scope, position: entry.reading },
       true,
     )
+  return true
+}
+async function openSearchResult(hit: MaterialSearchHit) {
+  const entry = props.library.sources.find(
+    (item) => item.id === hit.sourceId && item.mediaId === hit.versionId,
+  )
+  if (!entry || props.busy || inRound.value) return
+  const scope = props.scope
+  resetFilters()
+  view.value = 'all'
+  page.value = Math.max(
+    0,
+    Math.floor(filteredSources.value.findIndex((item) => item.id === hit.sourceId) / pageSize),
+  )
+  if (!(await openSource(entry.id))) return
+  await nextTick()
+  await readingLoad
+  await nextTick()
+  if (
+    !alive ||
+    scope !== props.scope ||
+    source.value?.id !== hit.sourceId ||
+    source.value.mediaId !== hit.versionId
+  )
+    return
+  if (hit.locator?.kind === 'text') {
+    try {
+      await reader.value?.locate({
+        sourceId: hit.sourceId,
+        mediaId: hit.versionId,
+        start: hit.locator.start,
+        end: hit.locator.end,
+        locator: hit.locator,
+      })
+    } catch (issue) {
+      if (alive && scope === props.scope) navigationError.value = issue as Error
+    }
+  }
+}
+async function openDocumentSource(id: string, locator?: MaterialLocator) {
+  if (props.busy || inRound.value) return
+  const entry = props.library.sources.find((source) => source.id === id)
+  if (!entry || (locator && (locator.sourceId !== id || locator.versionId !== entry.mediaId)))
+    return
+  const scope = props.scope
+  if (!(await openSource(id))) return
+  if (!locator) return
+  await nextTick()
+  await readingLoad
+  await nextTick()
+  if (
+    !alive ||
+    scope !== props.scope ||
+    source.value?.id !== id ||
+    source.value.mediaId !== locator.versionId
+  )
+    return
+  const start =
+    locator.kind === 'text' || locator.kind === 'epub' || locator.kind === 'formula'
+      ? (locator.start ?? 0)
+      : 0
+  const end =
+    locator.kind === 'text' || locator.kind === 'epub' || locator.kind === 'formula'
+      ? (locator.end ?? Math.min(text.value.length, start + 1))
+      : Math.min(text.value.length, 1)
+  try {
+    await reader.value?.locate({ sourceId: id, mediaId: locator.versionId, start, end, locator })
+  } catch (issue) {
+    if (alive && scope === props.scope) navigationError.value = issue as Error
+  }
 }
 function remember() {
   const update = reader.value?.capture()
@@ -429,19 +720,21 @@ const deferring = ref(false),
   moving = ref(false),
   deferDate = ref('')
 const deferOptions = computed(() => [
-  { label: '明天', date: nextReadingDay(props.now) },
-  { label: '3 天后', date: nextReadingDay(props.now, 3) },
-  { label: '1 周后', date: nextReadingDay(props.now, 7) },
+  { label: '明天', date: nextReadingDay(props.now, 1, scheduling.value) },
+  { label: '3 天后', date: nextReadingDay(props.now, 3, scheduling.value) },
+  { label: '1 周后', date: nextReadingDay(props.now, 7, scheduling.value) },
 ])
 let releaseReading: (() => void) | undefined
 watch(
   () =>
     importing.value ||
+    collecting.value ||
     deleting.value ||
     deferring.value ||
     schedulingRead.value ||
     resettingInterval.value ||
     moving.value ||
+    editingContent.value ||
     arranging.value ||
     !!detailsDraft.value ||
     !!excerptDraft.value ||
@@ -456,11 +749,15 @@ watch(
   { flush: 'sync' },
 )
 onUnmounted(() => releaseReading?.())
-const intervalPlan = computed(() => source.value && nextReadingInterval(source.value, props.now))
+const intervalPlan = computed(
+  () => source.value && nextReadingInterval(source.value, props.now, props.library),
+)
 const scheduleMode = ref<'fixed' | 'adaptive'>('fixed')
 const readingFeedback = ref<ReadingFeedback>('good')
 const adaptivePlan = computed(
-  () => source.value && adaptiveReadingPlan(source.value, readingFeedback.value, props.now),
+  () =>
+    source.value &&
+    adaptiveReadingPlan(source.value, readingFeedback.value, props.now, scheduling.value),
 )
 const selectedPlan = computed(() =>
   scheduleMode.value === 'adaptive' ? adaptivePlan.value : intervalPlan.value,
@@ -485,6 +782,17 @@ const canMove = computed(
     !moving.value &&
     !loading.value &&
     !error.value &&
+    (!!reader.value?.ready || editingContent.value),
+)
+// Locating an excerpt only moves within the already loaded immutable text.
+// Background persistence must not disable its focused keyboard control.
+const canLocateExcerpt = computed(
+  () =>
+    !arranging.value &&
+    !moving.value &&
+    !loading.value &&
+    !error.value &&
+    !editingContent.value &&
     !!reader.value?.ready,
 )
 watch(
@@ -510,6 +818,7 @@ async function leaveSession() {
   if (props.busy || moving.value || arranging.value || loading.value) return false
   moving.value = true
   try {
+    if (!(await flushEditor())) return false
     return !source.value || !!error.value || (await savePosition())
   } finally {
     moving.value = false
@@ -536,24 +845,42 @@ async function finishSession() {
   }
 }
 defineExpose({
+  studying: computed(() => Boolean(source.value && !error.value)),
   leaveSession,
   undoArrangement,
   locked: computed(
-    () => props.busy || moving.value || arranging.value || loading.value || undoing.value,
+    () =>
+      props.busy ||
+      moving.value ||
+      arranging.value ||
+      loading.value ||
+      undoing.value ||
+      (!!source.value && !editingContent.value && !error.value && !reader.value?.ready),
   ),
 })
 function showRound(next: ReadingRound) {
+  editingContent.value = false
   round.value = next
   selectedId.value = next.entries[next.cursor]?.sourceId ?? ''
   const index = filteredSources.value.findIndex((entry) => entry.id === selectedId.value)
   if (index >= 0) page.value = Math.floor(index / pageSize)
 }
 watch([() => props.library.sources, today, () => props.busy, moving, arranging], () => {
-  if (!round.value || props.busy || moving.value || arranging.value) return
+  if (
+    !round.value ||
+    props.busy ||
+    moving.value ||
+    arranging.value ||
+    editingContent.value ||
+    annotations.value?.dirty
+  )
+    return
   const next = reconcileReadingRound(round.value, props.library.sources, today.value)
   if (next !== round.value) showRound(next)
 })
 async function savePosition() {
+  if (editingContent.value) return flushEditor()
+  if (!((await annotations.value?.flush()) ?? true)) return false
   const current = source.value
   if (!current || !reader.value?.ready || loading.value || error.value) return false
   const scope = props.scope,
@@ -578,7 +905,7 @@ async function beginRound(filter?: SourceFilter) {
   try {
     if (source.value && !(await savePosition())) return
     if (!alive || props.scope !== scope) return
-    const next = startReadingRound(props.library.sources, today.value, chosen)
+    const next = startReadingRound(props.library.sources, today.value, chosen, props.library)
     if (!next.entries.length) return
     if (!chosen) {
       view.value = 'ready'
@@ -640,11 +967,11 @@ async function stopRound() {
   }
 }
 const queueState = computed(() =>
-  source.value ? sourceQueueState(source.value, today.value) : undefined,
+  source.value ? sourceQueueState(source.value, today.value, props.library.sources) : undefined,
 )
 function openDefer() {
   emit('clearNotice')
-  deferDate.value = nextReadingDay(props.now)
+  deferDate.value = nextReadingDay(props.now, 1, scheduling.value)
   deferring.value = true
 }
 function openReadSchedule() {
@@ -669,6 +996,13 @@ async function arrange(action: SourceQueueAction) {
   arranging.value = true
   emit('clearNotice')
   try {
+    if (
+      !(await flushEditor()) ||
+      !alive ||
+      props.scope !== scope ||
+      source.value?.id !== current.id
+    )
+      return
     if (
       await props.arrange({
         sourceId: current.id,
@@ -713,16 +1047,44 @@ async function arrange(action: SourceQueueAction) {
     arranging.value = false
   }
 }
-function changePriority(event: Event) {
-  const select = event.target as HTMLSelectElement
-  const priority = select.value as SourcePriority
-  // Show the persisted value until the transaction succeeds, including on failure.
-  select.value = source.value?.priority ?? 'normal'
+function changePriority(priority: string) {
+  if (priority !== 'high' && priority !== 'normal' && priority !== 'low') return
   return arrange({ type: 'priority', priority })
+}
+async function changeStudyPriority(value: number | undefined) {
+  if (
+    !source.value ||
+    props.busy ||
+    arranging.value ||
+    moving.value ||
+    !props.workbench?.setPriority
+  )
+    return
+  const target = source.value.id,
+    scope = props.scope
+  arranging.value = true
+  emit('clearNotice')
+  try {
+    if (
+      !(await flushEditor()) ||
+      (reader.value?.ready && !(await savePosition())) ||
+      !alive ||
+      scope !== props.scope ||
+      source.value?.id !== target
+    )
+      return
+    if (await props.workbench.setPriority('source', target, value)) {
+      if (!alive || scope !== props.scope) return
+      const index = filteredSources.value.findIndex((entry) => entry.id === target)
+      if (index >= 0) page.value = Math.floor(index / pageSize)
+    }
+  } finally {
+    if (scope === props.scope) arranging.value = false
+  }
 }
 async function locateExcerpt(id: string) {
   const entry = savedExcerpts.value.find((entry) => entry.source.id === id)
-  if (!entry || !canMove.value) return
+  if (!entry || !canLocateExcerpt.value) return
   emit('clearNotice')
   navigationError.value = ''
   moving.value = true
@@ -779,7 +1141,10 @@ function readingDate(date: string) {
   value.setHours(12, 0, 0, 0)
   return value.toLocaleDateString(locale.value)
 }
-function openImport() {
+async function openImport() {
+  const scope = props.scope
+  if (!(await flushEditor()) || !alive || props.scope !== scope) return
+  editingContent.value = false
   emit('clearNotice')
   fileGeneration++
   readingFile.value = false
@@ -789,7 +1154,15 @@ function openImport() {
 }
 function openDetails() {
   const current = source.value
-  if (!current || props.busy || moving.value || arranging.value || savingDetails.value) return
+  if (
+    !current ||
+    props.busy ||
+    moving.value ||
+    arranging.value ||
+    savingDetails.value ||
+    editingContent.value
+  )
+    return
   emit('clearNotice')
   detailsDraft.value = {
     sourceId: current.id,
@@ -872,7 +1245,14 @@ async function fileChanged(event: Event) {
 }
 async function save() {
   if (props.busy || readingFile.value) return
-  if (await props.save({ ...form }, props.scope)) {
+  const scope = props.scope,
+    generation = fileGeneration
+  if (
+    (await props.save({ ...form }, scope)) &&
+    alive &&
+    props.scope === scope &&
+    fileGeneration === generation
+  ) {
     importing.value = false
     resetFilters()
     view.value = 'ready'
@@ -881,7 +1261,14 @@ async function save() {
   }
 }
 async function remove() {
-  if (source.value && (await props.remove(source.value.id, props.scope))) deleting.value = false
+  const current = source.value,
+    scope = props.scope
+  if (!(await flushEditor()) || !alive || props.scope !== scope || current?.id !== source.value?.id)
+    return
+  if (current && (await props.remove(current.id, scope)) && alive && props.scope === scope) {
+    deleting.value = false
+    editingContent.value = false
+  }
 }
 async function download() {
   if (!source.value || loading.value || exporting.value || error.value) return
@@ -913,39 +1300,134 @@ async function download() {
     exporting.value = false
   }
 }
+const readerActions = computed<MenuAction[]>(() => [
+  {
+    id: 'material.excerpt',
+    title: t('保存为摘录'),
+    disabled: props.busy || !excerpt.value,
+    run: openExcerpt,
+  },
+  {
+    id: 'material.card',
+    title: t('用摘录制卡'),
+    disabled: props.busy || !excerpt.value || !props.library.decks.length,
+    run: () => {
+      if (excerpt.value && source.value) emit('create', excerpt.value, source.value.format)
+    },
+  },
+  ...(props.canShare
+    ? [
+        {
+          id: 'material.share',
+          title: t('通过 MCP 制卡'),
+          disabled: props.busy || !excerpt.value || !props.library.decks.length,
+          run: () => {
+            if (excerpt.value) emit('share', excerpt.value)
+          },
+        },
+      ]
+    : []),
+  ...(props.workbench
+    ? [
+        {
+          id: 'material.cloze',
+          title: t('制作挖空卡'),
+          disabled: props.busy || !excerpt.value || !props.library.decks.length,
+          run: () => {
+            if (excerpt.value && source.value)
+              emit('create', excerpt.value, source.value.format, 'cloze')
+          },
+        },
+        {
+          id: 'material.annotation',
+          title: t('添加批注'),
+          disabled: props.busy || !excerpt.value,
+          run: addAnnotation,
+        },
+      ]
+    : []),
+])
 </script>
 
 <template>
-  <div class="page sources-page">
-    <header v-if="!session" class="page-heading">
-      <div>
-        <h1>{{ t('学习材料') }}</h1>
-        <p>{{ t('保存原文，选取摘录制作卡片。') }}</p>
-      </div>
-      <div class="source-actions">
-        <button
-          v-if="canUndoReading && !session"
-          :title="t('撤销最近一次阅读安排（刷新后清除）')"
-          class="button secondary"
-          :disabled="busy || moving || arranging || undoing"
-          @click="undoArrangement"
-        >
-          {{ t('撤销阅读安排') }}
-        </button>
-        <button
-          v-if="!inRound"
-          class="button secondary"
-          :disabled="busy || moving || arranging || !readyCount || (!!source && !canMove)"
-          @click="beginRound()"
-        >
-          {{ t('开始一轮阅读') }}
-        </button>
-        <button class="button primary" :disabled="busy || moving || inRound" @click="openImport">
-          <Plus :size="18" />{{ t('导入材料') }}
-        </button>
-      </div>
-    </header>
-    <div v-if="!library.sources.length && !inRound" class="empty-state">
+  <AppPage
+    class="sources-page"
+    :title="session ? undefined : t('学习材料')"
+    :description="t('保存原文，选取摘录制作卡片。')"
+  >
+    <template #actions>
+      <MaterialImport
+        v-if="!session && !collection"
+        :scope="scope"
+        :busy="busy || moving || inRound || editingContent || !!annotations?.dirty"
+        @imported="
+          (ids) => {
+            resetFilters()
+            view = 'all'
+            page = 0
+            selectedId = ids[0] ?? ''
+          }
+        "
+      />
+      <UiButton
+        variant="secondary"
+        type="submit"
+        v-if="canUndoReading && !session"
+        :title="t('撤销最近一次阅读安排（刷新后清除）')"
+        :disabled="busy || moving || arranging || undoing"
+        @click="undoArrangement"
+      >
+        {{ t('撤销阅读安排') }}
+      </UiButton>
+      <UiButton
+        variant="secondary"
+        type="submit"
+        v-if="!inRound && section === 'library'"
+        :disabled="busy || moving || arranging || !readyCount || (!!source && !canMove)"
+        @click="beginRound()"
+      >
+        {{ t('开始一轮阅读') }}
+      </UiButton>
+      <UiButton
+        v-if="collection && !session"
+        variant="primary"
+        :disabled="moving || inRound"
+        @click="openCollection"
+      >
+        <Plus :size="18" />{{ t('收集材料') }}
+      </UiButton>
+      <UiButton
+        v-else
+        variant="primary"
+        type="submit"
+        :disabled="busy || moving || inRound"
+        @click="openImport"
+      >
+        <Plus :size="18" />{{ t('导入材料') }}
+      </UiButton>
+    </template>
+    <MaterialSections
+      v-if="collection && !session && !inRound"
+      :model-value="section"
+      :inbox-count="inboxCount"
+      :connections="!!$slots.connections"
+      :disabled="busy || moving"
+      @update:model-value="changeSection"
+    />
+    <InboxPanel
+      v-if="collection && section === 'inbox' && !inRound"
+      :api="collection"
+      :scope="scope"
+      :sources="library.sources"
+      :busy="busy"
+      :read="read"
+      :get-media="getMedia"
+      @collect="openCollection"
+      @filed="filed"
+      @create="(excerpt, format) => emit('create', excerpt, format)"
+    />
+    <slot v-else-if="section === 'connections' && !inRound" name="connections" />
+    <div v-else-if="!library.sources.length && !workbench && !inRound" class="empty-state">
       <FileText :size="36" />
       <h2>{{ t('还没有学习材料') }}</h2>
       <p>{{ t('导入文本或 Markdown，也可以直接粘贴。原文会保存在当前学习库中。') }}</p>
@@ -953,13 +1435,14 @@ async function download() {
     <template v-else>
       <section v-if="session" class="reading-round" :aria-label="t('本轮阅读')">
         <p>{{ t('阅读位置会保存；可安排下次阅读，或直接继续。') }}</p>
-        <button
-          class="button primary"
+        <UiButton
+          variant="primary"
+          type="submit"
           :disabled="busy || moving || arranging || loading"
           @click="finishSession"
         >
           {{ t(error ? '跳过本篇' : '完成阅读，继续学习') }}
-        </button>
+        </UiButton>
       </section>
       <section
         v-if="round && !roundEnded"
@@ -978,31 +1461,73 @@ async function download() {
           <p v-if="roundFilter" class="form-note reading-round-filter">{{ roundFilterLabel }}</p>
         </div>
         <div class="source-actions">
-          <button class="button primary" :disabled="!canMove" @click="nextSource">
+          <UiButton variant="primary" type="submit" :disabled="!canMove" @click="nextSource">
             {{ t(round.cursor + 1 === round.entries.length ? '完成本轮' : '下一篇') }}
-          </button>
-          <button class="text-button" :disabled="busy || moving || arranging" @click="stopRound">
+          </UiButton>
+          <UiButton
+            variant="ghost"
+            type="submit"
+            :disabled="busy || moving || arranging"
+            @click="stopRound"
+          >
             {{ t('结束本轮') }}
-          </button>
+          </UiButton>
         </div>
       </section>
-      <nav v-if="!inRound" class="source-queue-filters" :aria-label="t('阅读队列')">
-        <button
-          v-for="value in queueViews"
-          :key="value"
-          type="button"
-          :aria-pressed="view === value"
-          :disabled="busy || moving || arranging || inRound"
-          @click="view = value"
-        >
-          {{ t(queueLabels[value]) }} <span>{{ counts[value] }}</span>
-        </button>
-      </nav>
-      <section v-if="!inRound" class="source-filters" :aria-label="t('材料筛选')">
+      <MaterialSearch
+        v-if="!inRound"
+        :scope="scope"
+        :busy="busy"
+        :knowledge="knowledge"
+        @open="openSearchResult"
+        @settings="searchSettings"
+      />
+      <div v-if="!inRound" class="source-toolbar">
+        <nav class="source-queue-filters" :aria-label="t('阅读队列')">
+          <UiButton
+            variant="secondary"
+            v-for="value in queueViews"
+            :key="value"
+            type="button"
+            :aria-pressed="view === value"
+            :disabled="busy || moving || arranging || inRound"
+            @click="view = value"
+          >
+            {{ t(queueLabels[value]) }} <span>{{ counts[value] }}</span>
+          </UiButton>
+        </nav>
+        <div class="source-tools">
+          <UiButton
+            variant="ghost"
+            :aria-expanded="filtersOpen"
+            :aria-pressed="hasFilters"
+            @click="filtersOpen = !filtersOpen"
+            >{{ t('筛选材料') }}</UiButton
+          >
+          <UiButton
+            variant="ghost"
+            :aria-expanded="bulkOpen || !!selection.size"
+            @click="toggleBulk"
+            >{{ t('批量选择') }}</UiButton
+          >
+          <UiButton
+            variant="ghost"
+            :aria-expanded="contextOpen"
+            @click="contextOpen = !contextOpen"
+            >{{ t('上下文') }}</UiButton
+          >
+        </div>
+      </div>
+      <section
+        v-if="!inRound"
+        v-show="filtersOpen"
+        class="source-filters"
+        :aria-label="t('材料筛选')"
+      >
         <div class="source-filter-fields">
           <div class="source-filter-field source-search">
             <label for="source-search">{{ t('搜索材料') }}</label>
-            <input
+            <UiInput
               id="source-search"
               v-model="query"
               type="search"
@@ -1012,30 +1537,39 @@ async function download() {
           </div>
           <div class="source-filter-field">
             <label for="source-kind-filter">{{ t('材料类型') }}</label>
-            <select id="source-kind-filter" v-model="kind" :disabled="busy || moving || arranging">
-              <option v-for="(label, value) in kindLabels" :key="value" :value="value">
-                {{ t(label) }}
-              </option>
-            </select>
+            <UiSelect
+              :items="[
+                ...Object.entries(kindLabels).map(([value, label]) => ({
+                  label: t(label),
+                  value: value,
+                })),
+              ]"
+              id="source-kind-filter"
+              v-model="kind"
+              :disabled="busy || moving || arranging"
+            ></UiSelect>
           </div>
           <div class="source-filter-field">
             <label for="source-priority-filter">{{ t('优先级筛选') }}</label>
-            <select
+            <UiSelect
+              :items="[
+                { label: t('全部优先级'), value: 'all' },
+                ...Object.entries(priorityBadges).map(([value, label]) => ({
+                  label: t(label),
+                  value: value,
+                })),
+              ]"
               id="source-priority-filter"
               v-model="priority"
               :disabled="busy || moving || arranging"
-            >
-              <option value="all">{{ t('全部优先级') }}</option>
-              <option v-for="(label, value) in priorityBadges" :key="value" :value="value">
-                {{ t(label) }}
-              </option>
-            </select>
+            ></UiSelect>
           </div>
         </div>
         <div class="source-filter-footer">
           <div class="source-actions">
-            <button
-              class="button secondary"
+            <UiButton
+              variant="secondary"
+              type="submit"
               :disabled="
                 busy || moving || arranging || !filteredReadyCount || (!!source && !canMove)
               "
@@ -1043,15 +1577,16 @@ async function download() {
               @click="beginRound(filters)"
             >
               {{ t('阅读筛选结果') }}
-            </button>
-            <button
+            </UiButton>
+            <UiButton
+              variant="ghost"
+              type="submit"
               v-if="hasFilters"
-              class="text-button"
               :disabled="busy || moving || arranging"
               @click="resetFilters"
             >
               {{ t('清除筛选') }}
-            </button>
+            </UiButton>
           </div>
           <p id="source-filter-count" class="form-note" role="status">
             {{
@@ -1064,116 +1599,178 @@ async function download() {
         </div>
       </section>
       <section
-        v-if="!inRound && filteredSources.length"
+        v-if="!inRound && filteredSources.length && (bulkOpen || selection.size)"
         class="source-selection-toolbar"
         :aria-label="t('批量选择材料')"
       >
         <p role="status">{{ t('已选 {count} 篇材料', { count: selection.size }) }}</p>
         <div class="source-actions">
-          <button
-            class="text-button"
+          <UiButton
+            variant="ghost"
+            type="submit"
             :disabled="busy || moving || arranging"
             @click="selectSources(visibleSources)"
           >
             {{ t('选择本页') }}
-          </button>
-          <button
-            class="text-button"
+          </UiButton>
+          <UiButton
+            variant="ghost"
+            type="submit"
             :disabled="busy || moving || arranging"
             @click="selectSources(filteredSources)"
           >
             {{ t('选择全部筛选结果（{count}）', { count: filteredSources.length }) }}
-          </button>
-          <button
+          </UiButton>
+          <UiButton
+            variant="ghost"
+            type="submit"
             v-if="selection.size"
-            class="text-button"
             :disabled="busy || moving || arranging"
-            @click="selection = new Map()"
+            @click="clearBulk"
           >
             {{ t('取消选择') }}
-          </button>
-          <button
-            class="button secondary"
+          </UiButton>
+          <UiButton
+            variant="secondary"
+            type="submit"
             :disabled="busy || moving || arranging || !selection.size"
             @click="openBatch"
           >
             {{ t('批量安排') }}
-          </button>
+          </UiButton>
         </div>
       </section>
-      <div class="sources-layout" :class="{ 'round-layout': inRound }">
+      <div
+        class="sources-layout"
+        :class="{ 'round-layout': inRound, 'has-context': contextOpen && source && !roundEnded }"
+        :style="panels.style.value"
+      >
         <aside v-if="!inRound" class="source-list">
-          <p v-if="!visibleSources.length" class="form-note">{{ t('没有找到材料。') }}</p>
-          <div
-            v-for="entry in visibleSources"
-            :key="entry.id"
-            class="source-list-item"
-            :class="{ selected: entry.id === selectedId }"
-          >
-            <label class="source-selection">
-              <input
-                type="checkbox"
-                :checked="selection.has(entry.id)"
-                :disabled="busy || moving || arranging"
-                :aria-label="t('选择材料「{title}」', { title: entry.title })"
-                @change="toggleSelection(entry)"
-              />
-              <span>{{ t('选择') }}</span>
-            </label>
-            <button
-              class="source-list-title"
-              :aria-pressed="entry.id === selectedId"
-              :disabled="busy || moving || inRound"
-              @click="openSource(entry.id)"
+          <div v-if="workbench" class="source-list-switch" :aria-label="t('材料浏览方式')">
+            <UiButton
+              variant="ghost"
+              :aria-pressed="organizationView === 'list'"
+              @click="organizationView = 'list'"
+              >{{ t('列表') }}</UiButton
             >
-              <strong>{{ entry.title }}</strong></button
-            ><span
-              >{{ entry.format === 'markdown' ? 'Markdown' : t('纯文本') }} ·
-              {{ new Date(entry.createdAt).toLocaleDateString(locale) }}</span
+            <UiButton
+              variant="ghost"
+              :aria-pressed="organizationView === 'tree'"
+              @click="organizationView = 'tree'"
+              >{{ t('目录') }}</UiButton
             >
-            <span v-if="entry.kind === 'excerpt'" class="source-kind-badge">{{ t('摘录') }}</span>
-            <span class="source-queue-state">{{
-              sourceQueueState(entry, today) === 'archived'
-                ? t('已归档')
-                : entry.queue
-                  ? t('安排于 {date}', { date: readingDate(entry.queue.availableOn) })
-                  : t('待阅读')
-            }}</span>
-            <span
-              v-if="entry.priority && entry.priority !== 'normal'"
-              class="source-priority-badge"
-            >
-              {{ t(priorityBadges[entry.priority]) }}
-            </span>
-            <template v-if="entry.reading">
-              <span>{{
-                t('上次阅读 {date}', {
-                  date: new Date(entry.reading.updatedAt).toLocaleString(locale),
-                })
-              }}</span>
-              <button
-                class="text-button source-continue"
-                :disabled="busy || moving || inRound"
-                @click="resume(entry.id)"
-              >
-                {{ t('继续阅读') }}
-              </button>
-            </template>
           </div>
-          <nav v-if="pages > 1" class="source-list-pages" :aria-label="t('材料列表分页')">
-            <button type="button" class="text-button" :disabled="page === 0" @click="page--">
-              {{ t('上一页') }}</button
-            ><span>{{ page + 1 }} / {{ pages }}</span
-            ><button
-              type="button"
-              class="text-button"
-              :disabled="page + 1 >= pages"
-              @click="page++"
+          <MaterialTree
+            v-if="organizationView === 'tree' && workbench"
+            :visible-source-ids="filteredSourceIds"
+            :scope="scope"
+            :library="library"
+            :selected-id="selectedId"
+            :busy="busy || moving"
+            :actions="workbench"
+            @open="openSource"
+          />
+          <template v-else>
+            <p v-if="!visibleSources.length" class="form-note">{{ t('没有找到材料。') }}</p>
+            <div
+              v-for="entry in visibleSources"
+              :key="entry.id"
+              class="source-list-item"
+              :class="{ selected: entry.id === selectedId }"
             >
-              {{ t('下一页') }}
-            </button>
-          </nav>
+              <label class="source-selection">
+                <UiCheckbox
+                  :model-value="selection.has(entry.id)"
+                  :disabled="busy || moving || arranging"
+                  :aria-label="t('选择材料「{title}」', { title: entry.title })"
+                  @update:model-value="toggleSelection(entry)"
+                />
+                <span>{{ t('选择') }}</span>
+              </label>
+              <UiButton
+                variant="ghost"
+                class="source-list-title"
+                :aria-pressed="entry.id === selectedId"
+                :disabled="busy || moving || inRound"
+                @click="openSource(entry.id)"
+              >
+                <strong>{{ entry.title }}</strong></UiButton
+              ><span
+                >{{
+                  entry.document?.format.toUpperCase() ??
+                  (entry.format === 'markdown' ? 'Markdown' : t('纯文本'))
+                }}
+                · {{ new Date(entry.createdAt).toLocaleDateString(locale) }}</span
+              >
+              <span v-if="entry.kind === 'excerpt'" class="source-kind-badge">{{ t('摘录') }}</span>
+              <span class="source-queue-state">{{
+                entry.document?.container
+                  ? t('文档目录')
+                  : entry.studySequence?.completed
+                    ? t('本章已完成')
+                    : materialLocked(entry, library.sources)
+                      ? t('待前章完成')
+                      : sourceQueueState(entry, today, library.sources) === 'archived'
+                        ? t('已归档')
+                        : entry.queue
+                          ? t('安排于 {date}', { date: readingDate(entry.queue.availableOn) })
+                          : t('待阅读')
+              }}</span>
+              <span
+                v-if="effectivePriorityGroups.get(entry.id) !== 'normal'"
+                class="source-priority-badge"
+              >
+                {{ t(priorityBadges[effectivePriorityGroups.get(entry.id) ?? 'normal']) }}
+              </span>
+              <template v-if="entry.reading">
+                <span>{{
+                  t('上次阅读 {date}', {
+                    date: new Date(entry.reading.updatedAt).toLocaleString(locale),
+                  })
+                }}</span>
+                <UiButton
+                  variant="ghost"
+                  type="submit"
+                  class="source-continue"
+                  :disabled="busy || moving || inRound"
+                  @click="resume(entry.id)"
+                >
+                  {{ t('继续阅读') }}
+                </UiButton>
+              </template>
+            </div>
+            <nav v-if="pages > 1" class="source-list-pages" :aria-label="t('材料列表分页')">
+              <UiButton variant="ghost" type="button" :disabled="page === 0" @click="page--">
+                {{ t('上一页') }}</UiButton
+              ><span>{{ page + 1 }} / {{ pages }}</span
+              ><UiButton
+                variant="ghost"
+                type="button"
+                :disabled="page + 1 >= pages"
+                @click="page++"
+              >
+                {{ t('下一页') }}
+              </UiButton>
+            </nav>
+          </template>
         </aside>
+        <div
+          v-if="!inRound"
+          class="reading-splitter reading-splitter-left"
+          role="separator"
+          tabindex="0"
+          aria-orientation="vertical"
+          :aria-label="t('调整材料列表宽度')"
+          :aria-valuenow="panels.left.value"
+          aria-valuemin="180"
+          aria-valuemax="320"
+          @pointerdown="panels.start($event, 'left')"
+          @pointermove="panels.move"
+          @pointerup="panels.end"
+          @pointercancel="panels.cancel"
+          @lostpointercapture="panels.cancel"
+          @keydown="panels.keyboard($event, 'left')"
+        />
         <section
           v-if="roundEnded"
           class="empty-state source-queue-empty reading-round-complete"
@@ -1184,22 +1781,33 @@ async function download() {
           <p>{{ t('已到本轮末尾，阅读位置已保存。') }}</p>
           <p v-if="roundFilter" class="form-note reading-round-filter">{{ roundFilterLabel }}</p>
           <div class="source-actions">
-            <button
-              class="button primary"
+            <UiButton
+              variant="primary"
+              type="submit"
               :disabled="busy || moving || !(roundFilter ? filteredReadyCount : readyCount)"
               @click="beginRound(roundFilter)"
             >
               {{ t('再读一轮') }}
-            </button>
-            <button class="button secondary" :disabled="busy || moving" @click="stopRound">
+            </UiButton>
+            <UiButton
+              variant="secondary"
+              type="submit"
+              :disabled="busy || moving"
+              @click="stopRound"
+            >
               {{ t('返回材料') }}
-            </button>
-            <button class="button secondary" :disabled="busy || moving" @click="emit('review')">
+            </UiButton>
+            <UiButton
+              variant="secondary"
+              type="submit"
+              :disabled="busy || moving"
+              @click="emit('review')"
+            >
               {{ t('去复习卡片') }}
-            </button>
+            </UiButton>
           </div>
         </section>
-        <section v-else-if="source" class="source-reader">
+        <section v-else-if="source" class="source-reader app-section-stack">
           <div class="source-reader-heading">
             <div>
               <span v-if="source.kind === 'excerpt'" class="source-kind-badge">{{
@@ -1210,14 +1818,15 @@ async function download() {
                   <span v-if="entry.source.id === source.id" aria-current="page">{{
                     entry.source.title
                   }}</span>
-                  <button
+                  <UiButton
+                    variant="ghost"
+                    type="submit"
                     v-else
-                    class="text-button"
                     :disabled="busy || moving"
                     @click="ancestrySource = entry.source"
                   >
                     {{ entry.source.title }}
-                  </button>
+                  </UiButton>
                 </template>
               </nav>
               <h2>{{ source.title }}</h2>
@@ -1231,29 +1840,57 @@ async function download() {
               </p>
             </div>
             <div class="source-actions">
-              <button
-                class="button secondary"
-                :disabled="busy || moving || arranging || exporting || savingDetails"
+              <UiButton
+                v-if="inRound"
+                variant="ghost"
+                :aria-expanded="contextOpen"
+                @click="contextOpen = !contextOpen"
+                >{{ t('上下文') }}</UiButton
+              >
+              <UiButton
+                v-if="workbench && !session && !editingContent && editableText"
+                variant="primary"
+                :disabled="busy || moving || loading || !!error"
+                @click="beginEdit"
+                >{{ t('编辑正文') }}</UiButton
+              >
+              <UiButton
+                variant="secondary"
+                type="submit"
+                :disabled="
+                  busy || moving || arranging || exporting || savingDetails || editingContent
+                "
                 @click="openDetails"
               >
                 {{ t('编辑材料信息') }}
-              </button>
-              <button
-                class="button secondary"
+              </UiButton>
+              <UiButton
+                variant="secondary"
+                type="submit"
+                v-if="source.versions?.length"
+                :disabled="busy || moving"
+                @click="versionsOpen = true"
+              >
+                {{ t('历史版本') }}
+              </UiButton>
+              <UiButton
+                variant="secondary"
+                type="submit"
                 :disabled="loading || !!error || exporting"
                 @click="download"
               >
-                {{ t('导出原文') }}</button
-              ><button
-                class="text-button danger"
+                {{ t('导出原文') }}</UiButton
+              ><UiButton
+                variant="danger"
+                type="submit"
                 :disabled="(busy && !reading.savingId.value) || exporting || moving"
                 @click="openDelete"
               >
                 {{ t('删除材料') }}
-              </button>
+              </UiButton>
             </div>
           </div>
-          <div class="source-reading-actions">
+          <div class="source-reading-actions app-section-divider">
             <span class="form-note">{{
               queueState === 'archived'
                 ? t('已归档')
@@ -1261,53 +1898,84 @@ async function download() {
                   ? t('安排于 {date}', { date: readingDate(source.queue.availableOn) })
                   : t('待阅读')
             }}</span>
-            <div class="source-priority-control">
+            <StudyPriorityField
+              v-if="workbench?.setPriority"
+              id="source-study-priority"
+              :model-value="
+                source.studyPriority ??
+                (source.priority ? { high: 1, normal: 5, low: 9 }[source.priority] : undefined)
+              "
+              :inherited-value="
+                effectiveSourcePriority(
+                  { ...source, studyPriority: undefined, priority: undefined },
+                  library,
+                ).value
+              "
+              :inherited-from="
+                studyPriorityOrigin(
+                  library,
+                  effectiveSourcePriority(
+                    { ...source, studyPriority: undefined, priority: undefined },
+                    library,
+                  ),
+                )
+              "
+              :disabled="busy || arranging"
+              @update:model-value="changeStudyPriority"
+            />
+            <div v-else class="source-priority-control">
               <label for="source-reading-priority">{{ t('阅读优先级') }}</label>
-              <select
+              <UiSelect
+                :items="[
+                  ...Object.entries(priorityLabels).map(([value, label]) => ({
+                    label: t(label),
+                    value: value,
+                  })),
+                ]"
                 id="source-reading-priority"
-                :value="source.priority ?? 'normal'"
+                :model-value="source.priority ?? 'normal'"
                 :disabled="busy || arranging || moving"
                 aria-describedby="source-priority-help"
-                @change="changePriority"
-              >
-                <option v-for="(label, value) in priorityLabels" :key="value" :value="value">
-                  {{ t(label) }}
-                </option>
-              </select>
+                @update:model-value="changePriority"
+              ></UiSelect>
             </div>
             <div class="source-actions">
-              <button
+              <UiButton
+                variant="primary"
+                type="submit"
                 v-if="queueState !== 'archived'"
-                class="button primary"
                 :disabled="!canMove"
                 @click="openReadSchedule"
               >
                 {{ t('读过，安排下次') }}
-              </button>
-              <button
+              </UiButton>
+              <UiButton
+                variant="secondary"
+                type="submit"
                 v-if="queueState !== 'ready'"
-                class="button secondary"
                 :disabled="busy || arranging || moving"
                 @click="arrange({ type: 'restore' })"
               >
                 {{ t('加入待阅读') }}
-              </button>
-              <button
+              </UiButton>
+              <UiButton
+                variant="secondary"
+                type="submit"
                 v-if="queueState !== 'archived'"
-                class="button secondary"
                 :disabled="busy || arranging || moving"
                 @click="openDefer"
               >
                 {{ t('稍后阅读') }}
-              </button>
-              <button
+              </UiButton>
+              <UiButton
+                variant="ghost"
+                type="submit"
                 v-if="queueState !== 'archived'"
-                class="text-button"
                 :disabled="busy || arranging || moving"
                 @click="arrange({ type: 'archive' })"
               >
                 {{ t('归档材料') }}
-              </button>
+              </UiButton>
             </div>
           </div>
           <p id="source-priority-help" class="form-note source-priority-help">
@@ -1327,18 +1995,35 @@ async function download() {
                 })
               }}
             </p>
-            <button
-              class="text-button"
+            <UiButton
+              variant="ghost"
+              type="submit"
               :disabled="busy || arranging || moving"
               @click="openIntervalReset"
             >
               {{ t('重置间隔') }}
-            </button>
+            </UiButton>
           </div>
-          <p v-if="loading" role="status">{{ t('正在读取原文…') }}</p>
+          <SourceContentEditor
+            v-if="editingContent && workbench"
+            ref="contentEditor"
+            :source="source"
+            :text="text"
+            :scope="scope"
+            :busy="busy"
+            :prepare="workbench.prepareEditor"
+            :write-draft="workbench.writeDraft"
+            :discard-draft="workbench.discardDraft"
+            :save="workbench.editContent"
+            @close="editingContent = false"
+            @saved="editingContent = false"
+          />
+          <p v-else-if="loading" role="status">{{ t('正在读取原文…') }}</p>
           <template v-else-if="error"
             ><p class="import-warning" role="alert">{{ t(error) }}</p>
-            <button class="button secondary" @click="load">{{ t('重试') }}</button></template
+            <UiButton variant="secondary" type="submit" @click="load">
+              {{ t('重试') }}
+            </UiButton></template
           >
           <template v-else>
             <div
@@ -1366,65 +2051,104 @@ async function download() {
                 }}
               </p>
               <div class="source-actions">
-                <button
+                <UiButton
+                  variant="ghost"
+                  type="submit"
                   v-if="readingError"
-                  class="text-button"
                   :disabled="busy"
                   @click="reading.flush()"
                 >
                   {{ t('重试保存位置') }}
-                </button>
-                <button class="text-button" :disabled="busy || !reader?.ready" @click="remember">
+                </UiButton>
+                <UiButton
+                  variant="ghost"
+                  type="submit"
+                  :disabled="busy || !reader?.ready"
+                  @click="remember"
+                >
                   {{ t('保存阅读位置') }}
-                </button>
-                <button
-                  class="text-button"
+                </UiButton>
+                <UiButton
+                  variant="ghost"
+                  type="submit"
                   :disabled="busy || !reader?.ready"
                   @click="reader?.restart()"
                 >
                   {{ t('从头阅读') }}
-                </button>
+                </UiButton>
               </div>
             </div>
-            <SourceReader
-              :key="source.id + ':' + source.mediaId"
-              ref="reader"
-              :source="source"
-              :text="text"
-              :scope="scope"
-              @select="select"
-              @position="reading.record($event)"
-            />
+            <div class="app-section-divider app-section-stack">
+              <SourceReader
+                :actions="readerActions"
+                :hold-reading="reading.holdForAction"
+                :editable="!!workbench && !session"
+                :busy="busy"
+                @change-text="workbench?.editContent($event)"
+                :get-media="getMedia"
+                :key="source.id + ':' + source.mediaId"
+                ref="reader"
+                :source="source"
+                :sources="library.sources"
+                :initial-selection="
+                  source.origin?.locator?.kind === 'image' &&
+                  source.document?.format === 'image' &&
+                  !source.derived
+                    ? {
+                        locator: {
+                          ...source.origin.locator,
+                          sourceId: source.id,
+                          versionId: source.mediaId,
+                        },
+                        text,
+                        projection: { start: 0, end: text.length },
+                      }
+                    : undefined
+                "
+                :text="text"
+                :scope="scope"
+                :original-name="
+                  library.media.find((item) => item.id === source?.document?.originalMediaId)?.name
+                "
+                @select="select"
+                @position="reading.record($event)"
+                @wiki="openWiki"
+                @wiki-preview="openWiki"
+                @open="openDocumentSource"
+              />
+            </div>
             <div v-if="source.kind === 'excerpt'" class="source-excerpt-tools">
               <p v-if="!original" class="form-note">{{ t('原文已删除，摘录内容仍保留。') }}</p>
               <div class="source-actions">
-                <button
+                <UiButton
+                  variant="secondary"
+                  type="submit"
                   v-if="original"
-                  class="button secondary"
                   :disabled="busy"
                   @click="originOpen = true"
                 >
                   {{ t('查看出处') }}
-                </button>
-                <button
-                  class="button primary"
+                </UiButton>
+                <UiButton
+                  variant="primary"
+                  type="submit"
                   :disabled="busy || !library.decks.length"
                   @click="createFromWholeExcerpt"
                 >
                   {{ t('用此摘录制卡') }}
-                </button>
+                </UiButton>
               </div>
             </div>
             <p v-if="duplicates.length" class="source-duplicate" role="status">
               <span>{{ t('这段原文已有 {count} 份摘录。', { count: duplicates.length }) }}</span>
-              <button
+              <UiButton
+                variant="ghost"
                 type="button"
-                class="text-button"
                 :disabled="busy || moving"
                 @click="excerptList?.showMatches()"
               >
                 {{ t('查看已有摘录') }}
-              </button>
+              </UiButton>
             </p>
             <div class="source-excerpt-action">
               <span>{{
@@ -1432,40 +2156,139 @@ async function download() {
                   ? t('已选 {count} 个字符', { count: excerpt.quote.length })
                   : t('尚未选取摘录')
               }}</span>
-              <button class="button secondary" :disabled="busy || !excerpt" @click="openExcerpt">
+              <UiButton
+                variant="secondary"
+                type="submit"
+                :disabled="busy || !excerpt"
+                @click="openExcerpt"
+              >
                 {{ t('保存为摘录') }}
-              </button>
-              <button
-                class="button primary"
+              </UiButton>
+              <UiButton
+                variant="primary"
+                type="submit"
                 :disabled="busy || !excerpt || !library.decks.length"
                 @click="excerpt && emit('create', excerpt, source.format)"
               >
                 {{ t('用摘录制卡') }}
-              </button>
-              <button
+              </UiButton>
+              <UiButton
+                variant="secondary"
+                type="submit"
                 v-if="canShare"
-                class="button secondary"
                 :disabled="busy || !excerpt || !library.decks.length"
                 @click="excerpt && emit('share', excerpt)"
               >
                 {{ t('通过 MCP 制卡') }}
-              </button>
+              </UiButton>
+              <UiButton
+                v-if="workbench"
+                variant="secondary"
+                :disabled="busy || !excerpt || !library.decks.length"
+                @click="excerpt && emit('create', excerpt, source.format, 'cloze')"
+                >{{ t('制作挖空卡') }}</UiButton
+              >
+              <UiButton
+                v-if="workbench"
+                variant="ghost"
+                :disabled="busy || !excerpt"
+                @click="addAnnotation"
+                >{{ t('添加批注') }}</UiButton
+              >
             </div>
             <p v-if="!library.decks.length" class="form-note">
               {{ t('请先新建一个卡组，再用摘录制卡。') }}
             </p>
-            <details v-if="linked.length" class="source-linked">
-              <summary>{{ t('关联笔记（{count}）', { count: linked.length }) }}</summary>
-              <ul>
-                <li v-for="note in linked" :key="note.id">
-                  <button class="text-button" @click="emit('edit', note.id)">
-                    {{ note.front.slice(0, 120) }}
-                  </button>
-                </li>
-              </ul>
-            </details>
           </template>
           <p v-if="navigationError" class="import-warning" role="alert">{{ t(navigationError) }}</p>
+        </section>
+        <section v-else class="empty-state source-queue-empty">
+          <FileText :size="32" />
+          <h2>
+            {{
+              t(
+                !library.sources.length
+                  ? '还没有学习材料'
+                  : hasFilters
+                    ? '没有匹配的材料'
+                    : view === 'ready'
+                      ? '暂无待阅读材料'
+                      : '选择一篇材料开始阅读',
+              )
+            }}
+          </h2>
+          <p>
+            {{
+              t(
+                !library.sources.length
+                  ? '导入文本或 Markdown，也可以直接粘贴。原文会保存在当前学习库中。'
+                  : hasFilters
+                    ? '更换关键词或调整筛选条件。'
+                    : view === 'ready'
+                      ? '切换到稍后阅读或已归档查看材料。'
+                      : '当前列表为空。',
+              )
+            }}
+          </p>
+        </section>
+        <div
+          v-if="source && !roundEnded"
+          class="reading-splitter reading-splitter-right"
+          v-show="contextOpen"
+          role="separator"
+          tabindex="0"
+          aria-orientation="vertical"
+          :aria-label="t('调整上下文宽度')"
+          :aria-valuenow="panels.right.value"
+          aria-valuemin="180"
+          aria-valuemax="380"
+          @pointerdown="panels.start($event, 'right')"
+          @pointermove="panels.move"
+          @pointerup="panels.end"
+          @pointercancel="panels.cancel"
+          @lostpointercapture="panels.cancel"
+          @keydown="panels.keyboard($event, 'right')"
+        />
+        <aside
+          v-if="source && !roundEnded"
+          class="source-context-panel app-section-grid"
+          v-show="contextOpen"
+          :aria-label="t('材料上下文')"
+        >
+          <SourceLinks
+            :source="source"
+            :knowledge="knowledge"
+            :target="wikiTarget"
+            :busy="busy || inRound"
+            @open="openSearchResult"
+            @close-preview="wikiTarget = undefined"
+          />
+          <SourceMetadata :source="source" :scope="scope" :read-properties="readProperties" />
+          <SourceAnnotations
+            v-if="workbench"
+            ref="annotations"
+            :source="source"
+            :scope="scope"
+            :busy="busy"
+            :actions="workbench"
+            :read="read"
+            :get-media="getMedia"
+          />
+          <UiCollapsible :unmount-on-hide="false" v-if="linked.length" class="source-linked">
+            <template #default="{ open }"
+              ><UiButton type="button" variant="ghost" :aria-expanded="open">
+                {{ t('关联笔记（{count}）', { count: linked.length }) }}
+              </UiButton></template
+            ><template #content>
+              <ul>
+                <li v-for="note in linked" :key="note.id">
+                  <UiButton variant="ghost" type="submit" @click="emit('edit', note.id)">
+                    {{ note.front.slice(0, 120) }}
+                  </UiButton>
+                </li>
+              </ul>
+            </template>
+          </UiCollapsible>
           <SourceExcerptList
             v-if="savedExcerpts.length"
             :key="source.id + ':' + source.mediaId"
@@ -1475,39 +2298,25 @@ async function download() {
             :selection="excerpt"
             :today="today"
             :busy="busy || moving || arranging"
-            :can-locate="canMove"
+            :can-locate="canLocateExcerpt"
             @locate="locateExcerpt"
             @open="openExcerptSource"
           />
-        </section>
-        <section v-else class="empty-state source-queue-empty">
-          <FileText :size="32" />
-          <h2>
-            {{
-              t(
-                hasFilters
-                  ? '没有匹配的材料'
-                  : view === 'ready'
-                    ? '暂无待阅读材料'
-                    : '选择一篇材料开始阅读',
-              )
-            }}
-          </h2>
-          <p>
-            {{
-              t(
-                hasFilters
-                  ? '更换关键词或调整筛选条件。'
-                  : view === 'ready'
-                    ? '切换到稍后阅读或已归档查看材料。'
-                    : '当前列表为空。',
-              )
-            }}
-          </p>
-        </section>
+        </aside>
       </div>
     </template>
+    <CollectionImport
+      v-if="collection && !session"
+      ref="collectionImport"
+      :api="collection"
+      :scope="scope"
+      :busy="busy || moving || inRound"
+      :read-clipboard="readClipboard"
+      @collected="collected"
+      @activity="collecting = $event"
+    />
     <SourceBatchDialog
+      :settings="scheduling"
       v-if="batchDraft"
       :titles="batchDraft.entries.map((entry) => entry.title)"
       :now="now"
@@ -1517,6 +2326,7 @@ async function download() {
       @close="batchDraft = undefined"
     />
     <SourceContext
+      :get-media="getMedia"
       v-if="ancestrySource"
       :source="ancestrySource"
       :sources="library.sources"
@@ -1524,6 +2334,7 @@ async function download() {
       @close="ancestrySource = undefined"
     />
     <SourceContext
+      :get-media="getMedia"
       v-if="viewedExcerpt"
       :key="viewedExcerpt.id"
       :source="viewedExcerpt"
@@ -1534,13 +2345,31 @@ async function download() {
       @close="viewingExcerptId = ''"
     />
     <SourceContext
+      :get-media="getMedia"
       v-if="originOpen && original && source?.origin"
       :source="original"
-      :excerpt="{ ...source.origin, quote: text }"
+      :excerpt="source.derived ? undefined : { ...source.origin, quote: text }"
       :sources="library.sources"
       :read="read"
       @close="originOpen = false"
     />
+    <AppModal v-if="versionsOpen && source" :title="t('历史版本')" @close="versionsOpen = false">
+      <p>{{ t('旧版正文和阅读位置保留。查看旧版不会改变当前阅读进度。') }}</p>
+      <ul class="source-version-list">
+        <li v-for="(version, index) in source.versions" :key="version.mediaId">
+          <UiButton variant="secondary" type="submit" @click="openVersion(version.mediaId)">
+            {{
+              t('版本 {number} · {date}', {
+                number: index + 1,
+                date: new Date(version.acceptedAt).toLocaleString(locale),
+              })
+            }}</UiButton
+          ><span v-if="version.reading" class="form-note">{{
+            t('阅读位置：{offset}', { offset: version.reading.offset })
+          }}</span>
+        </li>
+      </ul>
+    </AppModal>
     <AppModal
       v-if="detailsDraft"
       :title="t('编辑材料信息')"
@@ -1550,7 +2379,7 @@ async function download() {
     >
       <form class="editor-form source-details-form" @submit.prevent="saveDetails">
         <label for="source-details-title">{{ t('材料标题') }}</label>
-        <input
+        <UiInput
           id="source-details-title"
           v-model="detailsDraft.details.title"
           required
@@ -1558,9 +2387,14 @@ async function download() {
           :disabled="busy || savingDetails"
         />
         <label for="source-details-url">{{ t('来源链接（可选）') }}</label>
-        <input
+        <UiInput
           id="source-details-url"
-          v-model="detailsDraft.details.url"
+          :model-value="detailsDraft?.details.url ?? ''"
+          @update:model-value="
+            (value: string) => {
+              if (detailsDraft) detailsDraft.details.url = value
+            }
+          "
           type="url"
           maxlength="2048"
           placeholder="https://"
@@ -1568,17 +2402,17 @@ async function download() {
         />
         <p class="form-note">{{ t('操作前会保存快照，可在「数据与备份」中恢复。') }}</p>
         <div class="form-actions">
-          <button
+          <UiButton
+            variant="secondary"
             type="button"
-            class="button secondary"
             :disabled="busy || savingDetails"
             @click="detailsDraft = undefined"
           >
             {{ t('取消') }}
-          </button>
-          <button class="button primary" :disabled="busy || savingDetails">
+          </UiButton>
+          <UiButton variant="primary" type="submit" :disabled="busy || savingDetails">
             {{ t('保存材料信息') }}
-          </button>
+          </UiButton>
         </div>
       </form>
     </AppModal>
@@ -1592,7 +2426,7 @@ async function download() {
     >
       <form class="editor-form source-excerpt-form" @submit.prevent="saveExcerpt">
         <label for="excerpt-title">{{ t('摘录标题') }}</label>
-        <input
+        <UiInput
           id="excerpt-title"
           v-model="excerptTitle"
           required
@@ -1600,20 +2434,25 @@ async function download() {
           :disabled="busy || savingExcerpt"
         />
         <label for="excerpt-body">{{ t('选中的原文') }}</label>
-        <textarea id="excerpt-body" :value="excerptDraft.input.excerpt.quote" readonly rows="8" />
+        <UiTextarea
+          id="excerpt-body"
+          :model-value="excerptDraft.input.excerpt.quote"
+          readonly
+          rows="8"
+        />
         <p class="form-note">{{ t('摘录会加入待阅读列表，可单独阅读和制卡。') }}</p>
         <div class="form-actions">
-          <button
+          <UiButton
+            variant="secondary"
             type="button"
-            class="button secondary"
             :disabled="busy || savingExcerpt"
             @click="excerptDraft = undefined"
           >
             {{ t('取消') }}
-          </button>
-          <button class="button primary" :disabled="busy || savingExcerpt">
+          </UiButton>
+          <UiButton variant="primary" type="submit" :disabled="busy || savingExcerpt">
             {{ t('保存摘录') }}
-          </button>
+          </UiButton>
         </div>
       </form>
     </AppModal>
@@ -1626,23 +2465,31 @@ async function download() {
     >
       <form class="source-defer-form" @submit.prevent="saveReadSchedule">
         <label for="reading-schedule-mode">{{ t('间隔方式') }}</label>
-        <select id="reading-schedule-mode" v-model="scheduleMode" :disabled="busy || arranging">
-          <option value="fixed">{{ t('固定递增') }}</option>
-          <option value="adaptive">{{ t('自适应') }}</option>
-        </select>
+        <UiSelect
+          :items="[
+            { label: t('固定递增'), value: 'fixed' },
+            { label: t('自适应'), value: 'adaptive' },
+          ]"
+          id="reading-schedule-mode"
+          v-model="scheduleMode"
+          :disabled="busy || arranging"
+        ></UiSelect>
         <fieldset
           v-if="scheduleMode === 'adaptive'"
           class="reading-feedback"
           :disabled="busy || arranging"
         >
           <legend>{{ t('这次理解如何？') }}</legend>
-          <label
-            v-for="(label, value) in { again: '需要再读', good: '基本理解', easy: '已经熟悉' }"
-            :key="value"
-          >
-            <input v-model="readingFeedback" type="radio" name="reading-feedback" :value="value" />
-            {{ t(label) }}
-          </label>
+          <URadioGroup
+            v-model="readingFeedback"
+            name="reading-feedback"
+            :disabled="busy || arranging"
+            :items="[
+              { value: 'again', label: t('需要再读') },
+              { value: 'good', label: t('基本理解') },
+              { value: 'easy', label: t('已经熟悉') },
+            ]"
+          />
         </fieldset>
         <p class="source-interval-summary">
           {{ t('本次间隔：{interval}', { interval: duration(selectedPlan.intervalDays, 'day') }) }}
@@ -1671,17 +2518,17 @@ async function download() {
         </p>
         <p class="form-note">{{ t('按本机日期安排，到这一天会自动加入待阅读列表。') }}</p>
         <div class="form-actions">
-          <button
+          <UiButton
+            variant="secondary"
             type="button"
-            class="button secondary"
             :disabled="busy || arranging"
             @click="schedulingRead = false"
           >
             {{ t('取消') }}
-          </button>
-          <button class="button primary" :disabled="busy || arranging || !canMove">
+          </UiButton>
+          <UiButton variant="primary" type="submit" :disabled="busy || arranging || !canMove">
             {{ t('保存阅读安排') }}
-          </button>
+          </UiButton>
         </div>
       </form>
     </AppModal>
@@ -1695,15 +2542,17 @@ async function download() {
       <form class="source-defer-form" @submit.prevent="arrange({ type: 'reset-interval' })">
         <p>{{ t('下次从 1 天开始，已安排的阅读日期保持不变。') }}</p>
         <div class="form-actions">
-          <button
+          <UiButton
+            variant="secondary"
             type="button"
-            class="button secondary"
             :disabled="busy || arranging"
             @click="resettingInterval = false"
           >
             {{ t('取消') }}
-          </button>
-          <button class="button primary" :disabled="busy || arranging">{{ t('重置间隔') }}</button>
+          </UiButton>
+          <UiButton variant="primary" type="submit" :disabled="busy || arranging">
+            {{ t('重置间隔') }}
+          </UiButton>
         </div>
       </form>
     </AppModal>
@@ -1718,42 +2567,43 @@ async function download() {
         <fieldset class="source-defer-options" :disabled="busy || arranging">
           <legend>{{ t('快捷安排') }}</legend>
           <div>
-            <button
+            <UiButton
+              variant="secondary"
               v-for="option in deferOptions"
               :key="option.label"
               type="button"
-              class="button secondary source-defer-option"
+              class="source-defer-option"
               :aria-pressed="deferDate === option.date"
               @click="deferDate = option.date"
             >
               <span>{{ t(option.label) }}</span>
               <time :datetime="option.date">{{ readingDate(option.date) }}</time>
-            </button>
+            </UiButton>
           </div>
         </fieldset>
         <label for="source-reading-date">{{ t('下次阅读日期') }}</label>
-        <input
+        <UiInput
           id="source-reading-date"
           v-model="deferDate"
           type="date"
           required
-          :min="nextReadingDay(now)"
+          :min="nextReadingDay(now, 1, scheduling)"
           max="9999-12-31"
           :disabled="busy || arranging"
         />
         <p class="form-note">{{ t('按本机日期安排，到这一天会自动加入待阅读列表。') }}</p>
         <div class="form-actions">
-          <button
+          <UiButton
+            variant="secondary"
             type="button"
-            class="button secondary"
             :disabled="busy || arranging"
             @click="deferring = false"
           >
             {{ t('取消') }}
-          </button>
-          <button class="button primary" :disabled="busy || arranging">
+          </UiButton>
+          <UiButton variant="primary" type="submit" :disabled="busy || arranging">
             {{ t('保存阅读安排') }}
-          </button>
+          </UiButton>
         </div>
       </form>
     </AppModal>
@@ -1778,22 +2628,23 @@ async function download() {
           :disabled="busy || readingFile"
           :aria-label="t('选择材料文件')"
           @change="fileChanged"
-        /><button
+        /><UiButton
+          variant="secondary"
           type="button"
-          class="button attachment-button"
+          class="attachment-button"
           :disabled="busy || readingFile"
           @click="fileInput?.click()"
         >
-          <Upload :size="18" />{{ t('选择材料文件') }}</button
+          <Upload :size="18" />{{ t('选择材料文件') }}</UiButton
         ><label for="source-title">{{ t('材料标题') }}</label
-        ><input
+        ><UiInput
           id="source-title"
           v-model="form.title"
           required
           maxlength="160"
           :disabled="busy || readingFile"
         /><label for="source-url">{{ t('来源链接（可选）') }}</label
-        ><input
+        ><UiInput
           id="source-url"
           v-model="form.url"
           type="url"
@@ -1801,11 +2652,17 @@ async function download() {
           placeholder="https://"
           :disabled="busy || readingFile"
         /><label for="source-format">{{ t('内容格式') }}</label
-        ><select id="source-format" v-model="form.format" :disabled="busy || readingFile">
-          <option value="markdown">Markdown</option>
-          <option value="plain">{{ t('纯文本') }}</option></select
+        ><UiSelect
+          :items="[
+            { label: 'Markdown', value: 'markdown' },
+            { label: t('纯文本'), value: 'plain' },
+          ]"
+          id="source-format"
+          v-model="form.format"
+          :disabled="busy || readingFile"
+        ></UiSelect
         ><label for="source-content">{{ t('粘贴正文') }}</label
-        ><textarea
+        ><UiTextarea
           id="source-content"
           v-model="form.content"
           required
@@ -1816,11 +2673,11 @@ async function download() {
         <p v-if="readingFile" role="status">{{ t('正在读取原文…') }}</p>
         <p v-if="importError" class="import-warning" role="alert">{{ t(importError) }}</p>
         <div class="form-actions">
-          <button type="button" class="button secondary" :disabled="busy" @click="closeImport">
-            {{ t('取消') }}</button
-          ><button class="button primary" :disabled="busy || readingFile">
+          <UiButton variant="secondary" type="button" :disabled="busy" @click="closeImport">
+            {{ t('取消') }}</UiButton
+          ><UiButton variant="primary" type="submit" :disabled="busy || readingFile">
             {{ t('保存材料') }}
-          </button>
+          </UiButton>
         </div>
       </form>
     </AppModal>
@@ -1847,15 +2704,15 @@ async function download() {
         </p>
         <p class="form-note">{{ t('操作前会保存快照，可在「数据与备份」中恢复。') }}</p>
         <div class="form-actions">
-          <button class="button secondary" :disabled="busy" @click="deleting = false">
-            {{ t('取消') }}</button
-          ><button class="button danger" :disabled="busy" @click="remove">
+          <UiButton variant="secondary" type="submit" :disabled="busy" @click="deleting = false">
+            {{ t('取消') }}</UiButton
+          ><UiButton variant="danger" type="submit" :disabled="busy" @click="remove">
             {{ t('确认删除') }}
-          </button>
+          </UiButton>
         </div>
       </div></AppModal
     >
-  </div>
+  </AppPage>
 </template>
 
 <style scoped>
@@ -1871,27 +2728,11 @@ async function download() {
   display: flex;
   align-items: center;
   gap: 0.65rem;
-  min-height: 32px;
-  font-size: 1rem;
-}
-.source-defer-form .reading-feedback input[type='radio'] {
-  width: 18px;
-  height: 18px;
-  min-height: 18px;
-  padding: 0;
-  margin: 0;
-  flex: 0 0 18px;
+  min-height: var(--ui-control-height);
+  font-size: var(--font-size-body);
 }
 #reading-schedule-mode {
-  width: 100%;
-  min-height: 44px;
-  font: inherit;
   margin: 0.5rem 0 1rem;
-  padding: 0.65rem 0.75rem;
-  color: inherit;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 8px;
 }
 .source-selection-toolbar {
   display: flex;
@@ -1899,11 +2740,11 @@ async function download() {
   justify-content: space-between;
   align-items: center;
   gap: 0.75rem 1rem;
-  padding: 1rem;
-  margin-bottom: 1rem;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #fafbf8;
+  border-radius: 14px;
+  background: var(--paper);
 }
 .source-selection-toolbar p {
   margin: 0;
@@ -1914,14 +2755,7 @@ async function download() {
   gap: 0.6rem;
   min-height: 44px;
   cursor: pointer;
-  font-size: 0.875rem;
-}
-.source-selection input {
-  width: 1.15rem;
-  height: 1.15rem;
-  min-height: 0;
-  margin: 0;
-  accent-color: #55765a;
+  font-size: var(--font-size-meta);
 }
 .source-ancestry {
   display: flex;
@@ -1929,7 +2763,7 @@ async function download() {
   align-items: center;
   gap: 0.25rem 0.75rem;
   margin-bottom: 0.6rem;
-  font-size: 0.875rem;
+  font-size: var(--font-size-meta);
   overflow-wrap: anywhere;
 }
 .source-ancestry > * {
@@ -1948,10 +2782,10 @@ async function download() {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem 1rem;
-  margin: 0;
   padding: 0.75rem 1rem;
-  border-left: 3px solid #67886d;
-  background: #f4f7ef;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ui-bg-muted);
 }
 
 .source-kind-badge {
@@ -1960,9 +2794,9 @@ async function download() {
   margin-bottom: 0.4rem;
   padding: 0.2rem 0.5rem;
   border-radius: 5px;
-  color: #526149;
-  background: #edf0e7;
-  font-size: 0.875rem;
+  color: var(--green);
+  background: var(--sage);
+  font-size: var(--font-size-meta);
 }
 .source-excerpt-tools {
   display: grid;
@@ -1977,10 +2811,10 @@ async function download() {
   overflow: auto;
 }
 .source-excerpt-form textarea {
-  min-height: 10rem;
+  --ui-textarea-min-height: 10rem;
   max-height: 35vh;
   white-space: pre-wrap;
-  line-height: 1.7;
+  line-height: var(--line-height-ui);
 }
 
 .reading-round {
@@ -1994,12 +2828,12 @@ async function download() {
   gap: 1rem;
   padding: 1rem 1.25rem;
   margin-bottom: 1rem;
-  border: 1px solid #b9cbb1;
-  border-radius: 10px;
-  background: #eef4e9;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--sage);
 }
 .reading-round strong {
-  font-size: 1rem;
+  font-size: var(--font-size-body);
 }
 .reading-round .form-note {
   margin: 0.4rem 0 0;
@@ -2011,16 +2845,16 @@ async function download() {
   overflow-wrap: anywhere;
 }
 .source-filters {
-  padding: 1rem;
-  margin-bottom: 1.25rem;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #fff;
+  border-radius: 14px;
+  background: var(--paper);
 }
 .source-filter-fields {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));
-  gap: 1rem;
+  gap: 1.25rem;
 }
 .source-filter-field {
   display: grid;
@@ -2028,19 +2862,7 @@ async function download() {
   gap: 0.5rem;
 }
 .source-filter-fields label {
-  font-size: 1rem;
-}
-.source-filter-fields input,
-.source-filter-fields select {
-  width: 100%;
-  min-width: 0;
-  min-height: 44px;
-  padding: 0.65rem 0.75rem;
-  border: 1px solid #d4decd;
-  border-radius: 8px;
-  background: #fafbf8;
-  color: inherit;
-  font: inherit;
+  font-size: var(--font-size-body);
 }
 .source-filter-footer {
   display: flex;
@@ -2053,30 +2875,25 @@ async function download() {
 .source-filter-footer p {
   margin: 0;
 }
+.source-toolbar,
+.source-tools,
 .source-queue-filters {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+  align-items: center;
+}
+.source-toolbar {
+  justify-content: space-between;
   margin-bottom: 1.25rem;
 }
-.source-queue-filters button {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  min-height: 44px;
-  padding: 0.6rem 1rem;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fff;
-  font-size: 1rem;
-}
-.source-queue-filters button[aria-pressed='true'] {
-  background: #e7eee3;
-  border-color: #67886d;
+.source-toolbar [aria-pressed='true'] {
+  background: var(--sage);
+  border-color: var(--green);
 }
 .source-queue-filters span {
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--font-size-meta);
 }
 .source-reading-actions {
   display: flex;
@@ -2090,20 +2907,11 @@ async function download() {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem;
-  font-size: 1rem;
+  font-size: var(--font-size-body);
 }
-.source-priority-control select {
-  min-height: 44px;
+.source-priority-control :deep([role='combobox']) {
   min-width: 6rem;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #d4decd;
-  border-radius: 8px;
-  color: inherit;
-  background: #fafbf8;
-  font: inherit;
-}
-.source-priority-help {
-  margin: 0;
+  width: auto;
 }
 .source-interval-control {
   display: flex;
@@ -2115,11 +2923,11 @@ async function download() {
   margin: 0;
 }
 .source-interval-summary {
-  font-size: 1.125rem;
-  font-weight: 600;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
 }
 .source-interval-date {
-  font-size: 1rem;
+  font-size: var(--font-size-meta);
 }
 .source-interval-steps {
   display: flex;
@@ -2133,11 +2941,11 @@ async function download() {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 0.45rem 0.6rem;
-  font-size: 0.875rem;
+  font-size: var(--font-size-meta);
 }
 .source-interval-steps li[aria-current='step'] {
-  border-color: #67886d;
-  background: #e7eee3;
+  border-color: var(--green);
+  background: var(--sage);
 }
 .source-queue-empty {
   padding: 2rem 1rem;
@@ -2161,53 +2969,88 @@ async function download() {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.5rem;
 }
-.source-defer-option {
+.source-defer-option.ui-button {
   display: grid;
   gap: 0.4rem;
   padding: 0.85rem 0.5rem;
-  font-size: 1rem;
+  font-size: var(--font-size-body);
 }
 .source-defer-option time {
   color: var(--muted);
-  font-size: 0.875rem;
-}
-.source-defer-option[aria-pressed='true'] {
-  border-color: #67886d;
-  background: #e7eee3;
+  font-size: var(--font-size-meta);
 }
 @media (max-width: 480px) {
   .source-defer-options > div {
     grid-template-columns: minmax(0, 1fr);
   }
-  .source-defer-option {
+  .source-defer-option.ui-button {
     display: flex;
     justify-content: space-between;
     padding: 0.85rem 0.75rem;
   }
 }
-.source-defer-form input {
-  min-width: 0;
-  width: 100%;
-  min-height: 44px;
-  padding: 0.65rem;
-  border: 1px solid #d4decd;
-  border-radius: 8px;
-  color: inherit;
-  background: #fafbf8;
-  font: inherit;
-}
 .sources-layout {
   display: grid;
-  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
-  gap: 1.5rem;
+  grid-template-columns: var(--reading-list-width) 12px minmax(0, 1fr);
+  gap: 0;
   align-items: start;
+}
+.sources-layout.has-context {
+  grid-template-columns: var(--reading-list-width) 12px minmax(0, 1fr) 12px var(
+      --reading-context-width
+    );
 }
 .sources-layout.round-layout {
   grid-template-columns: minmax(0, 1fr);
 }
+.sources-layout.round-layout.has-context {
+  grid-template-columns: minmax(0, 1fr) 12px var(--reading-context-width);
+}
+.source-context-panel {
+  display: grid;
+  column-gap: 1.5rem;
+  min-width: 0;
+  padding: 0.75rem;
+  max-height: 80vh;
+  overflow: auto;
+  position: sticky;
+  top: 1rem;
+}
+.source-list-switch {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.5rem;
+}
+.source-list-switch [aria-pressed='true'] {
+  background: var(--sage);
+}
+.reading-splitter {
+  align-self: stretch;
+  min-height: 10rem;
+  position: relative;
+  touch-action: none;
+  cursor: col-resize;
+}
+.reading-splitter::after {
+  content: '';
+  position: absolute;
+  inset: 0 5px;
+  background: transparent;
+  border-radius: 2px;
+  transition: background-color 150ms;
+}
+.reading-splitter:hover::after,
+.reading-splitter:focus-visible::after {
+  background: var(--green);
+}
+.reading-splitter:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: -2px;
+}
 .source-list {
   display: grid;
-  gap: 0.6rem;
+  gap: 0.75rem;
   max-height: 70vh;
   overflow: auto;
   padding: 0.2rem;
@@ -2221,17 +3064,24 @@ async function download() {
 .source-list-item {
   text-align: left;
   display: grid;
-  gap: 0.4rem;
-  padding: 0.9rem;
+  gap: 0.625rem;
+  padding: 1.25rem;
   color: inherit;
-  background: #fff;
+  background: var(--paper);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 12px;
   overflow-wrap: anywhere;
+  transition:
+    border-color 160ms,
+    background-color 160ms;
+}
+.source-list-item:hover {
+  border-color: color-mix(in srgb, var(--green) 50%, var(--ui-border));
+  background: var(--ui-bg-muted);
 }
 .source-list-item.selected {
-  border-color: #67886d;
-  background: #eef4e9;
+  border-color: var(--green);
+  background: var(--sage);
 }
 .source-list-title {
   border: 0;
@@ -2241,6 +3091,9 @@ async function download() {
   text-align: left;
   padding: 0;
   cursor: pointer;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.65;
 }
 .source-continue {
   justify-self: start;
@@ -2251,11 +3104,9 @@ async function download() {
   align-items: center;
   justify-content: space-between;
   gap: 0.6rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--line);
 }
 .source-list-item span {
-  font-size: 0.9rem;
+  font-size: var(--font-size-meta);
   color: var(--muted);
 }
 .source-list-item .source-priority-badge {
@@ -2263,17 +3114,15 @@ async function download() {
   padding: 0.2rem 0.5rem;
   border: 1px solid var(--line);
   border-radius: 6px;
-  color: #354d3d;
-  background: #f4f7ef;
+  color: var(--green);
+  background: var(--ui-bg-muted);
 }
 .source-reader {
   min-width: 0;
-  padding: 1.4rem;
-  background: #fff;
+  padding: 2rem;
+  background: var(--paper);
   border: 1px solid var(--line);
-  border-radius: 14px;
-  display: grid;
-  gap: 1rem;
+  border-radius: 12px;
 }
 .source-reader-heading {
   display: flex;
@@ -2286,6 +3135,8 @@ async function download() {
 }
 .source-reader h2 {
   margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+  line-height: 1.5;
   overflow-wrap: anywhere;
 }
 .source-reader a {
@@ -2317,10 +3168,12 @@ async function download() {
 .source-import-form .form-actions {
   position: sticky;
   bottom: -1.25rem;
-  margin: 0 -1.75rem -1.25rem;
-  padding: 1rem 1.75rem;
-  background: #fff;
-  box-shadow: 0 -4px 12px #293d3308;
+  margin-inline: -1.75rem;
+  margin-block-end: -1.25rem;
+  padding-inline: 1.75rem;
+  padding-block-end: 1rem;
+  background: var(--ui-bg);
+  box-shadow: 0 -4px 12px color-mix(in srgb, var(--ui-text) 4%, transparent);
 }
 .source-import-form .attachment-button {
   justify-self: start;
@@ -2332,23 +3185,43 @@ async function download() {
 }
 .source-delete {
   padding: 1.25rem 1.75rem;
-  line-height: 1.7;
+  line-height: var(--line-height-ui);
 }
-@media (max-width: 850px) {
-  .sources-layout {
+@media (max-width: 1100px) {
+  .sources-layout,
+  .sources-layout.has-context,
+  .sources-layout.round-layout.has-context {
     grid-template-columns: minmax(0, 1fr);
+    gap: 1.25rem;
+  }
+  .reading-splitter {
+    display: none;
+  }
+  .source-context-panel {
+    position: static;
+    max-height: none;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   }
   .source-list {
     max-height: min(22rem, 45vh);
   }
   .source-reader {
-    padding: 1rem;
+    padding: 1.5rem;
   }
   .source-text {
     min-height: 20rem;
   }
 }
+@media (prefers-reduced-motion: reduce) {
+  .reading-splitter::after {
+    transition: none;
+  }
+}
 @media (max-width: 720px) {
+  .source-filters,
+  .source-reader {
+    padding: 1.25rem;
+  }
   .source-filter-fields {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -2360,8 +3233,9 @@ async function download() {
   }
   .source-import-form .form-actions {
     bottom: -1rem;
-    margin: 0 -1rem -1rem;
-    padding: 1rem;
+    margin-inline: -1rem;
+    margin-block-end: -1rem;
+    padding-inline: 1rem;
   }
 }
 </style>

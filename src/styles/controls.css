@@ -1,0 +1,102 @@
+/* Shared layout for application and SDK settings. Nuxt UI owns every control's
+   surface, typography, focus, disabled, validation and semantic color states. */
+@layer base {
+  :root {
+    --ui-control-height: 2.75rem;
+    --ui-control-radius: var(--ui-radius);
+    --ui-control-focus: var(--ui-primary);
+    --ui-control-error: var(--ui-error);
+  }
+}
+
+/* Match the approved prototype's tactile controls without moving native Snap targets. */
+@media (prefers-reduced-motion: no-preference) {
+  .ui-button:not(.desktop-window-button) {
+    transition:
+      background-color 160ms,
+      border-color 160ms,
+      box-shadow 160ms,
+      transform 80ms;
+  }
+  .ui-button:not(.desktop-window-button):active:not(:disabled):not([aria-disabled='true']) {
+    transform: scale(0.98);
+  }
+}
+
+@layer components {
+  .ui-setting-group {
+    min-width: 0;
+    margin-bottom: 1.5rem;
+    container-type: inline-size;
+    overflow-wrap: anywhere;
+  }
+
+  .ui-setting-group__intro,
+  .ui-setting-section,
+  .ui-setting-section__intro {
+    min-width: 0;
+  }
+
+  .ui-setting-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .ui-setting-meta {
+    display: grid;
+    grid-template-columns: minmax(4rem, auto) minmax(0, 1fr);
+    gap: 0.5rem 1.5rem;
+    margin: 0;
+    font-size: var(--font-size-meta);
+    line-height: var(--line-height-ui);
+  }
+
+  .ui-setting-meta dt {
+    color: var(--ui-text-muted);
+  }
+
+  .ui-setting-meta dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* UFormField provides the labels, descriptions and validation relationships.
+     These widths only arrange its two slots within a settings card. */
+  .ui-setting-field[data-orientation='horizontal'] {
+    flex-wrap: wrap;
+  }
+
+  .ui-setting-field[data-orientation='horizontal'] > [data-slot='wrapper'] {
+    flex: 1 1 14rem;
+  }
+
+  .ui-setting-field[data-orientation='horizontal'] > :last-child {
+    flex: 0 1 40%;
+    min-width: min(100%, 12rem);
+  }
+
+  .ui-setting-field--binary[data-orientation='horizontal'] > :last-child {
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+
+  @container (max-width: 36rem) {
+    .ui-setting-field:not(.ui-setting-field--binary)[data-orientation='horizontal'] > :last-child {
+      flex-basis: 100%;
+    }
+  }
+
+  @media (max-width: 500px) {
+    .ui-setting-meta {
+      grid-template-columns: minmax(0, 1fr);
+      row-gap: 0.25rem;
+    }
+
+    .ui-setting-meta dd:not(:last-child) {
+      margin-bottom: 0.75rem;
+    }
+  }
+}

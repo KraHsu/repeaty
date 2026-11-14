@@ -3,6 +3,7 @@ import App from '../src/App.vue'
 import '../src/style.css'
 import { fixture, now } from '../src/core/test-fixtures'
 import { createRepository } from '../src/core/storage'
+import { installApplicationState } from '../src/stores'
 
 const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
 async function until(test: () => boolean) {
@@ -56,6 +57,7 @@ async function benchmark(prepared: Awaited<ReturnType<typeof prepare>>) {
   const root = document.createElement('div')
   document.body.append(root)
   const app = createApp(App)
+  installApplicationState(app)
   const longTasks: number[] = []
   const observer = new PerformanceObserver((list) => {
     for (const entry of list.getEntries()) longTasks.push(entry.duration)

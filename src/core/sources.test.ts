@@ -121,7 +121,10 @@ it('round-trips sources and offsets through archives, JSON and media rekeying', 
   for (const data of [archive, json]) {
     const restored = rekeyBackup(data)
     expect(restored.library.sources[0]!.mediaId).not.toBe(asset.meta.id)
-    expect(restored.library.notes[0]!.excerpt).toEqual(linked.notes[0]!.excerpt)
+    expect(restored.library.notes[0]!.excerpt).toEqual({
+      ...linked.notes[0]!.excerpt,
+      mediaId: restored.library.sources[0]!.mediaId,
+    })
     expect(
       await readSource(
         restored.library.sources[0]!,
@@ -181,6 +184,6 @@ it('upgrades a real v7 database and keeps existing checkpoints, while old client
   const { sources: _sources, ...v5 } = library
   expect(migrateLibrary({ ...v5, version: 5 })).toEqual(library)
   expect(() => librarySchema.parse(v5)).toThrow()
-  expect(emptyLibrary().version).toBe(13)
+  expect(emptyLibrary().version).toBe(19)
   await repo.close()
 })

@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { noteSchema } from './model'
 import { MAX_DRAFTS, type CardDraft } from './card-draft-data'
 export { MAX_DRAFTS, type CardDraft } from './card-draft-data'
-import type { SourceExcerpt } from './source-data'
+import { sourceAtVersion, type SourceExcerpt } from './source-data'
 import { sourceExcerpt } from './sources'
 import { LearningQueryError, type LocalLearningSnapshot } from './learning-reader'
 
@@ -78,7 +78,8 @@ export class DraftSession {
       context.scope === entry.scope &&
       context.scope === this.scope &&
       context.library.sources.some(
-        (source) => source.id === entry.excerpt.sourceId && source.mediaId === entry.mediaId,
+        (source) =>
+          source.id === entry.excerpt.sourceId && !!sourceAtVersion(source, entry.mediaId),
       ) &&
       context.library.decks.some((deck) => deck.id === entry.deckId)
     )
@@ -91,7 +92,8 @@ export class DraftSession {
     text: string,
   ) {
     this.context(context)
-    const source = context.library.sources.find((source) => source.id === excerpt.sourceId)
+    const document = context.library.sources.find((source) => source.id === excerpt.sourceId)
+    const source = document && sourceAtVersion(document, mediaId)
     if (
       !source ||
       source.mediaId !== mediaId ||

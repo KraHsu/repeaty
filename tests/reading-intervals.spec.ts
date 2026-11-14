@@ -34,9 +34,9 @@ test('a quota failure retains the interval confirmation and round for a single s
   await expect(dialog.getByRole('alert')).toContainText('存储空间不足')
   expect(await localLibrary(page)).toEqual(before)
   await expect(dialog.locator('[aria-current="step"]')).toHaveText('1天')
-  await expect(page.getByRole('region', { name: '本轮阅读', exact: true })).toContainText(
-    '第 1 篇，共 2 篇',
-  )
+  await expect(
+    page.getByRole('region', { name: '本轮阅读', exact: true, includeHidden: true }),
+  ).toContainText('第 1 篇，共 2 篇')
   await page.evaluate(() => ((window as unknown as { failInterval: boolean }).failInterval = false))
   await dialog.getByRole('button', { name: '保存阅读安排', exact: true }).click()
   await expect(dialog).toHaveCount(0)

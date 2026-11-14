@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { fixture } from './test-fixtures'
-import { addSource, prepareSource, sourceExcerpt } from './sources'
+import { addSource, prepareSource, sourceExcerpt, replaceSourceContent } from './sources'
 import { DraftSession, MAX_DRAFTS, MAX_PROPOSALS } from './draft-proposals'
 
 function example() {
@@ -45,6 +45,21 @@ it('shares only the explicitly selected excerpt and never the rest of its snapsh
   expect(() => session.readSelection({ ...context, scope: 'server:user' }, {})).toThrow(
     'library-unavailable',
   )
+})
+it('keeps received drafts and explicit shares bound to the original source version after an edit', () => {
+  const { session, context, share, source, args, excerpt } = example()
+  share()
+  const proposal = session.prepare(context, args())
+  proposal.finish(true)
+  const changed = replaceSourceContent(context.library, source.id, {
+    title: 'New',
+    url: '',
+    format: 'markdown',
+    content: 'A shorter replacement',
+  })
+  const updated = { ...context, library: changed.library, revision: 8 }
+  expect(session.readSelection(updated, {}).text).toBe(excerpt.quote)
+  expect(session.getDraft(updated, session.drafts[0]!.id).excerpt.mediaId).toBe(source.mediaId)
 })
 
 it('accepts all three note types as drafts only after acknowledgement, without changing study records', () => {

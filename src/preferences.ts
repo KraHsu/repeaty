@@ -1,12 +1,16 @@
+import { readSetting, writeSetting } from './settings-store'
 import { reactive, readonly, ref } from 'vue'
 import { z } from 'zod'
+import { APPEARANCE_KEY, restoreAppearance } from './appearance'
+import { NAVIGATION_KEY, restoreNavigationPreferences } from './navigation-preferences'
 
 export const PREFERENCES_KEY = 'repeaty.preferences.v1'
+export const colorThemes = ['system', 'light', 'dark'] as const
+export type ColorTheme = (typeof colorThemes)[number]
 export const notificationLevels = ['info', 'warning', 'error'] as const
 export type NotificationLevel = (typeof notificationLevels)[number]
 const schema = z.object({
-  historyLength: z.number().int().min(1).max(50).catch(10),
-  historyAfterReveal: z.boolean().catch(true),
+  theme: z.enum(colorThemes).catch('system'),
   popupInfo: z.boolean().catch(true),
   popupWarning: z.boolean().catch(true),
   popupError: z.boolean().catch(true),
@@ -16,8 +20,10 @@ const state = reactive(schema.parse({}))
 export const preferences = readonly(state)
 export const preferenceError = ref('')
 export function restorePreferences() {
+  restoreAppearance()
+  restoreNavigationPreferences()
   try {
-    Object.assign(state, schema.parse(JSON.parse(localStorage.getItem(PREFERENCES_KEY) ?? '{}')))
+    Object.assign(state, schema.parse(JSON.parse(readSetting(PREFERENCES_KEY) ?? '{}')))
   } catch {
     Object.assign(state, schema.parse({}))
   }
@@ -28,7 +34,9 @@ export function setPreference<K extends keyof Preferences>(key: K, value: Prefer
   Object.assign(state, result.data)
   preferenceError.value = ''
   try {
-    localStorage.setItem(PREFERENCES_KEY, JSON.stringify(state))
+    writeSetting(PREFERENCES_KEY, JSON.stringify(state), () => {
+      preferenceError.value = '设置已生效，但未能保存；下次打开时可能恢复默认设置。'
+    })
   } catch {
     preferenceError.value = '设置已生效，但未能保存；下次打开时可能恢复默认设置。'
   }
@@ -38,6 +46,8 @@ export function listenPreferences() {
   restorePreferences()
   const receive = (event: StorageEvent) => {
     if (event.key === null || event.key === PREFERENCES_KEY) restorePreferences()
+    else if (event.key === APPEARANCE_KEY) restoreAppearance()
+    else if (event.key === NAVIGATION_KEY) restoreNavigationPreferences()
   }
   window.addEventListener('storage', receive)
   return () => window.removeEventListener('storage', receive)

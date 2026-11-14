@@ -17,7 +17,7 @@ test('a failed account grade retries once and a slow snapshot list cannot delay 
 }) => {
   await seedPolish(page)
   await page.getByRole('button', { name: '学习概览', exact: true }).click()
-  await page.locator('.deck-review').click()
+  await page.locator('.b-start-review').click()
   await page.getByRole('button', { name: '显示答案', exact: true }).click()
   await page.route(
     '**/api/library/commit',

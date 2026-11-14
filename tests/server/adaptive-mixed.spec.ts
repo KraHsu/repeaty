@@ -51,7 +51,7 @@ test('leaving mixed study during a durable save cannot revive its old session', 
   // A modal blocks pointer navigation. Trigger the same app transition directly to
   // exercise a stale response after its owning component has been disposed.
   await page
-    .getByRole('button', { name: '学习概览', exact: true })
+    .getByRole('button', { name: '学习概览', exact: true, includeHidden: true })
     .evaluate((button: HTMLButtonElement) => button.click())
   release()
   await expect(page.locator('.mixed-session')).toHaveCount(0)
