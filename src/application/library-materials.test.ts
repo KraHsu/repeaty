@@ -12,6 +12,9 @@ import { createRepository } from '../core/storage'
 import { PluginTaskScheduler } from '../plugins/tasks'
 import type { MaterialPluginIdentity } from '../plugins/materials'
 import { createLibraryService } from './library'
+import { exportBackup, parseBackup, rekeyBackup } from '../core/backups'
+import { exportArchive, parseArchive } from '../core/archive'
+import { librarySchema } from '../core/model'
 
 const services: ReturnType<typeof createLibraryService>[] = []
 const lifetimes: AbortController[] = []
@@ -19,6 +22,232 @@ afterEach(async () => {
   for (const controller of lifetimes.splice(0)) controller.abort()
   for (const service of services.splice(0)) await service.commands.close()
   vi.restoreAllMocks()
+})
+
+describe('document resources and chapter study transactions', () => {
+  const image = new Blob([new Uint8Array([137, 80, 78, 71, 1, 2, 3])], { type: 'image/png' })
+  const chapters = (mode: 'free' | 'sequential'): MaterialImportCandidate[] => [
+    {
+      ...candidates[0]!,
+      key: 'book',
+      title: 'Book',
+      text: 'Directory',
+      documentFormat: 'epub',
+      container: true,
+    },
+    ...[0, 1].map((index) => ({
+      ...candidates[0]!,
+      key: `chapter-${index}`,
+      title: `Chapter ${index + 1}`,
+      documentFormat: 'epub',
+      parentKey: 'book',
+      documentPath: `OPS/${index}.xhtml`,
+      resources: [{ path: 'OPS/image.png', blob: image }],
+      studySequence: { groupKey: 'book', index, mode },
+    })),
+  ]
+  async function importChapters(
+    test: Awaited<ReturnType<typeof setup>>,
+    mode: 'free' | 'sequential',
+    operationId: string,
+  ) {
+    test.importer.id = `epub-${mode}`
+    test.importer.extensions = ['.epub']
+    test.importer.parse = async () => chapters(mode)
+    const plan = await test.prepare([new File(['unchanged original EPUB'], 'book.epub')])
+    const result = await test.api.commitImport({
+      planId: plan.id,
+      expectedRevision: plan.revision,
+      operationId,
+    })
+    return { plan, result }
+  }
+  it('releases real existing chapters, rejects skipped completion, switches mode, and undoes completion', async () => {
+    const test = await setup()
+    const { result } = await importChapters(test, 'sequential', 'book-import')
+    const [root, first, second] = result.sourceIds as [string, string, string]
+    expect((await test.api.get(root)).material.document?.container).toBe(true)
+    expect((await test.api.get(first)).material.locked).toBe(false)
+    expect((await test.api.get(second)).material.locked).toBe(true)
+    await expect(
+      test.api.setSequence({
+        sourceId: second,
+        completed: true,
+        expectedRevision: test.api.snapshot().revision,
+        operationId: 'skip-first',
+      }),
+    ).rejects.toThrow('先完成')
+    const request = {
+      sourceId: first,
+      completed: true,
+      expectedRevision: test.api.snapshot().revision,
+      operationId: 'complete-first',
+    }
+    await test.api.setSequence(request)
+    await test.api.setSequence(request)
+    expect((await test.api.get(second)).material.locked).toBe(false)
+    expect(test.state.library.value.sources.map((item) => item.id)).toEqual(result.sourceIds)
+    await test.service.commands.undoLastOperation()
+    expect((await test.api.get(second)).material.locked).toBe(true)
+    await test.api.setSequence({
+      sourceId: root,
+      mode: 'free',
+      expectedRevision: test.api.snapshot().revision,
+      operationId: 'free-mode',
+    })
+    expect((await test.api.list()).every((item) => !item.locked)).toBe(true)
+    await test.api.setSequence({
+      sourceId: root,
+      mode: 'sequential',
+      expectedRevision: test.api.snapshot().revision,
+      operationId: 'sequential-mode',
+    })
+    expect((await test.api.get(second)).material.locked).toBe(true)
+    expect(test.state.library.value.sources).toHaveLength(3)
+  })
+  it('deduplicates across mode entry points and retains existing progress and media identities', async () => {
+    const test = await setup()
+    const { result: first } = await importChapters(test, 'sequential', 'first-mode')
+    await test.api.setSequence({
+      sourceId: first.sourceIds[1]!,
+      completed: true,
+      expectedRevision: test.api.snapshot().revision,
+      operationId: 'completed',
+    })
+    const media = test.state.library.value.media.map((item) => item.id)
+    const { plan, result: second } = await importChapters(test, 'free', 'second-mode')
+    expect(plan.candidates.every((item) => item.duplicate)).toBe(true)
+    expect(second.sourceIds).toEqual(first.sourceIds)
+    expect(test.state.library.value.media.map((item) => item.id)).toEqual(media)
+    expect((await test.api.get(first.sourceIds[1]!)).material.studySequence).toMatchObject({
+      mode: 'sequential',
+      completed: true,
+    })
+    const stored = test.state.library.value.sources
+    expect(stored[1]!.document!.resources![0]!.mediaId).toBe(
+      stored[2]!.document!.resources![0]!.mediaId,
+    )
+  })
+  it('rejects inconsistent sequence groups and duplicate resource paths before offering a preview', async () => {
+    const test = await setup()
+    test.importer.parse = async () => {
+      const result = chapters('sequential')
+      result[2]!.studySequence!.index = 0
+      return result
+    }
+    await expect(test.prepare()).rejects.toThrow('章节分组')
+    test.importer.parse = async () => [
+      {
+        ...candidates[0]!,
+        resources: [
+          { path: 'a.png', blob: image },
+          { path: 'a.png', blob: image },
+        ],
+      },
+    ]
+    await expect(test.prepare()).rejects.toThrow('资源路径重复')
+    expect((await test.repo.load()).library.sources).toEqual([])
+  })
+  it.each([
+    ['book.epub', 'application/epub+zip'],
+    ['paper.pdf', 'application/pdf'],
+    ['page.html', 'text/html'],
+    ['page.xhtml', 'text/html'],
+  ])('infers MIME for an original selected as %s without a browser type', async (name, type) => {
+    const test = await setup()
+    test.importer.extensions = [`.${name!.split('.').at(-1)}`]
+    test.importer.parse = async () => [
+      {
+        ...candidates[0]!,
+        documentFormat: name!.endsWith('.epub') ? 'epub' : name!.endsWith('.pdf') ? 'pdf' : 'html',
+      },
+    ]
+    const plan = await test.prepare([new File(['original bytes'], name!)])
+    const saved = await test.api.commitImport({
+      planId: plan.id,
+      expectedRevision: plan.revision,
+      operationId: 'infer-mime',
+    })
+    const original = await test.api.original(saved.sourceIds[0]!)
+    expect(original?.type).toBe(type)
+    expect(await original!.text()).toBe('original bytes')
+  })
+  it('passes only selected sidecars, retains original and resource bytes across undo/redo and both backup formats', async () => {
+    const test = await setup(),
+      sidecar = new File([image], 'images/a.png', { type: image.type })
+    test.importer.extensions = ['.html']
+    test.importer.parse = async (_file, context) => {
+      expect(context.files).toEqual([sidecar])
+      return [
+        {
+          ...candidates[0]!,
+          documentFormat: 'html',
+          documentPath: 'index.html',
+          url: 'https://example.com/article',
+          resources: [{ path: sidecar.name, blob: sidecar }],
+        },
+      ]
+    }
+    const plan = await test.api.prepareImport({
+      importerId: test.importer.id,
+      files: [new File(['<p>original</p>'], 'index.html')],
+      relatedFiles: [sidecar],
+    })
+    const saved = await test.api.commitImport({
+      planId: plan.id,
+      expectedRevision: plan.revision,
+      operationId: 'html-resources',
+    })
+    const id = saved.sourceIds[0]!
+    expect(await (await test.api.resource(id, 'images/a.png'))!.arrayBuffer()).toEqual(
+      await image.arrayBuffer(),
+    )
+    expect(await test.api.resource(id, 'not-selected.png')).toBeUndefined()
+    await expect(test.api.resource(id, '../private')).rejects.toThrow()
+    await test.service.commands.undoLastOperation()
+    expect(test.state.library.value.sources).toEqual([])
+    await test.service.commands.redoLastOperation()
+    expect(await (await test.api.resource(id, 'images/a.png'))!.arrayBuffer()).toEqual(
+      await image.arrayBuffer(),
+    )
+    const library = (await test.repo.load()).library
+    const read = (mediaId: string) => test.repo.getMedia(mediaId)
+    const copies = [
+      parseBackup(await exportBackup(library, read)),
+      await parseArchive((await exportArchive(library, read))!),
+    ]
+    for (const backup of copies) {
+      expect(backup.library.sources[0]!.document).toEqual(library.sources[0]!.document)
+      const restored = rekeyBackup(backup),
+        descriptor = restored.library.sources[0]!.document!
+      expect(librarySchema.safeParse(restored.library).success).toBe(true)
+      expect(descriptor.resources![0]!.mediaId).not.toBe(
+        library.sources[0]!.document!.resources![0]!.mediaId,
+      )
+      expect(
+        await restored.assets
+          .find((asset) => asset.meta.id === descriptor.resources![0]!.mediaId)!
+          .blob.arrayBuffer(),
+      ).toEqual(await image.arrayBuffer())
+    }
+  })
+  it('hashes resource content and MIME while treating resource order as irrelevant', async () => {
+    const test = await setup(),
+      second = new Blob(['different'], { type: 'image/png' })
+    let resources = [
+      { path: 'a.png', blob: image },
+      { path: 'b.png', blob: second },
+    ]
+    test.importer.parse = async () => [{ ...candidates[0]!, resources }]
+    await test.importDocument('initial-resource-order')
+    resources = [...resources].reverse()
+    expect((await test.prepare()).candidates[0]!.duplicate).toBe(true)
+    resources = [
+      { path: 'a.png', blob: new Blob([image], { type: 'image/jpeg' }) },
+      { path: 'b.png', blob: second },
+    ]
+    expect((await test.prepare()).candidates[0]!.duplicate).toBe(false)
+  })
 })
 
 const repeated = '先复述。再次回忆🧩，核对答案。\n中间段落。\n再次回忆🧩，核对答案。'
@@ -132,16 +361,146 @@ function select(sourceId: string, versionId: string): MaterialSelection {
 }
 
 describe('library-owned material transactions', () => {
-  it('rejects originals larger than the shared native media limit before invoking a parser', async () => {
+  it('edits one immutable body through a receipt-backed undoable transaction', async () => {
+    const test = await setup()
+    await test.importDocument()
+    const before = test.state.library.value,
+      source = before.sources[0]!
+    const request = {
+      sourceId: source.id,
+      versionId: source.mediaId,
+      content: '清理后的正文🙂',
+      expectedRevision: test.api.snapshot().revision,
+      operationId: 'cleanup-first',
+    }
+    const result = await test.api.editContent(request)
+    expect(result.versionId).not.toBe(source.mediaId)
+    expect((await test.api.get(source.id, source.mediaId)).text).toBe(repeated)
+    expect((await test.api.get(source.id)).text).toBe(request.content)
+    expect(test.state.library.value.cards).toEqual(before.cards)
+    expect(await test.api.editContent(request)).toEqual(result)
+    await expect(test.api.editContent({ ...request, content: 'different' })).rejects.toThrow(
+      '操作标识',
+    )
+    await test.service.commands.undoLastOperation()
+    expect((await test.api.get(source.id)).text).toBe(repeated)
+    await expect(test.api.editContent(request)).rejects.toThrow('已撤销或删除')
+    await test.service.commands.redoLastOperation()
+    expect((await test.api.get(source.id)).text).toBe(request.content)
+    expect((await test.api.editContent(request)).versionId).toBe(result.versionId)
+  })
+  it('preserves unmanaged properties through plugin edits and rejects stale previews and lifetimes', async () => {
+    const test = await setup()
+    await test.importDocument()
+    const source = test.state.library.value.sources[0]!
+    Object.assign(test.repo, { readSourceProperties: async () => 'unknown:\n  flag: true\n' })
+    const request = {
+      sourceId: source.id,
+      versionId: source.mediaId,
+      content: '清理结果',
+      expectedRevision: test.api.snapshot().revision,
+      operationId: 'cleanup-yaml',
+    }
+    await test.api.editContent(request)
+    expect(test.state.library.value.sources[0]!.properties).toContain('flag: true')
+    await test.service.commands.undoLastOperation()
+    expect(test.state.library.value.sources[0]!.properties).toContain('flag: true')
+    await expect(test.api.editContent({ ...request, operationId: 'stale' })).rejects.toThrow(
+      '已变化',
+    )
+    test.controller.abort()
+    await expect(
+      test.api.editContent({ ...request, operationId: 'unloaded', expectedRevision: 999 }),
+    ).rejects.toThrow()
+  })
+  it('atomically saves the first property baseline, body, receipt and undo journal and permits a failed request to retry', async () => {
+    const test = await setup()
+    await test.importDocument()
+    const before = test.state.library.value,
+      history = test.state.operations.value,
+      source = before.sources[0]!,
+      properties = 'unknown:\n  flag: true\nlabels: [reading, practice]\n'
+    Object.assign(test.repo, { readSourceProperties: vi.fn(async () => properties) })
+    const save = vi.spyOn(test.repo, 'save').mockRejectedValueOnce(new Error('disk write failed'))
+    const request = {
+      sourceId: source.id,
+      versionId: source.mediaId,
+      content: '保存并保留原始属性',
+      expectedRevision: test.api.snapshot().revision,
+      operationId: 'cleanup-retry',
+    }
+    await expect(test.api.editContent(request)).rejects.toThrow('disk write failed')
+    expect(save).toHaveBeenCalledOnce()
+    expect(test.api.snapshot().revision).toBe(request.expectedRevision)
+    expect(test.state.library.value).toBe(before)
+    expect(test.state.operations.value).toBe(history)
+    const failed = await test.repo.load()
+    expect(failed.library).toEqual(before)
+    expect(failed.operationHistory?.undo).toEqual(history)
+
+    const result = await test.api.editContent(request)
+    expect(result.revision).toBe(request.expectedRevision + 1)
+    expect(save).toHaveBeenCalledTimes(2)
+    const persisted = await test.repo.load()
+    expect(persisted.revision).toBe(result.revision)
+    expect(persisted.library.materialReceipts).toHaveLength(before.materialReceipts.length + 1)
+    expect(persisted.library.sources[0]!.properties).toBe(properties)
+    expect(persisted.library.sources[0]!.versions?.[0]?.properties).toBe(properties)
+    expect(persisted.operationHistory?.undo).toHaveLength(history.length + 1)
+    const change = persisted.operationHistory?.undo
+      .at(-1)
+      ?.changes.find((entry) => entry.store === 'sources' && entry.id === source.id)
+    expect(change?.before).toMatchObject({ mediaId: source.mediaId, properties })
+    expect(change?.after).toMatchObject({ mediaId: result.versionId, properties })
+    expect(await test.api.editContent(request)).toEqual(result)
+    expect(save).toHaveBeenCalledTimes(2)
+
+    await test.service.commands.undoLastOperation()
+    expect((await test.api.get(source.id)).text).toBe(repeated)
+    expect(test.state.library.value.sources[0]!.properties).toBe(properties)
+    expect(test.state.library.value.materialReceipts).toEqual(persisted.library.materialReceipts)
+    await test.service.commands.redoLastOperation()
+    expect((await test.api.get(source.id)).text).toBe(request.content)
+    expect(test.state.library.value.sources[0]!.properties).toBe(properties)
+  })
+  it('does not commit a property baseline when the preview changes during its read', async () => {
+    const test = await setup()
+    await test.importDocument()
+    const source = test.state.library.value.sources[0]!,
+      pending = deferred<string>(),
+      read = vi.fn(() => pending.promise)
+    Object.assign(test.repo, { readSourceProperties: read })
+    const request = {
+      sourceId: source.id,
+      versionId: source.mediaId,
+      content: 'Stale preview',
+      expectedRevision: test.api.snapshot().revision,
+      operationId: 'cleanup-stale-baseline',
+    }
+    const editing = test.api.editContent(request)
+    const rejected = expect(editing).rejects.toThrow('已变化')
+    await vi.waitFor(() => expect(read).toHaveBeenCalledOnce())
+    await test.importDocument('concurrent-import')
+    const current = test.state.library.value,
+      revision = test.api.snapshot().revision,
+      save = vi.spyOn(test.repo, 'save')
+    pending.resolve('unknown: true\n')
+    await rejected
+    expect(save).not.toHaveBeenCalled()
+    expect(test.state.library.value).toBe(current)
+    expect(test.api.snapshot().revision).toBe(revision)
+    expect(test.state.library.value.sources[0]!.properties).toBeUndefined()
+  })
+  it('rejects originals larger than the shared native document limit before invoking a parser', async () => {
     const test = await setup(),
       parse = vi.spyOn(test.importer, 'parse')
     await expect(
       test.prepare([
-        new File([new Uint8Array(10 * 1024 * 1024 + 1)], 'large.study.json', {
+        new File([new Uint8Array(64 * 1024 * 1024 + 1)], 'large.study.json', {
           type: 'application/json',
         }),
       ]),
-    ).rejects.toThrow('单文件最多10 MB')
+    ).rejects.toThrow('原件最多64 MB')
     await expect(
       test.prepare([new File([], 'empty.study.json', { type: 'application/json' })]),
     ).rejects.toThrow('非空')

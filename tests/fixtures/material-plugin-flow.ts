@@ -1,11 +1,23 @@
+import {
+  openCollection,
+  previewCollection,
+  commitCollection,
+  cancelCollection,
+} from './collection-controls'
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { buildPlugin } from '../../packages/plugin-api/build.mjs'
 import { fixture } from '../../src/core/test-fixtures'
 import type { PluginBundle } from '../../src/plugins/package'
-import { confirmPluginAction, openPluginManager, selectPlugin } from './settings-flow'
+import {
+  confirmPluginAction,
+  enableInstalledPlugin,
+  openPluginManager,
+  selectPlugin,
+} from './settings-flow'
 import { localLibrary } from './source-excerpt-flow'
+import { selectUiValue } from './ui-flow'
 
 const id = 'structured-study-example'
 const title = '材料插件：重复文本定位'
@@ -20,10 +32,14 @@ const studyDocument = JSON.stringify({
 })
 const nav = (page: Page, name: string) =>
   page.locator('.main-nav').getByRole('button', { name, exact: true })
+const selectionAction = (page: Page, name: string) =>
+  page
+    .getByRole('toolbar', { name: '选区工具栏', exact: true })
+    .getByRole('button', { name, exact: true })
 
 async function install(page: Page, bundle: PluginBundle) {
   await openPluginManager(page)
-  await page.locator('.plugin-actions input[type=file]').setInputFiles({
+  await page.locator('.plugins-page input[type=file]').setInputFiles({
     name: `${id}.repeaty-plugin`,
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(bundle)),
@@ -48,18 +64,19 @@ async function prepare(page: Page, info: TestInfo) {
     outdir: info.outputPath('independent-material-plugin'),
   })
   await install(page, bundle)
+  await enableInstalledPlugin(page, id)
   return bundle
 }
 
 async function preview(page: Page, content = studyDocument) {
   await nav(page, '学习材料').click()
-  await page.getByRole('button', { name: '插件导入', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: '导入材料', exact: true })
-  await dialog.getByTestId('material-import-files').setInputFiles({
+  const dialog = await openCollection(page)
+  await dialog.getByTestId('collection-files').setInputFiles({
     name: 'chapters.study.json',
     mimeType: 'application/json',
     buffer: Buffer.from(content),
   })
+  await previewCollection(dialog)
   return dialog
 }
 
@@ -82,7 +99,7 @@ async function selectLastQuote(page: Page) {
     },
     { start: text.lastIndexOf(quote), length: quote.length },
   )
-  await expect(page.getByRole('button', { name: '用摘录制卡', exact: true })).toBeEnabled()
+  await expect(selectionAction(page, '用摘录制卡')).toBeEnabled()
 }
 
 function persistentLearning(library: Awaited<ReturnType<typeof localLibrary>>) {
@@ -106,7 +123,7 @@ export async function materialPluginFlow(page: Page, info: TestInfo) {
   const dialog = await preview(page)
   await expect(dialog).toContainText(title)
   expect((await localLibrary(page)).sources).toHaveLength(0)
-  await dialog.getByRole('button', { name: '确认导入', exact: true }).click()
+  await commitCollection(dialog)
   await expect(dialog).toHaveCount(0)
   const imported = await localLibrary(page)
   expect(imported.sources).toHaveLength(2)
@@ -114,12 +131,18 @@ export async function materialPluginFlow(page: Page, info: TestInfo) {
   expect(source.document?.providerId).toBe(id)
   expect(source.document?.readerId).toBe('chapter')
 
-  await page.getByRole('button', { name: '插件材料搜索', exact: true }).click()
-  await page.getByRole('textbox', { name: '插件材料搜索词', exact: true }).fill('中间的上下文')
+  await selectUiValue(
+    page.getByRole('combobox', { name: '材料搜索提供方', exact: true }),
+    `${id}:chapters`,
+  )
+  await page.getByRole('textbox', { name: '材料全文搜索', exact: true }).fill('中间的上下文')
   await page.getByRole('button', { name: '搜索', exact: true }).click()
   const results = page.getByRole('list', { name: '材料搜索结果', exact: true })
   await expect(results).toContainText('中间的上下文')
-  await results.getByRole('button', { name: title, exact: true }).click()
+  await results
+    .getByRole('button')
+    .filter({ has: page.locator('span').filter({ hasText: title }) })
+    .click()
   const projection = page.getByRole('textbox', { name: '材料正文', exact: true })
   await expect
     .poll(() =>
@@ -131,10 +154,11 @@ export async function materialPluginFlow(page: Page, info: TestInfo) {
   await page.getByRole('button', { name: '使用插件阅读器', exact: true }).click()
   await expect(page.getByTestId('structured-study-reader')).toBeVisible()
   await selectLastQuote(page)
-  await page.getByRole('button', { name: '用摘录制卡', exact: true }).click()
+  await selectionAction(page, '用摘录制卡').click()
   await page.getByLabel('正面 · 问题', { exact: true }).fill('如何保留第二处引用的出处？')
   await expect(page.getByLabel('背面 · 答案', { exact: true })).toHaveValue(quote)
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '添加卡片', exact: true })).toHaveCount(0)
   const withCard = await localLibrary(page)
   expect(withCard.notes).toHaveLength(1)
   expect(withCard.notes[0]!.excerpt).toMatchObject({
@@ -162,8 +186,8 @@ export async function materialPluginFlow(page: Page, info: TestInfo) {
 
   // A repeated file is detected by the host, not a plugin-local cache.
   const repeated = await preview(page)
-  await expect(repeated).toContainText(/重复|已导入/)
-  await repeated.getByRole('button', { name: '确认导入', exact: true }).click()
+  await expect(repeated).toContainText('已收集')
+  await commitCollection(repeated)
   await expect(repeated).toHaveCount(0)
   expect((await localLibrary(page)).sources.map((item) => item.id)).toEqual(
     imported.sources.map((item) => item.id),
@@ -181,7 +205,7 @@ export async function materialPluginFlow(page: Page, info: TestInfo) {
   expect(await readFile(path!, 'utf8')).toBe(studyDocument)
 
   await selectLastQuote(page)
-  await page.getByRole('button', { name: '把选区保存为摘录', exact: true }).click()
+  await selectionAction(page, '把选区保存为摘录').click()
   await expect.poll(async () => (await localLibrary(page)).sources.length).toBe(3)
   const commandExcerpt = (await localLibrary(page)).sources.find((item) => item.kind === 'excerpt')!
   expect(commandExcerpt.origin).toMatchObject({
@@ -242,10 +266,10 @@ export async function materialPluginInvalidImportFlow(page: Page, info: TestInfo
   const dialog = await preview(page, broken)
   await expect(dialog.getByRole('alert')).toBeVisible()
   expect((await localLibrary(page)).sources).toHaveLength(0)
-  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await cancelCollection(dialog)
   const next = await preview(page)
   await expect(next).toContainText(title)
-  await next.getByRole('button', { name: '取消', exact: true }).click()
+  await cancelCollection(next)
   expect((await localLibrary(page)).sources).toHaveLength(0)
 }
 
@@ -350,7 +374,7 @@ export async function materialPluginWorkerFlow(page: Page, info: TestInfo) {
       )
     })
     .toBe(true)
-  await completed.getByRole('button', { name: '取消', exact: true }).click()
+  await cancelCollection(completed)
   await page.evaluate(() => {
     ;(
       window as unknown as { __repeatyMaterialWorkers: MaterialWorkerProbe }
@@ -363,7 +387,7 @@ export async function materialPluginWorkerFlow(page: Page, info: TestInfo) {
       return !!worker && worker.ready && worker.held && worker.terminations === 0
     })
     .toBe(true)
-  await pending.getByRole('button', { name: '取消', exact: true }).click()
+  await cancelCollection(pending)
   await expect(pending).toHaveCount(0)
   await expect
     .poll(async () => {

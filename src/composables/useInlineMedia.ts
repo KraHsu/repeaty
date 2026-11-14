@@ -1,11 +1,13 @@
 import { onUnmounted, shallowRef, watch, type MaybeRefOrGetter, toValue } from 'vue'
 import type { InlineMedia } from '../core/inline-media-data'
 
+export type InlineMediaReference = Pick<InlineMedia[number], 'url' | 'mediaId'>
+
 /** Only immutable, accepted media are turned into URLs. Working paths never reach the webview. */
 export function useInlineMedia(
   input: MaybeRefOrGetter<{
     text: string
-    media?: InlineMedia
+    media?: readonly InlineMediaReference[]
     read?: (id: string) => Promise<Blob | undefined>
   }>,
 ) {

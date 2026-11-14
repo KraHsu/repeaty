@@ -18,6 +18,12 @@ export default defineConfig(({ mode }) => {
     server: { watch: { ignored: ['**/target/**'] } },
     resolve: {
       alias: {
+        '@repeaty-collection-platform': fileURLToPath(
+          new URL(
+            `../src/collection-platform-${desktop ? 'desktop' : 'browser'}.ts`,
+            import.meta.url,
+          ),
+        ),
         '@repeaty-plugin-host': fileURLToPath(
           new URL(`../src/plugins/platform-${desktop ? 'desktop' : 'browser'}.ts`, import.meta.url),
         ),

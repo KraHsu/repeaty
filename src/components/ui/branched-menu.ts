@@ -1,8 +1,6 @@
-// Branch geometry adapted from React Bits / Vue Bits Branched Menu.
-// Copyright (c) 2025–2026 David Haz. See public/licenses/branched-menu.txt.
-import type { ComputedRef, InjectionKey, Ref, ShallowRef } from 'vue'
+// Repeaty's settings tree model. SPDX-License-Identifier: AGPL-3.0-only
+import type { ComputedRef, InjectionKey, Ref } from 'vue'
 import type { SettingsCategoryNode } from '../../settings/types'
-
 export interface BranchedMenuRow {
   node: SettingsCategoryNode
   parent?: string
@@ -11,99 +9,68 @@ export interface BranchedMenuRow {
   position: number
   count: number
 }
-
 export function flattenBranchedMenu(items: readonly SettingsCategoryNode[]): BranchedMenuRow[] {
-  const rows: BranchedMenuRow[] = []
-  const seen = new Set<string>()
-  function visit(
-    nodes: readonly SettingsCategoryNode[],
-    depth: number,
-    parent?: string,
-    root?: string,
-  ) {
-    if (depth > 4) return
-    nodes.forEach((node, index) => {
-      if (seen.has(node.key)) return
-      seen.add(node.key)
-      rows.push({
-        node,
-        parent,
-        root: root ?? node.key,
-        depth,
+  const result: BranchedMenuRow[] = [],
+    seen = new Set<string>()
+  const pending = items
+    .map(
+      (node, index) =>
+        ({
+          node,
+          root: node.key,
+          depth: 1,
+          position: index + 1,
+          count: items.length,
+        }) as BranchedMenuRow,
+    )
+    .reverse()
+  while (pending.length) {
+    const row = pending.pop()!
+    if (seen.has(row.node.key) || row.depth > 4) continue
+    seen.add(row.node.key)
+    result.push(row)
+    for (let index = row.node.children.length - 1; index >= 0; index--)
+      pending.push({
+        node: row.node.children[index]!,
+        parent: row.node.key,
+        root: row.root,
+        depth: row.depth + 1,
         position: index + 1,
-        count: nodes.length,
+        count: row.node.children.length,
       })
-      visit(node.children, depth + 1, node.key, root ?? node.key)
-    })
-  }
-  visit(items, 1)
-  return rows
-}
-
-export function menuAncestors(rows: readonly BranchedMenuRow[], key: string): string[] {
-  const result: string[] = []
-  let row = rows.find((entry) => entry.node.key === key)
-  while (row?.parent) {
-    result.unshift(row.parent)
-    row = rows.find((entry) => entry.node.key === row!.parent)
   }
   return result
 }
-
-export function visibleMenuRows(rows: readonly BranchedMenuRow[], expanded: ReadonlySet<string>) {
-  return rows.filter((row) => menuAncestors(rows, row.node.key).every((key) => expanded.has(key)))
-}
-
-export interface BranchGeometry {
-  trunk: number
-  end: number
-  radius: number
-  height: number
-  centers: number[]
-}
-
-export function fallbackBranchGeometry(count: number, rem = 16): BranchGeometry {
-  const row = 2.75 * rem
-  return {
-    trunk: 0.875 * rem,
-    end: 2.5 * rem - 0.5 * rem,
-    radius: Math.min(0.625 * rem, row / 2 - 2),
-    height: 0.75 * rem + count * row,
-    centers: Array.from({ length: count }, (_, index) => 0.375 * rem + index * row + row / 2),
-  }
-}
-
-export function branchPath(geometry: BranchGeometry, index: number, reach = false) {
-  const y = geometry.centers[index] ?? 0
-  const { trunk, radius, end } = geometry
-  return `${reach ? `M ${trunk} 0 V` : `M ${trunk}`} ${y - radius} A ${radius} ${radius} 0 0 0 ${trunk + radius} ${y} H ${end}`
-}
-
-export function branchLength(geometry: BranchGeometry, index: number) {
-  const y = geometry.centers[index] ?? 0
-  return (
-    y -
-    geometry.radius +
-    (Math.PI * geometry.radius) / 2 +
-    geometry.end -
-    geometry.trunk -
-    geometry.radius
+export function menuAncestors(rows: readonly BranchedMenuRow[], key: string): string[] {
+  const parents = new Map(rows.map((row) => [row.node.key, row.parent]))
+  const path: string[] = []
+  for (
+    let parent = parents.get(key);
+    parent && !path.includes(parent);
+    parent = parents.get(parent)
   )
+    path.push(parent)
+  return path.reverse()
 }
-
+export function visibleMenuRows(rows: readonly BranchedMenuRow[], expanded: ReadonlySet<string>) {
+  const visible = new Set<string>()
+  return rows.filter((row) => {
+    if (row.parent && (!visible.has(row.parent) || !expanded.has(row.parent))) return false
+    visible.add(row.node.key)
+    return true
+  })
+}
 export interface BranchedMenuContext {
   active: ComputedRef<string>
-  selectedPath: ComputedRef<ReadonlySet<string>>
   focused: Ref<string>
   expanded: Ref<Set<string>>
   rows: ComputedRef<BranchedMenuRow[]>
-  geometry: ShallowRef<Map<string, BranchGeometry>>
+  selectedPath: ComputedRef<ReadonlySet<string>>
   idPrefix: string
   controls: string
-  registerRow(key: string, element: unknown): void
-  registerGroup(key: string, element: unknown): void
+  registerRow(key: string, value: unknown): void
+  registerGroup(key: string, value: unknown): void
   select(key: string): void
   toggle(key: string, focusRow?: boolean): void
 }
-
-export const branchedMenuKey: InjectionKey<BranchedMenuContext> = Symbol('branched-menu')
+export const branchedMenuKey: InjectionKey<BranchedMenuContext> = Symbol('repeaty-settings-tree')

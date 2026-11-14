@@ -1,13 +1,29 @@
 import { z } from 'zod'
+import { materialLocatorSchema } from '../core/material-data'
 
 /** Plugin data is portable JSON. Unknown plugins stay intact when importing a backup. */
-export const pluginDataSchema = z.object({
-  id: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
-  version: z.number().int().positive().max(1000),
-  data: z
-    .record(z.string().max(100), z.json())
-    .refine((data) => JSON.stringify(data).length <= 200_000, '插件数据不能超过 200,000 字符。'),
-})
+export const pluginDataSchema = z
+  .object({
+    id: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
+    version: z.number().int().positive().max(1000),
+    variants: z
+      .array(z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/))
+      .min(1)
+      .max(128)
+      .refine((values) => new Set(values).size === values.length)
+      .optional(),
+    variantLocators: z
+      .record(z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/), materialLocatorSchema)
+      .optional(),
+    data: z
+      .record(z.string().max(100), z.json())
+      .refine((data) => JSON.stringify(data).length <= 200_000, '插件数据不能超过 200,000 字符。'),
+  })
+  .refine(
+    (value) =>
+      !value.variantLocators ||
+      Object.keys(value.variantLocators).every((key) => value.variants?.includes(key)),
+  )
 export type PluginData = z.infer<typeof pluginDataSchema>
 
 export const assessmentSchema = z.object({

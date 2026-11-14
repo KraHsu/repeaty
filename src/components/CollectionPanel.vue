@@ -7,6 +7,8 @@ import { computed, ref, shallowRef, watch } from 'vue'
 import { History, Layers, Pause, Pencil, Play, Plus, Repeat2, Trash2 } from '@lucide/vue'
 import CardSearchInput from './CardSearchInput.vue'
 import CollectionSearchTools from './CollectionSearchTools.vue'
+import MaterialStateIcon from './MaterialStateIcon.vue'
+import { appearance } from '../appearance'
 import {
   cardViews,
   filterStates,
@@ -18,6 +20,7 @@ import {
 } from '../core/model'
 import { type CardAction } from '../core/scheduler'
 import { cardStatus } from '../core/search'
+import { studySettings } from '../core/study-settings'
 import type { CardPage } from '../core/storage'
 import type { BatchEdit } from '../core/batch'
 const props = defineProps<{
@@ -43,6 +46,7 @@ const emit = defineEmits<{
   review: []
   study: [session: StudySession]
   history: [card: CardView]
+  balance: [ids: string[]]
 }>()
 const query = defineModel<string>('query', { default: '' })
 const state = defineModel<SearchFilter['state']>('state', { default: 'all' })
@@ -257,6 +261,18 @@ async function editSelected() {
     <div class="batch-actions">
       <UiButton
         variant="secondary"
+        :disabled="
+          busy ||
+          selected.some((id) => {
+            const card = cards.find((entry) => entry.id === id)
+            return !card || card.schedule.state !== 0 || card.schedule.reps !== 0 || card.suspended
+          })
+        "
+        @click="emit('balance', [...selected])"
+        >{{ t('均衡安排新卡') }}</UiButton
+      >
+      <UiButton
+        variant="secondary"
         type="submit"
         v-for="(label, action) in {
           suspend: '暂停所选',
@@ -390,9 +406,27 @@ async function editSelected() {
             </div>
           </td>
           <td>
-            <span :class="['status-chip', { fresh: card.schedule.state === 0 }]">{{
-              t(cardStatus(card, now))
-            }}</span
+            <span
+              :class="['status-chip status-chip-with-icon', { fresh: card.schedule.state === 0 }]"
+              ><MaterialStateIcon
+                kind="review"
+                :state="
+                  card.suspended ? 'archived' : card.schedule.state === 0 ? 'pending' : 'scheduled'
+                "
+              /><span
+                :style="{
+                  opacity: appearance.strongContrast
+                    ? 1
+                    : appearance.reviewIcons[
+                        card.suspended
+                          ? 'archived'
+                          : card.schedule.state === 0
+                            ? 'pending'
+                            : 'scheduled'
+                      ].textOpacity,
+                }"
+                >{{ t(cardStatus(card, now, studySettings(library))) }}</span
+              ></span
             ><small v-if="card.schedule.state !== 0" class="due-date">{{
               new Date(card.schedule.due).toLocaleString(locale, {
                 month: 'short',

@@ -1,4 +1,5 @@
 import { test, expect, storedLibrary } from './fixture'
+import { expectLearningPreserved } from '../fixtures/stored-library'
 import {
   openPluginManager,
   openPluginSettings,
@@ -123,7 +124,7 @@ for (const language of ['zh-CN', 'en'] as const) {
     await expect
       .poll(() => savedHistoryPreferences(page))
       .toMatchObject({ historyLength: 7, historyAfterReveal: false })
-    expect(await storedLibrary(page)).toEqual(before)
+    expectLearningPreserved(await storedLibrary(page), before)
     const captureStyle = '.desktop-titlebar { visibility: hidden !important; }'
     await history.screenshot({
       path: info.outputPath('plugin-history-1280.png'),
@@ -229,7 +230,7 @@ for (const language of ['zh-CN', 'en'] as const) {
     ).not.toBeChecked()
     await openSettings(page)
     await expect(history).toHaveCount(0)
-    await expect(category(page, 'study.review')).toHaveCount(0)
+    await expect(category(page, 'study.review')).toHaveCount(1)
     await openPluginManager(page)
     await selectPlugin(page, 'review-history')
     await historyDetails.getByRole('switch', { name: labels.enableHistory, exact: true }).click()
@@ -241,6 +242,6 @@ for (const language of ['zh-CN', 'en'] as const) {
     await expect(
       history.getByRole('switch', { name: labels.reveal, exact: true }),
     ).not.toBeChecked()
-    expect(await storedLibrary(page)).toEqual(before)
+    expectLearningPreserved(await storedLibrary(page), before)
   })
 }

@@ -10,6 +10,8 @@ import {
   startMcp,
   stopMcp,
   mcpClientConfiguration,
+  automationGrant,
+  setAutomationAccess,
   type McpClient,
 } from './mcp'
 
@@ -101,6 +103,28 @@ async function copy() {
     <p v-if="error || mcpBridgeError" class="import-warning" role="alert">
       {{ t(error || mcpBridgeError) }}
     </p>
+    <SettingField
+      id="automation-read"
+      type="switch"
+      :label="t('允许 CLI / MCP 查询整库')"
+      :description="t('读取当前库的材料、目录、笔记与学习记录；关闭连接或切库后失效。')"
+      :model-value="!!automationGrant"
+      :disabled="!mcpStatus.enabled || remoteWorkspace"
+      @update:model-value="setAutomationAccess(!!$event, false)"
+    />
+    <SettingField
+      id="automation-write"
+      type="switch"
+      :label="t('允许 CLI / MCP 批量修改')"
+      :description="
+        t(
+          '外部工具可预览并应用整库修改，包括恢复快照。每次修改需携带预览和当前修订号，并保留恢复点。只向你信任的本机工具开放。',
+        )
+      "
+      :model-value="!!automationGrant?.write"
+      :disabled="!mcpStatus.enabled || !automationGrant || remoteWorkspace"
+      @update:model-value="setAutomationAccess(true, !!$event)"
+    />
     <SettingField
       id="mcp-client"
       type="select"

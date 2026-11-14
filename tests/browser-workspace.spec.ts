@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { browserWorkspaceFixture, directoryDigest } from './fixtures/browser-workspace'
 import { storedLibrary } from './fixtures/stored-library'
 import { parseArchive } from '../src/core/archive'
+import { showSourceText } from './fixtures/source-controls'
 
 test.use({ serviceWorkers: 'block' })
 async function folderFallback(page: Page) {
@@ -38,9 +39,12 @@ test('a real directory supports trial review, editing, source versions and a com
     await page.clock.setSystemTime(new Date('2026-12-01T12:00:00Z'))
     await page.goto('./')
     await expect(page.locator('.deck-title').first()).toBeVisible()
-    const original = await storedLibrary(page)
+    const beforeOpen = await storedLibrary(page)
     await open(page, env.path)
-    expect(await storedLibrary(page)).toEqual(original)
+    // Opening flushes foreground time to the previous library before switching.
+    // Once the trial owns the page, every original record must remain unchanged.
+    const original = await storedLibrary(page)
+    expect({ ...original, studyActivity: beforeOpen.studyActivity }).toEqual(beforeOpen)
     await page.getByRole('button', { name: '学习概览', exact: true }).click()
     await page.getByRole('button', { name: '开始复习', exact: true }).first().click()
     await expect(page.locator('.card-question')).toHaveText('目录里的问题')
@@ -73,6 +77,7 @@ test('a real directory supports trial review, editing, source versions and a com
     ).toBeVisible()
     await page.getByRole('button', { name: '学习材料', exact: true }).click()
     await page.locator('.source-list-title').filter({ hasText: '目录里的长材料' }).click()
+    await showSourceText(page)
     await expect(page.getByRole('textbox', { name: '材料正文', exact: true })).toHaveValue(env.text)
     await page.getByRole('button', { name: '历史版本', exact: true }).click()
     await page
@@ -105,9 +110,12 @@ test('a real directory supports trial review, editing, source versions and a com
     await page.getByRole('button', { name: '继续试用', exact: true }).click()
     await expect(page.getByRole('complementary', { name: '工作目录试用' })).toBeVisible()
     await page.getByRole('button', { name: '返回浏览器学习库', exact: true }).click()
+    expect(await storedLibrary(page)).toEqual(original)
     await page.getByRole('button', { name: '结束试用', exact: true }).click()
     await expect(page.getByRole('complementary', { name: '工作目录试用' })).toHaveCount(0)
-    expect(await storedLibrary(page)).toEqual(original)
+    expect({ ...(await storedLibrary(page)), studyActivity: original.studyActivity }).toEqual(
+      original,
+    )
     expect(await directoryDigest(env.path)).toEqual(before)
     expect(errors).toEqual([])
     expect(posts).toEqual([])
@@ -151,6 +159,17 @@ test('unfinished and incomplete directories and cancelled reads leave the browse
     await open(page, env.path)
     await page.getByRole('button', { name: '工作目录', exact: true }).first().click()
     await page.getByRole('button', { name: '返回浏览器学习库', exact: true }).click()
+    // Foreground activity recorded in the trial is exportable progress too.
+    const ending = page.getByRole('dialog', { name: '结束当前试用', exact: true })
+    await expect
+      .poll(
+        async () =>
+          !(await page.getByRole('complementary', { name: '工作目录试用' }).count()) ||
+          (await ending.isVisible()),
+      )
+      .toBe(true)
+    if (await ending.isVisible())
+      await ending.getByRole('button', { name: '结束试用', exact: true }).click()
     await expect(page.getByRole('complementary', { name: '工作目录试用' })).toHaveCount(0)
     const missing = join(env.root, 'without-private-files')
     await mkdir(missing)
@@ -160,7 +179,9 @@ test('unfinished and incomplete directories and cancelled reads leave the browse
     )
     await input.setInputFiles(missing)
     await expect(page.getByRole('alert')).toContainText('包括隐藏的 .repeaty 文件夹')
-    expect(await storedLibrary(page)).toEqual(original)
+    expect({ ...(await storedLibrary(page)), studyActivity: original.studyActivity }).toEqual(
+      original,
+    )
   } finally {
     await env.close()
   }
@@ -321,6 +342,7 @@ test.describe('offline workspace trial', () => {
       await open(page, env.path)
       await page.getByRole('button', { name: '学习材料', exact: true }).click()
       await page.locator('.source-list-title').filter({ hasText: '目录里的长材料' }).click()
+      await showSourceText(page)
       await expect(page.getByRole('textbox', { name: '材料正文', exact: true })).toHaveValue(
         env.text,
       )

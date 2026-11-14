@@ -33,9 +33,12 @@ export interface LibraryState {
   redoOperations: Cell<UndoEntry[]>
 }
 export interface CommitOptions {
+  sync?: import('../sync/commit').SyncCommit
+  retired?: import('../desktop/retirement').RetiredNote[]
   assets?: MediaUpload[]
   reason?: string
   consumeCardDraft?: string
+  consumeSourceDraft?: string
   externalDocuments?: DocumentWrite[]
   scanHash?: string
   assetObservations?: { path: string; hash: string }[]

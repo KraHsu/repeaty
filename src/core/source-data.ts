@@ -1,5 +1,7 @@
 import { z } from 'zod'
+import { inboxSchema, sourceBindingSchema } from './collection-data'
 import { inlineMediaSchema } from './inline-media-data'
+import { parseSourceProperties, MAX_SOURCE_PROPERTIES } from './source-properties'
 import {
   materialDocumentSchema,
   materialLocatorSchema,
@@ -37,13 +39,13 @@ export const sourceQueueSchema = z.object({
 export const sourcePrioritySchema = z.enum(['high', 'normal', 'low'])
 export type SourcePriority = z.infer<typeof sourcePrioritySchema>
 export const READING_INTERVAL_DAYS = [1, 3, 7, 14, 30] as const
-export const sourceReadingIntervalSchema = z.literal(READING_INTERVAL_DAYS)
+export const sourceReadingIntervalSchema = z.number().int().min(1).max(36500)
 export const readingFeedbackSchema = z.enum(['again', 'good', 'easy'])
 export type ReadingFeedback = z.infer<typeof readingFeedbackSchema>
-export const adaptiveIntervalSchema = z.number().int().min(1).max(365)
+export const adaptiveIntervalSchema = z.number().int().min(1).max(36500)
 export const adaptiveReadingSchema = z.object({
   intervalDays: adaptiveIntervalSchema,
-  factor: z.number().finite().min(1.3).max(3),
+  factor: z.number().finite().min(1).max(10),
   lastReadOn: z.iso.date(),
   readCount: z.number().int().min(1).max(1_000_000),
   feedback: readingFeedbackSchema,
@@ -80,6 +82,7 @@ export type SourceBatchAction = Extract<
   { type: 'priority' | 'defer' | 'archive' | 'restore' }
 >
 export interface SourceArrangement {
+  studyPriority?: number
   queue?: Source['queue']
   priority?: SourcePriority
   readingIntervalDays?: Source['readingIntervalDays']
@@ -121,6 +124,30 @@ export const sourceDetailsSchema = z.strictObject({
     .default(''),
 })
 export type SourceDetails = z.infer<typeof sourceDetailsSchema>
+export const sourcePropertiesSchema = z
+  .string()
+  .max(MAX_SOURCE_PROPERTIES)
+  .superRefine((value, ctx) => {
+    try {
+      parseSourceProperties(value)
+    } catch (error) {
+      ctx.addIssue({ code: 'custom', message: (error as Error).message })
+    }
+  })
+export const sourceAnnotationSchema = z
+  .object({
+    id: z.uuid(),
+    mediaId: id,
+    start: z.number().int().nonnegative().max(MAX_SOURCE_CHARACTERS),
+    end: z.number().int().positive().max(MAX_SOURCE_CHARACTERS),
+    quote: z.string().min(1).max(MAX_EXCERPT_CHARACTERS),
+    body: z.string().trim().min(1).max(10_000),
+    locator: materialLocatorSchema.optional(),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+  })
+  .refine((value) => value.end - value.start === value.quote.length)
+export type SourceAnnotation = z.infer<typeof sourceAnnotationSchema>
 export const sourceVersionSchema = z.object({
   ...sourceDetailsSchema.shape,
   mediaId: id,
@@ -131,6 +158,7 @@ export const sourceVersionSchema = z.object({
   reading: sourceReadingSchema.optional(),
   derived: z.literal(true).optional(),
   document: materialDocumentSchema.optional(),
+  properties: sourcePropertiesSchema.optional(),
 })
 export type SourceVersion = z.infer<typeof sourceVersionSchema>
 export interface SourceDetailsUpdate {
@@ -143,8 +171,23 @@ export interface SourceDetailsUpdate {
 }
 export const sourceSchema = z
   .object({
+    studyPriority: z.number().int().min(0).max(9).optional(),
     id,
+    inbox: inboxSchema.optional(),
+    binding: sourceBindingSchema.optional(),
     parentSourceId: id.optional(),
+    folderId: id.optional(),
+    order: z.number().finite().optional(),
+    properties: sourcePropertiesSchema.optional(),
+    annotations: z.array(sourceAnnotationSchema).max(1000).optional(),
+    studySequence: z
+      .strictObject({
+        groupId: id,
+        index: z.number().int().nonnegative().max(999),
+        mode: z.enum(['free', 'sequential']),
+        completed: z.boolean(),
+      })
+      .optional(),
     ...sourceDetailsSchema.shape,
     format: z.enum(['plain', 'markdown']),
     mediaId: id,
@@ -189,6 +232,24 @@ export const sourceSchema = z
     const ids = [source.mediaId, ...(source.versions ?? []).map((version) => version.mediaId)]
     if (new Set(ids).size !== ids.length)
       context.addIssue({ code: 'custom', message: '材料版本重复。' })
+    if (
+      new Set(source.annotations?.map((entry) => entry.id)).size !==
+      (source.annotations?.length ?? 0)
+    )
+      context.addIssue({ code: 'custom', message: '批注标识重复。' })
+    for (const entry of source.annotations ?? []) {
+      const version = [source, ...(source.versions ?? [])].find(
+        (item) => item.mediaId === entry.mediaId,
+      )
+      if (
+        !version ||
+        entry.end > version.characters ||
+        (entry.locator &&
+          (!materialLocatorMatches({ ...version, id: source.id }, entry.locator) ||
+            !locatorMatchesReference({ ...entry, sourceId: source.id }, entry.locator)))
+      )
+        context.addIssue({ code: 'custom', message: '批注与材料版本不匹配。' })
+    }
     for (const version of source.versions ?? [])
       if (
         version.reading &&
@@ -243,6 +304,7 @@ export function sourceAtVersion(source: Source, mediaId = source.mediaId): Sourc
         inlineMedia: version.inlineMedia,
         derived: version.derived,
         document: version.document,
+        properties: version.properties,
         versions: undefined,
       }
     : undefined

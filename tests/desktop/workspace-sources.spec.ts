@@ -13,6 +13,7 @@ import type { Page } from '@playwright/test'
 import type { Source } from '../../src/core/source-data'
 import type { Card, Note } from '../../src/core/model'
 import { saveReading } from '../fixtures/reading-flow'
+import { showSourceText } from '../fixtures/source-controls'
 
 const picture = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/hfoAAAAASUVORK5CYII=',
@@ -103,6 +104,7 @@ test('source file acceptance keeps old quotes, positions and card progress; medi
   expect(values<Card>(saved.cards)).toEqual(values<Card>(before.cards))
   expect(values<Note>(saved.notes)[0]!.excerpt!.mediaId).toBe(source.mediaId)
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
+  await showSourceText(page)
   await expect(page.getByRole('textbox', { name: '材料正文', exact: true })).toHaveValue(body)
   await page.getByRole('button', { name: '阅读 Markdown 预览', exact: true }).click()
   await expect
@@ -139,7 +141,9 @@ test('source file acceptance keeps old quotes, positions and card progress; medi
   await page.getByRole('button', { name: '显示答案', exact: true }).click()
   await page.getByRole('button', { name: /^查看原文/ }).click()
   await expect(page.locator('.source-original mark')).toHaveText(sourceQuote)
-  await expect(page.getByRole('dialog')).toContainText('正在查看摘录保存时的版本。')
+  await expect(
+    page.getByRole('dialog').filter({ has: page.locator('.source-original') }),
+  ).toContainText('正在查看摘录保存时的版本。')
   await page.getByRole('button', { name: '关闭', exact: true }).click()
 })
 

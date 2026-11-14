@@ -1,3 +1,4 @@
+import { previewCollection } from '../fixtures/collection-controls'
 import { test, expect, headers } from './fixture'
 import {
   createSourceDeck,
@@ -19,7 +20,8 @@ test('sources and excerpts commit atomically to the account, read bodies on dema
   await page.route('**/api/library/commit', (route) =>
     reject ? route.fulfill({ status: 503, json: { error: 'unavailable' } }) : route.continue(),
   )
-  await page.getByRole('button', { name: '保存材料', exact: true }).click()
+  await previewCollection(page.getByRole('dialog', { name: '收集材料', exact: true }))
+  await page.getByRole('button', { name: '保存到阅读材料', exact: true }).click()
   await expect(page.getByRole('dialog').getByRole('alert')).toBeVisible()
   expect((await (await request.get('api/library', { headers })).json()).library.sources).toEqual([])
   reject = false
@@ -39,7 +41,10 @@ test('sources and excerpts commit atomically to the account, read bodies on dema
     await route.continue()
   })
   await selectSourceExcerpt(page)
-  await page.getByRole('button', { name: '用摘录制卡', exact: true }).click()
+  await page
+    .locator('.source-excerpt-action')
+    .getByRole('button', { name: '用摘录制卡', exact: true })
+    .click()
   await page.getByLabel('正面 · 问题', { exact: true }).fill('间隔复习如何安排时间？')
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   try {

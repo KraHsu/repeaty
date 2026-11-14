@@ -19,10 +19,13 @@ export {
   DraftWorkbench,
   DesktopTitlebar,
   PlatformSettings,
+  createDeviceSync,
   workspaceAvailable,
   connectWorkspaceMonitor,
   workspacePendingCount,
   workspaceDetectionError,
   WorkspaceBackupTools,
   connectAutomaticBackups,
+  connectWindowCloseGuard,
+  connectWorkspaceLeaveGuard,
 } from './static'

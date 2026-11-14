@@ -72,13 +72,23 @@ export function prepareSourceExcerpt(
     selection.quote !== excerpt.quote
   )
     throw new LocalizedError(msg('摘录与原文不一致，请重新选取。'))
-  return prepareSnapshot({ title, url: parent.url, format: parent.format }, selection.quote, now, {
-    sourceId: parent.id,
-    mediaId: parent.mediaId,
-    start: selection.start,
-    end: selection.end,
-    ...(excerpt.locator ? { locator: excerpt.locator } : {}),
-  })
+  const prepared = prepareSnapshot(
+    { title, url: parent.url, format: parent.format },
+    selection.quote,
+    now,
+    {
+      sourceId: parent.id,
+      mediaId: parent.mediaId,
+      start: selection.start,
+      end: selection.end,
+      ...(excerpt.locator ? { locator: excerpt.locator } : {}),
+    },
+  )
+  if (excerpt.locator?.kind === 'image' && parent.document?.format === 'image') {
+    const { importKey: _importKey, ...document } = parent.document
+    prepared.source.document = document
+  }
+  return prepared
 }
 export async function readSource(
   source: Source,
@@ -165,6 +175,7 @@ export function replaceSourceContent(
     ...(previous.derived ? { derived: previous.derived } : {}),
     ...(previous.inlineMedia ? { inlineMedia: previous.inlineMedia } : {}),
     ...(previous.document ? { document: previous.document } : {}),
+    ...(previous.properties !== undefined ? { properties: previous.properties } : {}),
   }
   const source = sourceSchema.parse({
     ...previous,
@@ -225,19 +236,35 @@ export function removeSource(library: Library, id: string): Library {
     throw new LocalizedError(msg('材料已不存在，请刷新后重试。'))
   return pruneMedia({
     ...library,
+    sourceCandidates: library.sourceCandidates
+      .filter((c) => c.sourceId !== id || c.kind !== 'missing')
+      .map((c) =>
+        c.sourceId === id
+          ? { ...c, sourceId: undefined, baseMediaId: undefined, kind: 'add' as const }
+          : c,
+      ),
     sources: library.sources
       .filter((source) => source.id !== id)
       .map((source) =>
-        source.origin?.sourceId !== id && source.parentSourceId !== id
+        source.origin?.sourceId !== id &&
+        source.parentSourceId !== id &&
+        source.studySequence?.groupId !== id
           ? source
           : {
               ...source,
               ...(source.origin?.sourceId === id ? { origin: undefined } : {}),
               ...(source.parentSourceId === id ? { parentSourceId: undefined } : {}),
+              ...(source.studySequence?.groupId === id ? { studySequence: undefined } : {}),
             },
       ),
     notes: library.notes.map((note) =>
-      note.excerpt?.sourceId === id ? { ...note, excerpt: undefined } : note,
+      note.excerpt?.sourceId === id
+        ? {
+            ...note,
+            excerpt: undefined,
+            plugin: note.plugin ? { ...note.plugin, variantLocators: undefined } : undefined,
+          }
+        : note,
     ),
   })
 }

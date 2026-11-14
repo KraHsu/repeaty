@@ -1,6 +1,9 @@
 import { t, msg } from '../i18n'
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
+import { studySettings } from '../core/study-settings'
 import { shortcutBlocked } from '../shortcuts'
+import { inputDefaults } from '../input/defaults'
+import type { InputController } from '../input/controller'
 import type { Operation } from '../core/operations'
 import { useNotifications } from '../notifications'
 import type { BatchEdit } from '../core/batch'
@@ -26,6 +29,7 @@ export function useStudyActions({
   activeSource,
   mixedController,
   navigate,
+  transition,
   refreshClock,
   notice,
   mixed,
@@ -35,6 +39,11 @@ export function useStudyActions({
   editCard,
   sourceDraft,
   selectedDeck,
+  input,
+  goBack,
+  goForward,
+  canGoBack,
+  canGoForward,
 }: {
   library: ReturnType<typeof useLibrary>['library']
   busy: ReturnType<typeof useLibrary>['busy']
@@ -47,6 +56,7 @@ export function useStudyActions({
   activeSource: ReturnType<typeof useStudyViews>['activeSource']
   mixedController: ReturnType<typeof useStudyViews>['mixedController']
   navigate: ReturnType<typeof useAppNavigation>['navigate']
+  transition: ReturnType<typeof useAppNavigation>['transition']
   refreshClock: ReturnType<typeof useStudyClock>['refreshClock']
   notice: ReturnType<typeof useOperationRunner>['notice']
   mixed: ReturnType<typeof useAppNavigation>['mixed']
@@ -56,10 +66,21 @@ export function useStudyActions({
   editCard: ReturnType<typeof useEditorActions>['editCard']
   sourceDraft: ReturnType<typeof useEditorActions>['sourceDraft']
   selectedDeck: ReturnType<typeof useAppNavigation>['selectedDeck']
+  input?: InputController
+  goBack?: ReturnType<typeof useAppNavigation>['goBack']
+  goForward?: ReturnType<typeof useAppNavigation>['goForward']
+  canGoBack?: ReturnType<typeof useAppNavigation>['canGoBack']
+  canGoForward?: ReturnType<typeof useAppNavigation>['canGoForward']
 }) {
   const { dismissNotificationContext } = useNotifications()
 
-  const mixedRatio = ref(3)
+  const mixedRatio = ref(studySettings(library.value).cardsPerReading)
+  watch(
+    [() => workspace.scope.value, () => studySettings(library.value).cardsPerReading, modal],
+    () => {
+      mixedRatio.value = studySettings(library.value).cardsPerReading
+    },
+  )
   const undoingAction = ref(false)
   const reviewBindings = computed(() => ({
     library: library.value,
@@ -74,6 +95,10 @@ export function useStudyActions({
     saveAttempt: workspace.recordAttempt,
     getAttempt: workspace.getAttempt,
     getSource: workspace.getSource,
+    recordPlainPractice: (id: string, cardId: string, scope: string) =>
+      run(() => workspace.recordPlainPractice(id, cardId, scope)),
+    undoPlainPractice: (id: string, scope: string) =>
+      run(() => workspace.undoPlainPractice(id, scope)),
     finishPractice: (
       id: string,
       cardId: string,
@@ -110,19 +135,22 @@ export function useStudyActions({
   )
   function startMixed() {
     if (!Number.isInteger(mixedRatio.value) || mixedRatio.value < 1 || mixedRatio.value > 10) return
-    navigate('overview')
-    refreshClock()
-    notice.value = null
-    modal.value = null
-    mixed.value = { cardsPerReading: mixedRatio.value }
+    return navigate('overview', () => {
+      refreshClock()
+      notice.value = null
+      modal.value = null
+      mixed.value = { cardsPerReading: mixedRatio.value }
+    })
   }
   async function leaveMixedReading() {
     return (await mixedReader.value?.leaveSession()) ?? true
   }
   function startStudy(study: StudySession) {
-    refreshClock()
-    notice.value = null
-    review.value = { study }
+    return transition(() => {
+      refreshClock()
+      notice.value = null
+      review.value = { study }
+    })
   }
   async function undoLastAction() {
     if (shortcutLocked.value || !canUndoAction.value) return
@@ -198,6 +226,10 @@ export function useStudyActions({
     }
   }
   function globalKeydown(event: KeyboardEvent) {
+    if (input) {
+      input.dispatch(event)
+      return
+    }
     if (shortcutBlocked(event) || shortcutLocked.value) return
     const primary = event.ctrlKey || event.metaKey
     if (
@@ -226,8 +258,11 @@ export function useStudyActions({
       }
     } else if (key === '/' && !event.shiftKey) {
       event.preventDefault()
-      navigate('cards')
-      void nextTick(() => document.querySelector<HTMLInputElement>('.search-field input')?.focus())
+      navigate('cards', () => {
+        void nextTick(() =>
+          document.querySelector<HTMLInputElement>('.search-field input')?.focus(),
+        )
+      })
     } else if (key === 'b' && !review.value && !mixed.value && !event.shiftKey) {
       event.preventDefault()
       navigate('cards')
@@ -239,7 +274,7 @@ export function useStudyActions({
       modal.value = 'shortcuts'
     }
   }
-  const shortcuts = [
+  const legacyShortcuts = [
     ['Ctrl / ⌘ Z', '撤销最近操作'],
     ['Ctrl / ⌘ Shift Z', '重做最近操作'],
     ['Ctrl / ⌘ Enter', '保存当前表单'],
@@ -254,6 +289,73 @@ export function useStudyActions({
     ['Esc', '退出复习 / 关闭弹窗'],
     ['?', '快捷键'],
   ] as const
+  const shortcuts = computed(() =>
+    input
+      ? input.commands.value
+          .filter((command) => input.bindings(command.id).length)
+          .map((command) => [input.bindings(command.id).join(' / '), command.title] as const)
+      : legacyShortcuts,
+  )
+  if (input) {
+    const operations: Record<string, { available?: () => boolean; execute: () => unknown }> = {
+      'app.back': { available: () => !!canGoBack?.value, execute: () => goBack?.() },
+      'app.forward': { available: () => !!canGoForward?.value, execute: () => goForward?.() },
+      'document.top': { execute: () => scrollDocument(false) },
+      'document.bottom': { execute: () => scrollDocument(true) },
+      'app.undo': { available: () => canUndoAction.value, execute: undoLastAction },
+      'app.redo': { available: () => canRedoAction.value, execute: redoLastAction },
+      'app.add': {
+        execute: () => {
+          if (activeReview.value?.current) activeReview.value.addCurrent()
+          else {
+            editCard()
+            if (review.value?.deckId) sourceDraft.value = { deckId: review.value.deckId }
+          }
+        },
+      },
+      'app.search': {
+        execute: () =>
+          navigate('cards', () => {
+            void nextTick(() =>
+              document.querySelector<HTMLInputElement>('.search-field input')?.focus(),
+            )
+          }),
+      },
+      'app.cards': {
+        available: () => !review.value && !mixed.value,
+        execute: () => navigate('cards'),
+      },
+      'app.review': {
+        available: () => !review.value && !mixed.value,
+        execute: () => startReview(selectedDeck.value || undefined),
+      },
+      'app.shortcuts': {
+        execute: () => {
+          modal.value = 'shortcuts'
+        },
+      },
+    }
+    const releases = Object.entries(operations).map(([id, operation]) =>
+      input.register({
+        ...inputDefaults.find((definition) => definition.id === id)!,
+        available: () => !shortcutLocked.value && !modal.value && operation.available?.() !== false,
+        execute: async () => {
+          await operation.execute()
+        },
+      }),
+    )
+    onScopeDispose(() => releases.forEach((release) => release()))
+  }
+  function scrollDocument(bottom: boolean) {
+    const focused =
+      document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+    let target = focused?.closest<HTMLElement>('.source-preview, .reader-content, .main-content')
+    if (!target || target.scrollHeight <= target.clientHeight)
+      target = document.querySelector<HTMLElement>('.main-content')
+    if (!target || target.scrollHeight <= target.clientHeight)
+      target = document.scrollingElement as HTMLElement | null
+    target?.scrollTo({ top: bottom ? target.scrollHeight : 0, behavior: 'instant' })
+  }
   async function saveSearch(filter: SearchFilter, name: string, id?: string) {
     return run(() => workspace.saveSearch(filter, name, id), '常用筛选已保存')
   }
@@ -284,9 +386,11 @@ export function useStudyActions({
     return saved
   }
   function startReview(deckId?: string) {
-    refreshClock()
-    notice.value = null
-    review.value = { deckId }
+    return transition(() => {
+      refreshClock()
+      notice.value = null
+      review.value = { deckId }
+    })
   }
   async function submitReview(
     id: string,

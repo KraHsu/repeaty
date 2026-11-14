@@ -9,10 +9,16 @@ import {
   type SearchFilter,
 } from './model'
 import { available, isBuried } from './scheduler'
+import { studySettings, type StudySettings } from './study-settings'
+import { studyDay } from './study-day'
 
-export function cardStatus(card: CardView, now: Date): SearchFilter['state'] {
+export function cardStatus(
+  card: CardView,
+  now: Date,
+  settings?: Pick<StudySettings, 'dayStartHour'>,
+): SearchFilter['state'] {
   if (card.suspended) return '已暂停'
-  if (isBuried(card, now)) return '今日暂缓'
+  if (isBuried(card, now, settings)) return '今日暂缓'
   if (card.schedule.state === 0) return '新卡片'
   if (new Date(card.schedule.due) <= now) return '待复习'
   return card.schedule.state === 2 ? '复习中' : '学习中'
@@ -48,10 +54,15 @@ function numericCondition(expression: string, key: string): (n: number) => boole
       match[1] ?? '='
     ]!
 }
-function calendarDay(date: Date) {
-  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000
+function calendarDay(date: Date, settings?: Pick<StudySettings, 'dayStartHour'>) {
+  return Date.parse(`${studyDay(date, settings)}T00:00:00Z`) / 86400000
 }
-export function compileSearch(deckList: Deck[], filter: SearchFilter, now = new Date()) {
+export function compileSearch(
+  deckList: Deck[],
+  filter: SearchFilter,
+  now = new Date(),
+  settings?: Pick<StudySettings, 'dayStartHour'>,
+) {
   const decks = new Map(deckList.map((deck) => [deck.id, deck.name.toLocaleLowerCase()]))
   const predicates = terms(filter.query).map((raw) => {
     const negate = raw.startsWith('-')
@@ -82,7 +93,7 @@ export function compileSearch(deckList: Deck[], filter: SearchFilter, now = new 
         review: (card) => card.schedule.state === 2,
         learning: (card) => [1, 3].includes(card.schedule.state),
         suspended: (card) => card.suspended,
-        buried: (card) => isBuried(card, now),
+        buried: (card) => isBuried(card, now, settings),
         leech: (card) => card.leech,
       }
       if (!states[value])
@@ -95,7 +106,10 @@ export function compileSearch(deckList: Deck[], filter: SearchFilter, now = new 
       test =
         key === 'lapses'
           ? (card) => compare(card.schedule.lapses)
-          : (card) => compare(calendarDay(new Date(card.schedule.due)) - calendarDay(now))
+          : (card) =>
+              compare(
+                calendarDay(new Date(card.schedule.due), settings) - calendarDay(now, settings),
+              )
     }
     return (card: CardView) => (negate ? !test(card) : test(card))
   })
@@ -103,11 +117,15 @@ export function compileSearch(deckList: Deck[], filter: SearchFilter, now = new 
   return (card: CardView) =>
     (!filter.deckId || card.deckId === filter.deckId) &&
     (filter.state === 'all' ||
-      (filter.state === '顽固卡' ? card.leech : cardStatus(card, now) === filter.state)) &&
+      (filter.state === '顽固卡'
+        ? card.leech
+        : cardStatus(card, now, settings) === filter.state)) &&
     predicates.every((test) => test(card))
 }
 export function searchCards(library: Library, filter: SearchFilter, now = new Date()): CardView[] {
-  return cardViews(library).filter(compileSearch(library.decks, filter, now))
+  return cardViews(library).filter(
+    compileSearch(library.decks, filter, now, studySettings(library)),
+  )
 }
 export function saveSearch(
   library: Library,
@@ -139,6 +157,6 @@ export function studyCards(
   const done = new Set(completed)
   return [...new Set(ids)].flatMap((id) => {
     const card = views.get(id)
-    return card && !done.has(id) && available(card, now) ? [card] : []
+    return card && !done.has(id) && available(card, now, studySettings(library)) ? [card] : []
   })
 }

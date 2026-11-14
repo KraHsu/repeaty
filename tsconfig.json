@@ -18,6 +18,7 @@
     "paths": {
       "#build/ui": ["./node_modules/.nuxt-ui/ui"],
       "#build/ui/*": ["./node_modules/.nuxt-ui/ui/*"],
+      "@repeaty-collection-platform": ["./src/collection-platform-browser.ts"],
       "@repeaty-plugin-host": ["./src/plugins/platform-browser.ts"],
       "@repeaty-platform": ["./src/platform/static.ts"]
     }

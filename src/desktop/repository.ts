@@ -19,14 +19,18 @@ import {
   type Attempt,
 } from '../core/practice-data'
 import { cardDraftSchema, type CardDraft } from '../core/card-draft-data'
+import { sourceDraftSchema, type SourceDraft } from '../core/source-workbench'
+import { parseSourceProperties } from '../core/source-properties'
 import { recordStores, type Snapshot, type BackupSummary, type CardPage } from '../core/storage'
 import { compileSearch } from '../core/search'
 import { available } from '../core/scheduler'
+import { studySettings } from '../core/study-settings'
 import {
   createWorkspaceMarkdown,
   readWorkspaceMarkdown,
   rewriteWorkspaceContent,
   rewriteWorkspaceDocument,
+  workspaceSourceProperties,
   type JsonObject,
 } from '../workspace/markdown'
 import {
@@ -125,10 +129,13 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
         assets?: MediaUpload[]
         reason?: string
         consumeCardDraft?: string
+        consumeSourceDraft?: string
         externalDocuments?: DocumentWrite[]
         scanHash?: string
         assetObservations?: { path: string; hash: string }[]
         operationHistory?: OperationHistory
+        retired?: RetiredNote[]
+        sync?: import('../sync/commit').SyncCommit
       } = {},
     ): Promise<Snapshot> {
       if (!cached) await repository.load()
@@ -139,13 +146,29 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
       if (cached!.revision !== expectedRevision) throw changed()
       const previous = cached!.library
       const structural = !(
-        ['decks', 'notes', 'media', 'savedSearches', 'sources', 'materialReceipts'] as const
+        [
+          'decks',
+          'notes',
+          'media',
+          'savedSearches',
+          'sources',
+          'materialReceipts',
+          'automationReceipts',
+          'materialFolders',
+          'materialCollections',
+          'sourceConnections',
+          'sourceCandidates',
+          'studySettings',
+          'fsrsModels',
+        ] as const
       ).every((key) => previous[key] === library[key])
       if (structural) workspaceLibrarySchema.parse(library)
       else
         validateLibraryReferences(library, () => {
           throw nativeError('invalid-data')
         })
+      if (library.studyEvents.length > 500_000 || library.studyActivity.length > 500_000)
+        throw new Error('study-record-limit')
       const patches: NativePatch[] = []
       let restoredBytes = 0
       for (const store of recordStores) {
@@ -189,7 +212,11 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
         for (const id of prior.keys()) patches.push({ store, id })
       }
       for (const asset of options.assets ?? [])
-        if (library.media.some((meta) => meta.id === asset.meta.id)) await upload(asset)
+        if (
+          library.media.some((meta) => meta.id === asset.meta.id) ||
+          options.retired?.some((entry) => entry.media.some((meta) => meta.id === asset.meta.id))
+        )
+          await upload(asset)
       const contentPatches = patches.filter((patch) => {
         if (patch.positionOnly) return false
         if (patch.store === 'notes') return true
@@ -201,7 +228,7 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
         return (
           !before ||
           !after ||
-          !['title', 'url', 'mediaId', 'format', 'kind', 'origin', 'document'].every(
+          !['title', 'url', 'mediaId', 'format', 'kind', 'origin', 'document', 'properties'].every(
             (key) =>
               JSON.stringify(before[key as keyof typeof before]) ===
               JSON.stringify(after[key as keyof typeof after]),
@@ -280,6 +307,8 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
             properties.tags = value.tags
             content = { kind: 'note', front: value.front, back: value.back }
           } else {
+            if (value.properties !== undefined)
+              Object.assign(properties, parseSourceProperties(value.properties))
             properties.title = value.title
             properties.url = value.url
             const asset =
@@ -304,13 +333,24 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
                     existing.properties[key] ?? (Array.isArray(value) ? [] : undefined),
                   ) === JSON.stringify(value),
               )
-            if (sameHeader && sameProperties) {
+            const propertiesChanged =
+              kind === 'source' &&
+              value.properties !== undefined &&
+              JSON.stringify(parseSourceProperties(workspaceSourceProperties(existing))) !==
+                JSON.stringify(parseSourceProperties(value.properties))
+            if (sameHeader && sameProperties && !propertiesChanged) {
               try {
                 raw = rewriteWorkspaceContent(existing, content)
               } catch {
                 raw = rewriteWorkspaceDocument(existing, properties as JsonObject, content)
               }
-            } else raw = rewriteWorkspaceDocument(existing, properties as JsonObject, content)
+            } else
+              raw = rewriteWorkspaceDocument(
+                existing,
+                properties as JsonObject,
+                content,
+                kind === 'source' ? value.properties : undefined,
+              )
           } else raw = createWorkspaceMarkdown(properties as JsonObject, content)
         }
         if (!old && !patch.value) continue
@@ -335,9 +375,12 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
           documents: writes,
           reason: options.reason ?? null,
           consumeCardDraft: options.consumeCardDraft ?? null,
+          consumeSourceDraft: options.consumeSourceDraft ?? null,
           scanHash: options.scanHash ?? null,
           assetObservations: options.assetObservations ?? [],
           operationHistory: options.operationHistory,
+          retired: options.retired,
+          sync: options.sync,
         },
       })
       if (result.revision !== expectedRevision + 1) throw changed()
@@ -429,6 +472,15 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
       if (result.revision !== cached?.revision) throw changed()
       return result
     },
+    async retiredNotes(backupId?: string): Promise<RetiredNote[]> {
+      const revision = cached?.revision
+      const result = z
+        .array(retiredNoteSchema)
+        .parse(await read({ type: 'retired-notes', revision, ...(backupId ? { backupId } : {}) }))
+      if (revision !== cached?.revision || result.some((entry) => entry.revision !== revision))
+        throw changed()
+      return result
+    },
     async getAttempt(id: string, expectedRevision = cached?.revision, signal?: AbortSignal) {
       signal?.throwIfAborted()
       if (expectedRevision !== cached?.revision) throw changed()
@@ -490,15 +542,37 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
     ): Promise<CardPage> {
       signal?.throwIfAborted()
       if (!cached) await repository.load()
-      const matches = compileSearch(cached!.library.decks, filter, now)
+      const settings = studySettings(cached!.library)
+      const matches = compileSearch(cached!.library.decks, filter, now, settings)
       const cards = cardViews(cached!.library).filter(matches)
-      const eligible = includeStudy ? cards.filter((card) => available(card, now)) : []
+      const eligible = includeStudy ? cards.filter((card) => available(card, now, settings)) : []
       return {
         cards: cards.slice((Math.max(1, page) - 1) * 50, Math.max(1, page) * 50),
         total: cards.length,
         eligible: eligible.length,
         studyIds: eligible.slice(0, 500).map((card) => card.id),
       }
+    },
+    async readSourceProperties(id: string) {
+      const document = (await documents([id])).find(
+        (item) => item.kind === 'source' && item.id === id,
+      )
+      if (!document) throw nativeError('not-found')
+      const parsed = readWorkspaceMarkdown(document.raw)
+      if (parsed.status !== 'managed') throw nativeError('invalid-data')
+      return workspaceSourceProperties(parsed.document)
+    },
+    async readSourceDraft(sourceId: string) {
+      const value = await read({ type: 'source-draft', sourceId })
+      return value ? sourceDraftSchema.parse(value) : undefined
+    },
+    async writeSourceDraft(input: SourceDraft) {
+      const draft = sourceDraftSchema.parse(input)
+      if (draft.scope !== repository.scope()) throw changed()
+      await write({ type: 'source-draft', draft })
+    },
+    async discardSourceDraft(sourceId: string, id: string) {
+      await write({ type: 'source-draft-remove', sourceId, id })
     },
     async readCardDrafts() {
       const rows = await read<Record<string, unknown>[]>({ type: 'drafts' })

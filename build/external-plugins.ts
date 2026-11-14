@@ -6,8 +6,33 @@ import type { Plugin } from 'vite'
 export function externalPlugins(desktop: boolean): Plugin {
   function resources() {
     const ids = desktop
-      ? ['review-history', 'leetcode', 'review-heatmap']
-      : ['review-history', 'review-heatmap']
+      ? [
+          'review-history',
+          'leetcode',
+          'review-heatmap',
+          'format-cleanup',
+          'pdf-reader',
+          'document-reader',
+          'visual-occlusion',
+          'obsidian',
+          'readwise',
+          'fsrs-optimizer',
+          'study-statistics',
+          'assistant',
+        ]
+      : [
+          'review-history',
+          'review-heatmap',
+          'format-cleanup',
+          'pdf-reader',
+          'document-reader',
+          'visual-occlusion',
+          'obsidian',
+          'readwise',
+          'fsrs-optimizer',
+          'study-statistics',
+        ]
+    ids.push('web-lookup')
     const files = new Map<string, string>()
     const catalog = ids.map((id) => {
       const bundle = JSON.parse(
@@ -18,7 +43,11 @@ export function externalPlugins(desktop: boolean): Plugin {
       )
       const path = `plugins/${id}.repeaty-plugin`
       files.set(path, JSON.stringify(bundle))
-      return { ...bundle.manifest, path, installByDefault: id !== 'review-heatmap' }
+      return {
+        ...bundle.manifest,
+        path,
+        installByDefault: ['review-history', 'leetcode'].includes(id),
+      }
     })
     files.set('plugins/catalog.json', JSON.stringify(catalog))
     return files

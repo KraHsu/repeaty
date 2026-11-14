@@ -51,7 +51,10 @@ import {
   workspaceApi,
   nativeError,
 } from './workspaces'
-const props = defineProps<{ workspace: ReturnType<typeof useLibrary> }>()
+const props = defineProps<{
+  workspace: ReturnType<typeof useLibrary>
+  beforeChange?: () => boolean | Promise<boolean>
+}>()
 const emit = defineEmits<{ changed: [] }>()
 const inspector = createInspector()
 const busy = ref(true),
