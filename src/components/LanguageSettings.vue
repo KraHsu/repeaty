@@ -76,7 +76,7 @@ function exportPack() {
         t('移除自定义翻译')
       }}</UiButton>
     </div>
-    <div v-if="pending" class="language-preview">
+    <div v-if="pending" class="language-preview app-section-divider">
       <p>
         {{
           t('即将导入 {language} 的 {count} 条译文。', {
@@ -100,10 +100,6 @@ function exportPack() {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-}
-.language-preview {
-  border-top: 1px solid var(--ui-border);
-  padding-top: 1rem;
 }
 dt {
   color: var(--ui-text-muted);

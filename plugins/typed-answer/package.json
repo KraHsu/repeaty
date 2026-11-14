@@ -1,6 +1,6 @@
 {
   "name": "@repeaty/plugin-typed-answer",
-  "version": "1.6.1",
+  "version": "1.6.3",
   "private": true,
   "type": "module",
   "description": "Type an answer before revealing it, with case-insensitive comparison.",
@@ -24,5 +24,6 @@
     "vite": "^8.3.4",
     "vitest": "^5.0.5",
     "vue-tsc": "^3.3.13"
-  }
+  },
+  "license": "AGPL-3.0-only"
 }

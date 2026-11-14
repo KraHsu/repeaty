@@ -1,6 +1,14 @@
 import { readFileSync } from 'node:fs'
 import { expect, it } from 'vitest'
 
+it('allows the main window to request close and finalize it after the save guard approves', () => {
+  const capability = JSON.parse(readFileSync('src-tauri/capabilities/main.json', 'utf8'))
+  expect(capability.windows).toEqual(['main'])
+  expect(capability.permissions).toEqual(
+    expect.arrayContaining(['core:window:allow-close', 'core:window:allow-destroy']),
+  )
+})
+
 it('registers every bundled native command in the build manifest and limits its permission to the main window', () => {
   const source = readFileSync('src-tauri/src/main.rs', 'utf8')
   const build = readFileSync('src-tauri/build.rs', 'utf8')

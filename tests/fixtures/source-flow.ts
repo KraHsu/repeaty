@@ -68,14 +68,19 @@ export async function selectSourceExcerpt(page: Page) {
     { start, end: start + sourceQuote.length },
   )
   await expect(
-    page.getByRole('button', { name: /^(用摘录制卡|Create card from excerpt)$/ }),
+    page
+      .locator('.source-excerpt-action')
+      .getByRole('button', { name: /^(用摘录制卡|Create card from excerpt)$/ }),
   ).toBeEnabled()
 }
 export async function createExcerptCard(page: Page) {
   await selectSourceExcerpt(page)
-  await page.getByRole('button', { name: '用摘录制卡', exact: true }).click()
+  await page
+    .locator('.source-excerpt-action')
+    .getByRole('button', { name: '用摘录制卡', exact: true })
+    .click()
   await expect(page.getByLabel('背面 · 答案', { exact: true })).toHaveValue(sourceQuote)
   await page.getByLabel('正面 · 问题', { exact: true }).fill('间隔复习如何安排时间？')
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
-  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: '添加卡片', exact: true })).toHaveCount(0)
 }

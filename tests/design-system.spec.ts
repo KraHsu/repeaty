@@ -34,7 +34,10 @@ async function typography(page: Page) {
     'font-size',
     '16px',
   )
-  await expect(page.locator('.ui-setting-group__description')).toHaveCSS('font-size', '14px')
+  const descriptions = page.locator('.ui-setting-group__description')
+  expect(await descriptions.count()).toBeGreaterThan(0)
+  for (const description of await descriptions.all())
+    await expect(description).toHaveCSS('font-size', '14px')
   await expect(page.locator('.ui-setting-field [data-slot="description"]').first()).toHaveCSS(
     'font-size',
     '14px',
@@ -100,7 +103,7 @@ test('shared scrollbars remain usable and settings respect high contrast and lar
       () => document.scrollingElement!.scrollHeight > document.scrollingElement!.clientHeight,
     ),
   ).toBe(true)
-  await page.locator('.settings-page').hover({ position: { x: 20, y: 80 } })
+  await page.locator('.settings-panel').hover({ position: { x: 20, y: 80 } })
   await page.mouse.wheel(0, 400)
   await expect
     .poll(() => page.evaluate(() => document.scrollingElement!.scrollTop))
@@ -112,7 +115,15 @@ test('shared scrollbars remain usable and settings respect high contrast and lar
     return { width: rail.width, color: thumb.backgroundColor, radius: thumb.borderRadius }
   })
   expect(documentRail.width).toBe('10px')
-  expect(documentRail.color).toBe('rgb(170, 188, 162)')
+  const themeThumb = await page.evaluate(() => {
+    const sample = document.createElement('span')
+    sample.style.backgroundColor = 'var(--scrollbar-thumb)'
+    document.body.append(sample)
+    const value = getComputedStyle(sample).backgroundColor
+    sample.remove()
+    return value
+  })
+  expect(documentRail.color).toBe(themeThumb)
   expect(parseFloat(documentRail.radius)).toBeGreaterThan(10)
   await page.screenshot({ path: info.outputPath('settings-document-scrollbar.png') })
 

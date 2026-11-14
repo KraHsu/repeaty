@@ -5,7 +5,6 @@ import { useEventListener } from '@vueuse/core'
 import { UiButton, UiInput, UiTextarea, UiCollapsible } from './ui'
 import { t } from '../i18n'
 import type { Source } from '../core/source-data'
-import { applyMarkdownEdit } from '../core/markdown-editing'
 import {
   sourceDraftSchema,
   type SourceDraft,
@@ -255,19 +254,6 @@ async function commit() {
     if (alive) saving.value = false
   }
 }
-function edit(action: Parameters<typeof applyMarkdownEdit>[3]) {
-  const input = textarea.value?.textareaRef
-  if (!input || locked.value) return
-  const changed = applyMarkdownEdit(content.value, input.selectionStart, input.selectionEnd, action)
-  if (!changed) return
-  input.focus()
-  input.setSelectionRange(0, input.value.length)
-  if (!document.execCommand('insertText', false, changed.text)) {
-    input.value = changed.text
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-  }
-  void nextTick(() => input.setSelectionRange(changed.start, changed.end))
-}
 const inputCommands = useOptionalInputCommands()
 function keydown(event: KeyboardEvent) {
   if (event.isComposing || event.keyCode === 229 || locked.value) return
@@ -275,22 +261,6 @@ function keydown(event: KeyboardEvent) {
     event.preventDefault()
     event.stopPropagation()
     void commit()
-    return
-  }
-  if (props.source.format !== 'markdown' || event.ctrlKey || event.metaKey || event.altKey) return
-  if (event.key === 'Tab') {
-    event.preventDefault()
-    edit(event.shiftKey ? 'outdent' : 'indent')
-  }
-  if (event.key === 'Enter') {
-    const input = textarea.value?.textareaRef
-    if (
-      input &&
-      applyMarkdownEdit(content.value, input.selectionStart, input.selectionEnd, 'continue-list')
-    ) {
-      event.preventDefault()
-      edit('continue-list')
-    }
   }
 }
 defineExpose({ flush, dirty })
@@ -330,26 +300,6 @@ defineExpose({ flush, dirty })
           /></label></div
       ></template>
     </UiCollapsible>
-    <div
-      v-if="source.format === 'markdown'"
-      class="source-editor-tools"
-      role="toolbar"
-      :aria-label="t('编辑材料正文')"
-    >
-      <UiButton variant="ghost" :disabled="locked" @click="edit('indent')">{{
-        t('缩进')
-      }}</UiButton>
-      <UiButton variant="ghost" :disabled="locked" @click="edit('outdent')">{{
-        t('减少缩进')
-      }}</UiButton>
-      <UiButton variant="ghost" :disabled="locked" @click="edit('task')">{{
-        t('任务列表')
-      }}</UiButton>
-      <UiButton variant="ghost" :disabled="locked" @click="edit('code')">{{
-        t('代码块')
-      }}</UiButton>
-      <UiButton variant="ghost" :disabled="locked" @click="edit('math')">{{ t('公式') }}</UiButton>
-    </div>
     <UiTextarea
       ref="textarea"
       v-model="content"
@@ -397,7 +347,6 @@ defineExpose({ flush, dirty })
 .source-editor-yaml {
   grid-column: 1 / -1;
 }
-.source-editor-tools,
 .source-editor-footer,
 .source-editor-actions {
   display: flex;

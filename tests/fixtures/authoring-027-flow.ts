@@ -238,10 +238,15 @@ export async function reviewActions027Flow(page: Page, read: () => Promise<Libra
   await page.keyboard.press('3')
   await expect(question).toContainText('Next question')
   expect((await read()).reviews).toHaveLength(1)
-  await undoAction(page, 'Meta+z')
+  await undoAction(
+    page,
+    (await page.evaluate(() => /Mac|iPhone|iPad/.test(navigator.platform)))
+      ? 'Meta+z'
+      : 'Control+z',
+  )
   await expect(question).toContainText('Original front')
   expect((await read()).reviews).toEqual([])
-  await page.keyboard.press('?')
+  await page.keyboard.press('Shift+?')
   await expect(page.getByRole('dialog', { name: '快捷键', exact: true })).toBeVisible()
   await page.keyboard.press('Escape')
   await page.keyboard.press('/')

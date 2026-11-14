@@ -63,8 +63,8 @@ export default function activate(): ExtensionPlugin {
     },
     get description() {
       return t(
-        '围绕授权内容对话，确认后采用修改建议。',
-        'Discuss authorized content and review changes before applying them.',
+        '围绕授权材料学习问答、梳理知识关系和制卡，确认后采用修改建议。',
+        'Discuss learning material, connect ideas and prepare flashcards with reviewed changes.',
       )
     },
   }

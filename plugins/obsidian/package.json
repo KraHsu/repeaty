@@ -1,6 +1,6 @@
 {
   "name": "@repeaty/plugin-obsidian",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -20,5 +20,6 @@
     "vite": "^8.3.4",
     "vitest": "^5.0.5",
     "vue-tsc": "^3.3.13"
-  }
+  },
+  "license": "AGPL-3.0-only"
 }

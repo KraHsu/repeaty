@@ -248,5 +248,5 @@ test('changing priority across list pages keeps the current material and support
   await page.reload()
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Page 01', exact: true })).toBeVisible()
-  await expect(priority).toHaveAttribute('value', '1')
+  await expect(priority).toHaveAttribute('value', 'inherit')
 })

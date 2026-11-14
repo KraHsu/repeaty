@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest'
 import {
   bundleSchema,
+  installBundleSchema,
   manifestSchema,
   packageHash,
   pluginIssueMessage,
@@ -13,6 +14,7 @@ function bundle(): PluginBundle {
     manifest: {
       id: 'example',
       name: 'Example',
+      author: 'example-author',
       version: '1.2.3',
       apiVersion: 1,
       dataVersion: 1,
@@ -36,6 +38,7 @@ it('uses canonical object keys so native and browser trust refer to the same pac
       apiVersion: 1,
       version: '1.2.3',
       name: 'Example',
+      author: 'example-author',
       id: 'example',
     },
   } as PluginBundle
@@ -57,8 +60,33 @@ it('requires renewed trust when executable code, styles or declared capabilities
       manifest: { ...original.manifest, permissions: { origins: ['https://other.example'] } },
     },
     { ...original, manifest: { ...original.manifest, version: '1.2.4' } },
+    { ...original, manifest: { ...original.manifest, author: 'another-author' } },
   ])
     expect(await packageHash(changed)).not.toBe(hash)
+})
+
+it('keeps installed legacy packages readable but requires an author on new installation', async () => {
+  const legacy = bundle()
+  delete legacy.manifest.author
+  expect(bundleSchema.parse(legacy)).toEqual(legacy)
+  expect(installBundleSchema.safeParse(legacy).success).toBe(false)
+  await expect(
+    readPluginFile(new File([JSON.stringify(legacy)], 'legacy.repeaty-plugin')),
+  ).rejects.toThrow('作者（author）')
+  expect(
+    installBundleSchema.parse({
+      ...legacy,
+      manifest: { ...legacy.manifest, author: '  Example author  ' },
+    }).manifest.author,
+  ).toBe('Example author')
+  for (const author of ['', '   ', 123, 'x'.repeat(101)]) {
+    const result = installBundleSchema.safeParse({
+      ...legacy,
+      manifest: { ...legacy.manifest, author },
+    })
+    expect(result.success).toBe(false)
+    if (!result.success) expect(pluginIssueMessage(result.error)).toContain('作者（author）')
+  }
 })
 
 it('rejects paths and reserved core ids as plugin identifiers', () => {

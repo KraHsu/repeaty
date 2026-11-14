@@ -108,6 +108,55 @@ function actions(): MaterialWorkbenchActions {
   }
 }
 
+it('keeps native text navigation and IME input while retaining the material save shortcut', async () => {
+  const { source } = prepared(),
+    methods = actions()
+  mount(() =>
+    h(SourceContentEditor, {
+      source,
+      text: '- 原始材料',
+      scope: 'local:one',
+      prepare: methods.prepareEditor,
+      writeDraft: methods.writeDraft,
+      discardDraft: methods.discardDraft,
+      save: methods.editContent,
+    }),
+  )
+  await settle()
+  const field = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="材料正文"]')!
+  input('- 修正材料', '材料正文')
+  field.setSelectionRange(field.value.length, field.value.length)
+  for (const init of [
+    { key: 'Tab' },
+    { key: 'Tab', shiftKey: true },
+    { key: 'Enter' },
+    { key: 'Enter', ctrlKey: true, isComposing: true },
+  ]) {
+    const event = new KeyboardEvent('keydown', { ...init, bubbles: true, cancelable: true })
+    field.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+  }
+  expect(field.value).toBe('- 修正材料')
+  expect(methods.editContent).not.toHaveBeenCalled()
+
+  const save = new KeyboardEvent('keydown', {
+    key: 'Enter',
+    ctrlKey: true,
+    bubbles: true,
+    cancelable: true,
+  })
+  field.dispatchEvent(save)
+  expect(save.defaultPrevented).toBe(true)
+  await settle()
+  expect(methods.editContent).toHaveBeenCalledWith(
+    expect.objectContaining({
+      content: '- 修正材料',
+      sourceId: source.id,
+      mediaId: source.mediaId,
+    }),
+  )
+})
+
 it('coalesces draft input, flushes the latest text and keeps a failed content save recoverable', async () => {
   vi.useFakeTimers()
   const { source } = prepared(),
