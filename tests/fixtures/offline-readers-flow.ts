@@ -2,7 +2,12 @@ import { expect, type Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { fixture } from '../../src/core/test-fixtures'
 import { archive, epubFiles } from '../../plugins/document-reader/test/fixtures'
-import { confirmPluginAction, openPluginManager, selectPlugin } from './settings-flow'
+import {
+  confirmPluginAction,
+  enableInstalledPlugin,
+  openPluginManager,
+  selectPlugin,
+} from './settings-flow'
 import {
   openCollection,
   previewCollection,
@@ -29,9 +34,10 @@ async function prepare(page: Page, plugin: string) {
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await openPluginManager(page)
   await page
-    .locator('.plugin-actions input[type=file]')
+    .locator('.plugins-page input[type=file]')
     .setInputFiles(`plugins/packages/${plugin}.repeaty-plugin`)
   await confirmPluginAction(page)
+  await enableInstalledPlugin(page, plugin)
 }
 async function importFile(
   page: Page,
@@ -160,7 +166,10 @@ export async function pdfReaderFlow(page: Page) {
     selection.addRange(range)
     element.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
   })
-  await page.getByRole('button', { name: '用摘录制卡', exact: true }).click()
+  await page
+    .locator('.source-excerpt-action')
+    .getByRole('button', { name: '用摘录制卡', exact: true })
+    .click()
   await page.getByLabel('正面 · 问题', { exact: true }).fill('多页 PDF 选区')
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   const saved = await localLibrary(page)

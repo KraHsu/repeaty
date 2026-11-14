@@ -10,6 +10,9 @@ import { defineAsyncComponent, computed, onMounted, onUnmounted, reactive, ref, 
 import { ArrowLeft, Check, CornerDownLeft, RotateCcw, Ellipsis, Layers } from '@lucide/vue'
 import '../styles/review-deck.css'
 import { shortcutBlocked } from '../shortcuts'
+import { useOptionalInputCommands } from '../input/controller'
+import { inputDefaults } from '../input/defaults'
+import { arrangeMenu, defaultMenus, useMenuPreferences } from '../input/menus'
 import type { Operation } from '../core/operations'
 import {
   available,
@@ -36,6 +39,8 @@ import type { QuestionState } from '../plugins/types'
 import type { Assessment } from '../plugins/data'
 import type { Practice, Attempt } from '../core/practice-data'
 const { notify } = useNotifications()
+const inputCommands = useOptionalInputCommands()
+const menuPreferences = useMenuPreferences()
 
 const SourceContext = defineAsyncComponent(() => import('./SourceContext.vue'))
 const props = defineProps<{
@@ -135,50 +140,67 @@ const questionState = reactive<QuestionState>({ allowedGrades: [], busy: false }
 const actionsLocked = computed(
   () => props.busy || props.editing || questionState.busy || grading.value,
 )
-const menuItems = computed<DropdownMenuItem[]>(() => [
-  {
-    label: t('添加'),
-    icon: 'i-lucide-plus',
-    kbds: ['A'],
-    disabled: actionsLocked.value,
-    onSelect: addCurrent,
-  },
-  {
-    label: t('编辑'),
-    icon: 'i-lucide-pencil',
-    kbds: ['E'],
-    disabled: actionsLocked.value,
-    onSelect: editCurrent,
-  },
-  {
-    label: t('删除'),
-    icon: 'i-lucide-trash-2',
-    kbds: ['Ctrl', 'Del'],
-    color: 'error',
-    disabled: actionsLocked.value,
-    onSelect: deleteCurrent,
-  },
-  ...(!practice.value
-    ? [
-        {
-          label: t('今天暂缓'),
-          kbds: ['B'],
-          disabled: actionsLocked.value,
-          onSelect: () => {
-            void changeCurrent('bury')
+function bindingLabel(id: string, fallback: string) {
+  return inputCommands ? inputCommands.bindings(id).join(' / ') : fallback
+}
+const menuItems = computed<DropdownMenuItem[]>(() => {
+  const bindings = (id: string, fallback: string[]) =>
+    inputCommands ? inputCommands.bindings(id) : fallback
+  const items: (DropdownMenuItem & { id: string; essential?: boolean })[] = [
+    {
+      id: 'app.add',
+      label: t('添加'),
+      icon: 'i-lucide-plus',
+      kbds: bindings('app.add', ['A']),
+      disabled: actionsLocked.value,
+      onSelect: addCurrent,
+    },
+    {
+      id: 'review.edit',
+      essential: true,
+      label: t('编辑'),
+      icon: 'i-lucide-pencil',
+      kbds: bindings('review.edit', ['E']),
+      disabled: actionsLocked.value,
+      onSelect: editCurrent,
+    },
+    {
+      id: 'review.delete',
+      label: t('删除'),
+      icon: 'i-lucide-trash-2',
+      kbds: bindings('review.delete', ['Ctrl', 'Del']),
+      color: 'error',
+      disabled: actionsLocked.value,
+      onSelect: deleteCurrent,
+    },
+    ...(!practice.value
+      ? [
+          {
+            id: 'review.bury',
+            label: t('今天暂缓'),
+            kbds: bindings('review.bury', ['B']),
+            disabled: actionsLocked.value,
+            onSelect: () => {
+              void changeCurrent('bury')
+            },
           },
-        },
-        {
-          label: t('暂停此卡'),
-          kbds: ['S'],
-          disabled: actionsLocked.value,
-          onSelect: () => {
-            void changeCurrent('suspend')
+          {
+            id: 'review.suspend',
+            label: t('暂停此卡'),
+            kbds: bindings('review.suspend', ['S']),
+            disabled: actionsLocked.value,
+            onSelect: () => {
+              void changeCurrent('suspend')
+            },
           },
-        },
-      ]
-    : []),
-])
+        ]
+      : []),
+  ]
+  return arrangeMenu(
+    items,
+    (menuPreferences?.value.value ?? defaultMenus()).surfaces['review-menu'],
+  )
+})
 watch(
   () => props.busy || props.editing || questionState.busy || grading.value,
   (value) => emit('activity', value),
@@ -430,6 +452,10 @@ async function changeCurrent(action: 'suspend' | 'bury') {
   }
 }
 function keydown(event: KeyboardEvent) {
+  if (inputCommands) {
+    inputCommands.dispatch(event)
+    return
+  }
   // Keys pressed while an IME composition is open are meant for the IME (e.g. typing "e"
   // in pinyin) and must not reveal answers or grade cards.
   if (shortcutBlocked(event)) return
@@ -483,14 +509,63 @@ function keydown(event: KeyboardEvent) {
   }
 }
 let timer: ReturnType<typeof setInterval>
+let releaseInput: (() => void)[] = []
 onMounted(() => {
   selectNext()
+  if (inputCommands) {
+    const actions: Record<string, { available?: () => boolean; execute: () => unknown }> = {
+      'review.edit': { execute: editCurrent },
+      'review.delete': { execute: deleteCurrent },
+      'review.bury': { available: () => !practice.value, execute: () => changeCurrent('bury') },
+      'review.suspend': {
+        available: () => !practice.value,
+        execute: () => changeCurrent('suspend'),
+      },
+      'review.reveal': {
+        available: () => !revealed.value,
+        execute: () => {
+          revealed.value = true
+        },
+      },
+      ...Object.fromEntries(
+        ['again', 'hard', 'good', 'easy'].map((name, index) => [
+          `review.${name}`,
+          {
+            available: () => !automatic.value && revealed.value,
+            execute: () => grade((index + 1) as Grade),
+          },
+        ]),
+      ),
+      'review.close': {
+        execute: () => {
+          if (menuOpen.value) menuOpen.value = false
+          else emit('close')
+        },
+      },
+    }
+    releaseInput = Object.entries(actions).map(([id, action]) =>
+      inputCommands.register({
+        ...inputDefaults.find((entry) => entry.id === id)!,
+        available: () =>
+          !props.busy &&
+          !questionState.busy &&
+          !grading.value &&
+          !props.editing &&
+          (id === 'review.close' || !!current.value) &&
+          action.available?.() !== false,
+        execute: async () => {
+          await action.execute()
+        },
+      }),
+    )
+  }
   window.addEventListener('keydown', keydown)
   timer = setInterval(() => {
     clock.value = new Date()
   }, 10_000)
 })
 onUnmounted(() => {
+  releaseInput.forEach((release) => release())
   clearInterval(timer)
   window.removeEventListener('keydown', keydown)
   emit('activity', false)
@@ -670,7 +745,9 @@ onUnmounted(() => {
         >
           {{ t(current.type === 'plugin' ? '结束作答并查看答案' : '显示答案')
           }}<CornerDownLeft :size="17" /></UiButton
-        ><span class="muted">{{ t('或按空格键') }}</span>
+        ><span v-if="bindingLabel('review.reveal', 'Space')" class="muted">{{
+          t('或按 {keys}', { keys: bindingLabel('review.reveal', 'Space') })
+        }}</span>
       </div>
       <div v-else class="grade-area">
         <p>{{ t('根据回答情况评分') }}</p>
@@ -710,7 +787,10 @@ onUnmounted(() => {
             @click="grade(item.value)"
           >
             <span class="grade-title"
-              >{{ t(item.label) }} <kbd>{{ item.value }}</kbd></span
+              >{{ t(item.label) }}
+              <kbd v-if="bindingLabel(`review.${item.class}`, String(item.value))">{{
+                bindingLabel(`review.${item.class}`, String(item.value))
+              }}</kbd></span
             >
             <small>{{ t(item.hint) }}</small>
             <strong>{{

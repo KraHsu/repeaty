@@ -145,7 +145,7 @@ async function finish(confirmed = false) {
     !(await (props.beforeChange?.() ?? true)) ||
     !alive ||
     props.workspace.scope.value !== scope ||
-    active.value !== selected ||
+    active.value?.scope !== selected.scope ||
     locked.value
   )
     return

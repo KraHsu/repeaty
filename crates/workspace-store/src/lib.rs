@@ -15,6 +15,7 @@ pub mod library;
 
 pub mod recovery_catalog;
 pub mod sessions;
+pub mod sync;
 pub mod watch;
 
 mod retirement;
@@ -29,4 +30,7 @@ mod p4_tests;
 mod p5_tests;
 #[cfg(test)]
 mod p6_tests;
+#[cfg(test)]
+mod p7_tests;
 mod study;
+mod sync_objects;

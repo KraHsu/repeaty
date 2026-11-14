@@ -27,3 +27,7 @@
 - Web Worker 不使用共享内存，不要求 COOP / COEP。全部资源由宿主按当前学习库托管；插件不能绕过宿主直接启用参数。
 
 优化器及其 JS 运行时为 MIT / Apache-2.0 等开源依赖，许可证随 `assets/LICENSE.*` 分发。算法和 API 参见 [Open Spaced Repetition 官方文档](https://open-spaced-repetition.github.io/ts-fsrs/guide/optimizer/)。
+
+## 许可证
+
+Copyright (c) 2026 CharlesHsu。此官方插件按 AGPL-3.0-only 分发，完整协议见包内 `assets/licenses/AGPL-3.0.txt`；[对应源代码](https://github.com/KraHsu/repeaty/tree/codex/learning-scope/plugins/fsrs-optimizer)。第三方组件继续遵循各自许可证。

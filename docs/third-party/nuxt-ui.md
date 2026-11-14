@@ -1,6 +1,6 @@
 # UI 基础依赖归属
 
-Repeaty 使用 Nuxt UI 的 Vue / Vite 集成。以下版本与许可证取自本地安装包及 `package-lock.json`；完整版权与许可文本保存在 [public/licenses/nuxt-ui.txt](../../public/licenses/nuxt-ui.txt)，构建时复制为 `licenses/nuxt-ui.txt`，随静态、服务器与桌面前端产物分发。设置分支菜单另有 [Branched Menu 归属声明](react-bits-branched-menu.LICENSE.md)。
+Repeaty 使用 Nuxt UI 的 Vue / Vite 集成。以下版本与许可证取自本地安装包及 `package-lock.json`；完整版权与许可文本保存在 [public/licenses/nuxt-ui.txt](../../public/licenses/nuxt-ui.txt)，构建时复制为 `licenses/nuxt-ui.txt`，随静态、服务器与桌面前端产物分发。设置分支菜单已改为项目自身实现；旧改编的通知保留为 [Branched Menu 历史记录](react-bits-branched-menu.LICENSE.md)。
 
 | 安装包                                          | 版本    | 许可证                                |
 | ----------------------------------------------- | ------- | ------------------------------------- |

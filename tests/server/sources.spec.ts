@@ -41,7 +41,10 @@ test('sources and excerpts commit atomically to the account, read bodies on dema
     await route.continue()
   })
   await selectSourceExcerpt(page)
-  await page.getByRole('button', { name: '用摘录制卡', exact: true }).click()
+  await page
+    .locator('.source-excerpt-action')
+    .getByRole('button', { name: '用摘录制卡', exact: true })
+    .click()
   await page.getByLabel('正面 · 问题', { exact: true }).fill('间隔复习如何安排时间？')
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   try {

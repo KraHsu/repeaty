@@ -10,7 +10,7 @@ GitHub Pages 提供纯前端版，学习数据存于当前浏览器。带后端�
 
 已有学习库不会自动添加内容。需要时，可在「数据与备份」中点击「添加入门卡组」，按当前语言追加一份，不替换原数据。入门卡组可以编辑或删除，删除后不会因刷新而重新出现。切换界面语言也不会改写已有卡片。
 
-卡片中的 FSRS 解释参考 [FSRS 项目的介绍](https://github.com/open-spaced-repetition/awesome-fsrs/wiki/ABC-of-FSRS)和 [Anki 的评分说明](https://docs.ankiweb.net/manual/studying#answer-buttons)。遗忘曲线为原理示意图，不是实际 FSRS 预测；图片与双音音频由本项目制作，随代码以 MIT 协议提供。
+卡片中的 FSRS 解释参考 [FSRS 项目的介绍](https://github.com/open-spaced-repetition/awesome-fsrs/wiki/ABC-of-FSRS)和 [Anki 的评分说明](https://docs.ankiweb.net/manual/studying#answer-buttons)。遗忘曲线为原理示意图，不是实际 FSRS 预测；图片与双音音频由本项目制作，随代码以 AGPL-3.0-only 协议提供。
 
 ## 界面语言
 

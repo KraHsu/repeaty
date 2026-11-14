@@ -5,6 +5,8 @@ const key = 'repeaty.reading-panels.v1'
 export function useReadingPanels(scope: Readonly<Ref<string>>) {
   const left = ref(224),
     right = ref(260)
+  const contextVisible = ref(true)
+  const organization = ref<'list' | 'tree'>('list')
   let drag:
     | { element: HTMLElement; id: number; side: 'left' | 'right'; x: number; value: number }
     | undefined
@@ -12,7 +14,15 @@ export function useReadingPanels(scope: Readonly<Ref<string>>) {
     Math.round(Math.max(180, Math.min(side === 'left' ? 320 : 380, value)))
   function save() {
     try {
-      writeSetting(key, JSON.stringify({ left: left.value, right: right.value }))
+      writeSetting(
+        key,
+        JSON.stringify({
+          left: left.value,
+          right: right.value,
+          contextOpen: contextVisible.value,
+          organizationView: organization.value,
+        }),
+      )
     } catch {
       /* Layout remains usable without preference storage. */
     }
@@ -84,20 +94,38 @@ export function useReadingPanels(scope: Readonly<Ref<string>>) {
       finish(false)
       left.value = 224
       right.value = 260
+      contextVisible.value = true
+      organization.value = 'list'
       try {
         const stored = JSON.parse(readSetting(key) ?? '{}')
         if (Number.isFinite(stored.left)) left.value = bound(stored.left, 'left')
         if (Number.isFinite(stored.right)) right.value = bound(stored.right, 'right')
+        if (typeof stored.contextOpen === 'boolean') contextVisible.value = stored.contextOpen
+        if (stored.organizationView === 'tree') organization.value = 'tree'
       } catch {
         /* Invalid saved geometry uses the default. */
       }
     },
-    { immediate: true },
+    { immediate: true, flush: 'sync' },
   )
   onScopeDispose(() => finish(false))
   return {
     left,
     right,
+    contextOpen: computed({
+      get: () => contextVisible.value,
+      set: (value: boolean) => {
+        contextVisible.value = value
+        save()
+      },
+    }),
+    organizationView: computed({
+      get: () => organization.value,
+      set: (value: 'list' | 'tree') => {
+        organization.value = value
+        save()
+      },
+    }),
     style: computed(() => ({
       '--reading-list-width': `${left.value}px`,
       '--reading-context-width': `${right.value}px`,

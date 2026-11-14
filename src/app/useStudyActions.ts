@@ -1,7 +1,9 @@
 import { t, msg } from '../i18n'
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
 import { studySettings } from '../core/study-settings'
 import { shortcutBlocked } from '../shortcuts'
+import { inputDefaults } from '../input/defaults'
+import type { InputController } from '../input/controller'
 import type { Operation } from '../core/operations'
 import { useNotifications } from '../notifications'
 import type { BatchEdit } from '../core/batch'
@@ -37,6 +39,11 @@ export function useStudyActions({
   editCard,
   sourceDraft,
   selectedDeck,
+  input,
+  goBack,
+  goForward,
+  canGoBack,
+  canGoForward,
 }: {
   library: ReturnType<typeof useLibrary>['library']
   busy: ReturnType<typeof useLibrary>['busy']
@@ -59,6 +66,11 @@ export function useStudyActions({
   editCard: ReturnType<typeof useEditorActions>['editCard']
   sourceDraft: ReturnType<typeof useEditorActions>['sourceDraft']
   selectedDeck: ReturnType<typeof useAppNavigation>['selectedDeck']
+  input?: InputController
+  goBack?: ReturnType<typeof useAppNavigation>['goBack']
+  goForward?: ReturnType<typeof useAppNavigation>['goForward']
+  canGoBack?: ReturnType<typeof useAppNavigation>['canGoBack']
+  canGoForward?: ReturnType<typeof useAppNavigation>['canGoForward']
 }) {
   const { dismissNotificationContext } = useNotifications()
 
@@ -214,6 +226,10 @@ export function useStudyActions({
     }
   }
   function globalKeydown(event: KeyboardEvent) {
+    if (input) {
+      input.dispatch(event)
+      return
+    }
     if (shortcutBlocked(event) || shortcutLocked.value) return
     const primary = event.ctrlKey || event.metaKey
     if (
@@ -258,7 +274,7 @@ export function useStudyActions({
       modal.value = 'shortcuts'
     }
   }
-  const shortcuts = [
+  const legacyShortcuts = [
     ['Ctrl / ⌘ Z', '撤销最近操作'],
     ['Ctrl / ⌘ Shift Z', '重做最近操作'],
     ['Ctrl / ⌘ Enter', '保存当前表单'],
@@ -273,6 +289,73 @@ export function useStudyActions({
     ['Esc', '退出复习 / 关闭弹窗'],
     ['?', '快捷键'],
   ] as const
+  const shortcuts = computed(() =>
+    input
+      ? input.commands.value
+          .filter((command) => input.bindings(command.id).length)
+          .map((command) => [input.bindings(command.id).join(' / '), command.title] as const)
+      : legacyShortcuts,
+  )
+  if (input) {
+    const operations: Record<string, { available?: () => boolean; execute: () => unknown }> = {
+      'app.back': { available: () => !!canGoBack?.value, execute: () => goBack?.() },
+      'app.forward': { available: () => !!canGoForward?.value, execute: () => goForward?.() },
+      'document.top': { execute: () => scrollDocument(false) },
+      'document.bottom': { execute: () => scrollDocument(true) },
+      'app.undo': { available: () => canUndoAction.value, execute: undoLastAction },
+      'app.redo': { available: () => canRedoAction.value, execute: redoLastAction },
+      'app.add': {
+        execute: () => {
+          if (activeReview.value?.current) activeReview.value.addCurrent()
+          else {
+            editCard()
+            if (review.value?.deckId) sourceDraft.value = { deckId: review.value.deckId }
+          }
+        },
+      },
+      'app.search': {
+        execute: () =>
+          navigate('cards', () => {
+            void nextTick(() =>
+              document.querySelector<HTMLInputElement>('.search-field input')?.focus(),
+            )
+          }),
+      },
+      'app.cards': {
+        available: () => !review.value && !mixed.value,
+        execute: () => navigate('cards'),
+      },
+      'app.review': {
+        available: () => !review.value && !mixed.value,
+        execute: () => startReview(selectedDeck.value || undefined),
+      },
+      'app.shortcuts': {
+        execute: () => {
+          modal.value = 'shortcuts'
+        },
+      },
+    }
+    const releases = Object.entries(operations).map(([id, operation]) =>
+      input.register({
+        ...inputDefaults.find((definition) => definition.id === id)!,
+        available: () => !shortcutLocked.value && !modal.value && operation.available?.() !== false,
+        execute: async () => {
+          await operation.execute()
+        },
+      }),
+    )
+    onScopeDispose(() => releases.forEach((release) => release()))
+  }
+  function scrollDocument(bottom: boolean) {
+    const focused =
+      document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+    let target = focused?.closest<HTMLElement>('.source-preview, .reader-content, .main-content')
+    if (!target || target.scrollHeight <= target.clientHeight)
+      target = document.querySelector<HTMLElement>('.main-content')
+    if (!target || target.scrollHeight <= target.clientHeight)
+      target = document.scrollingElement as HTMLElement | null
+    target?.scrollTo({ top: bottom ? target.scrollHeight : 0, behavior: 'instant' })
+  }
   async function saveSearch(filter: SearchFilter, name: string, id?: string) {
     return run(() => workspace.saveSearch(filter, name, id), '常用筛选已保存')
   }

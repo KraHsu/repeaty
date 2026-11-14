@@ -328,7 +328,7 @@ onBeforeUnmount(() => {
         </dl>
         <p>{{ text('futureNote') }}</p>
       </section>
-      <div class="statistics-workbench">
+      <div class="statistics-workbench app-section-divider">
         <section class="statistics-calendar" :aria-label="text('keyboard')">
           <div class="statistics-legend">
             <span class="recorded">{{ text('recorded') }}</span
@@ -375,7 +375,7 @@ onBeforeUnmount(() => {
           </div>
         </section>
         <section
-          class="statistics-detail"
+          class="statistics-detail app-section-divider"
           :aria-label="text('dailyDetails')"
           :aria-busy="detailsLoading"
         >
@@ -415,7 +415,7 @@ onBeforeUnmount(() => {
           </UiNotice>
           <p v-else-if="detailsLoading && !details" role="status">{{ text('detailsLoading') }}</p>
           <template v-if="details">
-            <ol class="statistics-detail-list" v-if="details.items.length">
+            <ol class="statistics-detail-list app-divider-list" v-if="details.items.length">
               <li v-for="entry in details.items" :key="entry.id">
                 <span>{{ entry.title }}</span>
                 <time v-if="entry.occurredAt" :datetime="entry.occurredAt">{{
@@ -509,9 +509,6 @@ onBeforeUnmount(() => {
 .statistics-summary {
   justify-content: flex-start;
   gap: 3rem;
-  margin-bottom: 2rem;
-  padding-bottom: 1.5rem;
-  border-bottom: 1px solid var(--line);
   flex-wrap: wrap;
 }
 .statistics-time {
@@ -545,7 +542,7 @@ onBeforeUnmount(() => {
 .statistics-workbench {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(17rem, 1fr);
-  gap: 2rem;
+  column-gap: 2rem;
   align-items: start;
 }
 .statistics-calendar {
@@ -689,7 +686,6 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.8rem 0;
-  border-bottom: 1px solid var(--line);
   font-size: var(--font-size-meta);
 }
 .statistics-detail-list li > :first-child {
@@ -719,17 +715,11 @@ onBeforeUnmount(() => {
 .statistics-notes p {
   margin: 0.5rem 0;
 }
-@media (max-width: 1100px) {
-  .statistics-workbench {
-    grid-template-columns: 1fr;
-  }
+@container (width > 60rem) {
   .statistics-detail {
-    border-left: 0;
-    border-top: 1px solid var(--line);
-    padding: 1.5rem 0 0;
-  }
-  .statistics-day {
-    min-height: 5rem;
+    border-block-start: 0;
+    margin-block-start: 0;
+    padding-block-start: 0;
   }
 }
 @container (max-width: 60rem) {
@@ -738,8 +728,10 @@ onBeforeUnmount(() => {
   }
   .statistics-detail {
     border-left: 0;
-    border-top: 1px solid var(--line);
-    padding: 1.5rem 0 0;
+    padding-left: 0;
+  }
+  .statistics-day {
+    min-height: 5rem;
   }
 }
 @media (max-width: 600px) {

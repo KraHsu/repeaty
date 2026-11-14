@@ -1,6 +1,6 @@
 import * as vue from 'vue'
-import { t, locale } from '../i18n'
-import { readSetting, writeSetting } from '../settings-store'
+import { t, locale, createTranslator } from '../i18n'
+import { readSetting, writeSetting, persistSetting } from '../settings-store'
 import { practiceContentRevision } from '../core/practice'
 import { hasAttemptBody } from '../core/practice-data'
 import { callPluginHost, readPluginData, writePluginData } from '@repeaty-plugin-host'
@@ -14,6 +14,10 @@ import type { MaterialRegistrations, PluginMaterialHostFactory } from './materia
 import { PluginTaskScheduler, supportsPluginWorkers } from './tasks'
 import { createPluginResources } from './resources'
 import type { PluginStudyHostFactory } from './study'
+import type { PluginAutomationHostFactory } from './automation'
+import type { PluginNetworkConsent } from './network'
+import type { PluginHttpRequest, PluginHttpResponse } from '@repeaty/plugin-api'
+import type { AutomationApi } from '@repeaty/plugin-api'
 import type { StudyHostApi } from '@repeaty/plugin-api'
 import type { PluginAssets } from './assets'
 import AppPage from '../components/AppPage.vue'
@@ -60,6 +64,8 @@ export function createPluginApi(
     registrations?: MaterialRegistrations
     host?: () => PluginMaterialHostFactory | undefined
     studyHost?: () => PluginStudyHostFactory | undefined
+    automationHost?: () => PluginAutomationHostFactory | undefined
+    networkConsent?: () => PluginNetworkConsent | undefined
     scheduler?: PluginTaskScheduler
     commandScheduler?: PluginTaskScheduler
     assets?: PluginAssets
@@ -67,10 +73,14 @@ export function createPluginApi(
 ) {
   let alive = true
   const lifetime = new AbortController()
+  const activationId = crypto.randomUUID()
   const taskOwner = Symbol(manifest.id)
   const scheduler = materialOptions.scheduler ?? new PluginTaskScheduler()
   const commandScheduler = materialOptions.commandScheduler ?? new PluginTaskScheduler(1)
   disposers.push(() => {
+    void nativePluginCall(manifest.id, 'http.dispose', { activationId }, scope).catch(() => {})
+    if (manifest.permissions?.models)
+      void nativePluginCall(manifest.id, 'model.dispose', { activationId }, scope).catch(() => {})
     alive = false
     lifetime.abort()
   })
@@ -80,7 +90,77 @@ export function createPluginApi(
   const settingsKey = (key: string) => `plugin:${manifest.id}:${key}`
   const native = async (operation: string, payload: unknown) => {
     guard()
-    return nativePluginCall(manifest.id, operation, payload, scope)
+    if (operation === 'network.authorize') throw new Error('permission-denied')
+    if (operation === 'http') return requestHttp(payload as PluginHttpRequest)
+    if (operation.startsWith('http.') || operation === 'secrets')
+      payload = { ...(payload as Record<string, unknown>), activationId }
+    if (operation.startsWith('model.')) {
+      if (!manifest.permissions?.models) throw new Error('permission-denied')
+      payload = { ...(payload as Record<string, unknown>), activationId }
+    }
+    const result = await nativePluginCall(manifest.id, operation, payload, scope)
+    guard()
+    return result
+  }
+  async function requestHttp(
+    input: PluginHttpRequest,
+    signal?: AbortSignal,
+  ): Promise<PluginHttpResponse> {
+    guard()
+    signal?.throwIfAborted()
+    const requestId = crypto.randomUUID()
+    const cancel = () => {
+      void nativePluginCall(manifest.id, 'http.cancel', { activationId, requestId }, scope).catch(
+        () => {},
+      )
+    }
+    signal?.addEventListener('abort', cancel, { once: true })
+    lifetime.signal.addEventListener('abort', cancel, { once: true })
+    try {
+      const result = await nativePluginCall(
+        manifest.id,
+        'http',
+        { ...input, activationId, requestId },
+        scope,
+      )
+      guard()
+      signal?.throwIfAborted()
+      return result as PluginHttpResponse
+    } finally {
+      signal?.removeEventListener('abort', cancel)
+      lifetime.signal.removeEventListener('abort', cancel)
+    }
+  }
+  const authorizedOrigins = new Set<string>()
+  const network = {
+    async authorize(origin: string) {
+      guard()
+      const url = new URL(origin)
+      if (url.protocol !== 'https:' || url.origin !== origin || url.username || url.password)
+        throw new Error('invalid-origin')
+      if (authorizedOrigins.has(origin) || manifest.permissions?.origins?.includes(origin)) return
+      if (!manifest.permissions?.network) throw new Error('permission-denied')
+      const consent = materialOptions.networkConsent?.()
+      if (
+        !consent ||
+        !(await consent(
+          {
+            pluginId: manifest.id,
+            label: manifest.name,
+            scope,
+            signal: lifetime.signal,
+            assertCurrent: guard,
+          },
+          origin,
+        ))
+      )
+        throw new Error('permission-denied')
+      guard()
+      await nativePluginCall(manifest.id, 'network.authorize', { activationId, origin }, scope)
+      guard()
+      authorizedOrigins.add(origin)
+    },
+    request: requestHttp,
   }
   const pluginData = {
     async get(id: string, requestedScope: string) {
@@ -146,6 +226,34 @@ export function createPluginApi(
     search: (query, signal) => materialCall((host) => host.search(query, signal)),
   }
   let boundStudy: StudyHostApi | undefined
+  let boundAutomation: AutomationApi | undefined
+  function automationHost() {
+    guard()
+    const factory = materialOptions.automationHost?.()
+    if (!factory) throw new Error('automation-service-unavailable')
+    return (boundAutomation ??= factory({
+      pluginId: manifest.id,
+      label: manifest.name,
+      scope,
+      signal: lifetime.signal,
+      assertCurrent: guard,
+    }))
+  }
+  async function automationCall<T>(run: (host: AutomationApi) => Promise<T>) {
+    const value = await run(automationHost())
+    guard()
+    return value
+  }
+  const automation: AutomationApi = {
+    context: () => automationHost().context(),
+    capabilities: () => automationHost().capabilities(),
+    authorize: (input) => automationCall((host) => host.authorize(input)),
+    revoke: () => automationHost().revoke(),
+    query: (input, signal) => automationCall((host) => host.query(input, signal)),
+    preview: (input, signal) => automationCall((host) => host.preview(input, signal)),
+    apply: (input, signal) => automationCall((host) => host.apply(input, signal)),
+    operationStatus: (id, signal) => automationCall((host) => host.operationStatus(id, signal)),
+  }
   function studyHost() {
     guard()
     const factory = materialOptions.studyHost?.()
@@ -239,6 +347,7 @@ export function createPluginApi(
   return {
     t,
     locale,
+    createTranslator,
     MediaList,
     CardContent,
     PracticeHistory,
@@ -313,6 +422,8 @@ export function createPluginApi(
     },
     materials,
     study,
+    automation,
+    network,
     resources: createPluginResources(materialOptions.assets, lifetime.signal, guard),
     tasks: { run: runTask },
     // Host-only command orchestration must not occupy the background parser queue it awaits.
@@ -330,6 +441,11 @@ export function createPluginApi(
     writeSetting(key: string, value: string, onError?: () => void) {
       guard()
       writeSetting(settingsKey(key), value, onError)
+    },
+    async persistSetting(key: string, value: string) {
+      guard()
+      await persistSetting(settingsKey(key), value)
+      guard()
     },
     nativePlugin: native,
     pluginFiles: {

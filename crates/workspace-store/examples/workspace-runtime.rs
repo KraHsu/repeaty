@@ -152,6 +152,10 @@ fn backups(
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let directory = std::env::args().nth(1).ok_or("missing device directory")?;
     let mut sessions = Sessions::open(Path::new(&directory))?;
+    // A stable fixture device identity; the production store additionally scopes
+    // the journal writer to the selected workspace identity and canonical path.
+    let device = repeaty_workspace::files::digest(directory.as_bytes());
+    sessions.sync_bind_device(&device)?;
     let mut previews = HashMap::new();
     let stdin = io::stdin();
     let mut out = io::stdout().lock();
@@ -159,68 +163,78 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let input: Value = serde_json::from_str(&line?)?;
         let args = &input["args"];
         let epoch = args["epoch"].as_str().unwrap_or("");
-        let result = match input["command"].as_str().unwrap_or("") {
-            "workspace_backups" => {
-                backups(&mut sessions, Path::new(&directory), &mut previews, args)
-            }
-            "workspace_status" => sessions.status(),
-            "workspace_choose" => sessions.choose(
-                epoch,
-                Path::new(args["path"].as_str().unwrap_or("")),
-                args["mode"] == "create",
-            ),
-            "workspace_close" => sessions.close(epoch),
-            "workspace_recent" => sessions.recent(
-                epoch,
-                args["path"].as_str().unwrap_or(""),
-                args["id"].as_str().unwrap_or(""),
-            ),
-            "workspace_restore" => sessions.restore(epoch),
-            "workspace_backup" => sessions
-                .backup(
+        let result = sessions.sync_bind_device(&device).and_then(|()| {
+            let result = match input["command"].as_str().unwrap_or("") {
+                "workspace_sync" => sessions.sync_request(
                     args["token"].as_str().unwrap_or(""),
+                    args["method"].as_str().unwrap_or(""),
+                    args["payload"].clone(),
+                ),
+                "workspace_backups" => {
+                    backups(&mut sessions, Path::new(&directory), &mut previews, args)
+                }
+                "workspace_status" => sessions.status(),
+                "workspace_choose" => sessions.choose(
+                    epoch,
                     Path::new(args["path"].as_str().unwrap_or("")),
+                    args["mode"] == "create",
+                ),
+                "workspace_close" => sessions.close(epoch),
+                "workspace_recent" => sessions.recent(
+                    epoch,
+                    args["path"].as_str().unwrap_or(""),
+                    args["id"].as_str().unwrap_or(""),
+                ),
+                "workspace_restore" => sessions.restore(epoch),
+                "workspace_backup" => sessions
+                    .backup(
+                        args["token"].as_str().unwrap_or(""),
+                        Path::new(args["path"].as_str().unwrap_or("")),
+                    )
+                    .map(|v| serde_json::to_value(v).unwrap()),
+                "workspace_backup_inspect" => {
+                    Sessions::inspect_backup(Path::new(args["path"].as_str().unwrap_or("")))
+                        .map(|v| serde_json::to_value(v).unwrap())
+                }
+                "workspace_backup_search" => Sessions::search_backup(
+                    Path::new(args["path"].as_str().unwrap_or("")),
+                    args["query"].as_str().unwrap_or(""),
+                    args["limit"].as_u64().unwrap_or(30) as usize,
                 )
                 .map(|v| serde_json::to_value(v).unwrap()),
-            "workspace_backup_inspect" => {
-                Sessions::inspect_backup(Path::new(args["path"].as_str().unwrap_or("")))
-                    .map(|v| serde_json::to_value(v).unwrap())
-            }
-            "workspace_backup_search" => Sessions::search_backup(
-                Path::new(args["path"].as_str().unwrap_or("")),
-                args["query"].as_str().unwrap_or(""),
-                args["limit"].as_u64().unwrap_or(30) as usize,
-            )
-            .map(|v| serde_json::to_value(v).unwrap()),
-            "workspace_backup_restore" => sessions.restore_backup(
-                epoch,
-                Path::new(args["path"].as_str().unwrap_or("")),
-                Path::new(args["target"].as_str().unwrap_or("")),
-                args["sha256"].as_str().unwrap_or(""),
-            ),
-            "workspace_backup_restore_items" => Sessions::restore_backup_items(
-                Path::new(args["path"].as_str().unwrap_or("")),
-                Path::new(args["target"].as_str().unwrap_or("")),
-                args["sha256"].as_str().unwrap_or(""),
-                &serde_json::from_value::<Vec<String>>(args["paths"].clone()).unwrap_or_default(),
-            ),
-            "workspace_maintenance" => sessions.maintenance(
-                args["token"].as_str().unwrap_or(""),
-                args["vacuum"].as_bool().unwrap_or(false),
-            ),
-            "workspace_read" => sessions.read(
-                args["token"].as_str().unwrap_or(""),
-                args["request"].clone(),
-            ),
-            "workspace_changes" => sessions
-                .changes(args["token"].as_str().unwrap_or(""))
-                .map(|value| serde_json::to_value(value).unwrap()),
-            "workspace_write" => sessions.write(
-                args["token"].as_str().unwrap_or(""),
-                args["request"].clone(),
-            ),
-            _ => Err(repeaty_workspace::error::Error("invalid-data")),
-        };
+                "workspace_backup_restore" => sessions.restore_backup(
+                    epoch,
+                    Path::new(args["path"].as_str().unwrap_or("")),
+                    Path::new(args["target"].as_str().unwrap_or("")),
+                    args["sha256"].as_str().unwrap_or(""),
+                ),
+                "workspace_backup_restore_items" => Sessions::restore_backup_items(
+                    Path::new(args["path"].as_str().unwrap_or("")),
+                    Path::new(args["target"].as_str().unwrap_or("")),
+                    args["sha256"].as_str().unwrap_or(""),
+                    &serde_json::from_value::<Vec<String>>(args["paths"].clone())
+                        .unwrap_or_default(),
+                ),
+                "workspace_maintenance" => sessions.maintenance(
+                    args["token"].as_str().unwrap_or(""),
+                    args["vacuum"].as_bool().unwrap_or(false),
+                ),
+                "workspace_read" => sessions.read(
+                    args["token"].as_str().unwrap_or(""),
+                    args["request"].clone(),
+                ),
+                "workspace_changes" => sessions
+                    .changes(args["token"].as_str().unwrap_or(""))
+                    .map(|value| serde_json::to_value(value).unwrap()),
+                "workspace_write" => sessions.write(
+                    args["token"].as_str().unwrap_or(""),
+                    args["request"].clone(),
+                ),
+                _ => Err(repeaty_workspace::error::Error("invalid-data")),
+            };
+            sessions.sync_bind_device(&device)?;
+            result
+        });
         let response = match result {
             Ok(value) => json!({"id":input["id"],"value":value}),
             Err(error) => json!({"id":input["id"],"error":error.0}),
