@@ -8,6 +8,7 @@ type Pending = { update: ReadingUpdate; at: Date; token: number; error?: Display
 export function useReadingProgress(workspace: ReturnType<typeof useLibrary>) {
   const pending = shallowReactive(new Map<string, Pending>())
   const savingId = ref('')
+  let activeSave: Promise<void> | undefined
   let timer: ReturnType<typeof setTimeout> | undefined
   let token = 0,
     epoch = 0,
@@ -61,8 +62,11 @@ export function useReadingProgress(workspace: ReturnType<typeof useLibrary>) {
     while (pending.size && generation === epoch && !workspace.busy.value && !disposed && !holds) {
       const entry = pending.values().next().value!
       savingId.value = entry.update.sourceId
+      let save: Promise<void> | undefined
       try {
-        await workspace.saveSourceReading(entry.update, entry.at)
+        save = workspace.saveSourceReading(entry.update, entry.at)
+        activeSave = save
+        await save
         if (generation === epoch && pending.get(entry.update.sourceId)?.token === entry.token)
           pending.delete(entry.update.sourceId)
       } catch (error) {
@@ -71,6 +75,7 @@ export function useReadingProgress(workspace: ReturnType<typeof useLibrary>) {
           break
         }
       } finally {
+        if (save && activeSave === save) activeSave = undefined
         if (generation === epoch) savingId.value = ''
       }
     }
@@ -93,6 +98,7 @@ export function useReadingProgress(workspace: ReturnType<typeof useLibrary>) {
     timer = undefined
     pending.clear()
     savingId.value = ''
+    activeSave = undefined
   }
   watch(() => workspace.scope.value, clear, { flush: 'sync' })
   watch(
@@ -137,6 +143,20 @@ export function useReadingProgress(workspace: ReturnType<typeof useLibrary>) {
         }, 0)
     }
   }
-  return { record, flush, clear, acknowledge, hold, pending, savingId }
+  // Acquire before awaiting: a command must neither race an in-flight position
+  // transaction nor allow the next debounce to invalidate its captured revision.
+  async function holdForAction() {
+    const generation = epoch,
+      release = hold()
+    try {
+      await activeSave
+      if (disposed || generation !== epoch) throw new Error('学习库已变化，请重新操作。')
+      return release
+    } catch (error) {
+      release()
+      throw error
+    }
+  }
+  return { record, flush, clear, acknowledge, hold, holdForAction, pending, savingId }
 }
 export type ReadingProgress = ReturnType<typeof useReadingProgress>

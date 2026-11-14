@@ -1,5 +1,50 @@
 // Chinese source messages are catalog keys. Never translate stored user content.
+import { recoveryMessages } from './recovery'
+import { attachmentMessages } from './attachments'
+import { organizationMessages } from './organization'
+import { workbenchMessages } from './workbench'
+import { materialSearchMessages } from './material-search'
+import { readingWorkbenchMessages } from './reading-workbench'
+import { collectionMessages } from './collection'
+import { captureMessages } from './capture'
+import { studySchedulingMessages } from './study-scheduling'
+import { studyControlMessages } from './study-controls'
+import { desktopExperienceMessages } from './desktop-experience'
+import { personalizationMessages } from './personalization'
+import { inputEnglish } from './input.en'
+import { appearanceMessages } from './appearance'
+import { syncMessages } from './sync'
 export const en = {
+  ...syncMessages,
+  ...inputEnglish,
+  ...appearanceMessages,
+  ...desktopExperienceMessages,
+  ...personalizationMessages,
+  ...studyControlMessages,
+  ...studySchedulingMessages,
+  调整学习设置: 'Change study settings',
+  调整学习优先级: 'Change study priority',
+  均衡安排新卡: 'Balance new cards',
+  保存个人记忆参数: 'Save personal memory parameters',
+  采用个人记忆参数: 'Apply personal memory parameters',
+  回退个人记忆参数: 'Restore previous memory parameters',
+  ...captureMessages,
+  ...collectionMessages,
+  调整章节阅读安排: 'Change chapter reading order',
+  保存材料批注: 'Save material annotation',
+  删除材料批注: 'Delete material annotation',
+  '本地资源文件夹（可选）': 'Local resource folder (optional)',
+  '选择 HTML 旁的资源文件夹以保留本地图片；网页中的远程资源不会自动下载。':
+    'Select the resource folder next to the HTML file to retain local images. Remote resources are not downloaded automatically.',
+  '已选择 {count} 个关联文件': '{count} related files selected',
+  '请先完成前面的章节，再安排此章节学习。':
+    'Complete earlier chapters before scheduling this chapter.',
+  ...readingWorkbenchMessages,
+  ...materialSearchMessages,
+  ...organizationMessages,
+  ...workbenchMessages,
+  ...recoveryMessages,
+  ...attachmentMessages,
   插件导入: 'Import with plugin',
   材料导入器: 'Material importer',
   导入预览: 'Import preview',
@@ -53,6 +98,8 @@ export const en = {
   '插件任务进度无效。': 'Invalid plugin task progress.',
   '插件材料扩展定义无效。': 'Invalid plugin material contribution.',
   '插件已卸载或学习库已切换。': 'The plugin was unloaded or the library was switched.',
+  '网站发布功能已移除。已有插件数据会保留，可在插件页卸载。':
+    'Website publishing has been removed. Saved plugin data is retained; you can uninstall this package on the Plugins page.',
   '插件材料扩展标识重复。': 'Duplicate plugin material contribution ID.',
   '材料导入器定义无效。': 'Invalid material importer definition.',
   '材料阅读器定义无效。': 'Invalid material reader definition.',
@@ -1311,7 +1358,44 @@ export const en = {
   联网域名: 'Allowed websites',
   设备凭据: 'Device credentials',
   插件文件: 'Plugin files',
+  设备模型连接: 'Device model connections',
+  经确认的自定义网站: 'Custom websites after confirmation',
+  '允许 CLI / MCP 查询整库': 'Allow CLI / MCP library queries',
+  '读取当前库的材料、目录、笔记与学习记录；关闭连接或切库后失效。':
+    'Read materials, folders, notes and learning records in the current library. Access ends when the connection closes or the library changes.',
+  '允许 CLI / MCP 批量修改': 'Allow CLI / MCP batch changes',
+  '外部工具可预览并应用整库修改，包括恢复快照。每次修改需携带预览和当前修订号，并保留恢复点。只向你信任的本机工具开放。':
+    'External tools may preview and apply changes across the library, including snapshot restores. Each change requires a preview and the current revision, and retains a recovery point. Enable only for local tools you trust.',
   无原生能力: 'No native capabilities',
+  全部插件: 'All',
+  可更新: 'Updates',
+  插件目录: 'Plugin catalog',
+  搜索插件: 'Search plugins',
+  搜索插件名称或功能: 'Search plugins by name or feature',
+  '正在加载插件目录…': 'Loading plugin catalog…',
+  '正在加载插件详情…': 'Loading plugin details…',
+  '没有找到匹配的插件。': 'No matching plugins.',
+  '所有插件均已是目录中的最新版本。': 'All plugins match or exceed the catalog version.',
+  选择一个插件: 'Select a plugin',
+  '查看介绍与权限，安装后可单独启用。':
+    'Read its documentation and permissions. Enable it separately after installing.',
+  '确认安装 {name}？新插件默认关闭，更新保留原启停状态。':
+    'Install {name}? New plugins start disabled. Updates keep their enabled state.',
+  安装: 'Install',
+  更新: 'Update',
+  '无法保存插件启停状态。': 'Unable to save the plugin enabled state.',
+  '插件包必须提供作者（author），长度为 1–100 个字符。':
+    'Plugin packages must declare an author of 1–100 characters.',
+  未声明作者: 'Author not specified',
+  作者: 'Author',
+  启用: 'Enable',
+  '目录版本 {version}': 'Catalog version {version}',
+  官方插件: 'Official plugin',
+  尚未安装: 'Not installed',
+  尚未信任: 'Not trusted',
+  加载失败: 'Failed to load',
+  '官方插件包与目录信息不一致，请刷新后重试。':
+    'The plugin package does not match the catalog. Refresh and try again.',
   安装或更新官方插件: 'Install or update official plugins',
   重新扫描插件: 'Rescan plugins',
   '请先结束复习或关闭编辑器，再修改插件。':
@@ -1799,4 +1883,9 @@ export const en = {
   '选择要安装的官方插件，仅修改所选插件。安装后会自动启用。':
     'Choose an official plugin. Only that plugin will be installed or updated, then enabled.',
   '暂无可安装的官方插件。': 'No official plugins are available.',
+  '插件工具暂时无法显示，请重试或检查插件是否已启用。':
+    'The plugin tool could not be displayed. Try again or check that the plugin is enabled.',
+  文档目录: 'Document contents',
+  本章已完成: 'Chapter completed',
+  待前章完成: 'Waiting for earlier chapters',
 } as const

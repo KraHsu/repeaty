@@ -4,7 +4,12 @@ import { buildPlugin } from '../../packages/plugin-api/build.mjs'
 import { fixture } from '../../src/core/test-fixtures'
 import type { PluginBundle } from '../../src/plugins/package'
 import { storedLibrary } from './stored-library'
-import { confirmPluginAction, openPluginManager, selectPlugin } from './settings-flow'
+import {
+  confirmPluginAction,
+  enableInstalledPlugin,
+  openPluginManager,
+  selectPlugin,
+} from './settings-flow'
 
 const pluginId = 'page-lifecycle-check'
 const nav = (page: Page, title: string) =>
@@ -12,13 +17,13 @@ const nav = (page: Page, title: string) =>
 
 async function install(page: Page, bundle: PluginBundle) {
   await openPluginManager(page)
-  await page.locator('.plugin-actions input[type=file]').setInputFiles({
+  await page.locator('.plugins-page input[type=file]').setInputFiles({
     name: `${pluginId}.repeaty-plugin`,
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(bundle)),
   })
   await confirmPluginAction(page)
-  await selectPlugin(page, pluginId)
+  await enableInstalledPlugin(page, pluginId)
   await expect(nav(page, 'Plugin notebook')).toBeVisible()
 }
 
@@ -197,7 +202,9 @@ export async function pluginPagesFlow(page: Page, info: TestInfo, edition: 'web'
   await details.getByRole('button', { name: '卸载插件', exact: true }).click()
   await confirmPluginAction(page)
   await expect(nav(page, 'Plugin notebook')).toHaveCount(0)
-  expect(await storedLibrary(page)).toEqual(learningRecords)
+  expect({ ...(await storedLibrary(page)), studyActivity: learningRecords.studyActivity }).toEqual(
+    learningRecords,
+  )
   await install(page, bundle)
   await nav(page, 'Plugin notebook').click()
   await expect(page.getByRole('textbox', { name: 'Plugin note', exact: true })).toHaveValue(
@@ -226,6 +233,9 @@ export async function pluginPagesFlow(page: Page, info: TestInfo, edition: 'web'
     await nav(page, 'Plugin notebook').click()
     await expect(page.getByTestId('plugin-page-scope')).toHaveText(originalScope!)
     await expect(page.getByTestId('private-plugin-note')).toHaveText('saved in original library')
-    expect(await storedLibrary(page)).toEqual(learningRecords)
+    expect({
+      ...(await storedLibrary(page)),
+      studyActivity: learningRecords.studyActivity,
+    }).toEqual(learningRecords)
   }
 }

@@ -1,6 +1,7 @@
 import type { Library, MediaUpload } from '../core/model'
 import type { ReadingUndo } from '../core/reading-operations'
 import type { Operation } from '../core/operations'
+import type { OperationHistory } from '../core/operation-history'
 import type { Attempt } from '../core/practice-data'
 import type { CardEligibility } from '../core/scheduler'
 import type { DisplayMessage, MessageKey } from '../i18n'
@@ -18,10 +19,7 @@ export type LibraryRepository =
   | ReturnType<typeof createNativeRepository>
   | ReturnType<typeof createServerRepository>
   | ReturnType<typeof createBrowserRepository>
-export type UndoEntry = Operation & {
-  previousReadingUndo?: ReadingUndo
-  removedAssets: MediaUpload[]
-}
+export type UndoEntry = Operation
 export interface LibraryState {
   library: Cell<Library>
   scope: Cell<string>
@@ -32,17 +30,23 @@ export interface LibraryState {
   backups: Cell<BackupSummary[]>
   readingUndo: Cell<ReadingUndo | undefined>
   operations: Cell<UndoEntry[]>
+  redoOperations: Cell<UndoEntry[]>
 }
 export interface CommitOptions {
+  sync?: import('../sync/commit').SyncCommit
+  retired?: import('../desktop/retirement').RetiredNote[]
   assets?: MediaUpload[]
   reason?: string
   consumeCardDraft?: string
+  consumeSourceDraft?: string
   externalDocuments?: DocumentWrite[]
   scanHash?: string
   assetObservations?: { path: string; hash: string }[]
   backgroundMetadata?: boolean
   undoLabel?: MessageKey | false
   undoKind?: Operation['kind']
+  undoBarrier?: boolean
+  operationHistory?: OperationHistory
 }
 export interface LibraryContext extends LibraryState {
   readonly repository: LibraryRepository
@@ -54,8 +58,7 @@ export interface LibraryContext extends LibraryState {
   ): Promise<void>
   getSource(id: string, signal?: AbortSignal, mediaId?: string): Promise<string>
   getAttempt(id: string, signal?: AbortSignal): Promise<Attempt>
-  forgetOperation(id: string | undefined): void
-  undoBarrier(): void
+  undoRecordedOperation(id: string): Promise<Operation>
   undoRating(): Promise<void>
   refreshBackups(): Promise<void>
   draftRepository(scope: string): unknown

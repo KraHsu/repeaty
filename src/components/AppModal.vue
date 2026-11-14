@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { matchesInputShortcut, useOptionalInputCommands } from '../input/controller'
 import UModal from '@nuxt/ui/components/Modal.vue'
 import UCard from '@nuxt/ui/components/Card.vue'
 import UAlert from '@nuxt/ui/components/Alert.vue'
@@ -66,16 +67,14 @@ function pointerUp(event: PointerEvent) {
 function cancelPointer() {
   outsidePointer = undefined
 }
+const inputCommands = useOptionalInputCommands()
 function keydown(event: KeyboardEvent) {
   if (
     event.defaultPrevented ||
     event.repeat ||
     event.isComposing ||
     event.keyCode === 229 ||
-    event.key !== 'Enter' ||
-    !(event.ctrlKey || event.metaKey) ||
-    event.altKey ||
-    event.shiftKey ||
+    !matchesInputShortcut(inputCommands, 'editor.save', event) ||
     props.busy
   )
     return
@@ -154,6 +153,7 @@ const modalContent = computed(() => ({
             :description="error"
           />
           <slot />
+          <template v-if="$slots.footer" #footer><slot name="footer" /></template>
         </UCard>
       </div>
     </template>
@@ -204,7 +204,8 @@ dialog:modal {
   max-height: inherit;
   overflow: hidden;
 }
-.app-modal-panel .modal-content > [data-slot='header'] {
+.app-modal-panel .modal-content > [data-slot='header'],
+.app-modal-panel .modal-content > [data-slot='footer'] {
   flex: 0 0 auto;
 }
 .app-modal-body {

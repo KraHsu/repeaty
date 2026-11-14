@@ -23,6 +23,8 @@ export const useLibraryStore = defineStore('library', () => {
     ...service.commands,
     lastOperation: computed(service.getters.lastOperation),
     canUndoOperation: computed(service.getters.canUndoOperation),
+    canRedoOperation: computed(service.getters.canRedoOperation),
+    lastRedoOperation: computed(service.getters.lastRedoOperation),
     canUndoReading: computed(service.getters.canUndoReading),
   }
 })

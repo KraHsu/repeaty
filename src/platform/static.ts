@@ -4,14 +4,33 @@ import { createRepository } from '../core/storage'
 import type { LearningReader } from '../core/learning-reader'
 export const AccountControls: Component | undefined = undefined
 export const PlatformSettings: Component | undefined = undefined
+export const createDeviceSync:
+  | ((
+      options: import('../sync/controller').DeviceSyncOptions,
+    ) => Promise<import('../sync/controller').DeviceSyncController>)
+  | undefined = undefined
 export const DraftWorkbench: Component | undefined = undefined
 export const DesktopTitlebar: Component | undefined = undefined
+export const WorkspaceBackupTools: Component | undefined = undefined
+export async function connectAutomaticBackups(_reader: LearningReader): Promise<() => void> {
+  return () => {}
+}
 export const WorkspaceBrowser = defineAsyncComponent(
   () => import('../browser/WorkspaceBrowser.vue'),
 )
 export const WorkspaceNotice = defineAsyncComponent(() => import('../browser/WorkspaceNotice.vue'))
 export async function initializePlatform() {}
 export async function connectLearningReader(_reader: LearningReader): Promise<() => void> {
+  return () => {}
+}
+export async function connectWindowCloseGuard(
+  _beforeClose: () => boolean | Promise<boolean>,
+): Promise<() => void> {
+  return () => {}
+}
+export function connectWorkspaceLeaveGuard(
+  _beforeLeave: () => boolean | Promise<boolean>,
+): () => void {
   return () => {}
 }
 export const ServerConnection: Component | undefined = undefined

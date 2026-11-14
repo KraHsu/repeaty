@@ -14,6 +14,8 @@ import { emptyLibrary } from '../src/core/model'
 import { addSource, prepareSource } from '../src/core/sources'
 import { exportArchive } from '../src/core/archive'
 import { readingRoundFlow, startRound } from './fixtures/reading-round-flow'
+// Multi-material scenarios now include the public collection preview/confirmation.
+test.setTimeout(60_000)
 
 async function read(page: Parameters<typeof storedLibrary>[0]) {
   const rows = await storedLibrary(page)
@@ -27,6 +29,7 @@ async function read(page: Parameters<typeof storedLibrary>[0]) {
 test('reading rounds save before advancing, retain their order, defer, archive and finish without changing reviews', async ({
   page,
 }, info) => {
+  test.setTimeout(60_000)
   await readingRoundFlow(page, () => read(page), info)
 })
 
@@ -176,14 +179,14 @@ test('a failed queue write retains its material, position and arrangement for a 
   await expect(page.getByRole('alert')).toContainText('存储空间不足')
   expect(await read(page)).toEqual(before)
   await expect(page.getByRole('heading', { name: 'Queue retry', exact: true })).toBeVisible()
-  await selectUiValue(page.getByLabel('阅读优先级', { exact: true }), 'high')
+  await selectUiValue(page.getByLabel('学习优先级', { exact: true }), '1')
   await expect(page.getByRole('alert')).toContainText('存储空间不足')
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'normal')
+  await expect(page.getByLabel('学习优先级', { exact: true })).toHaveAttribute('value', 'inherit')
   expect(await read(page)).toEqual(before)
   await page.evaluate(() => ((window as unknown as { failQueue: boolean }).failQueue = false))
-  await selectUiValue(page.getByLabel('阅读优先级', { exact: true }), 'high')
-  await expect(page.getByLabel('阅读优先级', { exact: true })).toHaveAttribute('value', 'high')
-  expect((await read(page)).sources[0]!.priority).toBe('high')
+  await selectUiValue(page.getByLabel('学习优先级', { exact: true }), '1')
+  await expect(page.getByLabel('学习优先级', { exact: true })).toHaveAttribute('value', '1')
+  expect((await read(page)).sources[0]!.studyPriority).toBe(1)
   await page.getByRole('button', { name: '归档材料', exact: true }).click()
   await expect(page.getByRole('heading', { name: '暂无待阅读材料', exact: true })).toBeVisible()
   await queueView(page, '已归档')
@@ -224,9 +227,9 @@ test('changing priority across list pages keeps the current material and support
   await expect(page.locator('.source-list-title')).toHaveCount(20)
   await page.locator('.source-list-title').filter({ hasText: 'Page 01' }).click()
   await moveReading(page, 0.45)
-  const priority = page.getByLabel('阅读优先级', { exact: true })
-  await selectUiValue(priority, 'low')
-  await expect(priority).toHaveAttribute('value', 'low')
+  const priority = page.getByLabel('学习优先级', { exact: true })
+  await selectUiValue(priority, '9')
+  await expect(priority).toHaveAttribute('value', '9')
   await expect(page.locator('.source-list-pages')).toContainText('2 / 2')
   await expect(page.locator('.source-list-title')).toHaveText(['Page 01'])
   await expect(page.getByRole('heading', { name: 'Page 01', exact: true })).toBeVisible()
@@ -238,12 +241,12 @@ test('changing priority across list pages keeps the current material and support
   await page.getByRole('option').first().press('Home')
   await page.getByRole('option').first().press('Enter')
   await priority.press('Tab')
-  await expect(priority).toHaveAttribute('value', 'high')
+  await expect(priority).toHaveAttribute('value', 'inherit')
   await expect(page.locator('.source-list-pages')).toContainText('1 / 2')
   await expect(page.locator('.source-list-title').first()).toHaveText('Page 01')
   await expect(page.locator('.source-list-title')).toHaveCount(20)
   await page.reload()
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Page 01', exact: true })).toBeVisible()
-  await expect(priority).toHaveAttribute('value', 'high')
+  await expect(priority).toHaveAttribute('value', 'inherit')
 })

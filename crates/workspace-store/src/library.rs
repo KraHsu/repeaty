@@ -49,7 +49,15 @@ pub struct Save {
     pub patches: Vec<crate::records::Patch>,
     pub documents: Vec<Document>,
     pub reason: Option<String>,
+    #[serde(default)]
+    pub operation_history: Option<Value>,
+    #[serde(default)]
+    pub retired: Option<Vec<Value>>,
+    #[serde(default)]
+    pub sync: Option<crate::sync::Apply>,
     pub consume_card_draft: Option<String>,
+    #[serde(default)]
+    pub consume_source_draft: Option<String>,
     #[serde(default)]
     pub scan_hash: Option<String>,
     #[serde(default)]
@@ -131,6 +139,7 @@ impl Library {
           CREATE INDEX publications_status ON publications(status);
           CREATE TABLE receipts(id TEXT PRIMARY KEY,digest TEXT NOT NULL,revision INTEGER NOT NULL);
           CREATE TABLE card_drafts(id TEXT PRIMARY KEY,data TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS source_drafts(id TEXT PRIMARY KEY,data TEXT NOT NULL);
           CREATE TABLE values_store(namespace TEXT NOT NULL,id TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(namespace,id));")?;
         retirement::schema(&db.connection)?;
         db.connection
@@ -186,13 +195,17 @@ impl Library {
         let identity: String = check
             .query_row("SELECT id FROM workspace_identity", [], |r| r.get(0))
             .map_err(|_| fail("workspace-incompatible"))?;
-        if app != APP_ID || ![10, 11].contains(&version) || identity != marker.id {
+        if app != APP_ID
+            || ![10, 11, 12, 13, 14, 15, 16, 17, 18].contains(&version)
+            || identity != marker.id
+        {
             return Err(fail("workspace-incompatible"));
         }
         drop(check);
         let anchor = Arc::new(Dir::open_ambient_dir(&root, cap_std::ambient_authority())?);
         let identity = same_file::Handle::from_file(anchor.try_clone()?.into_std_file())?;
         let db = Database::open(&db_path, Arc::new(anchor.open_dir(".repeaty/media")?))?;
+        crate::sync::schema(&db.connection)?;
         let members = [
             ".repeaty",
             ".repeaty/state.sqlite3",
@@ -224,6 +237,7 @@ impl Library {
             _lock: lock,
         };
         library.recover()?;
+        crate::attachments::recover(&library.db.connection, &library.anchor)?;
         Ok(library)
     }
     pub fn path(&self) -> &Path {
@@ -445,6 +459,25 @@ impl Library {
             return Err(fail("working-file-changed"));
         }
         working_media::verify(&self.anchor, &request.asset_observations)?;
+        if let Some(sync) = &request.sync {
+            let mut ids = request
+                .patches
+                .iter()
+                .filter(|patch| patch.store == "media" && patch.value.is_some())
+                .map(|patch| patch.id.clone())
+                .collect::<Vec<_>>();
+            ids.extend(sync.retired_media.keys().cloned());
+            self.publish_sync_assets(&ids)?;
+        }
+        if let Some(entries) = &request.retired {
+            for entry in entries {
+                if let Some(raw) = entry["document"]["raw"].as_str()
+                    && self.store_object(raw)? != entry["document"]["hash"]
+                {
+                    return Err(Error::invalid());
+                }
+            }
+        }
         let mut documents = Vec::new();
         for doc in &request.documents {
             if !["note", "source"].contains(&doc.kind.as_str())
@@ -556,6 +589,7 @@ impl Library {
             }
         }
         let consume = request.consume_card_draft;
+        let consume_source = request.consume_source_draft;
         let operation = request.operation_id;
         let patches = request.patches;
         let metadata = patches
@@ -572,10 +606,14 @@ impl Library {
         let anchor = &self.anchor;
         let observations = &request.asset_observations;
         let reactivate = &metadata;
-        let revision=self.db.commit_callbacks(Commit {expected_revision:request.expected_revision,patches,reason:request.reason},|tx| { working_media::verify(anchor, observations)?; retirement::capture(tx,capture) },|tx| {
+        let sync = request.sync;
+        let sync_device = self.db.sync_device.clone();
+        let revision=self.db.commit_callbacks(Commit {expected_revision:request.expected_revision,patches,reason:request.reason,operation_history:request.operation_history,retired:request.retired},|tx| { working_media::verify(anchor, observations)?; retirement::capture(tx,capture) },|tx| {
             working_media::verify(anchor, observations)?;
             retirement::reactivate(tx,reactivate)?;
+            if let Some(sync) = &sync { crate::sync::apply(tx,sync,sync_device.as_deref())?; }
             if let Some(id)=consume && tx.execute("DELETE FROM card_drafts WHERE id=?1",[id])?!=1 { return Err(Error::conflict()); }
+            if let Some(id)=consume_source && tx.execute("DELETE FROM source_drafts WHERE json_extract(data,'$.id')=?1",[id])?!=1 { return Err(Error::conflict()); }
             for (doc,hash) in &documents {
                 // A newly accepted observation supersedes older incomplete publication
                 // attempts for this document, including its previous working path.
@@ -707,6 +745,9 @@ impl Library {
     }
     pub fn read(&mut self, request: Value) -> Result<Value> {
         match request["type"].as_str().unwrap_or("") {
+            "attachment-inventory" => {
+                crate::attachments::inventory(&self.db.connection, &self.anchor)
+            }
             "load" => self.db.load_summary(),
             "documents" => self.documents(
                 request
@@ -740,6 +781,27 @@ impl Library {
                 request["query"].as_str().ok_or_else(Error::invalid)?,
                 request["offset"].as_i64().ok_or_else(Error::invalid)?,
             ),
+            "retired-notes" => {
+                let mut values = retirement::export(
+                    &self.db.connection,
+                    request["revision"].as_i64().ok_or_else(Error::invalid)?,
+                    request["backupId"].as_str(),
+                )?;
+                for value in &mut values {
+                    if let Some(doc) = value["document"].as_object_mut() {
+                        let hash = doc["hash"].as_str().ok_or_else(Error::invalid)?;
+                        let bytes = files::read_stable(&self.object(hash)?)?;
+                        if files::digest(&bytes) != hash {
+                            return Err(fail("corrupt-content-object"));
+                        }
+                        doc.insert(
+                            "raw".into(),
+                            Value::String(String::from_utf8(bytes).map_err(|_| Error::invalid())?),
+                        );
+                    }
+                }
+                Ok(json!(values))
+            }
             "retired-note" => {
                 let mut value = retirement::note(
                     &self.db.connection,
@@ -879,6 +941,20 @@ impl Library {
             "backup" => self
                 .db
                 .backup(request["id"].as_str().ok_or_else(Error::invalid)?),
+            "source-draft" => {
+                let id = request["sourceId"].as_str().ok_or_else(Error::invalid)?;
+                let raw: Option<String> = self
+                    .db
+                    .connection
+                    .query_row("SELECT data FROM source_drafts WHERE id=?1", [id], |r| {
+                        r.get(0)
+                    })
+                    .optional()?;
+                Ok(raw
+                    .map(|value| serde_json::from_str(&value))
+                    .transpose()?
+                    .unwrap_or(Value::Null))
+            }
             "drafts" => {
                 let mut stmt = self.db.connection.prepare(
                     "SELECT data FROM card_drafts ORDER BY json_extract(data,'$.position'),id",
@@ -915,11 +991,27 @@ impl Library {
     }
     pub fn write(&mut self, request: Value) -> Result<Value> {
         match request["type"].as_str().unwrap_or("") {
+            "attachment-mutate" => {
+                let mut input = request.clone();
+                input
+                    .as_object_mut()
+                    .ok_or_else(Error::invalid)?
+                    .remove("type");
+                crate::attachments::mutate(
+                    &mut self.db.connection,
+                    &self.anchor,
+                    serde_json::from_value(input)?,
+                )
+            }
             "commit" => self.save(serde_json::from_value(request["input"].clone())?),
             "media" => {
                 use base64::Engine;
                 let encoded = request["body"].as_str().ok_or_else(Error::invalid)?;
-                if encoded.len() > 15 * 1024 * 1024 {
+                if encoded.len()
+                    > crate::records::media_limit(request["mime"].as_str().unwrap_or(""))
+                        .div_ceil(3)
+                        * 4
+                {
                     return Err(Error::invalid());
                 }
                 let bytes = base64::engine::general_purpose::STANDARD
@@ -955,6 +1047,73 @@ impl Library {
             "backup" => {
                 self.db
                     .backup_now(request["force"].as_bool().unwrap_or(false))?;
+                Ok(Value::Null)
+            }
+            "source-draft" => {
+                let draft = &request["draft"];
+                let source_id = draft["sourceId"].as_str().ok_or_else(Error::invalid)?;
+                let id = draft["id"].as_str().ok_or_else(Error::invalid)?;
+                let media_id = draft["mediaId"].as_str().ok_or_else(Error::invalid)?;
+                if source_id.len() > 100
+                    || source_id.is_empty()
+                    || Uuid::parse_str(id).is_err()
+                    || media_id.is_empty()
+                    || media_id.len() > 100
+                    || draft["scope"].as_str() != Some(&format!("local:workspace:{}", self.id))
+                    || draft["content"]
+                        .as_str()
+                        .is_none_or(|v| v.encode_utf16().count() > 250_000)
+                    || draft["properties"]
+                        .as_str()
+                        .is_none_or(|v| v.encode_utf16().count() > 65_536)
+                    || draft["title"]
+                        .as_str()
+                        .is_none_or(|v| v.encode_utf16().count() > 160)
+                    || draft["url"]
+                        .as_str()
+                        .is_none_or(|v| v.encode_utf16().count() > 2048)
+                    || draft["updatedAt"]
+                        .as_str()
+                        .is_none_or(|v| chrono::DateTime::parse_from_rfc3339(v).is_err())
+                    || draft.to_string().len() > 2 * 1024 * 1024
+                {
+                    return Err(Error::invalid());
+                }
+                let tx = self.db.connection.transaction()?;
+                let source: Option<String> = tx
+                    .query_row("SELECT data FROM sources WHERE id=?1", [source_id], |r| {
+                        r.get(0)
+                    })
+                    .optional()?;
+                let source: Value = serde_json::from_str(&source.ok_or_else(Error::conflict)?)?;
+                if source["mediaId"] != media_id
+                    && !source["versions"].as_array().is_some_and(|versions| {
+                        versions
+                            .iter()
+                            .any(|version| version["mediaId"] == media_id)
+                    })
+                {
+                    return Err(Error::conflict());
+                }
+                tx.execute("INSERT INTO source_drafts VALUES(?1,?2) ON CONFLICT(id) DO UPDATE SET data=excluded.data", params![source_id,draft.to_string()])?;
+                let count: i64 =
+                    tx.query_row("SELECT COUNT(*) FROM source_drafts", [], |r| r.get(0))?;
+                if count > 50 {
+                    return Err(fail("draft-limit"));
+                }
+                let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+                tx.pragma_update(None, "user_version", version.max(13))?;
+                tx.commit()?;
+                Ok(Value::Null)
+            }
+            "source-draft-remove" => {
+                self.db.connection.execute(
+                    "DELETE FROM source_drafts WHERE id=?1 AND json_extract(data,'$.id')=?2",
+                    params![
+                        request["sourceId"].as_str().ok_or_else(Error::invalid)?,
+                        request["id"].as_str().ok_or_else(Error::invalid)?
+                    ],
+                )?;
                 Ok(Value::Null)
             }
             "draft-add" | "draft-update" => {
@@ -1014,12 +1173,18 @@ impl Library {
                     return Err(Error::invalid());
                 }
                 if request["value"].is_null() {
-                    self.db.connection.execute(
+                    let tx = self.db.connection.transaction()?;
+                    tx.execute(
                         "DELETE FROM values_store WHERE namespace=?1 AND id=?2",
                         params![ns, id],
                     )?;
+                    crate::sync::flush(&tx, self.db.sync_device.as_deref())?;
+                    tx.commit()?;
                 } else {
-                    self.db.connection.execute("INSERT INTO values_store VALUES(?1,?2,?3) ON CONFLICT(namespace,id) DO UPDATE SET data=excluded.data",params![ns,id,request["value"].to_string()])?;
+                    let tx = self.db.connection.transaction()?;
+                    tx.execute("INSERT INTO values_store VALUES(?1,?2,?3) ON CONFLICT(namespace,id) DO UPDATE SET data=excluded.data",params![ns,id,request["value"].to_string()])?;
+                    crate::sync::flush(&tx, self.db.sync_device.as_deref())?;
+                    tx.commit()?;
                 }
                 Ok(Value::Null)
             }

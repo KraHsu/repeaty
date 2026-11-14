@@ -12,7 +12,11 @@ use std::{
 };
 use std::{io::Write, sync::Arc};
 
-pub const STORES: [&str; 10] = [
+#[cfg(test)]
+#[path = "records_snapshot_tests.rs"]
+mod snapshot_tests;
+
+pub const STORES: [&str; 19] = [
     "decks",
     "notes",
     "cards",
@@ -23,8 +27,28 @@ pub const STORES: [&str; 10] = [
     "attempts",
     "sources",
     "materialReceipts",
+    "automationReceipts",
+    "materialFolders",
+    "materialCollections",
+    "sourceConnections",
+    "sourceCandidates",
+    "studySettings",
+    "studyEvents",
+    "studyActivity",
+    "fsrsModels",
 ];
 pub const MAX_MEDIA: usize = 10 * 1024 * 1024;
+pub const MAX_DOCUMENT: usize = 64 * 1024 * 1024;
+pub fn media_limit(mime: &str) -> usize {
+    if matches!(
+        mime,
+        "application/pdf" | "application/epub+zip" | "text/html" | "application/octet-stream"
+    ) {
+        MAX_DOCUMENT
+    } else {
+        MAX_MEDIA
+    }
+}
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -32,6 +56,10 @@ pub struct Commit {
     pub expected_revision: i64,
     pub patches: Vec<Patch>,
     pub reason: Option<String>,
+    #[serde(default)]
+    pub operation_history: Option<Value>,
+    #[serde(default)]
+    pub retired: Option<Vec<Value>>,
 }
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -51,6 +79,7 @@ pub enum ReadAttempts {
 }
 pub struct Database {
     pub(crate) connection: Connection,
+    pub(crate) sync_device: Option<String>,
     assets: Arc<Dir>,
     validators: HashMap<String, jsonschema::Validator>,
 }
@@ -75,7 +104,7 @@ impl Database {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         let version: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 11 {
+        if version > 18 {
             return Err(Error::invalid());
         }
         let tx = connection.transaction()?;
@@ -83,7 +112,8 @@ impl Database {
             CREATE TABLE IF NOT EXISTS assets (id TEXT PRIMARY KEY, mime TEXT NOT NULL, path TEXT NOT NULL, size INTEGER NOT NULL, created INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS checkpoints (id TEXT PRIMARY KEY, revision INTEGER NOT NULL UNIQUE, created_at TEXT NOT NULL, reason TEXT NOT NULL, cards INTEGER NOT NULL, notes INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS history (revision INTEGER NOT NULL, store TEXT NOT NULL, id TEXT NOT NULL, position INTEGER, data TEXT, PRIMARY KEY(revision,store,id));
-            CREATE INDEX IF NOT EXISTS history_store ON history(store,id);")?;
+            CREATE INDEX IF NOT EXISTS history_store ON history(store,id);
+            CREATE TABLE IF NOT EXISTS operation_history (id INTEGER PRIMARY KEY CHECK(id=1),data TEXT NOT NULL);")?;
         for store in STORES {
             let relation = match store {
                 "notes" => {
@@ -109,7 +139,11 @@ impl Database {
             };
             tx.execute_batch(&format!("CREATE TABLE IF NOT EXISTS {store} (id TEXT PRIMARY KEY, position INTEGER NOT NULL CHECK(position>=0), data TEXT NOT NULL CHECK(json_valid(data)){relation}); CREATE INDEX IF NOT EXISTS {store}_position ON {store}(position);"))?;
         }
+        tx.execute_batch(
+            "CREATE TABLE IF NOT EXISTS source_drafts(id TEXT PRIMARY KEY,data TEXT NOT NULL);",
+        )?;
         tx.execute_batch("CREATE INDEX IF NOT EXISTS notes_deck ON notes(deck_id); CREATE INDEX IF NOT EXISTS cards_note ON cards(note_id); CREATE INDEX IF NOT EXISTS reviews_card ON reviews(card_id); CREATE INDEX IF NOT EXISTS practices_card ON practices(card_id); CREATE INDEX IF NOT EXISTS attempts_practice ON attempts(practice_id);")?;
+        tx.execute_batch("CREATE INDEX IF NOT EXISTS sources_connection ON sources(json_extract(data,'$.binding.connectionId'),json_extract(data,'$.binding.key')); CREATE INDEX IF NOT EXISTS candidates_connection ON sourceCandidates(json_extract(data,'$.connectionId'),json_extract(data,'$.key')); CREATE INDEX IF NOT EXISTS candidates_source ON sourceCandidates(json_extract(data,'$.sourceId'));")?;
         tx.pragma_update(None, "user_version", version.max(10))?;
         tx.commit()?;
         let asset_reader = assets.clone();
@@ -135,8 +169,12 @@ impl Database {
                 ))
             })
             .collect::<Result<_>>()?;
+        crate::attachments::schema(&connection)?;
+        crate::retirement::history_schema(&connection)?;
+        crate::sync::schema(&connection)?;
         Ok(Self {
             connection,
+            sync_device: None,
             validators,
             assets,
         })
@@ -152,11 +190,22 @@ impl Database {
         let current = revision(&tx)?;
         Self::checkpoint(&tx, "自动备份", false)?;
         let library = Self::library_history(&tx, summary)?;
+        let history = tx
+            .query_row("SELECT data FROM operation_history WHERE id=1", [], |r| {
+                r.get::<_, String>(0)
+            })
+            .optional()?;
+        let operation_history: Option<Value> =
+            history.map(|raw| serde_json::from_str(&raw)).transpose()?;
         tx.commit()?;
-        Ok(json!({"revision":current,"library":library}))
+        let mut snapshot = json!({"revision":current,"library":library});
+        if let Some(history) = operation_history {
+            snapshot["operationHistory"] = history;
+        }
+        Ok(snapshot)
     }
     fn library_history(db: &Connection, summary: bool) -> Result<Value> {
-        let mut library = json!({"version":14});
+        let mut library = json!({"version":19});
         for store in STORES {
             let data = if store == "attempts" && summary {
                 "json_remove(data,'$.code','$.result.detail')"
@@ -271,6 +320,7 @@ impl Database {
                     return Err(Error::invalid());
                 }
                 if patch.store == "notes" {
+                    crate::materials::plugin(&value["plugin"])?;
                     if value["type"] == "plugin" {
                         if !value["plugin"].is_object()
                             || value["plugin"]["data"].to_string().len() > 800_000
@@ -285,6 +335,9 @@ impl Database {
                     && value["question"]["plugin"]["data"].to_string().len() > 800_000
                 {
                     return Err(Error::invalid());
+                }
+                if patch.store == "practices" {
+                    crate::materials::plugin(&value["question"]["plugin"])?;
                 }
                 if patch.store == "attempts" {
                     let status = value["status"].as_str().unwrap_or("");
@@ -398,18 +451,82 @@ impl Database {
                 "savedSearches" => 100,
                 "sources" => 10000,
                 "materialReceipts" => 100000,
+                "automationReceipts" => 100000,
+                "materialFolders" | "materialCollections" => 10000,
+                "sourceConnections" => 100,
+                "sourceCandidates" => 10000,
+                "studySettings" => 1,
+                "studyEvents" | "studyActivity" => 500000,
+                "fsrsModels" => 200,
                 _ => 1600000,
             };
             if count > limit || distinct != count || (count > 0 && max != Some(count - 1)) {
                 return Err(Error::invalid());
             }
         }
+        if touched_stores.contains("materialFolders") {
+            Self::validate_folder_graph(&tx)?;
+        }
+        if changed.iter().any(|(patch, previous)| {
+            patch.store == "sources"
+                && patch.value.as_ref().is_none_or(|value| {
+                    previous.as_ref().is_none_or(|old| {
+                        ["studySequence", "parentSourceId"]
+                            .iter()
+                            .any(|key| old[*key] != value[*key])
+                            || old["document"]["container"] != value["document"]["container"]
+                    })
+                })
+        }) {
+            crate::materials::sequences(&tx)?;
+        }
+        if let Some(retired) = &commit.retired {
+            crate::retirement::portable_validate(&tx, retired, &self.validators)?;
+            crate::retirement::replace(&tx, retired)?;
+        }
         for (patch, previous) in &changed {
             if !patch.position_only {
-                Self::validate_patch(&tx, patch, previous.as_ref())?;
+                Self::validate_patch(&tx, patch, previous.as_ref(), commit.retired.is_some())?;
             }
         }
+        if ["decks", "studySettings", "fsrsModels"]
+            .iter()
+            .any(|store| touched_stores.contains(store))
+        {
+            crate::study::validate_model_selections(&tx)?;
+        }
         finish(&tx)?;
+        if let Some(history) = &commit.operation_history {
+            if history["schemaVersion"] != 1
+                || ["undo", "redo"].iter().any(|key| {
+                    history[*key].as_array().is_none_or(|stack| {
+                        stack.len() > 20
+                            || stack.iter().any(|operation| {
+                                operation["changes"].as_array().is_some_and(|changes| {
+                                    changes.iter().any(|change| {
+                                        matches!(
+                                            change["store"].as_str(),
+                                            Some("automationReceipts" | "materialReceipts")
+                                        )
+                                    })
+                                })
+                            })
+                    })
+                })
+                || history["mediaIds"].as_array().is_none_or(|ids| {
+                    ids.len() > 100_000
+                        || ids
+                            .iter()
+                            .any(|id| id.as_str().is_none_or(|id| !valid_id(id)))
+                })
+                || serde_json::to_vec(history)?.len() > 64 * 1024 * 1024
+            {
+                return Err(Error::invalid());
+            }
+            tx.execute("INSERT INTO operation_history VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET data=excluded.data",[history.to_string()])?;
+            let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+            tx.pragma_update(None, "user_version", version.max(12))?;
+        }
         // This reader gate commits with the new records: a failed import cannot upgrade
         // the library, and an old application cannot strip unknown material metadata.
         if commit.patches.iter().any(|patch| {
@@ -428,10 +545,71 @@ impl Database {
                     })
             })
         }) {
-            tx.pragma_update(None, "user_version", 11)?;
+            let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+            tx.pragma_update(None, "user_version", version.max(11))?;
+        }
+        if commit.patches.iter().any(|patch| {
+            patch.store == "materialFolders"
+                || (patch.store == "materialReceipts"
+                    && patch
+                        .value
+                        .as_ref()
+                        .is_some_and(|value| value["kind"] == "edit-content"))
+                || (patch.store == "sources"
+                    && patch.value.as_ref().is_some_and(|value| {
+                        ["folderId", "order", "properties", "annotations"]
+                            .iter()
+                            .any(|key| !value[*key].is_null())
+                    }))
+        }) {
+            let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+            tx.pragma_update(None, "user_version", version.max(13))?;
+        }
+        if commit.retired.is_some()
+            || tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM retired_history WHERE revision=?1)",
+                [current + 1],
+                |row| row.get::<_, bool>(0),
+            )?
+            || commit.patches.iter().any(|patch| {
+                patch.value.as_ref().is_some_and(|value| {
+                    crate::materials::needs_p4(value)
+                        || patch.store == "media"
+                            && value["size"].as_u64().unwrap_or(0) > MAX_MEDIA as u64
+                })
+            })
+        {
+            let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+            tx.pragma_update(None, "user_version", version.max(14))?;
+        }
+        if commit.patches.iter().any(|patch| {
+            matches!(
+                patch.store.as_str(),
+                "sourceConnections" | "sourceCandidates"
+            ) || patch
+                .value
+                .as_ref()
+                .is_some_and(|v| !v["inbox"].is_null() || !v["binding"].is_null())
+        }) {
+            let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+            tx.pragma_update(None, "user_version", version.max(15))?;
+        }
+        if commit.patches.iter().any(crate::study::needs_p6) {
+            let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+            tx.pragma_update(None, "user_version", version.max(16))?;
+        }
+        if commit.patches.iter().any(|patch| {
+            matches!(
+                patch.store.as_str(),
+                "automationReceipts" | "materialCollections"
+            )
+        }) {
+            let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+            tx.pragma_update(None, "user_version", version.max(17))?;
         }
         tx.execute("UPDATE workspace SET revision=?1 WHERE id=1", [current + 1])?;
         Self::collect_assets(&tx)?;
+        crate::sync::flush(&tx, self.sync_device.as_deref())?;
         tx.commit()?;
         Ok(current + 1)
     }
@@ -439,21 +617,101 @@ impl Database {
     /// foreign keys cannot express. Unchanged rows were already validated when they were
     /// written; rescanning all of them made every save scale with the whole library, and a
     /// reading-position save happens every few hundred milliseconds while scrolling.
-    fn validate_patch(tx: &Transaction<'_>, patch: &Patch, previous: Option<&Value>) -> Result<()> {
+    fn validate_patch(
+        tx: &Transaction<'_>,
+        patch: &Patch,
+        previous: Option<&Value>,
+        portable_replacement: bool,
+    ) -> Result<()> {
         match patch.store.as_str() {
             "sources" => {
-                Self::validate_source(tx, patch, previous)?;
+                Self::validate_source(tx, patch, previous, portable_replacement)?;
+                Self::validate_source_binding(tx, patch, previous)?;
+                if let Some(value) = &patch.value {
+                    if previous.is_none_or(|old| {
+                        old["folderId"] != value["folderId"]
+                            || old["parentSourceId"] != value["parentSourceId"]
+                    }) && let Some(id) = value["folderId"].as_str()
+                        && (!value["parentSourceId"].is_null()
+                            || !Self::exists(
+                                tx,
+                                "SELECT EXISTS(SELECT 1 FROM materialFolders WHERE id=?1)",
+                                id,
+                            )?)
+                    {
+                        return Err(Error::invalid());
+                    }
+                    if previous.is_none_or(|old| {
+                        old["annotations"] != value["annotations"]
+                            || old["versions"] != value["versions"]
+                            || old["mediaId"] != value["mediaId"]
+                    }) {
+                        let mut ids = HashSet::new();
+                        for annotation in value["annotations"].as_array().into_iter().flatten() {
+                            if !ids.insert(annotation["id"].as_str().unwrap_or("")) {
+                                return Err(Error::invalid());
+                            }
+                            let snapshot = Self::source_snapshot(value, annotation)?;
+                            let text = Self::source_body(tx, &snapshot)?;
+                            let start = annotation["start"].as_u64().unwrap_or(u64::MAX) as usize;
+                            let end = annotation["end"].as_u64().unwrap_or(0) as usize;
+                            let quote: Vec<u16> = annotation["quote"]
+                                .as_str()
+                                .unwrap_or("")
+                                .encode_utf16()
+                                .collect();
+                            if end <= start || text.get(start..end) != Some(quote.as_slice()) {
+                                return Err(Error::invalid());
+                            }
+                            let mut reference = annotation.clone();
+                            reference["sourceId"] = json!(patch.id);
+                            crate::materials::reference(&snapshot, &reference, &text)?;
+                        }
+                    }
+                }
                 Self::validate_inline_media(tx, patch, previous)
             }
+            "materialFolders" => Self::validate_folder(tx, patch),
+            "materialCollections" => {
+                if let Some(value) = &patch.value {
+                    let mut members = HashSet::new();
+                    // These are ordered soft references: deleting a source must not erase
+                    // its collection membership, which can become available after restore.
+                    for id in value["sourceIds"].as_array().into_iter().flatten() {
+                        if !members.insert(id.as_str().unwrap_or("")) {
+                            return Err(Error::invalid());
+                        }
+                    }
+                }
+                Ok(())
+            }
+            "sourceConnections" => Self::validate_source_connection(tx, patch),
+            "sourceCandidates" => Self::validate_source_candidate(tx, patch, previous),
             "notes" => {
                 Self::validate_note(tx, patch, previous)?;
                 Self::validate_inline_media(tx, patch, previous)
             }
             "media" => Self::validate_media(tx, patch),
             "reviews" | "practices" | "attempts" => Self::validate_history(tx, patch),
+            "studySettings" | "studyActivity" => crate::study::validate(patch),
             "materialReceipts" => {
                 if let Some(value) = &patch.value {
                     let duplicate: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM materialReceipts WHERE id<>?1 AND json_extract(data,'$.pluginId')=?2 AND json_extract(data,'$.kind')=?3 AND json_extract(data,'$.operationId')=?4)", params![patch.id, value["pluginId"].as_str().unwrap_or(""), value["kind"].as_str().unwrap_or(""), value["operationId"].as_str().unwrap_or("")], |row| row.get(0))?;
+                    if duplicate {
+                        return Err(Error::invalid());
+                    }
+                }
+                if previous
+                    .zip(patch.value.as_ref())
+                    .is_some_and(|(before, next)| before != next)
+                {
+                    return Err(Error::invalid());
+                }
+                Ok(())
+            }
+            "automationReceipts" => {
+                if let Some(value) = &patch.value {
+                    let duplicate: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM automationReceipts WHERE id<>?1 AND json_extract(data,'$.actorId')=?2 AND json_extract(data,'$.requestId')=?3)", params![patch.id, value["actorId"].as_str().unwrap_or(""), value["requestId"].as_str().unwrap_or("")], |row| row.get(0))?;
                     if duplicate {
                         return Err(Error::invalid());
                     }
@@ -471,6 +729,185 @@ impl Database {
     }
     fn exists(tx: &Transaction<'_>, sql: &str, id: &str) -> Result<bool> {
         Ok(tx.query_row(sql, [id], |row| row.get(0))?)
+    }
+    fn validate_source_connection(tx: &Transaction<'_>, patch: &Patch) -> Result<()> {
+        if let Some(value) = &patch.value {
+            // Zod refinements are not present in JSON Schema exports.
+            if value["settings"].to_string().len() > 16 * 1024 {
+                return Err(Error::invalid());
+            }
+        } else if Self::exists(
+            tx,
+            "SELECT EXISTS(SELECT 1 FROM sources WHERE json_extract(data,'$.binding.connectionId')=?1) OR EXISTS(SELECT 1 FROM sourceCandidates WHERE json_extract(data,'$.connectionId')=?1)",
+            &patch.id,
+        )? {
+            return Err(Error::invalid());
+        }
+        Ok(())
+    }
+    fn validate_source_binding(
+        tx: &Transaction<'_>,
+        patch: &Patch,
+        previous: Option<&Value>,
+    ) -> Result<()> {
+        let Some(value) = &patch.value else {
+            return Ok(());
+        };
+        if previous.is_some_and(|before| {
+            ["binding", "mediaId", "versions"]
+                .iter()
+                .all(|key| before[*key] == value[*key])
+        }) {
+            return Ok(());
+        }
+        if let Some(binding) = value.get("binding") {
+            let connection = binding["connectionId"]
+                .as_str()
+                .ok_or_else(Error::invalid)?;
+            if !Self::exists(tx, "SELECT EXISTS(SELECT 1 FROM sourceConnections WHERE id=?1)", connection)?
+                || tx.query_row("SELECT EXISTS(SELECT 1 FROM sources WHERE id<>?1 AND json_extract(data,'$.binding.connectionId')=?2 AND json_extract(data,'$.binding.key')=?3)", params![patch.id, connection, binding["key"].as_str().unwrap_or("")], |r|r.get::<_,bool>(0))?
+            {
+                return Err(Error::invalid());
+            }
+            Self::source_snapshot(value, &json!({"mediaId":binding["acceptedMediaId"]}))?;
+        }
+        // Only candidates pointing to the changed material need a baseline recheck.
+        if previous.is_none_or(|before| {
+            before["mediaId"] != value["mediaId"] || before["versions"] != value["versions"]
+        }) {
+            let mut statement = tx.prepare("SELECT json_extract(data,'$.baseMediaId') FROM sourceCandidates WHERE json_extract(data,'$.sourceId')=?1 AND json_extract(data,'$.baseMediaId') IS NOT NULL")?;
+            for row in statement.query_map([&patch.id], |row| row.get::<_, String>(0))? {
+                Self::source_snapshot(value, &json!({"mediaId":row?}))?;
+            }
+        }
+        Ok(())
+    }
+    fn validate_source_candidate(
+        tx: &Transaction<'_>,
+        patch: &Patch,
+        previous: Option<&Value>,
+    ) -> Result<()> {
+        let Some(value) = &patch.value else {
+            return Ok(());
+        };
+        let connection = value["connectionId"].as_str().ok_or_else(Error::invalid)?;
+        if !Self::exists(tx, "SELECT EXISTS(SELECT 1 FROM sourceConnections WHERE id=?1)", connection)?
+            || tx.query_row("SELECT EXISTS(SELECT 1 FROM sourceCandidates WHERE id<>?1 AND json_extract(data,'$.connectionId')=?2 AND json_extract(data,'$.key')=?3)", params![patch.id, connection, value["key"].as_str().unwrap_or("")], |r|r.get::<_,bool>(0))?
+        {
+            return Err(Error::invalid());
+        }
+        let mut paths = HashSet::new();
+        for resource in value["resources"].as_array().into_iter().flatten() {
+            let path = resource["path"].as_str().ok_or_else(Error::invalid)?;
+            if !crate::materials::material_path(path)
+                || !paths.insert(path)
+                || !Self::exists(
+                    tx,
+                    "SELECT EXISTS(SELECT 1 FROM media WHERE id=?1)",
+                    resource["mediaId"].as_str().unwrap_or(""),
+                )?
+            {
+                return Err(Error::invalid());
+            }
+        }
+        if value["path"]
+            .as_str()
+            .is_some_and(|path| !crate::materials::material_path(path))
+        {
+            return Err(Error::invalid());
+        }
+        if let (Some(source_id), Some(base)) =
+            (value["sourceId"].as_str(), value["baseMediaId"].as_str())
+        {
+            let source: Option<String> = tx
+                .query_row("SELECT data FROM sources WHERE id=?1", [source_id], |row| {
+                    row.get(0)
+                })
+                .optional()?;
+            // A removed material may leave a candidate for explicit re-association.
+            if let Some(source) = source {
+                Self::source_snapshot(&serde_json::from_str(&source)?, &json!({"mediaId":base}))?;
+            }
+        }
+        if value["kind"] == "missing" {
+            return if value["sourceId"].as_str().is_some() && value["mediaId"].is_null() {
+                Ok(())
+            } else {
+                Err(Error::invalid())
+            };
+        }
+        let Some(media) = value["mediaId"].as_str() else {
+            return Err(Error::invalid());
+        };
+        if value["characters"]
+            .as_u64()
+            .is_none_or(|count| count == 0 || count > 250_000)
+        {
+            return Err(Error::invalid());
+        }
+        if !Self::exists(
+            tx,
+            "SELECT EXISTS(SELECT 1 FROM media WHERE id=?1 AND json_extract(data,'$.type') IN ('text/plain','text/markdown'))",
+            media,
+        )? {
+            return Err(Error::invalid());
+        }
+        if previous.is_none_or(|before| {
+            before["mediaId"] != value["mediaId"] || before["characters"] != value["characters"]
+        }) {
+            Self::source_body(tx, value)?;
+        }
+        Ok(())
+    }
+    fn validate_folder_graph(tx: &Transaction<'_>) -> Result<()> {
+        let mut query =
+            tx.prepare("SELECT id,json_extract(data,'$.parentId') FROM materialFolders")?;
+        let folders = query
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+            })?
+            .collect::<std::result::Result<HashMap<_, _>, _>>()?;
+        for id in folders.keys() {
+            let mut seen = HashSet::new();
+            let mut current = Some(id);
+            while let Some(id) = current {
+                if seen.len() >= 32 || !seen.insert(id) {
+                    return Err(Error::invalid());
+                }
+                current = folders.get(id).ok_or_else(Error::invalid)?.as_ref();
+            }
+        }
+        Ok(())
+    }
+    fn validate_folder(tx: &Transaction<'_>, patch: &Patch) -> Result<()> {
+        let Some(value) = &patch.value else {
+            if Self::exists(
+                tx,
+                "SELECT EXISTS(SELECT 1 FROM materialFolders WHERE json_extract(data,'$.parentId')=?1) OR EXISTS(SELECT 1 FROM sources WHERE json_extract(data,'$.folderId')=?1)",
+                &patch.id,
+            )? {
+                return Err(Error::invalid());
+            }
+            return Ok(());
+        };
+        let mut seen = HashSet::from([patch.id.clone()]);
+        let mut parent = value["parentId"].as_str().map(str::to_owned);
+        while let Some(id) = parent {
+            if seen.len() >= 32 || !seen.insert(id.clone()) {
+                return Err(Error::invalid());
+            }
+            let data: String = tx
+                .query_row(
+                    "SELECT data FROM materialFolders WHERE id=?1",
+                    [&id],
+                    |row| row.get(0),
+                )
+                .map_err(|_| Error::invalid())?;
+            parent = serde_json::from_str::<Value>(&data)?["parentId"]
+                .as_str()
+                .map(str::to_owned);
+        }
+        Ok(())
     }
     fn validate_inline_media(
         tx: &Transaction<'_>,
@@ -505,7 +942,13 @@ impl Database {
                 [&patch.id],
                 |row| row.get(0),
             )?;
-            return if referenced {
+            let resources: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM sources s,json_each(json_extract(s.data,'$.document.resources')) r WHERE json_extract(r.value,'$.mediaId')=?1) OR EXISTS(SELECT 1 FROM sources s,json_each(json_extract(s.data,'$.versions')) v,json_each(json_extract(v.value,'$.document.resources')) r WHERE json_extract(r.value,'$.mediaId')=?1)", [&patch.id], |row| row.get(0))?;
+            let candidates = Self::exists(
+                tx,
+                "SELECT EXISTS(SELECT 1 FROM sourceCandidates WHERE json_extract(data,'$.mediaId')=?1) OR EXISTS(SELECT 1 FROM sourceCandidates c,json_each(json_extract(c.data,'$.resources')) r WHERE json_extract(r.value,'$.mediaId')=?1)",
+                &patch.id,
+            )?;
+            return if referenced || resources || candidates {
                 Err(Error::invalid())
             } else {
                 Ok(())
@@ -516,7 +959,10 @@ impl Database {
             params![patch.id, value.to_string()],
             |row| row.get(0),
         )?;
-        if stored {
+        if stored
+            && value["size"].as_u64().unwrap_or(u64::MAX)
+                <= media_limit(value["type"].as_str().unwrap_or("")) as u64
+        {
             Ok(())
         } else {
             Err(Error::invalid())
@@ -637,13 +1083,15 @@ impl Database {
         tx: &Transaction<'_>,
         patch: &Patch,
         previous: Option<&Value>,
+        portable_replacement: bool,
     ) -> Result<()> {
         let Some(value) = patch.value.as_ref() else {
             let referenced: bool = tx.query_row(
                 "SELECT EXISTS(SELECT 1 FROM sources WHERE json_extract(data,'$.origin.sourceId')=?1 OR json_extract(data,'$.parentSourceId')=?1) OR EXISTS(SELECT 1 FROM notes WHERE json_extract(data,'$.excerpt.sourceId')=?1)",
                 [&patch.id], |row| row.get(0),
             )?;
-            return if referenced {
+            let retired = Self::retired_source_refs(tx, &patch.id)?;
+            return if referenced || !retired.is_empty() {
                 Err(Error::invalid())
             } else {
                 Ok(())
@@ -781,11 +1229,16 @@ impl Database {
         }
         // Every existing quote must still resolve, including a reference without an explicit version.
         let mut statement = tx.prepare("SELECT data, 'source' FROM sources WHERE json_extract(data,'$.origin.sourceId')=?1 UNION ALL SELECT data, 'note' FROM notes WHERE json_extract(data,'$.excerpt.sourceId')=?1")?;
-        let references = statement
+        let mut references = statement
             .query_map([&patch.id], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
+        references.extend(
+            Self::retired_source_refs(tx, &patch.id)?
+                .into_iter()
+                .map(|data| (data, "note".into())),
+        );
         for (data, kind) in references {
             let child: Value = serde_json::from_str(&data)?;
             let reference = &child[if kind == "source" {
@@ -794,6 +1247,18 @@ impl Database {
                 "excerpt"
             }];
             let parent = Self::source_snapshot(value, reference)?;
+            // Legacy references without mediaId mean the original first snapshot.
+            // Keeping the quote text is not enough: deleting/reordering versions
+            // must not silently bind active or retired records to a different one.
+            // Explicit portable replacement validates the supplied whole collection
+            // and may legitimately rekey every media identity during restoration.
+            if !portable_replacement
+                && reference["mediaId"].as_str().is_none()
+                && let Some(before) = previous
+                && Self::source_snapshot(before, reference)?["mediaId"] != parent["mediaId"]
+            {
+                return Err(Error::invalid());
+            }
             let text = Self::source_body(tx, &parent)?;
             crate::materials::reference(&parent, reference, &text)?;
             let start = reference["start"].as_u64().unwrap_or(0) as usize;
@@ -806,6 +1271,15 @@ impl Database {
                     .collect();
                 if text.get(start..end) != Some(quote.as_slice()) {
                     return Err(Error::invalid());
+                }
+                for locator in child["plugin"]["variantLocators"]
+                    .as_object()
+                    .into_iter()
+                    .flat_map(|map| map.values())
+                {
+                    let mut variant_reference = reference.clone();
+                    variant_reference["locator"] = locator.clone();
+                    crate::materials::reference(&parent, &variant_reference, &text)?;
                 }
             } else {
                 for snapshot in std::iter::once(&child)
@@ -821,10 +1295,43 @@ impl Database {
         }
         Ok(())
     }
+    fn retired_source_refs(tx: &Transaction<'_>, id: &str) -> Result<Vec<String>> {
+        let present: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='retired_notes' AND type='table')", [], |row| row.get(0))?;
+        if !present {
+            return Ok(vec![]);
+        }
+        let mut statement = tx.prepare(
+            "SELECT data FROM retired_notes WHERE json_extract(data,'$.excerpt.sourceId')=?1",
+        )?;
+        Ok(statement
+            .query_map([id], |row| row.get(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?)
+    }
     fn validate_note(tx: &Transaction<'_>, patch: &Patch, previous: Option<&Value>) -> Result<()> {
         let Some(value) = patch.value.as_ref() else {
             return Ok(());
         };
+        if previous.is_none_or(|before| {
+            before["plugin"]["variantLocators"] != value["plugin"]["variantLocators"]
+                || before["excerpt"] != value["excerpt"]
+        }) && let Some(locators) = value["plugin"]["variantLocators"].as_object()
+        {
+            let excerpt = &value["excerpt"];
+            let raw: String = tx
+                .query_row(
+                    "SELECT data FROM sources WHERE id=?1",
+                    [excerpt["sourceId"].as_str().unwrap_or("")],
+                    |row| row.get(0),
+                )
+                .map_err(|_| Error::invalid())?;
+            let snapshot = Self::source_snapshot(&serde_json::from_str(&raw)?, excerpt)?;
+            let text = Self::source_body(tx, &snapshot)?;
+            for locator in locators.values() {
+                let mut reference = excerpt.clone();
+                reference["locator"] = locator.clone();
+                crate::materials::reference(&snapshot, &reference, &text)?;
+            }
+        }
         if previous.is_none_or(|before| {
             before["frontMedia"] != value["frontMedia"] || before["backMedia"] != value["backMedia"]
         }) {
@@ -908,11 +1415,15 @@ impl Database {
             "DELETE FROM history WHERE revision <= (SELECT MIN(revision) FROM checkpoints)",
             [],
         )?;
+        tx.execute(
+            "DELETE FROM retired_history WHERE revision <= (SELECT MIN(revision) FROM checkpoints)",
+            [],
+        )?;
         Ok(())
     }
-    fn collect_assets(tx: &Transaction<'_>) -> Result<()> {
-        // Unreferenced uploads are staged for a day, so an interrupted import can retry.
-        tx.execute("DELETE FROM assets WHERE created < unixepoch()-86400 AND id NOT IN (SELECT id FROM media) AND id NOT IN (SELECT id FROM history WHERE store='media' AND data IS NOT NULL) AND id NOT IN (SELECT id FROM retired_media) AND id NOT IN (SELECT json_extract(u.value,'$.meta.id') FROM card_drafts d,json_each(json_extract(d.data,'$.uploads')) u)", [])?;
+    fn collect_assets(_tx: &Transaction<'_>) -> Result<()> {
+        // Deletion is an explicit attachment-management operation. Ordinary grading
+        // must neither load plugin/private JSON nor discard media kept by durable undo.
         Ok(())
     }
     pub fn backup_now(&mut self, force: bool) -> Result<()> {
@@ -943,7 +1454,7 @@ impl Database {
             })
             .optional()?
             .ok_or_else(Error::missing)?;
-        let mut library = json!({"version":14});
+        let mut library = json!({"version":19});
         for store in STORES {
             let mut rows = BTreeMap::<String, (i64, Value)>::new();
             let mut stmt = self
@@ -1002,12 +1513,16 @@ impl Database {
             "application/json",
             "application/octet-stream",
         ];
-        if !valid_id(id) || bytes.is_empty() || bytes.len() > MAX_MEDIA || !allowed.contains(&mime)
+        if !valid_id(id)
+            || bytes.is_empty()
+            || bytes.len() > media_limit(mime)
+            || !allowed.contains(&mime)
         {
             return Err(Error::invalid());
         }
         if mime.starts_with("text/")
-            && (bytes.len() > 1024 * 1024 || std::str::from_utf8(bytes).is_err())
+            && ((mime != "text/html" && bytes.len() > 1024 * 1024)
+                || std::str::from_utf8(bytes).is_err())
         {
             return Err(Error::invalid());
         }
@@ -1112,8 +1627,14 @@ fn read_asset(dir: &Dir, path: &str) -> std::io::Result<Vec<u8>> {
         use cap_std::fs::OpenOptionsExt;
         options.custom_flags(0x00200000);
     }
-    let bytes =
-        files::read_stable_file(dir.open_with(path, &options)?.into_std(), MAX_MEDIA as u64)?;
+    let bytes = files::read_stable_file(
+        dir.open_with(path, &options)?.into_std(),
+        if matches!(extension, "pdf" | "epub" | "html" | "bin") {
+            MAX_DOCUMENT
+        } else {
+            MAX_MEDIA
+        } as u64,
+    )?;
     if files::digest(&bytes) != hash {
         return Err(std::io::ErrorKind::InvalidData.into());
     }

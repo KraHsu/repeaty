@@ -2,6 +2,7 @@ import { markRaw, shallowReactive } from 'vue'
 import type { PluginInstallation, PluginDefinition } from './types'
 import { createMaterialRegistrations, type MaterialRegistrations } from './materials'
 import { bundleSchema, type PluginBundle } from './package'
+import { assertPluginSupported } from './retired-official'
 import {
   validateSettingsContribution,
   type PluginSettingsContribution,
@@ -58,6 +59,7 @@ export class PluginRuntime {
     ) => Promise<PluginModule>,
   ) {
     const bundle = bundleSchema.parse(raw)
+    assertPluginSupported(bundle.manifest.id)
     if (['flashcard', 'unavailable'].includes(bundle.manifest.id))
       throw new Error('插件标识为保留名称。')
     const epoch = this.generation
@@ -208,6 +210,7 @@ export class PluginRuntime {
             (pages.length > 0 ||
               widgets.length > 0 ||
               materials.importers.length > 0 ||
+              materials.connectors.length > 0 ||
               materials.readers.length > 0 ||
               materials.commands.length > 0 ||
               materials.searchProviders.length > 0))
@@ -241,6 +244,7 @@ export class PluginRuntime {
         pages,
         widgets,
         importers: materials.importers,
+        connectors: materials.connectors,
         readers: materials.readers,
         commands: materials.commands,
         searchProviders: materials.searchProviders,

@@ -1,6 +1,8 @@
 import { readSetting, writeSetting } from './settings-store'
 import { reactive, readonly, ref } from 'vue'
 import { z } from 'zod'
+import { APPEARANCE_KEY, restoreAppearance } from './appearance'
+import { NAVIGATION_KEY, restoreNavigationPreferences } from './navigation-preferences'
 
 export const PREFERENCES_KEY = 'repeaty.preferences.v1'
 export const colorThemes = ['system', 'light', 'dark'] as const
@@ -18,6 +20,8 @@ const state = reactive(schema.parse({}))
 export const preferences = readonly(state)
 export const preferenceError = ref('')
 export function restorePreferences() {
+  restoreAppearance()
+  restoreNavigationPreferences()
   try {
     Object.assign(state, schema.parse(JSON.parse(readSetting(PREFERENCES_KEY) ?? '{}')))
   } catch {
@@ -42,6 +46,8 @@ export function listenPreferences() {
   restorePreferences()
   const receive = (event: StorageEvent) => {
     if (event.key === null || event.key === PREFERENCES_KEY) restorePreferences()
+    else if (event.key === APPEARANCE_KEY) restoreAppearance()
+    else if (event.key === NAVIGATION_KEY) restoreNavigationPreferences()
   }
   window.addEventListener('storage', receive)
   return () => window.removeEventListener('storage', receive)

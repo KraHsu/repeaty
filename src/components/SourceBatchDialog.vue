@@ -4,11 +4,13 @@ import { computed, ref } from 'vue'
 import { t, locale } from '../i18n'
 import type { SourceBatchAction, SourcePriority } from '../core/source-data'
 import { nextReadingDay } from '../core/source-queue'
+import type { StudySettings } from '../core/study-settings'
 import AppModal from './AppModal.vue'
 
 const props = defineProps<{
   titles: string[]
   now: Date
+  settings?: Pick<StudySettings, 'dayStartHour'>
   busy: boolean
   error?: string
   save: (action: SourceBatchAction) => Promise<void>
@@ -16,7 +18,7 @@ const props = defineProps<{
 const emit = defineEmits<{ close: [] }>()
 const operation = ref<SourceBatchAction['type']>('priority')
 const priority = ref<SourcePriority>('normal')
-const date = ref(nextReadingDay(props.now))
+const date = ref(nextReadingDay(props.now, 1, props.settings))
 const options = computed(() => [
   { label: '明天', days: 1 },
   { label: '3 天后', days: 3 },
@@ -36,7 +38,7 @@ function submit() {
 
 <template>
   <AppModal :title="t('批量安排')" :busy="busy" :error="error" @close="emit('close')">
-    <form class="source-batch-form" @submit.prevent="submit">
+    <form class="source-batch-form app-section-stack" @submit.prevent="submit">
       <p class="source-batch-summary">
         {{ t('将更改所选的 {count} 篇材料。', { count: titles.length }) }}
       </p>
@@ -79,8 +81,8 @@ function submit() {
             :key="option.days"
             type="button"
             :disabled="busy"
-            :aria-pressed="date === nextReadingDay(now, option.days)"
-            @click="date = nextReadingDay(now, option.days)"
+            :aria-pressed="date === nextReadingDay(now, option.days, settings)"
+            @click="date = nextReadingDay(now, option.days, settings)"
           >
             {{ t(option.label) }}
           </UiButton>
@@ -91,7 +93,7 @@ function submit() {
           v-model="date"
           type="date"
           required
-          :min="nextReadingDay(now)"
+          :min="nextReadingDay(now, 1, settings)"
           max="9999-12-31"
           :disabled="busy"
           :lang="locale"
@@ -112,19 +114,19 @@ function submit() {
 
 <style scoped>
 .source-batch-form {
-  display: grid;
-  gap: 1rem;
+  --app-content-gap: 1rem;
   padding: 1.25rem 1.75rem;
   overflow-y: auto;
 }
 .source-batch-form p {
-  margin: 0;
+  margin-block-end: 0;
 }
 .source-batch-summary {
   font-weight: var(--font-weight-semibold);
 }
 .source-batch-titles {
-  margin: 0;
+  margin-inline: 0;
+  margin-block-end: 0;
   padding-left: 1.25rem;
   overflow-wrap: anywhere;
   line-height: var(--line-height-ui);

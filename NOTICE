@@ -1,0 +1,12 @@
+Repeaty
+Copyright (c) 2026 CharlesHsu
+
+Repeaty original code, official plugins, SDK and project-created assets are licensed
+under the GNU Affero General Public License version 3 only (AGPL-3.0-only).
+See LICENSE for the full terms. Corresponding source:
+https://github.com/KraHsu/repeaty
+
+Third-party dependencies and incorporated assets retain their own copyright and
+license notices. See public/licenses/, docs/third-party/, and plugin-specific
+license files. Historical notices in docs/third-party/ are retained as records;
+the current settings tree no longer incorporates React Bits / Vue Bits code.

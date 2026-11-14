@@ -19,37 +19,83 @@ export const workspaceAttention = shallowRef<{ path: string; status: string }[]>
 let boot: Promise<void> | undefined
 let pending: Promise<unknown> = Promise.resolve()
 let frozen = false
+let changing = false
+let leaveGuard: (() => boolean | Promise<boolean>) | undefined
+export function connectWorkspaceLeaveGuard(beforeLeave: () => boolean | Promise<boolean>) {
+  leaveGuard = beforeLeave
+  return () => {
+    if (leaveGuard === beforeLeave) leaveGuard = undefined
+  }
+}
 const settings = new Map<string, string>()
+let settingsQueue: Promise<unknown> = Promise.resolve()
+function serializeSettings<T>(operation: () => Promise<T>): Promise<T> {
+  const next = settingsQueue.then(operation)
+  settingsQueue = next.catch(() => {})
+  return next
+}
 export function installWorkspaceStores() {
   // Never read browser storage, including while native startup is still pending.
   useSettingsStore({
     getItem: (key) => settings.get(key) ?? null,
     setItem: async (key, value) => {
+      const owner = workspaceStatus.value?.active?.token
       const active = await currentWorkspace()
-      await workspaceApi('workspace_write', {
+      if (!owner || active.token !== owner) throw nativeError('stale-workspace-session')
+      // Begin the durable write now so workspace-close's existing write barrier
+      // includes it. Serialize only cache publication with hydration reads.
+      const outcome = workspaceApi('workspace_write', {
         token: active.token,
         request: { type: 'value', namespace: 'settings', id: key, value },
+      }).then(
+        () => ({ ok: true as const }),
+        (error: unknown) => ({ ok: false as const, error }),
+      )
+      await serializeSettings(async () => {
+        const saved = await outcome
+        if (!saved.ok) throw saved.error
+        if (workspaceStatus.value?.active?.token === owner) settings.set(key, value)
       })
-      settings.set(key, value)
     },
   })
 }
-async function hydrateSettings() {
+export async function hydrateSettings() {
+  return serializeSettings(hydrateSettingsNow)
+}
+async function hydrateSettingsNow() {
   const active = workspaceStatus.value?.active
-  settings.clear()
+  const replacement = new Map<string, string>()
   if (active) {
     const values = await workspaceApi<Record<string, unknown>>('workspace_read', {
       token: active.token,
       request: { type: 'settings' },
     })
     for (const [key, value] of Object.entries(values))
-      if (typeof value === 'string') settings.set(key, value)
+      if (typeof value === 'string') replacement.set(key, value)
   }
+  if (workspaceStatus.value?.active?.token !== active?.token) return
+  settings.clear()
+  for (const [key, value] of replacement) settings.set(key, value)
   initI18n()
 }
 export function nativeError(issue: unknown) {
   const code = typeof issue === 'string' ? issue : issue instanceof Error ? issue.message : ''
   const messages: Record<string, MessageKey> = {
+    'backup-ambiguous-resource': '备份中的路径对应多个版本，请重新搜索并选择具体内容。',
+    'backup-resource-path-conflict': '所选内容使用了相同文件路径，请分开恢复。',
+    'backup-resource-asset-conflict': '所选内容引用了同路径的不同附件版本，请分开恢复。',
+    'backup-cancelled': '备份已取消，原有备份与当前库保持不变。',
+    'backup-corrupt': '备份损坏或校验不一致，未恢复任何内容。',
+    'backup-incompatible': '不支持这个完整备份格式。',
+    'backup-files-changed': '备份过程中有外部文件变化，请重试。',
+    'backup-confirmation-required': '备份过程中有外部文件变化，请重试。',
+    'backup-target-overlap': '备份目标不能与工作目录重叠。',
+    'backup-target-in-workspace': '备份目标不能与工作目录重叠。',
+    'backup-target-exists': '目标已存在，文件不会被覆盖。',
+    'unsafe-backup-file': '备份含有链接或不安全的路径，已停止操作。',
+    'backup-limit': '备份超过支持的大小或文件数量。',
+    'backup-busy': '已有备份任务正在执行。',
+    'workspace-publication-pending': '工作目录仍有待完成的文件写入，请完成后重试备份。',
     'workspace-not-open': '请先创建或打开工作目录。',
     'workspace-not-empty': '请选择空文件夹。已有文件不会被覆盖。',
     'workspace-incompatible': '不支持这个工作目录格式。',
@@ -107,8 +153,15 @@ export const workspaceApi: NativeApi = async <T>(
   return execute()
 }
 export async function changeWorkspace(action: () => Promise<unknown>) {
-  frozen = true
+  if (changing || frozen) return
+  changing = true
+  const guard = leaveGuard,
+    epoch = workspaceStatus.value?.epoch
   try {
+    // Draft writes must finish while the current repository still accepts them.
+    if (guard && (!(await guard()) || leaveGuard !== guard)) return
+    if (workspaceStatus.value?.epoch !== epoch) return
+    frozen = true
     await pending
     const result = await action()
     if (result === null) {
@@ -119,6 +172,8 @@ export async function changeWorkspace(action: () => Promise<unknown>) {
   } catch (issue) {
     frozen = false
     throw nativeError(issue)
+  } finally {
+    changing = false
   }
 }
 export const chooseWorkspace = (mode: 'create' | 'open') =>

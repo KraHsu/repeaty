@@ -1,4 +1,3 @@
-import type { Locale } from '../../i18n'
 import type { NoteInput } from '../model'
 
 interface Entry {
@@ -14,7 +13,10 @@ const ratings = 'https://docs.ankiweb.net/manual/studying#answer-buttons'
 const options = 'https://docs.ankiweb.net/manual/deck-options#desired-retention'
 
 // Card text is saved in the language chosen at creation, just like user-authored notes.
-export const content: Record<Locale, { name: string; description: string; entries: Entry[] }> = {
+export const content: Record<
+  'en' | 'zh-CN',
+  { name: string; description: string; entries: Entry[] }
+> = {
   'zh-CN': {
     name: '从这里开始：FSRS 与 Repeaty',
     description: '先试着回答，再翻面核对。24 条笔记，学习 FSRS、评分与制卡；也可以随时编辑或删除。',
