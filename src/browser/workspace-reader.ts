@@ -45,9 +45,15 @@ const limits = {
   attempts: 500_000,
   sources: 10_000,
   materialReceipts: 100_000,
+  automationReceipts: 100_000,
   materialFolders: 10_000,
+  materialCollections: 10_000,
   sourceConnections: 100,
   sourceCandidates: 10_000,
+  studySettings: 1,
+  studyEvents: 500_000,
+  studyActivity: 500_000,
+  fsrsModels: 200,
 }
 const assetSchema = z
   .object({
@@ -111,7 +117,9 @@ export class BrowserWorkspaceReader {
       db.run('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF;')
       if (
         scalar(db, 'PRAGMA application_id') !== 0x52505459 ||
-        ![10, 11, 12, 13, 14, 15].includes(scalar(db, 'PRAGMA user_version') as number) ||
+        ![10, 11, 12, 13, 14, 15, 16, 17, 18].includes(
+          scalar(db, 'PRAGMA user_version') as number,
+        ) ||
         scalar(db, 'SELECT id FROM workspace_identity') !== marker.id
       )
         throw new WorkspaceReadError('incompatible')
@@ -125,8 +133,13 @@ export class BrowserWorkspaceReader {
           ...recordStores.filter(
             (store) =>
               (store !== 'materialReceipts' || materialReceiptsRequired) &&
+              (store !== 'automationReceipts' || databaseVersion >= 17) &&
+              (store !== 'materialCollections' || databaseVersion >= 17) &&
               (store !== 'materialFolders' || databaseVersion >= 13) &&
-              (!['sourceConnections', 'sourceCandidates'].includes(store) || databaseVersion >= 15),
+              (!['sourceConnections', 'sourceCandidates'].includes(store) ||
+                databaseVersion >= 15) &&
+              (!['studySettings', 'studyEvents', 'studyActivity', 'fsrsModels'].includes(store) ||
+                databaseVersion >= 16),
           ),
           'workspace',
           'workspace_identity',
@@ -153,13 +166,17 @@ export class BrowserWorkspaceReader {
         .safe()
         .parse(scalar(db, 'SELECT revision FROM workspace WHERE id=1'))
       progress(30)
-      const content: Record<string, unknown> = { version: 17 }
+      const content: Record<string, unknown> = { version: 19 }
       for (const [index, store] of recordStores.entries()) {
         if (
           !tables.has(store) &&
           ((store === 'materialReceipts' && !materialReceiptsRequired) ||
+            (store === 'automationReceipts' && databaseVersion < 17) ||
+            (store === 'materialCollections' && databaseVersion < 17) ||
             (store === 'materialFolders' && databaseVersion < 13) ||
-            (['sourceConnections', 'sourceCandidates'].includes(store) && databaseVersion < 15))
+            (['sourceConnections', 'sourceCandidates'].includes(store) && databaseVersion < 15) ||
+            (['studySettings', 'studyEvents', 'studyActivity', 'fsrsModels'].includes(store) &&
+              databaseVersion < 16))
         ) {
           content[store] = []
           continue

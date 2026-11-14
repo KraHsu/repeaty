@@ -1,5 +1,12 @@
 import { LocalizedError, msg } from '../i18n'
 import { localDay, type Library } from './model'
+import { studyDay, studyDayAfter } from './study-day'
+import { studySettings, type StudySettings } from './study-settings'
+import {
+  createPriorityResolver,
+  sourcePriorityGroup,
+  weightedPriorityOrder,
+} from './study-priority'
 import { adaptiveReadingPlan, nextAdaptiveReading } from './adaptive-reading'
 import { materialLocked } from './material-sequence'
 import {
@@ -21,14 +28,19 @@ export interface SourceFilter {
   priority?: 'all' | SourcePriority
 }
 
-export function filterSources(sources: Source[], filter: SourceFilter = {}) {
+export function filterSources(sources: Source[], filter: SourceFilter = {}, library?: Library) {
   const search = (filter.query ?? '').trim().toLocaleLowerCase()
+  const resolver = library && createPriorityResolver(library)
+  const priority = (source: Source) => {
+    const effective = resolver?.source(source)
+    return effective && (effective.numeric || studySettings(library).priorityMode === 'weighted')
+      ? sourcePriorityGroup(effective.value)
+      : (source.priority ?? 'normal')
+  }
   return sources.filter(
     (source) =>
       (!filter.kind || filter.kind === 'all' || (source.kind ?? 'original') === filter.kind) &&
-      (!filter.priority ||
-        filter.priority === 'all' ||
-        (source.priority ?? 'normal') === filter.priority) &&
+      (!filter.priority || filter.priority === 'all' || priority(source) === filter.priority) &&
       source.title.toLocaleLowerCase().includes(search),
   )
 }
@@ -51,12 +63,14 @@ export function queuedSources(
   view: SourceQueueView,
   today: string,
   filter: SourceFilter = {},
+  library?: Library,
 ) {
   const ranks = { ready: 0, deferred: 1, archived: 2 }
   const priorities = { high: 0, normal: 1, low: 2 }
-  return filterSources(
+  const ordered = filterSources(
     sources.filter((source) => !source.inbox),
     filter,
+    library,
   )
     .filter(
       (source) =>
@@ -81,22 +95,75 @@ export function queuedSources(
         a.source.id.localeCompare(b.source.id),
     )
     .map((entry) => entry.source)
+  if (!library) return ordered
+  const resolver = createPriorityResolver(library)
+  if (studySettings(library).priorityMode !== 'weighted') {
+    const values = new Map(ordered.map((source) => [source.id, resolver.source(source)]))
+    if (![...values.values()].some((priority) => priority.numeric)) return ordered
+    const effective = (source: Source) =>
+      values.get(source.id)!.numeric
+        ? values.get(source.id)!.value
+        : { high: 1, normal: 5, low: 9 }[source.priority ?? 'normal']
+    return ordered.sort((a, b) => {
+      const aRank = ranks[sourceQueueState(a, today, sources)],
+        bRank = ranks[sourceQueueState(b, today, sources)]
+      return aRank - bRank || (aRank === 0 ? effective(a) - effective(b) : 0)
+    })
+  }
+  const ready = ordered.filter((source) => sourceQueueState(source, today, sources) === 'ready')
+  const waiting = ordered.filter((source) => sourceQueueState(source, today, sources) !== 'ready')
+  // Within a priority bucket, due order comes first; old three-level ranks are
+  // used only by legacy mode and by the explicit legacy fallback in the resolver.
+  ready.sort(
+    (a, b) =>
+      (a.queue?.availableOn ?? localDay(new Date(a.createdAt))).localeCompare(
+        b.queue?.availableOn ?? localDay(new Date(b.createdAt)),
+      ) ||
+      a.createdAt.localeCompare(b.createdAt) ||
+      a.id.localeCompare(b.id),
+  )
+  return [
+    ...weightedPriorityOrder(
+      ready,
+      (source) => resolver.source(source).value,
+      studySettings(library).priorityRatio,
+      today,
+    ),
+    ...waiting,
+  ]
 }
 
-export function nextReadingDay(now: Date, days = 1) {
-  const date = new Date(now)
-  date.setDate(date.getDate() + days)
-  return localDay(date)
+export function nextReadingDay(
+  now: Date,
+  days = 1,
+  settings?: Pick<StudySettings, 'dayStartHour'>,
+) {
+  return studyDayAfter(now, days, settings)
 }
 
 /** Only a confirmed read advances this ladder; custom dates keep its last step. */
-export function nextReadingInterval(source: Source, now: Date) {
+export function nextReadingInterval(source: Source, now: Date, library?: Library) {
+  const settings = studySettings(library)
+  if (settings.readingMode === 'configured') {
+    const previous = source.readingIntervalDays ?? source.adaptiveReading?.intervalDays
+    const intervalDays =
+      previous === undefined
+        ? settings.readingInitialDays
+        : Math.max(
+            1,
+            Math.min(
+              settings.readingMaxDays,
+              Math.round((previous * (settings.readingGrowthMin + settings.readingGrowthMax)) / 2),
+            ),
+          )
+    return { intervalDays, date: nextReadingDay(now, intervalDays, settings) }
+  }
   // Imported or older libraries may hold intervals off the ladder (2, 5 days…).
   // Advance to the next larger step instead of collapsing back to the first one.
   const index = READING_INTERVAL_DAYS.findIndex((days) => days > (source.readingIntervalDays ?? 0))
   const intervalDays =
     READING_INTERVAL_DAYS[index === -1 ? READING_INTERVAL_DAYS.length - 1 : index]!
-  return { intervalDays, date: nextReadingDay(now, intervalDays) }
+  return { intervalDays, date: nextReadingDay(now, intervalDays, settings) }
 }
 
 export function arrangeSource(
@@ -112,15 +179,24 @@ export function arrangeSource(
   const parsed = sourceQueueActionSchema.safeParse(input)
   if (!parsed.success) throw new LocalizedError(msg('阅读安排无效，请重新选择。'))
   const action = parsed.data,
-    today = localDay(now)
+    today = studyDay(now, studySettings(library))
   if (
     (action.type === 'read' || action.type === 'read-adaptive') &&
     (source.document?.container || materialLocked(source, library.sources))
   )
     throw new LocalizedError(msg('请先完成前面的章节，再安排此章节学习。'))
   if (action.type === 'priority') {
-    if ((source.priority ?? 'normal') === action.priority) return library
-    const next = sourceSchema.parse({ ...source, priority: action.priority })
+    if (
+      (source.priority ?? 'normal') === action.priority &&
+      source.studyPriority === undefined &&
+      (source.priority !== undefined || studySettings(library).priorityMode === 'legacy')
+    )
+      return library
+    const next = sourceSchema.parse({
+      ...source,
+      priority: action.priority,
+      studyPriority: undefined,
+    })
     return { ...library, sources: library.sources.map((entry) => (entry.id === id ? next : entry)) }
   }
   if (action.type === 'reset-interval') {
@@ -130,7 +206,7 @@ export function arrangeSource(
     return { ...library, sources: library.sources.map((entry) => (entry.id === id ? next : entry)) }
   }
   if (action.type === 'read') {
-    const plan = nextReadingInterval(source, now)
+    const plan = nextReadingInterval(source, now, library)
     if (
       source.queue?.state === 'archived' ||
       action.intervalDays !== plan.intervalDays ||
@@ -139,7 +215,7 @@ export function arrangeSource(
       throw new LocalizedError(msg('阅读安排已变化，请重新确认下次日期。'))
   }
   if (action.type === 'read-adaptive') {
-    const plan = adaptiveReadingPlan(source, action.feedback, now)
+    const plan = adaptiveReadingPlan(source, action.feedback, now, studySettings(library))
     if (
       source.queue?.state === 'archived' ||
       action.intervalDays !== plan.intervalDays ||
@@ -178,11 +254,35 @@ export function arrangeSource(
     ...(action.type === 'read'
       ? { readingIntervalDays: action.intervalDays }
       : action.type === 'read-adaptive'
-        ? { adaptiveReading: nextAdaptiveReading(source, action.feedback, now) }
+        ? {
+            adaptiveReading: nextAdaptiveReading(
+              source,
+              action.feedback,
+              now,
+              studySettings(library),
+            ),
+          }
         : {
             ...(adaptiveReading ? { adaptiveReading } : {}),
             ...(readingIntervalDays !== undefined ? { readingIntervalDays } : {}),
           }),
   })
-  return { ...library, sources: library.sources.map((entry) => (entry.id === id ? next : entry)) }
+  return {
+    ...library,
+    sources: library.sources.map((entry) => (entry.id === id ? next : entry)),
+    ...(action.type === 'read' || action.type === 'read-adaptive'
+      ? {
+          studyEvents: [
+            ...library.studyEvents,
+            {
+              id: crypto.randomUUID(),
+              kind: 'reading' as const,
+              occurredAt: now.toISOString(),
+              studyDay: today,
+              sourceId: source.id,
+            },
+          ],
+        }
+      : {}),
+  }
 }

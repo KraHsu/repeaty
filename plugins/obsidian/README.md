@@ -18,3 +18,7 @@
 这是单向只读接入，不向 Obsidian 写回，也不要求安装 Node.js。插件与软件独立更新。
 
 链接语法依据 [Obsidian 官方说明](https://obsidian.md/help/links)。
+
+## 许可证
+
+Copyright (c) 2026 CharlesHsu。此官方插件按 AGPL-3.0-only 分发，完整协议见包内 `assets/licenses/AGPL-3.0.txt`；[对应源代码](https://github.com/KraHsu/repeaty/tree/codex/learning-scope/plugins/obsidian)。第三方组件继续遵循各自许可证。

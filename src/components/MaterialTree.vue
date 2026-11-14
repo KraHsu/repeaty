@@ -1,20 +1,16 @@
 <script setup lang="ts">
 import { computed, ref, watch, onUnmounted } from 'vue'
-import {
-  Folder,
-  FileText,
-  ChevronRight,
-  MoreHorizontal,
-  FolderPlus,
-  ArrowUp,
-  ArrowDown,
-} from '@lucide/vue'
+import { Folder, ChevronRight, MoreHorizontal, FolderPlus, ArrowUp, ArrowDown } from '@lucide/vue'
 import type { Library } from '../core/model'
 import type { MaterialDestination } from '../core/material-organization-data'
 import type { MaterialWorkbenchActions } from './material-workbench-actions'
 import { UiButton, UiInput, UiSelect } from './ui'
 import AppModal from './AppModal.vue'
+import StudyPriorityField from './StudyPriorityField.vue'
+import { studySettings } from '../core/study-settings'
 import { t } from '../i18n'
+import { appearance } from '../appearance'
+import MaterialStateIcon from './MaterialStateIcon.vue'
 
 const props = defineProps<{
   library: Library
@@ -36,7 +32,21 @@ type Row = {
 }
 const closed = ref(new Set<string>())
 const editing = ref<Row>()
-const mode = ref<'create' | 'rename' | 'move' | 'delete'>()
+const mode = ref<'create' | 'rename' | 'move' | 'delete' | 'priority'>()
+const priority = ref<number>()
+const inheritedPriority = computed(() => {
+  const folders = new Map(props.library.materialFolders.map((entry) => [entry.id, entry]))
+  let parent = folders.get(editing.value?.id ?? '')?.parentId
+  const seen = new Set<string>()
+  while (parent && !seen.has(parent)) {
+    seen.add(parent)
+    const folder = folders.get(parent)
+    if (folder?.studyPriority !== undefined)
+      return { value: folder.studyPriority, from: folder.name }
+    parent = folder?.parentId
+  }
+  return { value: studySettings(props.library).defaultPriority, from: t('默认学习优先级') }
+})
 const name = ref(''),
   destination = ref('root'),
   pending = ref(false)
@@ -67,6 +77,22 @@ onUnmounted(() => {
   dragged = undefined
 })
 const key = (row: Pick<Row, 'kind' | 'id'>) => `${row.kind}:${row.id}`
+const iconStates = computed(
+  () =>
+    new Map(
+      props.library.sources.map(
+        (source) =>
+          [
+            source.id,
+            source.queue?.state === 'archived'
+              ? 'archived'
+              : source.queue
+                ? 'scheduled'
+                : 'pending',
+          ] as const,
+      ),
+    ),
+)
 const destinationKey = (target: MaterialDestination) =>
   target.parentSourceId
     ? `source:${target.parentSourceId}`
@@ -197,6 +223,9 @@ function begin(action: NonNullable<typeof mode.value>, row?: Row) {
   error.value = ''
   editing.value = row
   mode.value = action
+  priority.value = props.library.materialFolders.find(
+    (folder) => folder.id === row?.id,
+  )?.studyPriority
   name.value = action === 'rename' ? (row?.name ?? '') : ''
   destination.value = row?.destination.folderId
     ? `folder:${row.destination.folderId}`
@@ -218,15 +247,20 @@ async function submit() {
   try {
     const row = editing.value
     const result =
-      mode.value === 'create'
-        ? await props.actions.createFolder(name.value, row?.kind === 'folder' ? row.id : undefined)
-        : mode.value === 'rename' && row
-          ? await props.actions.renameFolder(row.id, name.value)
-          : mode.value === 'delete' && row
-            ? await props.actions.removeFolder(row.id)
-            : mode.value === 'move' && row
-              ? await props.actions.move({ kind: row.kind, id: row.id, destination: chosen() })
-              : false
+      mode.value === 'priority' && row && props.actions.setPriority
+        ? await props.actions.setPriority('folder', row.id, priority.value)
+        : mode.value === 'create'
+          ? await props.actions.createFolder(
+              name.value,
+              row?.kind === 'folder' ? row.id : undefined,
+            )
+          : mode.value === 'rename' && row
+            ? await props.actions.renameFolder(row.id, name.value)
+            : mode.value === 'delete' && row
+              ? await props.actions.removeFolder(row.id)
+              : mode.value === 'move' && row
+                ? await props.actions.move({ kind: row.kind, id: row.id, destination: chosen() })
+                : false
     if (result && alive && current === generation) mode.value = undefined
   } catch (issue) {
     if (alive && current === generation) error.value = t(issue as Error)
@@ -321,9 +355,21 @@ async function drop(row?: Row) {
           :disabled="busy"
           @click="row.kind === 'source' ? emit('open', row.id) : toggle(row)"
         >
-          <Folder v-if="row.kind === 'folder'" :size="16" /><FileText v-else :size="16" /><span>{{
-            row.name
-          }}</span>
+          <Folder v-if="row.kind === 'folder'" :size="16" /><MaterialStateIcon
+            v-else
+            :state="iconStates.get(row.id)"
+          /><span
+            :style="
+              row.kind === 'source'
+                ? {
+                    opacity: appearance.strongContrast
+                      ? 1
+                      : appearance.materialIcons[iconStates.get(row.id) ?? 'pending'].textOpacity,
+                  }
+                : undefined
+            "
+            >{{ row.name }}</span
+          >
         </UiButton>
         <details class="tree-menu" :open="openMenu === key(row)">
           <summary
@@ -333,6 +379,13 @@ async function drop(row?: Row) {
             <MoreHorizontal :size="16" />
           </summary>
           <div>
+            <UiButton
+              v-if="row.kind === 'folder' && actions.setPriority"
+              variant="ghost"
+              :disabled="busy"
+              @click="begin('priority', row)"
+              >{{ t('学习优先级') }}</UiButton
+            >
             <UiButton
               v-if="row.kind === 'folder'"
               variant="ghost"
@@ -378,15 +431,25 @@ async function drop(row?: Row) {
             ? '新建文件夹'
             : mode === 'rename'
               ? '重命名'
-              : mode === 'delete'
-                ? '删除文件夹'
-                : '移动',
+              : mode === 'priority'
+                ? '学习优先级'
+                : mode === 'delete'
+                  ? '删除文件夹'
+                  : '移动',
         )
       "
       :busy="pending"
       @close="mode = undefined"
     >
       <form @submit.prevent="submit">
+        <StudyPriorityField
+          v-if="mode === 'priority'"
+          id="folder-study-priority"
+          v-model="priority"
+          :inherited-value="inheritedPriority.value"
+          :inherited-from="inheritedPriority.from"
+          :disabled="pending"
+        />
         <UiInput
           v-if="mode === 'create' || mode === 'rename'"
           v-model="name"
@@ -491,7 +554,6 @@ async function drop(row?: Row) {
   display: flex;
   gap: 0.6rem;
   justify-content: flex-end;
-  margin-top: 1rem;
 }
 @media (prefers-reduced-motion: reduce) {
   .material-tree li,

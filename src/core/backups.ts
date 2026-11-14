@@ -40,6 +40,8 @@ const packageSchema = z.object({
     z.literal(15),
     z.literal(16),
     z.literal(17),
+    z.literal(18),
+    z.literal(19),
   ]),
   library: z.unknown().transform((value) => migrateLibrary(value)),
   retired: retiredBackupSchema.optional(),
@@ -79,7 +81,7 @@ export async function exportBackup(
   }
   const result = JSON.stringify({
     format: 'repeaty-backup',
-    version: 17,
+    version: 19,
     library,
     assets,
     ...(retired.length ? { retired } : {}),
@@ -153,6 +155,7 @@ export function rekeyBackup(data: BackupData): BackupData {
       ...data.library,
       // A restore/import assigns a new operation scope; old retry keys must not affect it.
       materialReceipts: [],
+      automationReceipts: [],
       sourceConnections: data.library.sourceConnections.map((c) => ({
         ...c,
         status: 'disconnected' as const,

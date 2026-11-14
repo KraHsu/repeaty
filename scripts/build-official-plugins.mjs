@@ -11,6 +11,10 @@ const ids = [
   'visual-occlusion',
   'obsidian',
   'readwise',
+  'fsrs-optimizer',
+  'study-statistics',
+  'assistant',
+  'web-lookup',
 ]
 await mkdir('plugins/packages', { recursive: true })
 for (const id of ids) {

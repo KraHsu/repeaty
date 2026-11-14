@@ -28,7 +28,7 @@ export function offlinePlugin(): Plugin {
           'example.csv',
           'example.en.csv',
           'licenses/nuxt-ui.txt',
-          'licenses/branched-menu.txt',
+          'licenses/repeaty.txt',
           'skills/repeaty-cards/SKILL.md',
           'skills/repeaty-cards/example.csv',
         ]

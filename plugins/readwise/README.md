@@ -27,3 +27,7 @@ Reader 使用 `/api/v3/list/` 的 `withHtmlContent` 正文，高亮使用 `/api/
 目录只读，隐藏文件不参与扫描；同一来源同时出现 JSON 与文本等冲突导出时提示选择一种，避免覆盖。移除来源或插件不会删除已采用材料、历史、卡片、调度与旧版本。学习库换设备后需重新授权目录或配置 Token。
 
 API 行为依据 [Readwise API](https://readwise.io/api_deets) 与 [Reader API](https://readwise.io/reader_api) 官方文档。插件不要求 Node.js，不向 Readwise 写回，也不提供账号同步服务。
+
+## 许可证
+
+Copyright (c) 2026 CharlesHsu。此官方插件按 AGPL-3.0-only 分发，完整协议见包内 `assets/licenses/AGPL-3.0.txt`；[对应源代码](https://github.com/KraHsu/repeaty/tree/codex/learning-scope/plugins/readwise)。第三方组件继续遵循各自许可证。

@@ -24,6 +24,7 @@ export const practiceSchema = z.object({
   startedAt: date,
   answerSeen: z.boolean().optional(),
   completedAt: date.optional(),
+  studyDay: z.iso.date().optional(),
   completion: z.enum(['review', 'practice']).optional(),
   assessment: assessmentSchema.optional(),
   rating: gradeSchema.optional(),

@@ -1,6 +1,6 @@
 # Anki import fixtures
 
-`legacy.apkg` and `modern.apkg` were exported by Anki 26.9.3 using its official Python library. `generate.py` creates all content and media; no personal collection or third-party deck is included. The fixtures are covered by this repository's MIT license.
+`legacy.apkg` and `modern.apkg` were exported by Anki 26.9.3 using its official Python library. `generate.py` creates all content and media; no personal collection or third-party deck is included. The fixtures are covered by this repository's AGPL-3.0-only license.
 
 Each export contains seven notes: Basic with HTML, math, code, Unicode, a shared PNG and WAV; reversed; Cloze with two numbers; unsupported SVG; nested Cloze; inert script and external-image examples; and an unsupported script template. One card has scheduling data and a review entry, which Repeaty deliberately imports as a new card.
 

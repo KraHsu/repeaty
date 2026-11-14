@@ -31,7 +31,15 @@ import { sourceExcerpt, recentSource } from '../core/sources'
 import { sourceArrangement } from '../core/reading-operations'
 import { sourceContextPath } from '../core/source-tree'
 import SourceBatchDialog from './SourceBatchDialog.vue'
-import { localDay } from '../core/model'
+import StudyPriorityField from './StudyPriorityField.vue'
+import { studyPriorityOrigin } from './study-priority-label'
+import {
+  createPriorityResolver,
+  effectiveSourcePriority,
+  sourcePriorityGroup,
+} from '../core/study-priority'
+import { studyDay } from '../core/study-day'
+import { studySettings } from '../core/study-settings'
 import {
   filterSources,
   queuedSources,
@@ -71,6 +79,7 @@ import SourceContext from './SourceContext.vue'
 import SourceExcerptList from './SourceExcerptList.vue'
 import { excerptsForSource, matchingExcerpts } from '../core/source-navigation'
 import type { CollectionInput } from '../core/collection-input'
+import type { MenuAction } from '../input/menus'
 
 const props = defineProps<{
   library: Library
@@ -128,7 +137,8 @@ watch(
   { flush: 'sync' },
 )
 onUnmounted(() => knowledge.value.dispose())
-const today = computed(() => localDay(props.now))
+const scheduling = computed(() => studySettings(props.library))
+const today = computed(() => studyDay(props.now, scheduling.value))
 const section = ref<'library' | 'inbox' | 'connections'>('library')
 const collectionImport = ref<InstanceType<typeof CollectionImport>>()
 const collecting = ref(false)
@@ -170,11 +180,11 @@ async function filed(id: string) {
 const editingContent = ref(false)
 const contentEditor = ref<InstanceType<typeof SourceContentEditor>>()
 const annotations = ref<InstanceType<typeof SourceAnnotations>>()
-const organizationView = ref<'list' | 'tree'>('list')
 const filtersOpen = ref(false),
-  bulkOpen = ref(false),
-  contextOpen = ref(true)
+  bulkOpen = ref(false)
 const panels = useReadingPanels(computed(() => props.scope))
+const organizationView = panels.organizationView
+const contextOpen = panels.contextOpen
 function toggleBulk() {
   bulkOpen.value = !(bulkOpen.value || selection.value.size)
   if (!bulkOpen.value) selection.value = new Map()
@@ -239,7 +249,23 @@ const filters = computed<SourceFilter>(() => ({
 const hasFilters = computed(
   () => !!query.value.trim() || kind.value !== 'all' || priority.value !== 'all',
 )
-const matchingSources = computed(() => filterSources(props.library.sources, filters.value))
+const matchingSources = computed(() =>
+  filterSources(props.library.sources, filters.value, props.library),
+)
+const effectivePriorityGroups = computed(() => {
+  const resolver = createPriorityResolver(props.library)
+  return new Map(
+    props.library.sources.map((source) => {
+      const priority = resolver.source(source)
+      return [
+        source.id,
+        priority.numeric || scheduling.value.priorityMode === 'weighted'
+          ? sourcePriorityGroup(priority.value)
+          : (source.priority ?? 'normal'),
+      ]
+    }),
+  )
+})
 const readyCount = computed(
   () =>
     props.library.sources.filter(
@@ -284,7 +310,8 @@ function resetFilters() {
 }
 const selectedId = ref(
   props.session?.sourceId ??
-    recentSource(queuedSources(props.library.sources, 'ready', today.value))?.id ??
+    recentSource(queuedSources(props.library.sources, 'ready', today.value, {}, props.library))
+      ?.id ??
     '',
 )
 const source = computed(() =>
@@ -363,7 +390,7 @@ const importing = ref(false),
   importError = ref<DisplayMessage>('')
 const pageSize = 20
 const filteredSources = computed(() =>
-  queuedSources(props.library.sources, view.value, today.value, filters.value),
+  queuedSources(props.library.sources, view.value, today.value, filters.value, props.library),
 )
 const pages = computed(() => Math.max(1, Math.ceil(filteredSources.value.length / pageSize)))
 const filteredSourceIds = computed(() => new Set(filteredSources.value.map((item) => item.id)))
@@ -693,9 +720,9 @@ const deferring = ref(false),
   moving = ref(false),
   deferDate = ref('')
 const deferOptions = computed(() => [
-  { label: '明天', date: nextReadingDay(props.now) },
-  { label: '3 天后', date: nextReadingDay(props.now, 3) },
-  { label: '1 周后', date: nextReadingDay(props.now, 7) },
+  { label: '明天', date: nextReadingDay(props.now, 1, scheduling.value) },
+  { label: '3 天后', date: nextReadingDay(props.now, 3, scheduling.value) },
+  { label: '1 周后', date: nextReadingDay(props.now, 7, scheduling.value) },
 ])
 let releaseReading: (() => void) | undefined
 watch(
@@ -722,11 +749,15 @@ watch(
   { flush: 'sync' },
 )
 onUnmounted(() => releaseReading?.())
-const intervalPlan = computed(() => source.value && nextReadingInterval(source.value, props.now))
+const intervalPlan = computed(
+  () => source.value && nextReadingInterval(source.value, props.now, props.library),
+)
 const scheduleMode = ref<'fixed' | 'adaptive'>('fixed')
 const readingFeedback = ref<ReadingFeedback>('good')
 const adaptivePlan = computed(
-  () => source.value && adaptiveReadingPlan(source.value, readingFeedback.value, props.now),
+  () =>
+    source.value &&
+    adaptiveReadingPlan(source.value, readingFeedback.value, props.now, scheduling.value),
 )
 const selectedPlan = computed(() =>
   scheduleMode.value === 'adaptive' ? adaptivePlan.value : intervalPlan.value,
@@ -814,6 +845,7 @@ async function finishSession() {
   }
 }
 defineExpose({
+  studying: computed(() => Boolean(source.value && !error.value)),
   leaveSession,
   undoArrangement,
   locked: computed(
@@ -873,7 +905,7 @@ async function beginRound(filter?: SourceFilter) {
   try {
     if (source.value && !(await savePosition())) return
     if (!alive || props.scope !== scope) return
-    const next = startReadingRound(props.library.sources, today.value, chosen)
+    const next = startReadingRound(props.library.sources, today.value, chosen, props.library)
     if (!next.entries.length) return
     if (!chosen) {
       view.value = 'ready'
@@ -939,7 +971,7 @@ const queueState = computed(() =>
 )
 function openDefer() {
   emit('clearNotice')
-  deferDate.value = nextReadingDay(props.now)
+  deferDate.value = nextReadingDay(props.now, 1, scheduling.value)
   deferring.value = true
 }
 function openReadSchedule() {
@@ -1018,6 +1050,37 @@ async function arrange(action: SourceQueueAction) {
 function changePriority(priority: string) {
   if (priority !== 'high' && priority !== 'normal' && priority !== 'low') return
   return arrange({ type: 'priority', priority })
+}
+async function changeStudyPriority(value: number | undefined) {
+  if (
+    !source.value ||
+    props.busy ||
+    arranging.value ||
+    moving.value ||
+    !props.workbench?.setPriority
+  )
+    return
+  const target = source.value.id,
+    scope = props.scope
+  arranging.value = true
+  emit('clearNotice')
+  try {
+    if (
+      !(await flushEditor()) ||
+      (reader.value?.ready && !(await savePosition())) ||
+      !alive ||
+      scope !== props.scope ||
+      source.value?.id !== target
+    )
+      return
+    if (await props.workbench.setPriority('source', target, value)) {
+      if (!alive || scope !== props.scope) return
+      const index = filteredSources.value.findIndex((entry) => entry.id === target)
+      if (index >= 0) page.value = Math.floor(index / pageSize)
+    }
+  } finally {
+    if (scope === props.scope) arranging.value = false
+  }
 }
 async function locateExcerpt(id: string) {
   const entry = savedExcerpts.value.find((entry) => entry.source.id === id)
@@ -1237,6 +1300,53 @@ async function download() {
     exporting.value = false
   }
 }
+const readerActions = computed<MenuAction[]>(() => [
+  {
+    id: 'material.excerpt',
+    title: t('保存为摘录'),
+    disabled: props.busy || !excerpt.value,
+    run: openExcerpt,
+  },
+  {
+    id: 'material.card',
+    title: t('用摘录制卡'),
+    disabled: props.busy || !excerpt.value || !props.library.decks.length,
+    run: () => {
+      if (excerpt.value && source.value) emit('create', excerpt.value, source.value.format)
+    },
+  },
+  ...(props.canShare
+    ? [
+        {
+          id: 'material.share',
+          title: t('通过 MCP 制卡'),
+          disabled: props.busy || !excerpt.value || !props.library.decks.length,
+          run: () => {
+            if (excerpt.value) emit('share', excerpt.value)
+          },
+        },
+      ]
+    : []),
+  ...(props.workbench
+    ? [
+        {
+          id: 'material.cloze',
+          title: t('制作挖空卡'),
+          disabled: props.busy || !excerpt.value || !props.library.decks.length,
+          run: () => {
+            if (excerpt.value && source.value)
+              emit('create', excerpt.value, source.value.format, 'cloze')
+          },
+        },
+        {
+          id: 'material.annotation',
+          title: t('添加批注'),
+          disabled: props.busy || !excerpt.value,
+          run: addAnnotation,
+        },
+      ]
+    : []),
+])
 </script>
 
 <template>
@@ -1607,10 +1717,10 @@ async function download() {
                           : t('待阅读')
               }}</span>
               <span
-                v-if="entry.priority && entry.priority !== 'normal'"
+                v-if="effectivePriorityGroups.get(entry.id) !== 'normal'"
                 class="source-priority-badge"
               >
-                {{ t(priorityBadges[entry.priority]) }}
+                {{ t(priorityBadges[effectivePriorityGroups.get(entry.id) ?? 'normal']) }}
               </span>
               <template v-if="entry.reading">
                 <span>{{
@@ -1697,7 +1807,7 @@ async function download() {
             </UiButton>
           </div>
         </section>
-        <section v-else-if="source" class="source-reader">
+        <section v-else-if="source" class="source-reader app-section-stack">
           <div class="source-reader-heading">
             <div>
               <span v-if="source.kind === 'excerpt'" class="source-kind-badge">{{
@@ -1780,7 +1890,7 @@ async function download() {
               </UiButton>
             </div>
           </div>
-          <div class="source-reading-actions">
+          <div class="source-reading-actions app-section-divider">
             <span class="form-note">{{
               queueState === 'archived'
                 ? t('已归档')
@@ -1788,7 +1898,32 @@ async function download() {
                   ? t('安排于 {date}', { date: readingDate(source.queue.availableOn) })
                   : t('待阅读')
             }}</span>
-            <div class="source-priority-control">
+            <StudyPriorityField
+              v-if="workbench?.setPriority"
+              id="source-study-priority"
+              :model-value="
+                source.studyPriority ??
+                (source.priority ? { high: 1, normal: 5, low: 9 }[source.priority] : undefined)
+              "
+              :inherited-value="
+                effectiveSourcePriority(
+                  { ...source, studyPriority: undefined, priority: undefined },
+                  library,
+                ).value
+              "
+              :inherited-from="
+                studyPriorityOrigin(
+                  library,
+                  effectiveSourcePriority(
+                    { ...source, studyPriority: undefined, priority: undefined },
+                    library,
+                  ),
+                )
+              "
+              :disabled="busy || arranging"
+              @update:model-value="changeStudyPriority"
+            />
+            <div v-else class="source-priority-control">
               <label for="source-reading-priority">{{ t('阅读优先级') }}</label>
               <UiSelect
                 :items="[
@@ -1943,42 +2078,45 @@ async function download() {
                 </UiButton>
               </div>
             </div>
-            <SourceReader
-              :hold-reading="reading.holdForAction"
-              :editable="!!workbench && !session"
-              :busy="busy"
-              @change-text="workbench?.editContent($event)"
-              :get-media="getMedia"
-              :key="source.id + ':' + source.mediaId"
-              ref="reader"
-              :source="source"
-              :sources="library.sources"
-              :initial-selection="
-                source.origin?.locator?.kind === 'image' &&
-                source.document?.format === 'image' &&
-                !source.derived
-                  ? {
-                      locator: {
-                        ...source.origin.locator,
-                        sourceId: source.id,
-                        versionId: source.mediaId,
-                      },
-                      text,
-                      projection: { start: 0, end: text.length },
-                    }
-                  : undefined
-              "
-              :text="text"
-              :scope="scope"
-              :original-name="
-                library.media.find((item) => item.id === source?.document?.originalMediaId)?.name
-              "
-              @select="select"
-              @position="reading.record($event)"
-              @wiki="openWiki"
-              @wiki-preview="openWiki"
-              @open="openDocumentSource"
-            />
+            <div class="app-section-divider app-section-stack">
+              <SourceReader
+                :actions="readerActions"
+                :hold-reading="reading.holdForAction"
+                :editable="!!workbench && !session"
+                :busy="busy"
+                @change-text="workbench?.editContent($event)"
+                :get-media="getMedia"
+                :key="source.id + ':' + source.mediaId"
+                ref="reader"
+                :source="source"
+                :sources="library.sources"
+                :initial-selection="
+                  source.origin?.locator?.kind === 'image' &&
+                  source.document?.format === 'image' &&
+                  !source.derived
+                    ? {
+                        locator: {
+                          ...source.origin.locator,
+                          sourceId: source.id,
+                          versionId: source.mediaId,
+                        },
+                        text,
+                        projection: { start: 0, end: text.length },
+                      }
+                    : undefined
+                "
+                :text="text"
+                :scope="scope"
+                :original-name="
+                  library.media.find((item) => item.id === source?.document?.originalMediaId)?.name
+                "
+                @select="select"
+                @position="reading.record($event)"
+                @wiki="openWiki"
+                @wiki-preview="openWiki"
+                @open="openDocumentSource"
+              />
+            </div>
             <div v-if="source.kind === 'excerpt'" class="source-excerpt-tools">
               <p v-if="!original" class="form-note">{{ t('原文已删除，摘录内容仍保留。') }}</p>
               <div class="source-actions">
@@ -2113,7 +2251,7 @@ async function download() {
         />
         <aside
           v-if="source && !roundEnded"
-          class="source-context-panel"
+          class="source-context-panel app-section-grid"
           v-show="contextOpen"
           :aria-label="t('材料上下文')"
         >
@@ -2178,6 +2316,7 @@ async function download() {
       @activity="collecting = $event"
     />
     <SourceBatchDialog
+      :settings="scheduling"
       v-if="batchDraft"
       :titles="batchDraft.entries.map((entry) => entry.title)"
       :now="now"
@@ -2448,7 +2587,7 @@ async function download() {
           v-model="deferDate"
           type="date"
           required
-          :min="nextReadingDay(now)"
+          :min="nextReadingDay(now, 1, scheduling)"
           max="9999-12-31"
           :disabled="busy || arranging"
         />
@@ -2643,7 +2782,6 @@ async function download() {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem 1rem;
-  margin: 0;
   padding: 0.75rem 1rem;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -2775,9 +2913,6 @@ async function download() {
   min-width: 6rem;
   width: auto;
 }
-.source-priority-help {
-  margin: 0;
-}
 .source-interval-control {
   display: flex;
   flex-wrap: wrap;
@@ -2873,7 +3008,7 @@ async function download() {
 }
 .source-context-panel {
   display: grid;
-  gap: 1.5rem;
+  column-gap: 1.5rem;
   min-width: 0;
   padding: 0.75rem;
   max-height: 80vh;
@@ -2969,8 +3104,6 @@ async function download() {
   align-items: center;
   justify-content: space-between;
   gap: 0.6rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--line);
 }
 .source-list-item span {
   font-size: var(--font-size-meta);
@@ -2990,16 +3123,12 @@ async function download() {
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 12px;
-  display: grid;
-  gap: 1.5rem;
 }
 .source-reader-heading {
   display: flex;
   flex-wrap: wrap;
   gap: 1rem;
   justify-content: space-between;
-  padding-bottom: 1.5rem;
-  border-bottom: 1px solid var(--line);
 }
 .source-reader-heading > div {
   min-width: 0;
@@ -3039,8 +3168,10 @@ async function download() {
 .source-import-form .form-actions {
   position: sticky;
   bottom: -1.25rem;
-  margin: 0 -1.75rem -1.25rem;
-  padding: 1rem 1.75rem;
+  margin-inline: -1.75rem;
+  margin-block-end: -1.25rem;
+  padding-inline: 1.75rem;
+  padding-block-end: 1rem;
   background: var(--ui-bg);
   box-shadow: 0 -4px 12px color-mix(in srgb, var(--ui-text) 4%, transparent);
 }
@@ -3102,8 +3233,9 @@ async function download() {
   }
   .source-import-form .form-actions {
     bottom: -1rem;
-    margin: 0 -1rem -1rem;
-    padding: 1rem;
+    margin-inline: -1rem;
+    margin-block-end: -1rem;
+    padding-inline: 1rem;
   }
 }
 </style>

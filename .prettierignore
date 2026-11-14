@@ -25,3 +25,5 @@ plugins/document-reader/assets/
 plugins/pdf-reader/assets/
 plugins/packages/
 docs/designs/b-prototype/site/
+plugins/fsrs-optimizer/assets/
+plugins/static-publish/assets/

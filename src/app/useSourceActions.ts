@@ -54,6 +54,8 @@ export function useSourceActions({
       actionError: notice.value?.error ? t(notice.value.text) : undefined,
       readProperties: (id: string) => workspace.readSourceProperties(id, ownerScope),
       workbench: {
+        setPriority: (kind, id, value) =>
+          run(() => workspace.setStudyPriority(kind, id, value, ownerScope), '学习优先级已保存'),
         prepareEditor: workspace.prepareSourceEditor,
         writeDraft: workspace.writeSourceDraft,
         discardDraft: workspace.discardSourceDraft,

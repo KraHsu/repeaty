@@ -1,8 +1,8 @@
 import { afterEach, expect, it, vi } from 'vitest'
 type Listener = (event: { preventDefault(): void }) => void | Promise<void>
-const driver = vi.hoisted(() => ({ close: vi.fn(), onCloseRequested: vi.fn() }))
+const driver = vi.hoisted(() => ({ destroy: vi.fn(), onCloseRequested: vi.fn() }))
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => driver }))
-import { connectWindowCloseGuard } from './window-close-guard'
+import { connectWindowCloseGuard, windowCloseFailed } from './window-close-guard'
 
 const disposers: (() => void)[] = []
 afterEach(async () => {
@@ -17,24 +17,22 @@ function deferred<T>() {
   })
   return { promise, resolve }
 }
-async function setup(guard: () => Promise<boolean>) {
+async function setup(
+  guard: () => Promise<boolean>,
+  options?: Parameters<typeof connectWindowCloseGuard>[1],
+) {
   let listener!: Listener
   let subscribed = false
   const unlisten = vi.fn(async () => {
-      subscribed = false
-    }),
-    permitted: boolean[] = []
+    subscribed = false
+  })
   driver.onCloseRequested.mockImplementation(async (value: Listener) => {
     listener = value
     subscribed = true
     return unlisten
   })
-  driver.close.mockImplementation(async () => {
-    const event = { preventDefault: vi.fn() }
-    if (subscribed) await listener(event)
-    permitted.push(!event.preventDefault.mock.calls.length)
-  })
-  disposers.push(await connectWindowCloseGuard(guard))
+  driver.destroy.mockResolvedValue(undefined)
+  disposers.push(await connectWindowCloseGuard(guard, options))
   const request = () => {
     const event = { preventDefault: vi.fn() }
     const complete = listener(event)
@@ -43,14 +41,13 @@ async function setup(guard: () => Promise<boolean>) {
   return {
     request,
     unlisten,
-    permitted,
     detach: () => {
       subscribed = false
     },
     subscribed: () => subscribed,
   }
 }
-it('prevents immediately, merges repeated requests, then allows one normal close event', async () => {
+it('prevents immediately, merges repeated requests, then finalizes once after saving', async () => {
   const saving = deferred<boolean>(),
     guard = vi.fn(() => saving.promise)
   const test = await setup(guard)
@@ -63,8 +60,8 @@ it('prevents immediately, merges repeated requests, then allows one normal close
   expect(guard).toHaveBeenCalledOnce()
   saving.resolve(true)
   await Promise.all([first.complete, second.complete, third.complete])
-  expect(driver.close).toHaveBeenCalledOnce()
-  expect(test.permitted).toEqual([true])
+  expect(driver.destroy).toHaveBeenCalledOnce()
+  expect(test.subscribed()).toBe(true)
 })
 it('keeps false and failed saves open, allowing an explicit later retry', async () => {
   const guard = vi
@@ -75,21 +72,24 @@ it('keeps false and failed saves open, allowing an explicit later retry', async 
   const test = await setup(guard)
   await test.request().complete
   await test.request().complete
-  expect(driver.close).not.toHaveBeenCalled()
+  expect(driver.destroy).not.toHaveBeenCalled()
   await test.request().complete
-  expect(driver.close).toHaveBeenCalledOnce()
-  expect(test.permitted).toEqual([true])
+  expect(driver.destroy).toHaveBeenCalledOnce()
+  expect(test.subscribed()).toBe(true)
 })
-it('revokes a failed native close allowance before processing another request', async () => {
+it('keeps failed finalization guarded, reports the failure and checks a later request again', async () => {
   const guard = vi.fn().mockResolvedValueOnce(true).mockResolvedValue(false)
   const test = await setup(guard)
-  driver.close.mockRejectedValueOnce(new Error('native close failed'))
+  driver.destroy.mockRejectedValueOnce(new Error('native close failed'))
   await test.request().complete
+  expect(windowCloseFailed.value).toBe(true)
+  expect(test.subscribed()).toBe(true)
   const retry = test.request()
+  expect(windowCloseFailed.value).toBe(false)
   expect(retry.event.preventDefault).toHaveBeenCalledOnce()
   await retry.complete
   expect(guard).toHaveBeenCalledTimes(2)
-  expect(driver.close).toHaveBeenCalledOnce()
+  expect(driver.destroy).toHaveBeenCalledOnce()
 })
 it('does not close after disposal or when a newer session replaces a pending guard', async () => {
   const saving = deferred<boolean>(),
@@ -100,13 +100,13 @@ it('does not close after disposal or when a newer session replaces a pending gua
   saving.resolve(true)
   await request.complete
   expect(old.unlisten).toHaveBeenCalledOnce()
-  expect(driver.close).not.toHaveBeenCalled()
+  expect(driver.destroy).not.toHaveBeenCalled()
   await next.request().complete
   disposers.at(-1)!()
   const stale = next.request()
   expect(stale.event.preventDefault).toHaveBeenCalledOnce()
   await stale.complete
-  expect(driver.close).not.toHaveBeenCalled()
+  expect(driver.destroy).not.toHaveBeenCalled()
 })
 it('releases late registrations without replacing the current session listener', async () => {
   const registered = deferred<() => void>(),
@@ -130,32 +130,58 @@ it('releases late registrations without replacing the current session listener',
   const event = { preventDefault: vi.fn() }
   await oldListener(event)
   expect(event.preventDefault).toHaveBeenCalledOnce()
-  expect(driver.close).not.toHaveBeenCalled()
+  expect(driver.destroy).not.toHaveBeenCalled()
 })
-it('does not issue close after failed unlisten and safely restores request handling', async () => {
-  const guard = vi.fn(async () => true),
-    test = await setup(guard)
-  test.unlisten.mockImplementationOnce(async () => {
-    test.detach()
-    throw new Error('unlisten failed after removing listener')
-  })
+it('does not depend on removing the event listener to finalize an approved close', async () => {
+  const test = await setup(async () => true)
+  test.unlisten.mockRejectedValue(new Error('unlisten failed'))
   await test.request().complete
-  expect(driver.close).not.toHaveBeenCalled()
-  expect(driver.onCloseRequested).toHaveBeenCalledTimes(2)
+  expect(test.unlisten).not.toHaveBeenCalled()
+  expect(driver.destroy).toHaveBeenCalledOnce()
+})
+it('does not finalize an old session after its post-save policy resolves late', async () => {
+  const policy = deferred<'close' | 'handled'>()
+  const started = deferred<void>()
+  const test = await setup(async () => true, {
+    afterSave: () => {
+      started.resolve()
+      return policy.promise
+    },
+  })
+  const request = test.request()
+  await started.promise
+  await setup(async () => false)
+  policy.resolve('close')
+  await request.complete
+  expect(driver.destroy).not.toHaveBeenCalled()
+})
+
+it('retains the save listener when a post-save native action hides the window', async () => {
+  const afterSave = vi.fn().mockResolvedValueOnce('handled').mockResolvedValue('close')
+  const test = await setup(async () => true, { afterSave })
+  await test.request().complete
+  expect(driver.destroy).not.toHaveBeenCalled()
   expect(test.subscribed()).toBe(true)
   await test.request().complete
-  expect(driver.close).toHaveBeenCalledOnce()
-  expect(test.permitted).toEqual([true])
+  expect(driver.destroy).toHaveBeenCalledOnce()
 })
-it('does not close a new session when releasing an old listener completes late', async () => {
-  const release = deferred<void>(),
-    test = await setup(async () => true)
-  test.unlisten.mockImplementationOnce(() => release.promise)
-  const request = test.request()
-  await Promise.resolve()
-  await Promise.resolve()
-  await setup(async () => false)
-  release.resolve()
-  await request.complete
-  expect(driver.close).not.toHaveBeenCalled()
+it('does not hide or install after a rejected save and cancels pending quit intent', async () => {
+  const afterSave = vi.fn(),
+    canceled = vi.fn(async () => {})
+  const test = await setup(async () => false, { afterSave, canceled })
+  await test.request().complete
+  expect(afterSave).not.toHaveBeenCalled()
+  expect(canceled).toHaveBeenCalledOnce()
+  expect(driver.destroy).not.toHaveBeenCalled()
+})
+it('native post-save failure leaves the existing close guard attached', async () => {
+  const afterSave = vi.fn(async () => {
+      throw new Error('native failed')
+    }),
+    canceled = vi.fn(async () => {})
+  const test = await setup(async () => true, { afterSave, canceled })
+  await test.request().complete
+  expect(canceled).toHaveBeenCalledOnce()
+  expect(test.subscribed()).toBe(true)
+  expect(driver.destroy).not.toHaveBeenCalled()
 })

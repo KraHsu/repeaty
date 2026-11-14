@@ -16,7 +16,7 @@ use std::{io::Write, sync::Arc};
 #[path = "records_snapshot_tests.rs"]
 mod snapshot_tests;
 
-pub const STORES: [&str; 13] = [
+pub const STORES: [&str; 19] = [
     "decks",
     "notes",
     "cards",
@@ -27,9 +27,15 @@ pub const STORES: [&str; 13] = [
     "attempts",
     "sources",
     "materialReceipts",
+    "automationReceipts",
     "materialFolders",
+    "materialCollections",
     "sourceConnections",
     "sourceCandidates",
+    "studySettings",
+    "studyEvents",
+    "studyActivity",
+    "fsrsModels",
 ];
 pub const MAX_MEDIA: usize = 10 * 1024 * 1024;
 pub const MAX_DOCUMENT: usize = 64 * 1024 * 1024;
@@ -73,6 +79,7 @@ pub enum ReadAttempts {
 }
 pub struct Database {
     pub(crate) connection: Connection,
+    pub(crate) sync_device: Option<String>,
     assets: Arc<Dir>,
     validators: HashMap<String, jsonschema::Validator>,
 }
@@ -97,7 +104,7 @@ impl Database {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         let version: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > 15 {
+        if version > 18 {
             return Err(Error::invalid());
         }
         let tx = connection.transaction()?;
@@ -164,8 +171,10 @@ impl Database {
             .collect::<Result<_>>()?;
         crate::attachments::schema(&connection)?;
         crate::retirement::history_schema(&connection)?;
+        crate::sync::schema(&connection)?;
         Ok(Self {
             connection,
+            sync_device: None,
             validators,
             assets,
         })
@@ -196,7 +205,7 @@ impl Database {
         Ok(snapshot)
     }
     fn library_history(db: &Connection, summary: bool) -> Result<Value> {
-        let mut library = json!({"version":17});
+        let mut library = json!({"version":19});
         for store in STORES {
             let data = if store == "attempts" && summary {
                 "json_remove(data,'$.code','$.result.detail')"
@@ -442,9 +451,13 @@ impl Database {
                 "savedSearches" => 100,
                 "sources" => 10000,
                 "materialReceipts" => 100000,
-                "materialFolders" => 10000,
+                "automationReceipts" => 100000,
+                "materialFolders" | "materialCollections" => 10000,
                 "sourceConnections" => 100,
                 "sourceCandidates" => 10000,
+                "studySettings" => 1,
+                "studyEvents" | "studyActivity" => 500000,
+                "fsrsModels" => 200,
                 _ => 1600000,
             };
             if count > limit || distinct != count || (count > 0 && max != Some(count - 1)) {
@@ -476,13 +489,29 @@ impl Database {
                 Self::validate_patch(&tx, patch, previous.as_ref(), commit.retired.is_some())?;
             }
         }
+        if ["decks", "studySettings", "fsrsModels"]
+            .iter()
+            .any(|store| touched_stores.contains(store))
+        {
+            crate::study::validate_model_selections(&tx)?;
+        }
         finish(&tx)?;
         if let Some(history) = &commit.operation_history {
             if history["schemaVersion"] != 1
                 || ["undo", "redo"].iter().any(|key| {
-                    history[*key]
-                        .as_array()
-                        .is_none_or(|stack| stack.len() > 20)
+                    history[*key].as_array().is_none_or(|stack| {
+                        stack.len() > 20
+                            || stack.iter().any(|operation| {
+                                operation["changes"].as_array().is_some_and(|changes| {
+                                    changes.iter().any(|change| {
+                                        matches!(
+                                            change["store"].as_str(),
+                                            Some("automationReceipts" | "materialReceipts")
+                                        )
+                                    })
+                                })
+                            })
+                    })
                 })
                 || history["mediaIds"].as_array().is_none_or(|ids| {
                     ids.len() > 100_000
@@ -562,10 +591,25 @@ impl Database {
                 .as_ref()
                 .is_some_and(|v| !v["inbox"].is_null() || !v["binding"].is_null())
         }) {
-            tx.pragma_update(None, "user_version", 15)?;
+            let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+            tx.pragma_update(None, "user_version", version.max(15))?;
+        }
+        if commit.patches.iter().any(crate::study::needs_p6) {
+            let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+            tx.pragma_update(None, "user_version", version.max(16))?;
+        }
+        if commit.patches.iter().any(|patch| {
+            matches!(
+                patch.store.as_str(),
+                "automationReceipts" | "materialCollections"
+            )
+        }) {
+            let version: u32 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+            tx.pragma_update(None, "user_version", version.max(17))?;
         }
         tx.execute("UPDATE workspace SET revision=?1 WHERE id=1", [current + 1])?;
         Self::collect_assets(&tx)?;
+        crate::sync::flush(&tx, self.sync_device.as_deref())?;
         tx.commit()?;
         Ok(current + 1)
     }
@@ -628,6 +672,19 @@ impl Database {
                 Self::validate_inline_media(tx, patch, previous)
             }
             "materialFolders" => Self::validate_folder(tx, patch),
+            "materialCollections" => {
+                if let Some(value) = &patch.value {
+                    let mut members = HashSet::new();
+                    // These are ordered soft references: deleting a source must not erase
+                    // its collection membership, which can become available after restore.
+                    for id in value["sourceIds"].as_array().into_iter().flatten() {
+                        if !members.insert(id.as_str().unwrap_or("")) {
+                            return Err(Error::invalid());
+                        }
+                    }
+                }
+                Ok(())
+            }
             "sourceConnections" => Self::validate_source_connection(tx, patch),
             "sourceCandidates" => Self::validate_source_candidate(tx, patch, previous),
             "notes" => {
@@ -636,9 +693,25 @@ impl Database {
             }
             "media" => Self::validate_media(tx, patch),
             "reviews" | "practices" | "attempts" => Self::validate_history(tx, patch),
+            "studySettings" | "studyActivity" => crate::study::validate(patch),
             "materialReceipts" => {
                 if let Some(value) = &patch.value {
                     let duplicate: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM materialReceipts WHERE id<>?1 AND json_extract(data,'$.pluginId')=?2 AND json_extract(data,'$.kind')=?3 AND json_extract(data,'$.operationId')=?4)", params![patch.id, value["pluginId"].as_str().unwrap_or(""), value["kind"].as_str().unwrap_or(""), value["operationId"].as_str().unwrap_or("")], |row| row.get(0))?;
+                    if duplicate {
+                        return Err(Error::invalid());
+                    }
+                }
+                if previous
+                    .zip(patch.value.as_ref())
+                    .is_some_and(|(before, next)| before != next)
+                {
+                    return Err(Error::invalid());
+                }
+                Ok(())
+            }
+            "automationReceipts" => {
+                if let Some(value) = &patch.value {
+                    let duplicate: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM automationReceipts WHERE id<>?1 AND json_extract(data,'$.actorId')=?2 AND json_extract(data,'$.requestId')=?3)", params![patch.id, value["actorId"].as_str().unwrap_or(""), value["requestId"].as_str().unwrap_or("")], |row| row.get(0))?;
                     if duplicate {
                         return Err(Error::invalid());
                     }
@@ -1381,7 +1454,7 @@ impl Database {
             })
             .optional()?
             .ok_or_else(Error::missing)?;
-        let mut library = json!({"version":17});
+        let mut library = json!({"version":19});
         for store in STORES {
             let mut rows = BTreeMap::<String, (i64, Value)>::new();
             let mut stmt = self

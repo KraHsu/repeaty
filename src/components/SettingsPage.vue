@@ -197,6 +197,7 @@ watch(
         </header>
         <SettingsContent
           :key="selected"
+          class="app-section-divider"
           :entries="visible"
           :scope="pluginScope"
           :focus-owner="focusOwner"
