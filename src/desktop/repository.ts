@@ -135,6 +135,7 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
         assetObservations?: { path: string; hash: string }[]
         operationHistory?: OperationHistory
         retired?: RetiredNote[]
+        sync?: import('../sync/commit').SyncCommit
       } = {},
     ): Promise<Snapshot> {
       if (!cached) await repository.load()
@@ -379,6 +380,7 @@ export function createNativeRepository(active: ActiveWorkspace, api: NativeApi =
           assetObservations: options.assetObservations ?? [],
           operationHistory: options.operationHistory,
           retired: options.retired,
+          sync: options.sync,
         },
       })
       if (result.revision !== expectedRevision + 1) throw changed()

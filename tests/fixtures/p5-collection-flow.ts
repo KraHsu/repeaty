@@ -10,7 +10,7 @@ import {
   cancelCollection,
 } from './collection-controls'
 import { localLibrary } from './source-excerpt-flow'
-import { confirmPluginAction, openPluginManager } from './settings-flow'
+import { confirmPluginAction, enableInstalledPlugin, openPluginManager } from './settings-flow'
 import { selectUiValue } from './ui-flow'
 import { showSourceText } from './source-controls'
 
@@ -183,12 +183,13 @@ export async function sourceConnectionFlow(page: Page, info: TestInfo, choose: D
     outdir: info.outputPath('obsidian-plugin'),
   })
   await openPluginManager(page)
-  await page.locator('.plugin-actions input[type=file]').setInputFiles({
+  await page.locator('.plugins-page input[type=file]').setInputFiles({
     name: 'obsidian.repeaty-plugin',
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(bundle)),
   })
   await confirmPluginAction(page)
+  await enableInstalledPlugin(page, 'obsidian')
   await nav(page, '学习材料').click()
   await connections(page).click()
   await page.getByRole('button', { name: '新建连接', exact: true }).click()

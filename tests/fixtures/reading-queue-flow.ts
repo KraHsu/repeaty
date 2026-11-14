@@ -23,7 +23,10 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
     element.setSelectionRange(0, 12)
     element.dispatchEvent(new Event('select', { bubbles: true }))
   })
-  await page.getByRole('button', { name: '用摘录制卡', exact: true }).click()
+  await page
+    .locator('.source-excerpt-action')
+    .getByRole('button', { name: '用摘录制卡', exact: true })
+    .click()
   await page.getByLabel('正面 · 问题', { exact: true }).fill('Queue control card')
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   await page.getByRole('button', { name: '学习概览', exact: true }).click()
@@ -169,16 +172,15 @@ export async function readingQueueFlow(page: Page, read: () => Promise<Library>,
       .getByRole('button', { name: /^Read later/ }),
   ).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('button', { name: 'Read now', exact: true })).toBeVisible()
-  await expect(page.getByLabel('Reading priority', { exact: true })).toHaveAttribute(
-    'value',
-    'high',
-  )
-  await page.getByLabel('Reading priority', { exact: true }).click()
-  await expect(page.getByRole('option', { name: 'High', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  )
-  await page.getByRole('option', { name: 'High', exact: true }).press('Escape')
+  await expect(page.getByLabel('Study priority', { exact: true })).toHaveAttribute('value', '1')
+  await page.getByLabel('Study priority', { exact: true }).click()
+  await expect(
+    page.getByRole('option').filter({ has: page.locator('[data-select-value="1"]') }),
+  ).toHaveAttribute('aria-selected', 'true')
+  await page
+    .getByRole('option')
+    .filter({ has: page.locator('[data-select-value="1"]') })
+    .press('Escape')
   await page.getByRole('button', { name: 'Read later', exact: true }).click()
   const englishDialog = page.getByRole('dialog', { name: 'Read later', exact: true })
   const englishShortcuts = englishDialog.getByRole('group', { name: 'Quick schedule' })

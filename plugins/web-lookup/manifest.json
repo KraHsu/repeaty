@@ -1,10 +1,11 @@
 {
   "id": "web-lookup",
   "name": "选区查询",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "apiVersion": 1,
   "dataVersion": 1,
   "kind": "frontend",
   "main": "main.js",
-  "description": "把选中的文字带到可编辑的搜索、词典或问答网站；打开前核对目标与内容。"
+  "description": "把选中的文字带到可编辑的搜索、词典或问答网站；打开前核对目标与内容。",
+  "author": "repeaty"
 }

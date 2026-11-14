@@ -70,7 +70,11 @@ function add() {
     <UiNotice v-if="issue || error" tone="error">{{ issue || error }}</UiNotice>
     <fieldset :disabled="busy">
       <ol class="lookup-targets">
-        <li v-for="(entry, index) in draft" :key="entry.id">
+        <li
+          v-for="(entry, index) in draft"
+          :key="entry.id"
+          :class="{ 'app-section-divider': index > 0 }"
+        >
           <SettingField type="switch" :label="entry.label" v-model="entry.enabled" />
           <SettingField :label="text('名称')" v-model="entry.label" :maxlength="80" />
           <SettingField
@@ -115,10 +119,6 @@ fieldset {
   padding: 0;
   border: 0;
   min-width: 0;
-}
-.lookup-targets li {
-  padding: 1rem 0;
-  border-bottom: 1px solid var(--ui-border);
 }
 .lookup-actions {
   display: flex;

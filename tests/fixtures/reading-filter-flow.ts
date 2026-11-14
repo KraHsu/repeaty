@@ -74,7 +74,7 @@ export async function readingFilterFlow(page: Page, read: () => Promise<Library>
   const filtered = page.getByRole('button', { name: '阅读筛选结果', exact: true })
   const counter = page.locator('#source-filter-count')
   await selectUiValue(kind, 'original')
-  await selectUiValue(priority, 'inherit')
+  await selectUiValue(priority, 'normal')
   await query.fill('  TOPIC  ')
   await expect(page.locator('.source-list-title')).toHaveText(['Topic 原文'])
   await expect(counter).toHaveText('本列表 1 篇，其中 1 篇待阅读。')
@@ -90,7 +90,7 @@ export async function readingFilterFlow(page: Page, read: () => Promise<Library>
   await expect(query).toHaveValue('')
 
   await selectUiValue(kind, 'excerpt')
-  await selectUiValue(priority, '1')
+  await selectUiValue(priority, 'high')
   await query.fill('  TOPIC  ')
   await expect(counter).toHaveText('本列表 23 篇，其中 21 篇待阅读。')
   await expect(page.locator('.source-queue-filters button')).toHaveText([
@@ -133,7 +133,7 @@ export async function readingFilterFlow(page: Page, read: () => Promise<Library>
     '待阅读 25',
   )
   await selectUiValue(kind, 'excerpt')
-  await selectUiValue(priority, '1')
+  await selectUiValue(priority, 'high')
   await query.fill('topic')
 
   await setResponsiveViewport(page, 390, 844)
@@ -170,7 +170,7 @@ export async function readingFilterFlow(page: Page, read: () => Promise<Library>
   await page.getByRole('button', { name: '学习材料', exact: true }).click()
   await showSourceFilters(page)
   await selectUiValue(kind, 'excerpt')
-  await selectUiValue(priority, '1')
+  await selectUiValue(priority, 'high')
   await query.fill('topic')
   await page.screenshot({ path: info.outputPath('reading-filters-zh.png'), fullPage: true })
   await page.setViewportSize({ width: 1280, height: 900 })
@@ -211,7 +211,7 @@ export async function readingFilterFlow(page: Page, read: () => Promise<Library>
   )
   await page.getByRole('button', { name: '结束本轮', exact: true }).click()
   await expect(kind).toHaveAttribute('value', 'excerpt')
-  await expect(priority).toHaveAttribute('value', '1')
+  await expect(priority).toHaveAttribute('value', 'high')
   await expect(query).toHaveValue('topic')
   await query.fill('no matching title')
   await expect(filtered).toBeDisabled()
@@ -227,7 +227,7 @@ export async function readingFilterFlow(page: Page, read: () => Promise<Library>
   await expect(query).toHaveValue('')
   // New excerpts and imports must remain visible after a restricted list.
   await selectUiValue(kind, 'original')
-  await selectUiValue(priority, 'inherit')
+  await selectUiValue(priority, 'normal')
   await query.fill('Topic')
   await selectForExcerpt(page, 0, 40)
   await saveIndependentExcerpt(page, 'New filtered excerpt')
@@ -238,7 +238,7 @@ export async function readingFilterFlow(page: Page, read: () => Promise<Library>
   await expect(priority).toHaveAttribute('value', 'all')
   await expect(query).toHaveValue('')
   await selectUiValue(kind, 'excerpt')
-  await selectUiValue(priority, '1')
+  await selectUiValue(priority, 'high')
   await query.fill('no matching title')
   await importReading(page, 'New filtered import', 'plain', readingText)
   await expect(kind).toHaveAttribute('value', 'all')

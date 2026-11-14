@@ -189,7 +189,16 @@ it('reads gate16 study records into a browser copy and never changes selected wo
   } finally {
     await repo.close()
   }
-  env.db.run('PRAGMA user_version=18')
+  env.db.run(
+    'PRAGMA user_version=18; CREATE TABLE sync_state(id INTEGER PRIMARY KEY,group_id TEXT,clock TEXT)',
+  )
+  env.files[fileIndex] = selectedFile('.repeaty/state.sqlite3', env.db.export())
+  const syncOriginal = new Uint8Array(await env.files[fileIndex]!.arrayBuffer())
+  const synced = await BrowserWorkspaceReader.open(SQL, { kind: 'files', files: env.files })
+  expect(synced.snapshot.library).toEqual(library)
+  synced.close()
+  expect(new Uint8Array(await env.files[fileIndex]!.arrayBuffer())).toEqual(syncOriginal)
+  env.db.run('PRAGMA user_version=19')
   env.files[fileIndex] = selectedFile('.repeaty/state.sqlite3', env.db.export())
   await expect(
     BrowserWorkspaceReader.open(SQL, { kind: 'files', files: env.files }),

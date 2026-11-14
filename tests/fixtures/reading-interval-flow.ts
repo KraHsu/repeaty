@@ -37,7 +37,10 @@ export async function readingIntervalFlow(
     element.setSelectionRange(0, 12)
     element.dispatchEvent(new Event('select', { bubbles: true }))
   })
-  await page.getByRole('button', { name: '用摘录制卡', exact: true }).click()
+  await page
+    .locator('.source-excerpt-action')
+    .getByRole('button', { name: '用摘录制卡', exact: true })
+    .click()
   await page.getByLabel('正面 · 问题', { exact: true }).fill('Interval control card')
   await page.getByRole('button', { name: '保存卡片', exact: true }).click()
   await page.getByRole('button', { name: '学习概览', exact: true }).click()

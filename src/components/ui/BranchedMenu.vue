@@ -1,28 +1,14 @@
-<!-- Adapted from official Vue Bits BranchedMenu.vue and React Bits BranchedMenu.css.
-     Copyright (c) 2025–2026 David Haz. See public/licenses/branched-menu.txt and
-     docs/third-party/react-bits-branched-menu.LICENSE.md for pinned upstream sources. -->
+<!-- Repeaty's accessible settings tree; SPDX-License-Identifier: AGPL-3.0-only -->
 <script setup lang="ts">
-import {
-  computed,
-  nextTick,
-  onBeforeUnmount,
-  onMounted,
-  provide,
-  ref,
-  shallowRef,
-  watch,
-} from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import type { SettingsCategoryNode } from '../../settings/types'
 import BranchedMenuNode from './BranchedMenuNode.vue'
 import {
   branchedMenuKey,
-  fallbackBranchGeometry,
   flattenBranchedMenu,
   menuAncestors,
   visibleMenuRows,
-  type BranchGeometry,
 } from './branched-menu'
-
 const props = defineProps<{
   items: readonly SettingsCategoryNode[]
   modelValue: string
@@ -31,139 +17,79 @@ const props = defineProps<{
   controls: string
 }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
-const nav = ref<HTMLElement>()
-const marker = ref<HTMLElement>()
-const selection = ref<HTMLElement>()
+const nav = ref<HTMLElement>(),
+  selection = ref<HTMLElement>()
 const rows = computed(() => flattenBranchedMenu(props.items))
-const roots = computed(() => rows.value.filter((row) => row.depth === 1).map((row) => row.node))
-const expanded = ref(
-  new Set([
-    ...rows.value
-      .filter((row) => row.node.key === 'general' && row.node.children.length)
-      .map((row) => row.node.key),
-    ...menuAncestors(rows.value, props.modelValue),
-  ]),
-)
+const roots = computed(() => rows.value.filter((row) => !row.parent))
+const expanded = ref(new Set(['general', ...menuAncestors(rows.value, props.modelValue)]))
 const focused = ref(
-  rows.value.some((row) => row.node.key === props.modelValue)
-    ? props.modelValue
-    : (rows.value[0]?.node.key ?? ''),
+  rows.value.find((row) => row.node.key === props.modelValue)?.node.key ??
+    rows.value[0]?.node.key ??
+    '',
 )
 const visible = computed(() => visibleMenuRows(rows.value, expanded.value))
 const selectedPath = computed<ReadonlySet<string>>(
-  () => new Set([...menuAncestors(rows.value, props.modelValue), props.modelValue]),
+  () => new Set([props.modelValue, ...menuAncestors(rows.value, props.modelValue)]),
 )
-const geometry = shallowRef(new Map<string, BranchGeometry>())
-const rowElements = new Map<string, HTMLElement>()
-const groupElements = new Map<string, HTMLElement>()
-let observer: ResizeObserver | undefined
-let alive = true
-let mounted = false
-
-function htmlElement(value: unknown) {
-  const element = value && typeof value === 'object' && '$el' in value ? value.$el : value
-  return element instanceof HTMLElement ? element : undefined
+const buttons = new Map<string, HTMLElement>(),
+  groups = new Map<string, HTMLElement>()
+let observer: ResizeObserver | undefined,
+  disposed = false
+function dom(value: unknown): HTMLElement | undefined {
+  const raw = value && typeof value === 'object' && '$el' in value ? value.$el : value
+  return raw instanceof HTMLElement ? raw : undefined
 }
 function registerRow(key: string, value: unknown) {
-  const element = htmlElement(value)
-  if (element) rowElements.set(key, element)
-  else rowElements.delete(key)
+  const element = dom(value)
+  if (element) buttons.set(key, element)
+  else buttons.delete(key)
 }
 function registerGroup(key: string, value: unknown) {
-  const old = groupElements.get(key)
-  const element = htmlElement(value)
-  if (old === element) return
-  if (old) observer?.unobserve(old)
+  const element = dom(value),
+    previous = groups.get(key)
+  if (previous === element) return
+  if (previous) observer?.unobserve(previous)
+  groups.delete(key)
   if (element) {
-    groupElements.set(key, element)
+    groups.set(key, element)
     observer?.observe(element)
-  } else groupElements.delete(key)
-}
-function measureSelection() {
-  if (!nav.value || !selection.value) return
-  const row = rowElements.get(props.modelValue)?.parentElement
-  const bounds = row?.getBoundingClientRect()
-  const shown =
-    !!bounds?.width &&
-    !!bounds.height &&
-    visible.value.some((entry) => entry.node.key === props.modelValue)
-  if (shown && bounds) {
-    const menu = nav.value.getBoundingClientRect()
-    const firstFrame = !selection.value.hasAttribute('data-on')
-    if (firstFrame) selection.value.style.transition = 'none'
-    selection.value.style.transform = `translate(${bounds.left - menu.left + nav.value.scrollLeft}px, ${bounds.top - menu.top + nav.value.scrollTop}px)`
-    selection.value.style.width = `${bounds.width}px`
-    selection.value.style.height = `${bounds.height}px`
-    selection.value.setAttribute('data-on', '')
-    if (firstFrame) {
-      void selection.value.offsetHeight
-      selection.value.style.transition = ''
-    }
-  } else selection.value.removeAttribute('data-on')
-}
-function measure(glide = false) {
-  if (!alive || !nav.value) return
-  const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
-  const next = new Map<string, BranchGeometry>()
-  for (const row of rows.value) {
-    const children = rows.value.filter((child) => child.parent === row.node.key)
-    if (!children.length) continue
-    const fallback = fallbackBranchGeometry(children.length, rem)
-    const group = groupElements.get(row.node.key)
-    const box = group?.getBoundingClientRect()
-    const measured = children.map((child) =>
-      rowElements.get(child.node.key)?.getBoundingClientRect(),
-    )
-    next.set(
-      row.node.key,
-      box?.height && measured.every((child) => child?.height)
-        ? {
-            ...fallback,
-            height: box.height,
-            centers: measured.map((child) => child!.top - box.top + child!.height / 2),
-          }
-        : (geometry.value.get(row.node.key) ?? fallback),
-    )
   }
-  geometry.value = next
-  // Keep following row geometry while folders unfold. CSS retargets an in-flight
-  // selection from its current position, without delaying the settings change.
-  measureSelection()
-  const active = rows.value.find((row) => row.node.key === props.modelValue)
-  const head = active && rowElements.get(active.root)
-  const shown = !!head && visible.value.some((row) => row.node.key === props.modelValue)
-  if (!marker.value) return
-  if (!glide) marker.value.style.transition = 'none'
-  if (head && shown) {
-    const top =
-      head.getBoundingClientRect().top - nav.value.getBoundingClientRect().top + nav.value.scrollTop
-    marker.value.style.top = `${top + (head.offsetHeight - rem) / 2}px`
+}
+function align() {
+  const container = nav.value,
+    highlight = selection.value
+  if (disposed || !container || !highlight) return
+  const row = buttons.get(props.modelValue)?.parentElement
+  const rect = row?.getBoundingClientRect()
+  if (
+    !rect?.height ||
+    !rect.width ||
+    !visible.value.some((item) => item.node.key === props.modelValue)
+  ) {
+    highlight.removeAttribute('data-on')
+    return
   }
-  marker.value.toggleAttribute('data-on', shown)
-  if (!glide) {
-    void marker.value.offsetHeight
-    marker.value.style.transition = ''
+  const origin = container.getBoundingClientRect(),
+    initial = !highlight.hasAttribute('data-on')
+  if (initial) highlight.style.transition = 'none'
+  Object.assign(highlight.style, {
+    transform: `translate(${rect.left - origin.left + container.scrollLeft}px, ${rect.top - origin.top + container.scrollTop}px)`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`,
+  })
+  highlight.setAttribute('data-on', '')
+  if (initial) {
+    void highlight.offsetWidth
+    highlight.style.transition = ''
   }
 }
 async function focus(key: string) {
   if (!visible.value.some((row) => row.node.key === key)) return
   focused.value = key
   await nextTick()
-  if (alive) {
-    const element = rowElements.get(key)
-    element?.focus({ preventScroll: true })
-    element?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
-  }
-}
-function select(key: string) {
-  const row = rows.value.find((entry) => entry.node.key === key)
-  if (!row) return
-  const next = new Set(expanded.value)
-  for (const ancestor of menuAncestors(rows.value, key)) next.add(ancestor)
-  if (rows.value.some((entry) => entry.parent === key)) next.add(key)
-  expanded.value = next
-  focused.value = key
-  emit('update:modelValue', key)
+  if (disposed) return
+  buttons.get(key)?.focus({ preventScroll: true })
+  buttons.get(key)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
 }
 function toggle(key: string, focusRow = true) {
   if (!rows.value.some((row) => row.parent === key)) return
@@ -173,126 +99,124 @@ function toggle(key: string, focusRow = true) {
   expanded.value = next
   if (focusRow) void focus(key)
 }
+function select(key: string) {
+  if (!rows.value.some((row) => row.node.key === key)) return
+  expanded.value = new Set([...expanded.value, ...menuAncestors(rows.value, key), key])
+  focused.value = key
+  emit('update:modelValue', key)
+}
 function keydown(event: KeyboardEvent) {
-  if (event.altKey || event.ctrlKey || event.metaKey) return
-  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-category-key]')
-  if (!target || !nav.value?.contains(target)) return
-  const key = target.dataset.categoryKey!
-  const index = visible.value.findIndex((row) => row.node.key === key)
-  const row = visible.value[index]
-  if (
-    !row ||
-    !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter', ' '].includes(
-      event.key,
-    )
-  )
+  if (event.altKey || event.ctrlKey || event.metaKey || !(event.target instanceof HTMLElement))
     return
+  const button = event.target.closest<HTMLElement>('[data-category-key]')
+  if (!button || !nav.value?.contains(button)) return
+  const index = visible.value.findIndex((row) => row.node.key === button.dataset.categoryKey)
+  const row = visible.value[index]
+  if (!row) return
+  const key = row.node.key,
+    child = rows.value.find((item) => item.parent === key)
+  let destination: string | undefined
+  switch (event.key) {
+    case 'ArrowUp':
+      destination = visible.value[Math.max(0, index - 1)]?.node.key
+      break
+    case 'ArrowDown':
+      destination = visible.value[Math.min(index + 1, visible.value.length - 1)]?.node.key
+      break
+    case 'Home':
+      destination = visible.value[0]?.node.key
+      break
+    case 'End':
+      destination = visible.value.at(-1)?.node.key
+      break
+    case 'ArrowRight':
+      if (child && !expanded.value.has(key)) toggle(key)
+      else destination = child?.node.key
+      break
+    case 'ArrowLeft':
+      if (child && expanded.value.has(key)) toggle(key)
+      else destination = row.parent
+      break
+    case 'Enter':
+    case ' ':
+      select(key)
+      break
+    default:
+      return
+  }
   event.preventDefault()
   event.stopPropagation()
-  let next: string | undefined
-  if (event.key === 'ArrowUp') next = visible.value[Math.max(0, index - 1)]?.node.key
-  else if (event.key === 'ArrowDown')
-    next = visible.value[Math.min(visible.value.length - 1, index + 1)]?.node.key
-  else if (event.key === 'Home') next = visible.value[0]?.node.key
-  else if (event.key === 'End') next = visible.value.at(-1)?.node.key
-  else if (event.key === 'ArrowRight') {
-    const child = rows.value.find((entry) => entry.parent === key)
-    if (child && !expanded.value.has(key)) toggle(key)
-    else next = child?.node.key
-  } else if (event.key === 'ArrowLeft') {
-    if (expanded.value.has(key) && rows.value.some((entry) => entry.parent === key)) toggle(key)
-    else next = row.parent
-  } else select(key)
-  if (next) void focus(next)
+  if (destination) void focus(destination)
 }
-
-watch([rows, () => props.modelValue], ([current, selected], previous) => {
-  const restoreFocus = nav.value?.contains(document.activeElement)
+watch([rows, () => props.modelValue], ([items, value], previous) => {
+  const ownsFocus = nav.value?.contains(document.activeElement)
   const previousFocus = focused.value
-  const next = new Set(
-    [...expanded.value].filter((key) => current.some((row) => row.parent === key)),
-  )
-  if (!previous || selected !== previous[1]) {
-    for (const key of menuAncestors(current, selected)) next.add(key)
-    if (current.some((row) => row.node.key === selected)) focused.value = selected
+  const next = new Set([...expanded.value].filter((key) => items.some((row) => row.parent === key)))
+  if (!previous || value !== previous[1]) {
+    menuAncestors(items, value).forEach((key) => next.add(key))
+    if (items.some((row) => row.node.key === value)) focused.value = value
   }
   expanded.value = next
-  const available = visibleMenuRows(current, next)
+  const available = visibleMenuRows(items, next)
   if (!available.some((row) => row.node.key === focused.value)) {
-    const oldRows = previous?.[0] ?? []
+    const oldPath = menuAncestors(previous?.[0] ?? [], focused.value).reverse()
     focused.value =
-      [...menuAncestors(oldRows, focused.value)]
-        .reverse()
-        .find((key) => available.some((row) => row.node.key === key)) ??
+      oldPath.find((key) => available.some((row) => row.node.key === key)) ??
       available[0]?.node.key ??
       ''
   }
-  if (restoreFocus && focused.value !== previousFocus) void focus(focused.value)
+  if (ownsFocus && previousFocus !== focused.value) void focus(focused.value)
 })
 watch(
   [rows, expanded, () => props.modelValue],
   async () => {
     await nextTick()
-    if (mounted && alive) measure(true)
+    align()
   },
   { flush: 'post' },
 )
 onMounted(() => {
-  mounted = true
   if (typeof ResizeObserver !== 'undefined') {
-    observer = new ResizeObserver(() => measure(false))
+    observer = new ResizeObserver(align)
     if (nav.value) observer.observe(nav.value)
-    for (const group of groupElements.values()) observer.observe(group)
+    groups.forEach((group) => observer!.observe(group))
   }
-  measure(false)
+  align()
 })
 onBeforeUnmount(() => {
-  alive = false
+  disposed = true
   observer?.disconnect()
-  rowElements.clear()
-  groupElements.clear()
+  buttons.clear()
+  groups.clear()
 })
 provide(branchedMenuKey, {
-  active: computed(() => props.modelValue),
-  selectedPath,
-  focused,
-  expanded,
   rows,
-  geometry,
+  active: computed(() => props.modelValue),
+  expanded,
+  focused,
+  selectedPath,
   idPrefix: props.idPrefix,
   controls: props.controls,
   registerRow,
   registerGroup,
-  select,
   toggle,
+  select,
 })
 </script>
-
 <template>
   <nav ref="nav" class="branched-menu" :aria-label="label">
     <span ref="selection" class="branched-menu__selection" aria-hidden="true" />
-    <span ref="marker" class="branched-menu__marker" aria-hidden="true" />
     <div role="tree" :aria-label="label" @keydown="keydown">
-      <BranchedMenuNode v-for="node in roots" :key="node.key" :node="node" />
+      <BranchedMenuNode v-for="item in roots" :key="item.node.key" :node="item.node" />
     </div>
   </nav>
 </template>
-
 <style>
-/* Original Branched Menu geometry and motion, themed with application tokens.
-   Conventional buttons and collapsing content remain Nuxt UI components. */
 .branched-menu {
-  --bm-row: 2.75rem;
-  --bm-indent: 2.5rem;
-  --bm-line-w: 1.5;
-  --bm-draw: 400ms;
-  --bm-fold: 300ms;
-  --bm-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   position: relative;
   min-width: 0;
   max-width: 100%;
-  padding-left: 0.875rem;
-  color: var(--text);
+  padding-inline-start: 0.875rem;
   font-family: var(--font-ui);
   font-size: var(--font-size-control);
   line-height: var(--line-height-ui);
@@ -300,42 +224,22 @@ provide(branchedMenuKey, {
 .branched-menu::before {
   content: '';
   position: absolute;
-  top: 0.5rem;
-  bottom: 0;
-  left: 0;
+  inset-block: 0.5rem 0;
+  inset-inline-start: 0;
   width: 2px;
-  border-radius: 1px;
-  background: linear-gradient(to bottom, var(--line) 0%, var(--line) 55%, transparent 100%);
-}
-.branched-menu__marker {
-  position: absolute;
-  top: -1px;
-  left: 0;
-  z-index: 1;
-  width: 2px;
-  height: 1rem;
-  border-radius: 1px;
-  background: var(--ui-control-focus);
-  opacity: 0;
-  transition:
-    top 220ms var(--bm-ease-out),
-    opacity 150ms ease;
-}
-.branched-menu__marker[data-on] {
-  opacity: 1;
+  background: linear-gradient(var(--line), transparent);
 }
 .branched-menu__selection {
   position: absolute;
-  top: 0;
-  left: 0;
-  border-radius: 0.5rem;
-  background: var(--app-selected);
+  inset: 0 auto auto 0;
   pointer-events: none;
+  background: var(--app-selected);
+  border-radius: 0.5rem;
   opacity: 0;
   transition:
-    transform 220ms var(--bm-ease-out),
-    width 220ms var(--bm-ease-out),
-    height 220ms var(--bm-ease-out),
+    transform 220ms ease,
+    width 220ms ease,
+    height 220ms ease,
     opacity 150ms ease;
 }
 .branched-menu__selection[data-on] {
@@ -344,67 +248,66 @@ provide(branchedMenuKey, {
 .branched-menu > [role='tree'] {
   position: relative;
 }
+.branched-menu__section,
+.branched-menu__folder {
+  min-width: 0;
+  position: relative;
+}
+.branched-menu__row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  position: relative;
+}
 .branched-menu > [role='tree'] > .branched-menu__section > .branched-menu__row {
-  /* Inset the root label within its background without shifting branch geometry. */
-  margin-left: -0.5rem;
+  margin-inline-start: -0.5rem;
 }
 .branched-menu
   > [role='tree']
   > .branched-menu__section
   > .branched-menu__row
   > .branched-menu__select {
-  padding-left: 0.5rem;
-}
-.branched-menu__section,
-.branched-menu__folder {
-  min-width: 0;
-}
-.branched-menu__row {
-  display: flex;
-  align-items: center;
-  min-width: 0;
+  padding-inline-start: 0.5rem;
 }
 .branched-menu button.branched-menu__select {
-  display: flex;
   flex: 1;
-  justify-content: flex-start;
   min-width: 0;
-  height: var(--bm-row);
+  min-height: 2.75rem;
   margin: 0;
   padding: 0;
   border: 0;
   border-radius: 0.25rem;
+  box-shadow: none;
+  justify-content: start;
+  text-align: start;
   background: transparent;
   color: var(--muted);
   font: inherit;
-  text-align: left;
-  box-shadow: none;
-  transition: color 200ms ease;
 }
-.branched-menu__section[data-open] > .branched-menu__row > .branched-menu__select,
-.branched-menu button.branched-menu__select:hover {
-  color: var(--text);
+.branched-menu button.branched-menu__select:hover,
+.branched-menu__section[data-open] > .branched-menu__row > button {
+  color: var(--ui-text);
 }
-.branched-menu button.branched-menu__select[data-active] {
-  color: var(--ui-control-focus);
+.branched-menu button[data-active] {
+  color: var(--ui-primary);
   font-weight: var(--font-weight-semibold);
 }
 .branched-menu__label {
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 .branched-menu button.branched-menu__toggle {
-  flex: 0 0 2rem;
-  justify-content: center;
   width: 2rem;
-  height: var(--bm-row);
+  height: 2.75rem;
+  flex: 0 0 2rem;
   padding: 0;
-  color: var(--muted);
-  background: transparent;
   border: 0;
   box-shadow: none;
+  background: transparent;
+  justify-content: center;
+  color: var(--muted);
 }
 .branched-menu button:focus-visible {
   outline: 2px solid var(--ui-control-focus);
@@ -414,12 +317,12 @@ provide(branchedMenuKey, {
   overflow: hidden;
 }
 .branched-menu__body[data-state='open'] {
-  animation: branched-menu-unfold var(--bm-fold) var(--bm-ease-out);
+  animation: repeaty-tree-open 240ms ease;
 }
 .branched-menu__body[data-state='closed'] {
-  animation: branched-menu-fold var(--bm-fold) var(--bm-ease-out);
+  animation: repeaty-tree-close 240ms ease;
 }
-@keyframes branched-menu-unfold {
+@keyframes repeaty-tree-open {
   from {
     height: 0;
   }
@@ -427,7 +330,7 @@ provide(branchedMenuKey, {
     height: var(--reka-collapsible-content-height);
   }
 }
-@keyframes branched-menu-fold {
+@keyframes repeaty-tree-close {
   from {
     height: var(--reka-collapsible-content-height);
   }
@@ -437,63 +340,54 @@ provide(branchedMenuKey, {
 }
 .branched-menu__tree {
   position: relative;
-  min-width: 0;
-  padding: 0.375rem 0;
+  padding-block: 0.375rem;
+}
+.branched-menu__tree > .branched-menu__section::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0.875rem;
+  top: 0;
+  bottom: 0;
+  border-inline-start: 1px solid var(--line);
+}
+.branched-menu__tree > .branched-menu__section:last-child::before {
+  bottom: auto;
+  height: 1.375rem;
 }
 .branched-menu__tree > .branched-menu__section > .branched-menu__row {
-  padding-left: var(--bm-indent);
+  padding-inline-start: 2.5rem;
 }
 .branched-menu__tree > .branched-menu__section > .branched-menu__folder {
-  margin-left: var(--bm-indent);
+  margin-inline-start: 2.5rem;
 }
-.branched-menu__lines {
+.branched-menu__branch {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: var(--bm-indent);
-  overflow: visible;
+  inset-inline-start: 0.875rem;
+  bottom: 50%;
+  width: 1.125rem;
+  height: 0.75rem;
+  border-inline-start: 1px solid var(--line);
+  border-block-end: 1px solid var(--line);
+  border-end-start-radius: 0.75rem;
   pointer-events: none;
-  opacity: 0;
-  transition: opacity 200ms ease;
+  transition: border-color 180ms ease;
 }
-.branched-menu__folder[data-state='open']
-  > .branched-menu__body
-  > .branched-menu__tree
-  > .branched-menu__lines {
-  opacity: 1;
-  transition: opacity 250ms ease 100ms;
-}
-.branched-menu__base,
-.branched-menu__reach {
-  fill: none;
-  stroke-width: var(--bm-line-w);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.branched-menu__base {
-  stroke: var(--line);
-}
-.branched-menu__reach {
-  stroke: var(--ui-control-focus);
-  transition: stroke-dashoffset var(--bm-draw) var(--bm-ease-out);
+.branched-menu__section[data-path] > .branched-menu__row > .branched-menu__branch {
+  border-color: var(--ui-primary);
 }
 @media (prefers-reduced-motion: reduce) {
-  .branched-menu *,
-  .branched-menu *::before,
-  .branched-menu *::after {
+  .branched-menu * {
     transition: none !important;
     animation: none !important;
   }
 }
 @media (forced-colors: active) {
-  .branched-menu__base {
-    stroke: GrayText;
-  }
-  .branched-menu__reach {
-    stroke: Highlight;
-  }
-  .branched-menu__marker {
+  .branched-menu__selection {
     background: Highlight;
+    opacity: 0.2;
+  }
+  .branched-menu__branch {
+    border-color: GrayText;
   }
 }
 </style>

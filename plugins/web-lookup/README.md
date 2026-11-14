@@ -7,3 +7,7 @@
 默认提供 DuckDuckGo、Google、Wikipedia 和 ChatGPT 的查询链接。链接行为由网站决定；打开后受该网站的隐私政策与账号状态约束。文字超过链接长度限制时请缩短选区。若希望使用某个语言的 Wikipedia，可直接编辑域名。
 
 插件作为独立包加载，无 Node.js 或原生扩展。设置随学习库保存；停用或卸载移除操作入口并保留设置与学习记录。菜单排序和快捷键在软件的「通用 → 操作」中调整。
+
+## 许可证
+
+Copyright (c) 2026 CharlesHsu。此官方插件按 AGPL-3.0-only 分发，完整协议见包内 `assets/licenses/AGPL-3.0.txt`；[对应源代码](https://github.com/KraHsu/repeaty/tree/codex/learning-scope/plugins/web-lookup)。第三方组件继续遵循各自许可证。

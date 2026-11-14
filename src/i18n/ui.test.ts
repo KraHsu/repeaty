@@ -157,23 +157,29 @@ it('switches the mounted app, document metadata, and persists the explicit choic
 }, 10_000)
 
 it('opens plugin management separately from the shared settings categories', async () => {
+  const catalog = vi.fn(async (input: RequestInfo | URL) => {
+    if (String(input) === '/plugins/catalog.json') return new Response('[]')
+    throw new Error(`Unexpected request: ${input}`)
+  })
+  vi.stubGlobal('fetch', catalog)
   await start()
   button('Plugins').click()
   await vi.waitFor(() => expect(button('Plugins').getAttribute('aria-current')).toBe('page'))
   await vi.waitFor(
     () => {
       const diagnostic = `Active page: ${host.querySelector('.main-nav [aria-current="page"]')?.getAttribute('aria-label')}; main: ${host.querySelector('main')?.textContent?.slice(0, 300)}`
-      expect(host.querySelector('.plugin-manager'), diagnostic).not.toBeNull()
+      expect(host.querySelector('.plugin-workbench'), diagnostic).not.toBeNull()
     },
     { timeout: 5000 },
   )
   expect(host.querySelector('h1')?.textContent).toBe('Plugins')
-  expect(host.querySelector('.plugin-manager')).not.toBeNull()
+  expect(host.querySelector('.plugin-workbench')).not.toBeNull()
+  await vi.waitFor(() => expect(catalog).toHaveBeenCalledExactlyOnceWith('/plugins/catalog.json'))
   expect(host.querySelector('.settings-categories')).toBeNull()
   expect(host.querySelector('.settings-configuration')).toBeNull()
   await openLanguageSettings()
   expect(host.querySelector('.settings-categories [data-category-key="plugins"]')).toBeNull()
-  expect(host.querySelector('.plugin-manager')).toBeNull()
+  expect(host.querySelector('.plugin-workbench')).toBeNull()
 }, 10_000)
 
 it('keeps drafts and revealed answers while translating authoring, statuses, and review controls', async () => {

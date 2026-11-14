@@ -215,4 +215,37 @@ describe('desktop workspace lifecycle', () => {
     ).resolves.toEqual({})
     expect(store.workspaceStatus.value?.active).toEqual(selected)
   })
+  it('serializes a sync settings refresh with durable writes so a late read cannot overwrite new values', async () => {
+    const selected = active()
+    invoke.mockImplementation(async (command) =>
+      command === 'workspace_status' ? status(selected) : {},
+    )
+    const store = await import('./workspaces')
+    store.installWorkspaceStores()
+    await store.initializeWorkspaces()
+    const settings = await import('../settings-store')
+    let finishRead!: (value: Record<string, string>) => void
+    invoke.mockImplementation(async (command) =>
+      command === 'workspace_read'
+        ? new Promise<Record<string, string>>((resolve) => {
+            finishRead = resolve
+          })
+        : undefined,
+    )
+    const reading = store.hydrateSettings()
+    await vi.waitFor(() => expect(finishRead).toBeTypeOf('function'))
+    const writing = settings.persistSetting('plugin:sample:config', 'new value')
+    await vi.waitFor(() =>
+      expect(invoke.mock.calls.filter(([command]) => command === 'workspace_write')).toHaveLength(
+        1,
+      ),
+    )
+    finishRead({ 'plugin:sample:config': 'old value' })
+    await Promise.all([reading, writing])
+    expect(settings.readSetting('plugin:sample:config')).toBe('new value')
+    expect(invoke).toHaveBeenCalledWith(
+      'workspace_write',
+      expect.objectContaining({ token: selected.token }),
+    )
+  })
 })

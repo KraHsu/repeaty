@@ -173,7 +173,7 @@ async function confirm() {
     t('插件导入')
   }}</UiButton>
   <AppModal v-if="open" :title="t('导入材料')" :busy="committing" :error="error" @close="close">
-    <div class="material-import-form">
+    <div class="material-import-form app-section-stack">
       <label for="material-importer">{{ t('材料导入器') }}</label>
       <UiSelect
         id="material-importer"
@@ -243,8 +243,7 @@ async function confirm() {
 
 <style scoped>
 .material-import-form {
-  display: grid;
-  gap: 0.75rem;
+  --app-content-gap: 0.75rem;
 }
 .material-import-candidates {
   margin: 0;

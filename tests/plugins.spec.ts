@@ -19,6 +19,7 @@ test('the static edition has no LeetCode plugin, backend calls, or connector dow
       .getByRole('heading', { name: '答题历史', exact: true }),
   ).toBeVisible()
   await expect(page.getByRole('switch', { name: '启用 答题历史', exact: true })).toBeChecked()
+  await page.getByRole('tab', { name: '已安装', exact: true }).click()
   await expect(page.getByText('LeetCode', { exact: true })).toHaveCount(0)
   await expect(page.getByRole('link', { name: '下载浏览器扩展' })).toHaveCount(0)
   await page.getByRole('button', { name: '学习概览', exact: true }).click()

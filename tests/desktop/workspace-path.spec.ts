@@ -40,11 +40,13 @@ test('Windows extended workspace paths have friendly labels while reopening reta
   await expect(recent).toHaveText(display)
   await page.locator('.workspace-recent').screenshot({ path: info.outputPath('recent-list.png') })
   await recent.click()
-  expect(
-    await page.evaluate(
-      () => (window as unknown as { __repeatyRecentPath?: string }).__repeatyRecentPath,
-    ),
-  ).toBe(original)
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (window as unknown as { __repeatyRecentPath?: string }).__repeatyRecentPath,
+      ),
+    )
+    .toBe(original)
 
   await openSettings(page, 'workspace')
   await expect(page.locator('.workspace-setting-path')).toHaveText(display)
