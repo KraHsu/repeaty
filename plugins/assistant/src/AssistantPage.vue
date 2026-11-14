@@ -151,16 +151,16 @@ const commandLabel = (kind: string) =>
     'collection.reorder': t('调整引用顺序', 'Reorder references'),
     'collection.archive': t('归档引用集合', 'Archive reference collection'),
     'collection.restore': t('恢复引用集合', 'Restore reference collection'),
-    'note.create': t('新增笔记', 'Create note'),
-    'note.patch': t('修改笔记', 'Edit note'),
-    'note.move': t('移动笔记', 'Move notes'),
+    'note.create': t('新增制卡内容', 'Create card content'),
+    'note.patch': t('修改制卡内容', 'Edit card content'),
+    'note.move': t('移动制卡内容', 'Move card content'),
     'note.tags': t('调整标签', 'Change tags'),
-    'note.remove': t('移除笔记', 'Remove notes'),
+    'note.remove': t('移除制卡内容', 'Remove card content'),
     'deck.create': t('新建卡组', 'Create deck'),
     'deck.patch': t('修改卡组', 'Edit deck'),
     'history.undo': t('撤销上次修改', 'Undo last change'),
     'history.redo': t('重做上次修改', 'Redo last change'),
-    'retired.restore': t('恢复已移除笔记', 'Restore retired note'),
+    'retired.restore': t('恢复已移除制卡内容', 'Restore retired card content'),
     'checkpoint.restore': t('恢复检查点', 'Restore checkpoint'),
   })[kind] ?? t('修改学习内容', 'Change learning content')
 const preview = (value: unknown) => value as AutomationPreview
@@ -481,7 +481,10 @@ onBeforeUnmount(() => {
     }}</UiNotice>
     <UiNotice v-if="error" tone="error">{{ error }}</UiNotice>
     <div v-if="!loading && thread" class="assistant-layout">
-      <aside class="assistant-sessions" :aria-label="t('对话记录', 'Conversations')">
+      <aside
+        class="assistant-sessions app-divider-after"
+        :aria-label="t('对话记录', 'Conversations')"
+      >
         <UiSelect
           v-model="filter"
           :items="filterOptions"
@@ -546,7 +549,7 @@ onBeforeUnmount(() => {
             >
           </div>
         </header>
-        <div class="assistant-scope-summary">
+        <div class="assistant-scope-summary app-section-divider">
           <span
             >{{ t('内容范围', 'Content scope') }}
             <strong>{{
@@ -634,7 +637,7 @@ onBeforeUnmount(() => {
         </div>
         <div
           ref="messagesElement"
-          class="assistant-messages"
+          class="assistant-messages app-section-divider"
           :aria-busy="busy"
           role="log"
           :aria-label="t('消息', 'Messages')"
@@ -646,8 +649,8 @@ onBeforeUnmount(() => {
             <p>
               {{
                 t(
-                  '选择材料，让助手解释概念、比较内容或提出整理建议。',
-                  'Select material to explain a concept, compare ideas or propose changes.',
+                  '选择材料，让助手解释概念、梳理知识关系或准备复习卡片。',
+                  'Select material to explain concepts, connect ideas or prepare flashcards.',
                 )
               }}
             </p>
@@ -702,7 +705,7 @@ onBeforeUnmount(() => {
                 <div
                   v-for="(command, index) in preview(proposal.preview).request.commands"
                   :key="index"
-                  class="assistant-change"
+                  class="assistant-change app-section-divider"
                 >
                   <strong>{{ commandLabel(command.kind) }}</strong>
                   <dl>
@@ -744,7 +747,11 @@ onBeforeUnmount(() => {
         <UiNotice v-if="thread.error" :tone="thread.error === 'interrupted' ? 'info' : 'error'">{{
           errorText(thread.error)
         }}</UiNotice>
-        <form v-if="thread.status === 'active'" class="assistant-composer" @submit.prevent="send">
+        <form
+          v-if="thread.status === 'active'"
+          class="assistant-composer app-section-divider"
+          @submit.prevent="send"
+        >
           <p
             v-if="
               thread.contextUsage &&
@@ -828,6 +835,7 @@ onBeforeUnmount(() => {
   gap: 1.5rem;
 }
 .assistant-sessions {
+  border-block-end: 0;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -878,7 +886,7 @@ onBeforeUnmount(() => {
   justify-content: space-between;
 }
 .assistant-toolbar {
-  padding-bottom: 0.75rem;
+  padding-bottom: 0;
 }
 .assistant-toolbar > :first-child {
   min-width: 12rem;
@@ -887,8 +895,6 @@ onBeforeUnmount(() => {
   flex: 1 1 16rem;
 }
 .assistant-scope-summary {
-  padding: 0.75rem 0;
-  border-block: 1px solid var(--line);
   font-size: var(--font-size-meta);
 }
 .assistant-scope-summary > span:first-child {
@@ -909,13 +915,12 @@ onBeforeUnmount(() => {
   background: var(--app-surface-subtle);
   display: grid;
   gap: 0.75rem;
-  border-bottom: 1px solid var(--line);
 }
 .assistant-messages {
   flex: 1;
   min-height: 8rem;
   overflow-y: auto;
-  padding: 1.5rem 0.75rem 1.5rem 0;
+  padding-inline-end: 0.75rem;
   scroll-behavior: auto;
 }
 .assistant-empty {
@@ -995,10 +1000,6 @@ onBeforeUnmount(() => {
   color: var(--app-nav-ink);
   padding: 0.4rem 0;
 }
-.assistant-change {
-  border-top: 1px solid var(--line);
-  padding: 0.75rem 0;
-}
 .assistant-change dl {
   display: grid;
   grid-template-columns: minmax(4rem, auto) minmax(0, 1fr);
@@ -1015,10 +1016,6 @@ onBeforeUnmount(() => {
   overflow-wrap: anywhere;
   max-height: 18rem;
   overflow-y: auto;
-}
-.assistant-composer {
-  border-top: 1px solid var(--line);
-  padding-top: 0.75rem;
 }
 .assistant-composer > :first-child {
   width: 100%;
@@ -1055,7 +1052,7 @@ onBeforeUnmount(() => {
   .assistant-sessions {
     border: 0;
     padding: 0 0 0.75rem;
-    border-bottom: 1px solid var(--line);
+    border-block-end: revert-layer;
     display: grid;
     grid-template-columns: 1fr 1fr;
   }

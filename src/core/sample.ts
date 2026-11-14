@@ -8,7 +8,7 @@ export function createStarterDeck(
   now = new Date(),
 ): { library: Library; assets: MediaUpload[] } {
   const deckId = crypto.randomUUID(),
-    copy = content[language]
+    copy = content[language.startsWith('zh') ? 'zh-CN' : 'en']
   const media = starterMedia(now),
     assets = Object.values(media)
   let library: Library = {

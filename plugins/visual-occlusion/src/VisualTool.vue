@@ -164,7 +164,7 @@ onBeforeUnmount(() => {
 })
 </script>
 <template>
-  <div class="vo-tool">
+  <div class="vo-tool app-section-stack">
     <p class="vo-tool-intro">
       {{
         kind === 'image'
@@ -186,7 +186,7 @@ onBeforeUnmount(() => {
         @update:model-value="selectFormula(String($event))"
       />
       <RegionEditor v-model="data" :blob="blob" />
-      <div class="vo-destination">
+      <div class="vo-destination app-section-divider">
         <SettingField
           type="select"
           label="保存到卡组"
@@ -217,8 +217,7 @@ onBeforeUnmount(() => {
 </template>
 <style scoped>
 .vo-tool {
-  display: grid;
-  gap: 1.25rem;
+  --app-content-gap: 1.25rem;
 }
 .vo-tool-intro {
   color: var(--ui-text-muted, #6d7d70);
@@ -229,8 +228,6 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: 1fr 2fr;
   gap: 1rem;
-  border-top: 1px solid var(--ui-border, #d7e2d2);
-  padding-top: 1rem;
 }
 .vo-tool-footer {
   display: flex;

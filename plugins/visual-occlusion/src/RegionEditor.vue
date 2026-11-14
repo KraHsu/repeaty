@@ -112,7 +112,7 @@ function coordinate(axis: keyof Rect, value: SettingValue) {
 }
 </script>
 <template>
-  <div class="vo-author">
+  <div class="vo-author app-section-stack">
     <ImageSurface
       v-if="modelValue.kind === 'image'"
       :blob="blob"
@@ -207,7 +207,7 @@ function coordinate(axis: keyof Rect, value: SettingValue) {
     <UiNotice v-if="full" tone="info"
       >每组最多保存 {{ MAX_REGIONS }} 个区域（含退役区域）。可移动或恢复已有区域。</UiNotice
     >
-    <div v-if="modelValue.retiredRegions?.length" class="vo-retired">
+    <div v-if="modelValue.retiredRegions?.length" class="vo-retired app-section-divider">
       <p class="vo-muted">退役区域不再出题，恢复时沿用原卡片与完整历史。</p>
       <UiButton
         v-for="region in modelValue.retiredRegions"
@@ -222,8 +222,7 @@ function coordinate(axis: keyof Rect, value: SettingValue) {
 <style scoped>
 .vo-author {
   min-width: 0;
-  display: grid;
-  gap: 1rem;
+  --app-content-gap: 1rem;
 }
 .vo-fields {
   display: grid;
@@ -250,8 +249,6 @@ function coordinate(axis: keyof Rect, value: SettingValue) {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
-  border-top: 1px solid var(--ui-border, #d7e2d2);
-  padding-top: 1rem;
 }
 .vo-retired p {
   width: 100%;

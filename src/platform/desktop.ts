@@ -18,6 +18,7 @@ export const WorkspaceBrowser = defineAsyncComponent(
   () => import('../desktop/WorkspaceManager.vue'),
 )
 export const PlatformSettings = defineAsyncComponent(() => import('../desktop/DesktopSettings.vue'))
+export { createDeviceSync } from '../desktop/device-sync'
 export const WorkspaceBackupTools = defineAsyncComponent(
   () => import('../desktop/WorkspaceRecovery.vue'),
 )
@@ -35,7 +36,7 @@ export async function createWorkspaceRepository(_onBlocked: () => void) {
 }
 export { createExportFile } from '../desktop/exports'
 export { connectLearningReader } from '../desktop/mcp'
-export { connectWindowCloseGuard } from '../desktop/window-close-guard'
+export { connectDesktopCloseGuard as connectWindowCloseGuard } from '../desktop/experience'
 export { connectWorkspaceLeaveGuard } from '../desktop/workspaces'
 
 export {

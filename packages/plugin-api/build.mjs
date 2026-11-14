@@ -12,8 +12,10 @@ import { parseArgs } from 'node:util'
 const runtimeExports = [
   't',
   'locale',
+  'createTranslator',
   'readSetting',
   'writeSetting',
+  'persistSetting',
   'registerSettings',
   'registerPage',
   'registerWidget',
@@ -25,6 +27,7 @@ const runtimeExports = [
   'materials',
   'study',
   'automation',
+  'network',
   'tasks',
   'resources',
   'practiceContentRevision',
@@ -83,6 +86,13 @@ export async function buildPlugin(directory, { outdir } = {}) {
   const manifest = JSON.parse(await readFile(join(directory, 'manifest.json'), 'utf8'))
   if (!/^[a-z][a-z0-9-]{0,63}$/.test(manifest.id) || manifest.apiVersion !== 1)
     throw new Error('Invalid plugin manifest')
+  if (
+    typeof manifest.author !== 'string' ||
+    !manifest.author.trim() ||
+    manifest.author.trim().length > 100
+  )
+    throw new Error('Plugin manifest must declare a non-empty author (1–100 characters)')
+  manifest.author = manifest.author.trim()
   let readme
   try {
     const bytes = await readFile(join(directory, 'README.md'))

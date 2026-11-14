@@ -27,8 +27,96 @@ pub struct Sessions {
     epoch: String,
     selected: Option<(String, String)>,
     restore_error: Option<String>,
+    sync_device: Option<String>,
 }
 impl Sessions {
+    pub fn sync_bind_device(&mut self, device: &str) -> Result<()> {
+        self.sync_bind_for_group(device, None)
+    }
+    fn sync_bind_for_group(&mut self, device: &str, joining: Option<&str>) -> Result<()> {
+        self.sync_device = Some(device.to_owned());
+        if let Some(active) = self.active.as_mut() {
+            active.library.sync_bind_device(device)?;
+            let base = active
+                .library
+                .db
+                .sync_device
+                .clone()
+                .ok_or(Error("sync-device-required"))?;
+            let state: Option<(String, String)> = active
+                .library
+                .db
+                .connection
+                .query_row(
+                    "SELECT group_id,clock FROM sync_state WHERE id=1",
+                    [],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .optional()?;
+            let state = state.or_else(|| joining.map(|group| (group.to_owned(), "{}".into())));
+            let Some((group, raw_clock)) = state else {
+                return Ok(());
+            };
+            let clock: crate::sync::Clock = serde_json::from_str(&raw_clock)?;
+            let tx = self.index.transaction()?;
+            let previous:Option<(String,i64)>=tx.query_row("SELECT writer,highwater FROM sync_writer_frontiers WHERE base=?1 AND group_id=?2",params![base,group],|r|Ok((r.get(0)?,r.get(1)?))).optional()?;
+            let mut writer = previous
+                .as_ref()
+                .map(|(writer, _)| writer.clone())
+                .unwrap_or_else(|| base.clone());
+            let applied = clock.get(&writer).copied().unwrap_or(0);
+            if previous
+                .as_ref()
+                .is_some_and(|(_, water)| applied < *water as u64)
+            {
+                // An older library was copied over this path. Retain that branch, but
+                // never reuse a transaction identity already exposed by this device.
+                writer = crate::files::digest(format!("{base}\n{}", Uuid::new_v4()).as_bytes());
+            }
+            let stored: i64 = active.library.db.connection.query_row(
+                "SELECT COALESCE(MAX(sequence),0) FROM sync_events WHERE device=?1",
+                [&writer],
+                |r| r.get(0),
+            )?;
+            let highwater = stored.max(
+                i64::try_from(clock.get(&writer).copied().unwrap_or(0))
+                    .map_err(|_| Error::invalid())?,
+            );
+            if previous.as_ref() != Some(&(writer.clone(), highwater)) {
+                tx.execute("INSERT INTO sync_writer_frontiers(base,group_id,writer,highwater) VALUES(?1,?2,?3,?4) ON CONFLICT(base,group_id) DO UPDATE SET writer=excluded.writer,highwater=excluded.highwater",params![base,group,writer,highwater])?;
+            }
+            tx.commit()?;
+            active.library.db.sync_device = Some(writer);
+        }
+        Ok(())
+    }
+    pub fn sync_request(&mut self, token: &str, method: &str, payload: Value) -> Result<Value> {
+        self.active
+            .as_ref()
+            .ok_or(Error("workspace-not-open"))?
+            .library
+            .guard(token)?;
+        // Persist the high-water mark before a journal batch can leave the device.
+        // This closes the crash window between a library commit and index bookkeeping.
+        if let Some(device) = self.sync_device.clone() {
+            if method == "start" {
+                let group = payload["groupId"]
+                    .as_str()
+                    .filter(|group| Uuid::parse_str(group).is_ok())
+                    .ok_or_else(Error::invalid)?;
+                self.sync_bind_for_group(&device, Some(group))?;
+            } else {
+                self.sync_bind_device(&device)?;
+            }
+        }
+        let active = self.active.as_mut().ok_or(Error("workspace-not-open"))?;
+        active.library.guard(token)?;
+        let result = active.library.sync_request(method, payload);
+        if let Some(device) = self.sync_device.clone() {
+            self.sync_bind_device(&device)?;
+        }
+        result
+    }
     /// Identity only: native peripheral services must not scan library content to bind a session.
     pub fn active_identity(&self) -> Option<(&str, &str)> {
         self.active
@@ -40,7 +128,8 @@ impl Sessions {
         let index = Connection::open(directory.join("workspaces.sqlite3"))?;
         index.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
             CREATE TABLE IF NOT EXISTS recent(path TEXT PRIMARY KEY,id TEXT NOT NULL,used INTEGER NOT NULL);
-            CREATE TABLE IF NOT EXISTS selected(slot INTEGER PRIMARY KEY CHECK(slot=1),path TEXT NOT NULL,id TEXT NOT NULL);")?;
+            CREATE TABLE IF NOT EXISTS selected(slot INTEGER PRIMARY KEY CHECK(slot=1),path TEXT NOT NULL,id TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS sync_writer_frontiers(base TEXT NOT NULL,group_id TEXT NOT NULL,writer TEXT NOT NULL,highwater INTEGER NOT NULL CHECK(highwater>=0),PRIMARY KEY(base,group_id));")?;
         let selected = index
             .query_row("SELECT path,id FROM selected WHERE slot=1", [], |r| {
                 Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
@@ -53,6 +142,7 @@ impl Sessions {
             epoch: Uuid::new_v4().to_string(),
             selected,
             restore_error: None,
+            sync_device: None,
         };
         if let Some((path, id)) = sessions.selected.clone() {
             match sessions.open_library(Path::new(&path), Some(&id), false) {
@@ -338,5 +428,179 @@ impl Sessions {
         Ok(
             json!({"integrity":integrity,"pages":pages,"freePages":free,"pageSize":size,"databaseBytes":pages*size,"reclaimableBytes":free*size,"compacted":vacuum}),
         )
+    }
+}
+
+#[cfg(test)]
+mod sync_writer_tests {
+    use super::*;
+    fn sessions() -> (
+        tempfile::TempDir,
+        tempfile::TempDir,
+        Sessions,
+        String,
+        String,
+    ) {
+        let device = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let mut sessions = Sessions::open(device.path()).unwrap();
+        let epoch = sessions.status().unwrap()["epoch"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        sessions.choose(&epoch, workspace.path(), true).unwrap();
+        sessions.sync_bind_device("test-device").unwrap();
+        let token = sessions.active_identity().unwrap().1.to_owned();
+        let group = Uuid::new_v4().to_string();
+        sessions
+            .sync_request(&token, "start", json!({"groupId":group}))
+            .unwrap();
+        (device, workspace, sessions, token, group)
+    }
+    fn write(sessions: &mut Sessions, token: &str, value: &str) {
+        sessions
+            .write(
+                token,
+                json!({"type":"value","namespace":"plugin:sample","id":"data","value":value}),
+            )
+            .unwrap();
+    }
+    fn list(sessions: &mut Sessions, token: &str) -> Value {
+        sessions
+            .sync_request(token, "journal/list", json!({"clock":{},"limit":128}))
+            .unwrap()
+    }
+    #[test]
+    fn old_database_replaced_at_same_path_rotates_writer_before_next_local_event() {
+        let (device, workspace, mut sessions, token, group) = sessions();
+        write(&mut sessions, &token, "first");
+        let first = list(&mut sessions, &token);
+        let old_writer = first[0]["deviceId"].as_str().unwrap().to_owned();
+        let snapshot = device.path().join("older.sqlite3");
+        sessions
+            .active
+            .as_ref()
+            .unwrap()
+            .library
+            .db
+            .connection
+            .execute("VACUUM INTO ?1", [snapshot.to_str().unwrap()])
+            .unwrap();
+        write(&mut sessions, &token, "second");
+        // No explicit bind after the write: journal/list itself must persist exposure.
+        let exposed = list(&mut sessions, &token);
+        assert_eq!(exposed[1]["sequence"], 2);
+        drop(sessions);
+        let database = workspace.path().join(".repeaty/state.sqlite3");
+        assert!(!workspace.path().join(".repeaty/state.sqlite3-wal").exists());
+        // Only fixture-owned files are replaced, with no live SQLite connection.
+        fs::copy(&snapshot, &database).unwrap();
+        let mut reopened = Sessions::open(device.path()).unwrap();
+        reopened.sync_bind_device("test-device").unwrap();
+        let token = reopened.active_identity().unwrap().1.to_owned();
+        write(&mut reopened, &token, "restored branch");
+        let branch = list(&mut reopened, &token);
+        let event = branch
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|event| event["deviceId"] != old_writer)
+            .unwrap();
+        assert_eq!(event["sequence"], 1);
+        assert_eq!(event["clock"][&old_writer], 1);
+        let writer = event["deviceId"].as_str().unwrap().to_owned();
+        drop(reopened);
+        let mut reopened = Sessions::open(device.path()).unwrap();
+        reopened.sync_bind_device("test-device").unwrap();
+        assert_eq!(
+            reopened
+                .active
+                .as_ref()
+                .unwrap()
+                .library
+                .db
+                .sync_device
+                .as_ref(),
+            Some(&writer)
+        );
+        let remote_dir = tempfile::tempdir().unwrap();
+        let mut remote = Library::create(remote_dir.path()).unwrap();
+        remote.sync_bind_device("other-device").unwrap();
+        remote
+            .sync_request("start", json!({"groupId":group}))
+            .unwrap();
+        remote
+            .sync_request("journal/receive", json!({"events":exposed}))
+            .unwrap();
+        remote
+            .sync_request("journal/receive", json!({"events":branch}))
+            .unwrap();
+        assert_eq!(
+            remote
+                .sync_request("journal/list", json!({"clock":{},"limit":128}))
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .len(),
+            3
+        );
+    }
+    #[test]
+    fn highwater_persistence_failure_blocks_journal_exposure() {
+        let (_device, _workspace, mut sessions, token, _group) = sessions();
+        write(&mut sessions, &token, "first");
+        list(&mut sessions, &token);
+        sessions.index.execute_batch("CREATE TRIGGER fail_frontier BEFORE UPDATE ON sync_writer_frontiers BEGIN SELECT RAISE(ABORT,'injected failure'); END;").unwrap();
+        write(&mut sessions, &token, "second");
+        assert!(
+            sessions
+                .sync_request(&token, "journal/list", json!({"clock":{},"limit":128}))
+                .is_err()
+        );
+        sessions
+            .index
+            .execute_batch("DROP TRIGGER fail_frontier")
+            .unwrap();
+        assert_eq!(list(&mut sessions, &token).as_array().unwrap().len(), 2);
+    }
+    #[test]
+    fn restoring_a_pre_group_library_chooses_a_fresh_writer_before_new_baseline() {
+        let device = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let mut sessions = Sessions::open(device.path()).unwrap();
+        let epoch = sessions.status().unwrap()["epoch"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        sessions.choose(&epoch, workspace.path(), true).unwrap();
+        sessions.sync_bind_device("device").unwrap();
+        let token = sessions.active_identity().unwrap().1.to_owned();
+        write(&mut sessions, &token, "before group");
+        let snapshot = device.path().join("pre-group.sqlite3");
+        sessions
+            .active
+            .as_ref()
+            .unwrap()
+            .library
+            .db
+            .connection
+            .execute("VACUUM INTO ?1", [snapshot.to_str().unwrap()])
+            .unwrap();
+        let group = Uuid::new_v4().to_string();
+        sessions
+            .sync_request(&token, "start", json!({"groupId":group}))
+            .unwrap();
+        let first = list(&mut sessions, &token);
+        drop(sessions);
+        fs::copy(snapshot, workspace.path().join(".repeaty/state.sqlite3")).unwrap();
+        let mut sessions = Sessions::open(device.path()).unwrap();
+        sessions.sync_bind_device("device").unwrap();
+        let token = sessions.active_identity().unwrap().1.to_owned();
+        sessions
+            .sync_request(&token, "start", json!({"groupId":group}))
+            .unwrap();
+        let fresh = list(&mut sessions, &token);
+        assert_ne!(first[0]["deviceId"], fresh[0]["deviceId"]);
+        assert_eq!(fresh[0]["sequence"], 1);
     }
 }

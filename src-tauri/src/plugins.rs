@@ -1,6 +1,7 @@
 //! Runtime packages and generic native capabilities; no plugin business code is linked here.
 mod http;
 mod models;
+mod network;
 mod secrets;
 #[cfg(test)]
 mod tests;
@@ -201,6 +202,8 @@ pub struct Permissions {
     files: bool,
     #[serde(default)]
     models: bool,
+    #[serde(default)]
+    network: bool,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -489,6 +492,7 @@ pub struct Plugins {
     secrets: Arc<Mutex<secrets::Secrets>>,
     client: reqwest::Client,
     models: Arc<models::Models>,
+    network: Arc<network::Network>,
 }
 impl Plugins {
     pub fn new(directory: &Path) -> Result<Self> {
@@ -497,6 +501,7 @@ impl Plugins {
         )?));
         Ok(Self {
             models: Arc::new(models::Models::new(directory, secrets.clone())?),
+            network: Arc::new(network::Network::default()),
             secrets,
             client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(20))
@@ -528,7 +533,14 @@ impl Plugins {
         }
         Ok(())
     }
-    fn operation(&self, root: Dir, id: &str, operation: &str, payload: Value) -> Result<Value> {
+    fn operation(
+        &self,
+        root: Dir,
+        id: &str,
+        operation: &str,
+        payload: Value,
+        binding: Option<&network::Binding>,
+    ) -> Result<Value> {
         match operation {
             "list" => {
                 let Some(packages) = private(&root, "plugins", false)? else {
@@ -597,10 +609,24 @@ impl Plugins {
                         if operation == "files" && package.manifest.permissions.files {
                             plugin_file(&root, id, payload)
                         } else if operation == "secrets" && package.manifest.permissions.secrets {
-                            self.secrets
+                            let permissions = match binding {
+                                Some(binding) => self
+                                    .network
+                                    .permissions(binding, &package.manifest.permissions)?,
+                                None => package.manifest.permissions.clone(),
+                            };
+                            let slot = payload["slot"].as_str().map(str::to_owned);
+                            let changed =
+                                matches!(payload["action"].as_str(), Some("set" | "clear"));
+                            let result = self
+                                .secrets
                                 .lock()
                                 .map_err(|_| "plugin-storage-error")?
-                                .operation(id, &package.manifest.permissions, payload)
+                                .operation(id, &permissions, payload)?;
+                            if changed && let Some(slot) = slot {
+                                self.network.cancel_slot(id, &slot);
+                            }
+                            Ok(result)
                         } else {
                             Err("permission-denied".into())
                         }
@@ -619,7 +645,53 @@ impl Plugins {
         payload: Value,
     ) -> Result<Value> {
         let host = self.clone();
-        if operation.starts_with("model.") {
+        // Advance from the actual identity, never from an untrusted delayed call token.
+        {
+            let identity = workspaces.active_identity();
+            let current = identity.lock().map_err(|_| "workspace-changed")?;
+            if current.1 != token {
+                return Err("workspace-changed".into());
+            }
+            self.network.scope(&current.1)?;
+        }
+        if matches!(
+            operation.as_str(),
+            "network.authorize" | "http.cancel" | "http.dispose"
+        ) {
+            let binding = network::Binding::from_payload(&token, &id, &payload)?;
+            crate::workspaces::with_plugin_workspace(workspaces, token, move |root| {
+                if !id_valid(&id) {
+                    return Err(invalid());
+                }
+                // Cleanup must remain possible after the package is removed or replaced.
+                match operation.as_str() {
+                    "http.dispose" => {
+                        host.network.dispose(&binding);
+                        Ok(Value::Null)
+                    }
+                    "http.cancel" => {
+                        host.network.cancel(
+                            &binding,
+                            payload["requestId"].as_str().ok_or("invalid-data")?,
+                        )?;
+                        Ok(Value::Null)
+                    }
+                    _ => {
+                        let package = package(&root, &id)?;
+                        host.trusted(&package)?;
+                        if !package.manifest.permissions.network {
+                            return Err("permission-denied".into());
+                        }
+                        host.network.authorize(
+                            &binding,
+                            payload["origin"].as_str().ok_or("invalid-data")?,
+                        )?;
+                        Ok(Value::Null)
+                    }
+                }
+            })
+            .await
+        } else if operation.starts_with("model.") {
             let plugin_id = id.clone();
             let disposing = operation == "model.dispose";
             crate::workspaces::with_plugin_workspace(workspaces, token.clone(), move |root| {
@@ -648,6 +720,8 @@ impl Plugins {
             crate::workspaces::with_plugin_workspace(workspaces, token, |_| Ok(())).await?;
             response
         } else if operation == "http" {
+            let binding = network::Binding::from_payload(&token, &id, &payload)?;
+            let request = self.network.register(&binding, &payload)?;
             let prepared =
                 crate::workspaces::with_plugin_workspace(workspaces, token.clone(), move |root| {
                     if !id_valid(&id) {
@@ -655,15 +729,30 @@ impl Plugins {
                     }
                     let package = package(&root, &id)?;
                     host.trusted(&package)?;
-                    http::prepare(&host, &id, &package.manifest.permissions, payload)
+                    let permissions = host
+                        .network
+                        .permissions(&binding, &package.manifest.permissions)?;
+                    http::prepare(&host, &id, &permissions, payload)
                 })
                 .await?;
-            let response = http::send(self, prepared).await;
+            let response = self
+                .network
+                .run(
+                    &request,
+                    workspaces.active_identity(),
+                    http::send(self, prepared),
+                )
+                .await;
             crate::workspaces::with_plugin_workspace(workspaces, token, |_| Ok(())).await?;
             response
         } else {
+            let binding = if payload.get("activationId").is_some() {
+                Some(network::Binding::from_payload(&token, &id, &payload)?)
+            } else {
+                None
+            };
             crate::workspaces::with_plugin_workspace(workspaces, token, move |root| {
-                host.operation(root, &id, &operation, payload)
+                host.operation(root, &id, &operation, payload, binding.as_ref())
             })
             .await
         }
