@@ -17,7 +17,7 @@ const available = ref(true)
 const error = ref('')
 const message = ref('')
 const controller = new AbortController()
-const t = (zh: string, en: string) => (locale.value === 'en' ? en : zh)
+const t = (zh: string, en: string) => (!locale.value.startsWith('zh') ? en : zh)
 const context = {
   signal: controller.signal,
   progress() {},

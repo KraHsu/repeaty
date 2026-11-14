@@ -36,7 +36,6 @@ import { createMaterialCommands } from './library-materials'
 import { createOrganizationCommands } from './library-organization'
 import { createWorkbenchCommands } from './library-workbench'
 import { createAutomationCommands } from './library-automation'
-import { createPublishingCommands } from './library-publishing'
 export function createLibraryService(state: LibraryState, dependencies: LibraryDependencies) {
   const {
     library,
@@ -508,6 +507,24 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
         canUndoReading(library.value, readingUndo.value),
     },
     commands: {
+      async applyDeviceSync(
+        expectedScope: string,
+        expectedRevision: number,
+        next: Library,
+        options: Pick<CommitOptions, 'retired' | 'sync'>,
+      ) {
+        if (!desktopEdition) throw new Error('sync-desktop-required')
+        if (expectedScope !== scope.value || expectedRevision !== revision || !options.sync)
+          throw new Error('sync-preview-stale')
+        await commit(
+          () => {
+            if (expectedScope !== scope.value || expectedRevision !== revision)
+              throw new Error('sync-preview-stale')
+            return next
+          },
+          { ...options, undoBarrier: true, reason: '设备同步' },
+        )
+      },
       undoLastOperation,
       redoLastOperation,
       readCardDrafts: (scope: string) => draftRepository(scope).readCardDrafts(),
@@ -578,7 +595,6 @@ export function createLibraryService(state: LibraryState, dependencies: LibraryD
       ...createOrganizationCommands(context),
       ...createWorkbenchCommands(context),
       ...createAutomationCommands(context),
-      ...createPublishingCommands(context),
     },
   }
 }

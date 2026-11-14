@@ -28,3 +28,7 @@
 ## 开发
 
 在仓库安装依赖后运行 `npm run build --workspace @repeaty/plugin-study-statistics`，通过公开 SDK 独立构建插件包。软件本体不编译此插件源码。
+
+## 许可证
+
+Copyright (c) 2026 CharlesHsu。此官方插件按 AGPL-3.0-only 分发，完整协议见包内 `assets/licenses/AGPL-3.0.txt`；[对应源代码](https://github.com/KraHsu/repeaty/tree/codex/learning-scope/plugins/study-statistics)。第三方组件继续遵循各自许可证。

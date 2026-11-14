@@ -10,6 +10,7 @@ export const pluginIdSchema = z
       !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/.test(id),
     '插件标识为保留名称。',
   )
+const authorSchema = z.string().trim().min(1).max(100)
 export const manifestSchema = z
   .object({
     id: pluginIdSchema,
@@ -18,6 +19,8 @@ export const manifestSchema = z
       .min(1)
       .max(100)
       .refine((value) => value.trim().length > 0),
+    // Older installed packages remain readable; newly built/installed packages require an author.
+    author: authorSchema.optional(),
     version: z
       .string()
       .max(64)
@@ -69,6 +72,9 @@ export const bundleSchema = z
     assets: pluginAssetsSchema.optional(),
   })
   .strict()
+export const installBundleSchema = bundleSchema.extend({
+  manifest: manifestSchema.extend({ author: authorSchema }),
+})
 export type PluginManifest = z.infer<typeof manifestSchema>
 export type PluginBundle = z.infer<typeof bundleSchema>
 function sorted(value: unknown): unknown {
@@ -98,15 +104,20 @@ export async function packageHash(bundle: PluginBundle) {
 export async function readPluginFile(file: File): Promise<PluginBundle> {
   if (file.size > 40 * 1024 * 1024) throw new Error('插件包超过大小限制。')
   try {
-    return bundleSchema.parse(JSON.parse(await file.text()))
-  } catch {
+    return installBundleSchema.parse(JSON.parse(await file.text()))
+  } catch (error) {
+    if (error instanceof z.ZodError) throw new Error(pluginIssueMessage(error))
     throw new Error('插件包格式或 API 版本不受支持。')
   }
 }
 
 /** Translate host failures at the management UI boundary; plugin APIs retain their error codes. */
 export function pluginIssueMessage(issue: unknown): string {
-  if (issue instanceof z.ZodError) return '插件包格式或 API 版本不受支持。'
+  if (issue instanceof z.ZodError) {
+    if (issue.issues.some(({ path }) => path[0] === 'manifest' && path[1] === 'author'))
+      return '插件包必须提供作者（author），长度为 1–100 个字符。'
+    return '插件包格式或 API 版本不受支持。'
+  }
   const message = issue instanceof Error ? issue.message : String(issue)
   const messages: Record<string, string> = {
     'invalid-plugin': '插件包格式或 API 版本不受支持。',

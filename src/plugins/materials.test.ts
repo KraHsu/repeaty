@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest'
+import { computed, ref } from 'vue'
 import { createMaterialRegistrations, type MaterialPluginIdentity } from './materials'
 import { PluginRuntime } from './runtime'
 import { createPluginApi } from './sdk'
@@ -49,6 +50,31 @@ const definition = {
   version: 1,
   type: 'extension',
 }
+
+it('updates localized command titles while keeping command identity and capabilities fixed', () => {
+  const registry = createMaterialRegistrations(() => true)
+  const title = ref('查询选中文字')
+  const original = {
+    id: 'lookup',
+    get title() {
+      return title.value
+    },
+    formats: ['*'],
+    run: vi.fn(async () => undefined),
+  }
+  const remove = registry.registrations.registerCommand(original)
+  const label = computed(() => registry.commands[0]?.title)
+  expect(label.value).toBe('查询选中文字')
+  title.value = 'Look up selected text'
+  original.id = 'changed'
+  original.formats.push('pdf')
+  expect(label.value).toBe('Look up selected text')
+  expect(registry.commands[0]).toMatchObject({ id: 'lookup', formats: ['*'] })
+  title.value = 'x'.repeat(201)
+  expect(label.value).toBe('查询选中文字')
+  remove()
+  expect(registry.commands).toHaveLength(0)
+})
 
 it('freezes parser identity and extension snapshots and rejects duplicate or invalid contributions', () => {
   const registry = createMaterialRegistrations(() => true)

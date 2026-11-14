@@ -1109,9 +1109,7 @@
     display: flex;
     align-items: center;
     gap: 15px;
-    border-top: 1px solid var(--line);
-    margin-top: 35px;
-    padding: 25px 0;
+    padding-block-end: 25px;
     color: var(--muted);
   }
   .about-core h3 {
@@ -1175,9 +1173,6 @@
     flex-wrap: wrap;
     justify-content: flex-end;
     gap: 10px;
-    border-top: 1px solid var(--app-soft-line);
-    padding-top: 21px;
-    margin-top: 25px;
   }
   .form-note {
     font-size: var(--font-size-meta);
@@ -1261,9 +1256,7 @@
     margin-top: 30px;
   }
   .card-answer {
-    border-top: 1px solid var(--app-soft-line);
-    padding-top: 28px;
-    margin: 0 0 10px;
+    margin-block-end: 10px;
     width: 100%;
   }
   .card-answer > .eyebrow {
@@ -1995,11 +1988,6 @@
     flex-wrap: wrap;
   }
 
-  .snapshot-section {
-    border-top: 1px solid var(--line);
-    padding-top: 30px;
-    margin-top: 32px;
-  }
   .snapshot-list {
     list-style: none;
     padding: 0;
@@ -2410,11 +2398,6 @@
     max-width: 100%;
     overflow-x: auto;
   }
-  .leetcode-workspace {
-    margin-top: 28px;
-    border-top: 1px solid var(--line);
-    padding-top: 12px;
-  }
   .leetcode-workspace select,
   .leetcode-workspace textarea,
   .leetcode-editor select,
@@ -2668,11 +2651,6 @@
     border: 1px solid var(--line);
     border-radius: 10px;
     font-weight: var(--font-weight-semibold);
-  }
-  .cloze-extra {
-    margin-top: 24px;
-    padding-top: 20px;
-    border-top: 1px solid var(--line);
   }
 
   .account-controls {

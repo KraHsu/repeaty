@@ -1,8 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod collection;
+mod desktop_experience;
+mod device_sync;
 mod exports;
 mod mcp;
 mod plugins;
+mod sync_host;
 mod window_frame;
 mod workspace_backups;
 mod workspaces;
@@ -209,7 +212,22 @@ fn main() {
         return;
     }
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, args, _| {
+            if !args.iter().any(|arg| arg == "--background") {
+                desktop_experience::show_main(app);
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::SIZE
+                        | tauri_plugin_window_state::StateFlags::POSITION
+                        | tauri_plugin_window_state::StateFlags::MAXIMIZED,
+                )
+                .build(),
+        )
         .setup(|app| {
             let directory = app.path().app_data_dir()?;
             std::fs::create_dir_all(&directory)?;
@@ -226,11 +244,28 @@ fn main() {
                 plugins: Plugins::new(&directory)?,
             });
             app.manage(workspaces::Workspaces::new(&directory));
+            let sync = device_sync::SyncService::new(
+                &directory,
+                app.state::<workspaces::Workspaces>().sync_handler(),
+            )
+            .map_err(std::io::Error::other)?;
+            app.state::<workspaces::Workspaces>()
+                .attach_sync(&sync)
+                .map_err(std::io::Error::other)?;
+            app.manage(sync);
             app.manage(workspace_backups::Backups::new(&directory));
             let collection = collection::Collection::new(&directory)?;
             collection.attach_workspace(app.state::<workspaces::Workspaces>().active_identity());
             app.manage(collection);
             app.manage(collection::Capture::new(&directory)?);
+            app.manage(desktop_experience::Experience::new(&directory));
+            // Failure here must not prevent opening a local learning library.
+            let _ = app.handle().plugin(
+                tauri_plugin_autostart::Builder::new()
+                    .arg("--background")
+                    .build(),
+            );
+            let _ = desktop_experience::install_tray(app.handle());
             // Some Wayland environments do not expose a global-hotkey backend. Collection
             // and the rest of the application must remain available there.
             let shortcut_available = app
@@ -249,6 +284,7 @@ fn main() {
                     .decorations(false)
                     .resizable(true)
                     .shadow(true)
+                    .visible(!app.state::<desktop_experience::Experience>().start_hidden())
                     .inner_size(1280.0, 850.0)
                     .min_inner_size(500.0, 400.0)
                     .on_navigation(|url| {
@@ -267,6 +303,9 @@ fn main() {
                     })
                     .on_page_load(|window, payload| {
                         if payload.event() == tauri::webview::PageLoadEvent::Started {
+                            window
+                                .state::<desktop_experience::Experience>()
+                                .cancel_transfer();
                             window_frame::page_started(&window);
                             window.state::<Desktop>().mcp.detach();
                             window.state::<workspace_backups::Backups>().cancel_all();
@@ -283,6 +322,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            sync_host::device_sync_request,
             mcp_attach,
             mcp_workspace,
             mcp_reply,
@@ -298,6 +338,16 @@ fn main() {
             plugin_host,
             window_snap_epoch,
             window_snap_region,
+            desktop_experience::desktop_experience_status,
+            desktop_experience::desktop_experience_configure,
+            desktop_experience::desktop_autostart,
+            desktop_experience::desktop_close_action,
+            desktop_experience::desktop_cancel_quit,
+            desktop_experience::desktop_update_check,
+            desktop_experience::desktop_update_download,
+            desktop_experience::desktop_update_cancel,
+            desktop_experience::desktop_update_install,
+            desktop_experience::desktop_diagnostics,
             workspaces::workspace_status,
             workspaces::workspace_choose,
             workspaces::workspace_recent,

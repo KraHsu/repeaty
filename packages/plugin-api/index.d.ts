@@ -13,7 +13,7 @@ export * from './collection'
 export * from './study'
 export * from './automation'
 export * from './providers'
-export * from './publishing'
+export * from './network'
 export const automation: import('./automation').AutomationApi
 import type { MaterialLocator } from './materials'
 
@@ -226,6 +226,8 @@ export declare const AppPage: DefineComponent<AppPageProps & HTMLAttributes>
 export interface PluginManifest {
   id: string
   name: string
+  /** Publisher or maintainer name, shown after the plugin name. Required when building/installing. */
+  author: string
   version: string
   apiVersion: 1
   dataVersion: number
@@ -239,13 +241,22 @@ export interface PluginManifest {
     network?: boolean
   }
 }
-export declare const locale: DeepReadonly<Ref<'en' | 'zh-CN'>>
+export type Locale =
+  'en' | 'zh-CN' | 'zh-TW' | 'de' | 'es' | 'fr' | 'it' | 'ja' | 'ko' | 'pl' | 'pt-BR' | 'ru'
+export declare const locale: DeepReadonly<Ref<Locale>>
+/** Reacts to host locale changes; catalogs are isolated to the caller. Missing keys use fallback. */
+export declare function createTranslator(
+  catalogs: Partial<Record<Locale, Readonly<Record<string, string>>>>,
+  fallback?: Locale,
+): (key: string, params?: Record<string, string | number | undefined>) => string
 export declare function t(
   input: string | Error,
   params?: Record<string, string | number | undefined>,
 ): string
 export declare function readSetting(key: string): string | null
 export declare function writeSetting(key: string, value: string, onError?: () => void): void
+/** Waits for the current library's settings adapter and rejects after disposal or a switch. */
+export declare function persistSetting(key: string, value: string): Promise<void>
 export declare function practiceContentRevision(
   card: Pick<CardView, 'front' | 'back' | 'plugin'>,
 ): Promise<string>

@@ -7,7 +7,12 @@ import { fixture } from '../../src/core/test-fixtures'
 import { addSource, prepareSource } from '../../src/core/sources'
 import { exportBackup, parseBackup } from '../../src/core/backups'
 import { parseArchive } from '../../src/core/archive'
-import { confirmPluginAction, openPluginManager, selectPlugin } from './settings-flow'
+import {
+  confirmPluginAction,
+  enableInstalledPlugin,
+  openPluginManager,
+  selectPlugin,
+} from './settings-flow'
 import { localLibrary } from './source-excerpt-flow'
 import { selectUiValue } from './ui-flow'
 
@@ -35,12 +40,13 @@ async function prepare(page: Page, info: TestInfo) {
     outdir: info.outputPath('visual-occlusion'),
   })
   await openPluginManager(page)
-  await page.locator('.plugin-actions input[type=file]').setInputFiles({
+  await page.locator('.plugins-page input[type=file]').setInputFiles({
     name: 'visual-occlusion.repeaty-plugin',
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(bundle)),
   })
   await confirmPluginAction(page)
+  await enableInstalledPlugin(page, 'visual-occlusion')
   const notifications = page
     .locator('.notification-center')
     .getByRole('button', { name: '关闭提示', exact: true })

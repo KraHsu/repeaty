@@ -1,12 +1,18 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { ref } from 'vue'
 
 type CloseEvent = { preventDefault(): void }
 type Stop = () => void | Promise<void>
 let active: { stop(): void } | undefined
+export const windowCloseFailed = ref(false)
 
 /** One owner per application window. Never bypass another session's pending save. */
 export async function connectWindowCloseGuard(
   beforeClose: () => boolean | Promise<boolean>,
+  options?: {
+    afterSave?(): Promise<'close' | 'handled'>
+    canceled?(): Promise<void>
+  },
 ): Promise<() => void> {
   active?.stop()
   const window = getCurrentWindow()
@@ -26,44 +32,36 @@ export async function connectWindowCloseGuard(
     },
   }
   active = owner
+  windowCloseFailed.value = false
   const current = () => alive && active === owner
   async function install() {
     const stop = await window.onCloseRequested(requested)
     if (!current()) await stop()
     else subscriptions.add(stop)
   }
-  async function disconnect() {
-    for (const stop of subscriptions) {
-      await stop()
-      subscriptions.delete(stop)
-    }
-  }
   const requested = (event: CloseEvent): void | Promise<void> => {
     // This must happen synchronously, before awaiting editor or repository work.
     event.preventDefault()
     if (!current()) return
     if (pending) return pending
+    windowCloseFailed.value = false
     pending = Promise.resolve()
       .then(async () => {
-        let releasing = false
         try {
-          if (!current() || !(await beforeClose()) || !current()) return
-          releasing = true
-          // Tauri's onCloseRequested calls destroy() when an event is not prevented.
-          // Remove only our listeners, then request the existing native close path.
-          await disconnect()
           if (!current()) return
-          await window.close()
-        } catch {
-          // An uncertain unlisten outcome retains its cleanup handle. Rebinding is
-          // safe: simultaneous callbacks still share this single pending promise.
-          if (current() && releasing) {
-            try {
-              await install()
-            } catch {
-              /* The native window may already be gone. */
-            }
+          if (!(await beforeClose()) || !current()) {
+            await options?.canceled?.()
+            return
           }
+          if ((await options?.afterSave?.()) === 'handled' || !current()) return
+          // Finalize only after this owner's save and tray/update policy have approved.
+          // A second close() can be prevented by stale native JS listeners left after
+          // a renderer reload. This is the same final operation used by Tauri's
+          // onCloseRequested, while keeping our guard attached until it succeeds.
+          await window.destroy()
+        } catch {
+          if (current()) windowCloseFailed.value = true
+          await options?.canceled?.().catch(() => {})
         }
       })
       .finally(() => {
@@ -74,6 +72,7 @@ export async function connectWindowCloseGuard(
   try {
     await install()
   } catch (error) {
+    if (current()) windowCloseFailed.value = true
     owner.stop()
     throw error
   }

@@ -134,7 +134,7 @@ function addToFocused() {
             {{ t('稍后到期 {count} 张', { count: focusedState.future }) }}
           </p>
         </div>
-        <div class="b-focus-primary">
+        <div class="b-focus-primary app-section-divider">
           <UiButton
             variant="primary"
             class="b-start-review min-h-12 justify-center gap-6 whitespace-nowrap"

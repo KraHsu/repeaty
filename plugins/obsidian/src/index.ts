@@ -5,7 +5,7 @@ export default function activate(): ExtensionPlugin {
   registerSourceConnector({
     id: 'vault',
     get title() {
-      return locale.value === 'en' ? 'Obsidian vault' : 'Obsidian 笔记库'
+      return !locale.value.startsWith('zh') ? 'Obsidian vault' : 'Obsidian 笔记库'
     },
     kind: 'directory',
     async scan(request, context) {
@@ -19,10 +19,10 @@ export default function activate(): ExtensionPlugin {
     type: 'extension',
     version: 1,
     get label() {
-      return locale.value === 'en' ? 'Obsidian source' : 'Obsidian 来源'
+      return !locale.value.startsWith('zh') ? 'Obsidian source' : 'Obsidian 来源'
     },
     get description() {
-      return locale.value === 'en'
+      return !locale.value.startsWith('zh')
         ? 'Read a vault without modifying notes or attachments.'
         : '只读连接笔记库，保留链接和附件，确认后采用更新。'
     },

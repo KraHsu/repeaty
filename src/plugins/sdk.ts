@@ -1,6 +1,6 @@
 import * as vue from 'vue'
-import { t, locale } from '../i18n'
-import { readSetting, writeSetting } from '../settings-store'
+import { t, locale, createTranslator } from '../i18n'
+import { readSetting, writeSetting, persistSetting } from '../settings-store'
 import { practiceContentRevision } from '../core/practice'
 import { hasAttemptBody } from '../core/practice-data'
 import { callPluginHost, readPluginData, writePluginData } from '@repeaty-plugin-host'
@@ -15,8 +15,8 @@ import { PluginTaskScheduler, supportsPluginWorkers } from './tasks'
 import { createPluginResources } from './resources'
 import type { PluginStudyHostFactory } from './study'
 import type { PluginAutomationHostFactory } from './automation'
-import type { PluginPublishingHostFactory, PluginNetworkConsent } from './publishing'
-import type { PublishingApi, PluginHttpRequest, PluginHttpResponse } from '@repeaty/plugin-api'
+import type { PluginNetworkConsent } from './network'
+import type { PluginHttpRequest, PluginHttpResponse } from '@repeaty/plugin-api'
 import type { AutomationApi } from '@repeaty/plugin-api'
 import type { StudyHostApi } from '@repeaty/plugin-api'
 import type { PluginAssets } from './assets'
@@ -65,7 +65,6 @@ export function createPluginApi(
     host?: () => PluginMaterialHostFactory | undefined
     studyHost?: () => PluginStudyHostFactory | undefined
     automationHost?: () => PluginAutomationHostFactory | undefined
-    publishingHost?: () => PluginPublishingHostFactory | undefined
     networkConsent?: () => PluginNetworkConsent | undefined
     scheduler?: PluginTaskScheduler
     commandScheduler?: PluginTaskScheduler
@@ -162,33 +161,6 @@ export function createPluginApi(
       authorizedOrigins.add(origin)
     },
     request: requestHttp,
-  }
-  let boundPublishing: PublishingApi | undefined
-  function publishingHost() {
-    guard()
-    const factory = materialOptions.publishingHost?.()
-    if (!factory) throw new Error('publishing-service-unavailable')
-    return (boundPublishing ??= factory({
-      pluginId: manifest.id,
-      scope,
-      signal: lifetime.signal,
-      assertCurrent: guard,
-    }))
-  }
-  const publishing: PublishingApi = {
-    list: () => publishingHost().list(),
-    async prepare(input, signal) {
-      const result = await publishingHost().prepare(input, signal)
-      guard()
-      return result
-    },
-    async asset(snapshotId, assetId, signal) {
-      const result = await publishingHost().asset(snapshotId, assetId, signal)
-      guard()
-      return result
-    },
-    validate: (id) => publishingHost().validate(id),
-    release: (id) => boundPublishing?.release(id),
   }
   const pluginData = {
     async get(id: string, requestedScope: string) {
@@ -375,6 +347,7 @@ export function createPluginApi(
   return {
     t,
     locale,
+    createTranslator,
     MediaList,
     CardContent,
     PracticeHistory,
@@ -450,7 +423,6 @@ export function createPluginApi(
     materials,
     study,
     automation,
-    publishing,
     network,
     resources: createPluginResources(materialOptions.assets, lifetime.signal, guard),
     tasks: { run: runTask },
@@ -469,6 +441,11 @@ export function createPluginApi(
     writeSetting(key: string, value: string, onError?: () => void) {
       guard()
       writeSetting(settingsKey(key), value, onError)
+    },
+    async persistSetting(key: string, value: string) {
+      guard()
+      await persistSetting(settingsKey(key), value)
+      guard()
     },
     nativePlugin: native,
     pluginFiles: {

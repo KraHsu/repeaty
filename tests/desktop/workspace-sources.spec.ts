@@ -141,7 +141,9 @@ test('source file acceptance keeps old quotes, positions and card progress; medi
   await page.getByRole('button', { name: '显示答案', exact: true }).click()
   await page.getByRole('button', { name: /^查看原文/ }).click()
   await expect(page.locator('.source-original mark')).toHaveText(sourceQuote)
-  await expect(page.getByRole('dialog')).toContainText('正在查看摘录保存时的版本。')
+  await expect(
+    page.getByRole('dialog').filter({ has: page.locator('.source-original') }),
+  ).toContainText('正在查看摘录保存时的版本。')
   await page.getByRole('button', { name: '关闭', exact: true }).click()
 })
 

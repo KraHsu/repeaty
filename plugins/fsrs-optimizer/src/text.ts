@@ -93,7 +93,7 @@ const messages = {
 } as const
 
 export function text(key: keyof typeof messages) {
-  return messages[key][locale.value === 'en' ? 1 : 0]
+  return messages[key][!locale.value.startsWith('zh') ? 1 : 0]
 }
 
 const errors: Record<string, readonly [string, string]> = {
@@ -191,7 +191,7 @@ const errors: Record<string, readonly [string, string]> = {
 export function errorText(error: unknown) {
   const message = error instanceof Error ? error.message : String(error)
   const entry = errors[message]
-  if (entry) return entry[locale.value === 'en' ? 1 : 0]
+  if (entry) return entry[!locale.value.startsWith('zh') ? 1 : 0]
   const translated = hostText(error instanceof Error ? error : message)
   return translated || text('fallbackError')
 }

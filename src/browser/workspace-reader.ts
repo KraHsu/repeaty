@@ -117,7 +117,9 @@ export class BrowserWorkspaceReader {
       db.run('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF;')
       if (
         scalar(db, 'PRAGMA application_id') !== 0x52505459 ||
-        ![10, 11, 12, 13, 14, 15, 16, 17].includes(scalar(db, 'PRAGMA user_version') as number) ||
+        ![10, 11, 12, 13, 14, 15, 16, 17, 18].includes(
+          scalar(db, 'PRAGMA user_version') as number,
+        ) ||
         scalar(db, 'SELECT id FROM workspace_identity') !== marker.id
       )
         throw new WorkspaceReadError('incompatible')

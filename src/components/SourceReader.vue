@@ -1,11 +1,21 @@
 <script setup lang="ts">
 import { UiButton, UiTextarea } from './ui'
+import UContextMenu from '@nuxt/ui/components/ContextMenu.vue'
+import {
+  arrangeMenu,
+  defaultMenus,
+  useMenuPreferences,
+  type MenuAction,
+  type MenuSurface,
+} from '../input/menus'
+import { useOptionalInputCommands } from '../input/controller'
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import type { MaterialSelection, MaterialReaderProps } from '@repeaty/plugin-api'
 import { usePluginManager } from '../plugins/manager'
 import { validateMaterialLocator, type MaterialLocator } from '../core/material-data'
 import { createExportFile } from '@repeaty-platform'
 import MaterialReaderView from './MaterialReaderView.vue'
+import ReaderSelectionToolbar from './ReaderSelectionToolbar.vue'
 import AppModal from './AppModal.vue'
 import PluginToolView from './PluginToolView.vue'
 import { materialLocked } from '../core/material-sequence'
@@ -36,6 +46,7 @@ const props = defineProps<{
   sources?: Source[]
   initialSelection?: MaterialSelection
   holdReading?: () => Promise<() => void>
+  actions?: MenuAction[]
 }>()
 const emit = defineEmits<{
   select: [sourceId: string, start: number, end: number, locator?: MaterialLocator]
@@ -52,6 +63,8 @@ const preview = ref(
 )
 const selectionError = ref('')
 const plugins = usePluginManager()
+const input = useOptionalInputCommands()
+const menus = useMenuPreferences()
 const textOnly = ref(false),
   materialError = ref(''),
   originalLoading = ref(false),
@@ -59,6 +72,8 @@ const textOnly = ref(false),
   commandBusy = ref(false)
 const original = shallowRef<Blob>()
 const currentSelection = shallowRef<MaterialSelection | undefined>(props.initialSelection)
+const selectionBoundary = ref<HTMLElement>()
+const selectionPointer = shallowRef<{ x: number; y: number }>()
 const initialSelectionRange = computed(() =>
   props.initialSelection?.locator.kind === 'text'
     ? props.initialSelection.locator
@@ -78,7 +93,8 @@ const commands = computed(() =>
         (owner.commands ?? [])
           .filter((command) =>
             command.formats
-              ? command.formats.includes(props.source.document?.format ?? props.source.format)
+              ? command.formats.includes('*') ||
+                command.formats.includes(props.source.document?.format ?? props.source.format)
               : owner === installation.value,
           )
           .map((command) => ({ owner, command })),
@@ -92,7 +108,12 @@ function closeTool() {
   releaseToolReading?.()
   releaseToolReading = undefined
 }
-watch([() => props.scope, () => props.source.id, () => props.source.mediaId], closeTool)
+watch([() => props.scope, () => props.source.id, () => props.source.mediaId], () => {
+  closeTool()
+  currentSelection.value = undefined
+  selectionPointer.value = undefined
+  selectionError.value = ''
+})
 const requestedPosition = shallowRef<ReadingPosition | undefined>(props.source.reading)
 // This is a navigation command, not an echo of source metadata or the reader's autosave.
 const readerPosition = computed<MaterialReaderProps['position']>(() =>
@@ -445,7 +466,16 @@ function update(): ReadingUpdate {
 function scrolled() {
   if (!restoring.value && alive) emit('position', update())
 }
-function selected() {
+function changesSelection(event?: Event) {
+  return (
+    !(event instanceof KeyboardEvent) || /^(Arrow\w+|Home|End|PageUp|PageDown|a)$/i.test(event.key)
+  )
+}
+function selectionKeydown(event: KeyboardEvent) {
+  if (changesSelection(event)) selectionPointer.value = undefined
+}
+function selected(event?: Event) {
+  if (!changesSelection(event)) return
   selectionError.value = ''
   const textarea = reader.value?.textareaRef
   currentSelection.value =
@@ -471,7 +501,8 @@ function selected() {
       reader.value?.textareaRef.selectionEnd,
     )
 }
-function selectedPreview() {
+function selectedPreview(event?: Event) {
+  if (!changesSelection(event)) return
   const area = rendered.value,
     selection = area?.ownerDocument.getSelection()
   if (!area || !previewCurrent() || !selection?.rangeCount || !area.contains(selection.anchorNode))
@@ -574,6 +605,7 @@ async function restore(position: ReadingPosition, focus = false) {
   if (alive && sequence === restoreSequence) restoring.value = false
 }
 async function toggle() {
+  currentSelection.value = undefined
   let position = capture()
   if (preview.value && rendered.value)
     position = {
@@ -591,6 +623,7 @@ async function toggle() {
   if (alive) emit('position', update())
 }
 async function resume() {
+  currentSelection.value = undefined
   mirror?.dispose()
   mirror = undefined
   preview.value = props.source.format === 'markdown' && props.source.reading?.view !== 'source'
@@ -682,6 +715,91 @@ onUnmounted(() => {
   mirror?.dispose()
 })
 defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !restoring.value) })
+
+async function copySelection() {
+  const text = currentSelection.value?.text
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    materialError.value = t('无法复制，请使用系统的复制操作。')
+  }
+}
+const menuActions = computed<MenuAction[]>(() => [
+  {
+    id: 'material.copy',
+    title: t('复制选中文字'),
+    essential: true,
+    disabled: !currentSelection.value?.text,
+    run: copySelection,
+  },
+  ...(props.source.format === 'markdown' && !customReader.value
+    ? [
+        {
+          id: 'material.preview',
+          title: t(preview.value ? '查看 Markdown 原文' : '阅读 Markdown 预览'),
+          run: toggle,
+        },
+      ]
+    : []),
+  ...(props.source.document
+    ? [
+        {
+          id: 'material.export',
+          title: t('导出原件'),
+          disabled: exportingOriginal.value,
+          run: exportOriginal,
+        },
+      ]
+    : []),
+  ...(props.readOnly ? [] : (props.actions ?? [])),
+  ...commands.value.map(({ owner, command }) => ({
+    id: `plugin:${owner.plugin.id}:${command.id}`,
+    title: command.title,
+    disabled: commandBusy.value,
+    run: () => runCommand(owner.plugin.id, command.id),
+  })),
+])
+function surfaceActions(surface: MenuSurface) {
+  return arrangeMenu(
+    menuActions.value.map((action) => ({
+      ...action,
+      essential: action.essential && surface === 'reading-context',
+    })),
+    (menus?.value.value ?? defaultMenus()).surfaces[surface],
+  )
+}
+const contextItems = computed(() =>
+  surfaceActions('reading-context').map((action) => ({
+    label: action.title,
+    disabled: action.disabled,
+    onSelect: () => executeAction(action),
+  })),
+)
+function executeAction(action: MenuAction) {
+  const current = menuActions.value.find((entry) => entry.id === action.id)
+  if (current && !current.disabled)
+    void Promise.resolve(current.run()).catch((issue) => {
+      if (alive) materialError.value = t(issue as Error)
+    })
+}
+watch(
+  menuActions,
+  (actions, _old, onCleanup) => {
+    if (!input) return
+    const dispose = actions.map((action) =>
+      input.register({
+        id: action.id,
+        title: action.title,
+        context: 'material',
+        available: () => alive && !action.disabled && menuActions.value.includes(action),
+        execute: action.run,
+      }),
+    )
+    onCleanup(() => dispose.forEach((stop) => stop()))
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -690,9 +808,6 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
       <UiButton v-if="contributed && readerCanLocate" variant="ghost" @click="textOnly = !textOnly">
         {{ t(customReader ? '查看文本副本' : '使用插件阅读器') }}
       </UiButton>
-      <UiButton variant="secondary" :disabled="exportingOriginal" @click="exportOriginal">{{
-        t('导出原件')
-      }}</UiButton>
       <span v-if="source.document.readerId && !contributed" class="form-note">{{
         t('阅读器插件未启用，显示保留的文本副本。')
       }}</span>
@@ -707,90 +822,99 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
       }}
     </p>
     <UiButton
+      v-for="action in surfaceActions('reading-toolbar')"
+      :key="action.id"
       variant="ghost"
-      type="submit"
-      v-if="source.format === 'markdown' && !customReader"
-      :aria-pressed="preview"
-      @click="toggle"
+      :disabled="action.disabled"
+      @click="executeAction(action)"
+      >{{ action.title }}</UiButton
     >
-      {{ t(preview ? '查看 Markdown 原文' : '阅读 Markdown 预览') }}
-    </UiButton>
   </div>
   <p v-if="materialError" class="form-note" role="alert">{{ materialError }}</p>
   <p v-if="contentLinks.error.value" class="form-note" role="alert">
     {{ t(contentLinks.error.value as Error) }}
   </p>
   <p v-if="selectionError" class="form-note" role="status">{{ selectionError }}</p>
-  <p v-if="customReader && originalLoading" role="status">{{ t('正在读取原始文件…') }}</p>
-  <MaterialReaderView
-    v-else-if="customReader && contributed"
-    :key="installation!.instanceId"
-    :component="contributed.component"
-    :reader-props="readerProps"
-    @failed="readerFailed"
+  <ReaderSelectionToolbar
+    v-if="currentSelection?.text && (menus?.value.value.selectionEnabled ?? true)"
+    :boundary="selectionBoundary"
+    :selection-key="scope + JSON.stringify(currentSelection.locator)"
+    :selection-token="currentSelection"
+    :actions="surfaceActions('reading-selection')"
+    :pointer="selectionPointer"
+    :opacity="menus?.value.value.selectionOpacity ?? 100"
+    @choose="executeAction"
   />
-  <div
-    v-else-if="preview"
-    ref="rendered"
-    class="source-markdown-preview markdown-content card-content"
-    tabindex="0"
-    :aria-label="t('材料阅读预览')"
-    :aria-busy="restoring"
-    :data-source-id="source.id"
-    :data-source-version="source.mediaId"
-    :data-source-scope="scope"
-    @scroll.passive="scrolled"
-    @mouseup="selectedPreview"
-    @keyup="selectedPreview"
-    @touchend="selectedPreview"
-    @click="previewControl"
-    @keydown="previewControl"
-    @mouseover="previewWiki"
-    @focusin="previewWiki"
-    v-html="html"
-  />
-  <div v-else-if="readOnly" class="source-original" tabindex="0" :aria-label="t('原文快照')">
-    <template
-      v-if="
-        initialSelection &&
-        initialSelectionRange &&
-        text.slice(initialSelectionRange.start, initialSelectionRange.end) === initialSelection.text
-      "
-      >{{ text.slice(0, initialSelectionRange.start)
-      }}<mark ref="fallbackHighlight">{{ initialSelection.text }}</mark
-      >{{ text.slice(initialSelectionRange.end) }}</template
+  <UContextMenu :items="contextItems" :disabled="!contextItems.length">
+    <div
+      ref="selectionBoundary"
+      class="reader-context-surface"
+      @pointerup.capture="selectionPointer = { x: $event.clientX, y: $event.clientY }"
+      @keydown.capture="selectionKeydown"
     >
-    <template v-else>{{ text }}</template>
-  </div>
-  <UiTextarea
-    :ui="{
-      base: `source-text ${source.kind === 'excerpt' && text.length < 600 ? 'short-excerpt' : ''}`,
-    }"
-    v-else
-    ref="reader"
-    :model-value="text"
-    readonly
-    :aria-label="t('材料正文')"
-    :aria-busy="restoring"
-    @scroll.passive="scrolled"
-    @select="selected"
-    @keyup="selected"
-    @mouseup="selected"
-    @touchend="selected"
-  />
+      <p v-if="customReader && originalLoading" role="status">{{ t('正在读取原始文件…') }}</p>
+      <MaterialReaderView
+        v-else-if="customReader && contributed"
+        :key="JSON.stringify([scope, source.id, source.mediaId, installation!.instanceId])"
+        :component="contributed.component"
+        :reader-props="readerProps"
+        @failed="readerFailed"
+      />
+      <div
+        v-else-if="preview"
+        ref="rendered"
+        class="source-markdown-preview markdown-content card-content"
+        tabindex="0"
+        :aria-label="t('材料阅读预览')"
+        :aria-busy="restoring"
+        :data-source-id="source.id"
+        :data-source-version="source.mediaId"
+        :data-source-scope="scope"
+        @scroll.passive="scrolled"
+        @mouseup="selectedPreview"
+        @keyup="selectedPreview"
+        @touchend="selectedPreview"
+        @click="previewControl"
+        @keydown="previewControl"
+        @mouseover="previewWiki"
+        @focusin="previewWiki"
+        v-html="html"
+      />
+      <div v-else-if="readOnly" class="source-original" tabindex="0" :aria-label="t('原文快照')">
+        <template
+          v-if="
+            initialSelection &&
+            initialSelectionRange &&
+            text.slice(initialSelectionRange.start, initialSelectionRange.end) ===
+              initialSelection.text
+          "
+          >{{ text.slice(0, initialSelectionRange.start)
+          }}<mark ref="fallbackHighlight">{{ initialSelection.text }}</mark
+          >{{ text.slice(initialSelectionRange.end) }}</template
+        >
+        <template v-else>{{ text }}</template>
+      </div>
+      <UiTextarea
+        :ui="{
+          base: `source-text ${source.kind === 'excerpt' && text.length < 600 ? 'short-excerpt' : ''}`,
+        }"
+        v-else
+        ref="reader"
+        :model-value="text"
+        readonly
+        :aria-label="t('材料正文')"
+        :aria-busy="restoring"
+        @scroll.passive="scrolled"
+        @select="selected"
+        @keyup="selected"
+        @mouseup="selected"
+        @touchend="selected"
+      />
+    </div>
+  </UContextMenu>
   <p v-if="media.error.value" role="alert" class="form-note">
     {{ t('部分媒体无法读取，请从完整备份恢复。') }}
   </p>
-  <div v-if="commands.length" class="source-selection-tools" :aria-label="t('材料命令')">
-    <UiButton
-      v-for="{ owner, command } in commands"
-      :key="owner.plugin.id + ':' + command.id"
-      variant="secondary"
-      :disabled="commandBusy"
-      @click="runCommand(owner.plugin.id, command.id)"
-      >{{ command.title }}</UiButton
-    >
-  </div>
   <AppModal v-if="tool" wide :title="tool.command.title" @close="closeTool">
     <PluginToolView
       :component="tool.command.component!"
@@ -802,6 +926,9 @@ defineExpose({ resume, restart, locate, capture: update, ready: computed(() => !
 </template>
 
 <style scoped>
+.reader-context-surface {
+  min-width: 0;
+}
 .source-original {
   white-space: pre-wrap;
   overflow-wrap: anywhere;

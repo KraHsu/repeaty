@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { defineAsyncComponent, ref, watch } from 'vue'
+import { defineAsyncComponent, ref, watch, onScopeDispose } from 'vue'
 import UApp from '@nuxt/ui/components/App.vue'
-import { en, zh_cn as zhCN } from '@nuxt/ui/locale'
+import { en, zh_cn, zh_tw, de, es, fr, it, ja, ko, pl, pt_br, ru } from '@nuxt/ui/locale'
 import AppSidebar from './app/views/AppSidebar.vue'
 import AppHeader from './app/views/AppHeader.vue'
 import OverviewPage from './app/views/OverviewPage.vue'
@@ -14,7 +14,7 @@ import BackupDialogs from './app/views/BackupDialogs.vue'
 import StudyDialogs from './app/views/StudyDialogs.vue'
 import AutomationDialog from './app/views/AutomationDialog.vue'
 import NetworkConsentDialog from './app/views/NetworkConsentDialog.vue'
-import { t, locale } from './i18n'
+import { t, locale, connectSystemLanguage } from './i18n'
 import { Database, Repeat2 } from '@lucide/vue'
 import NotificationCenter from './components/NotificationCenter.vue'
 import PluginViewBoundary from './components/PluginViewBoundary.vue'
@@ -33,6 +33,21 @@ import { PracticeHistoryPanel, SettingsPage } from './app/view-components'
 import { SIDEBAR_MIN_WIDTH, useSidebarLayout } from './app/useSidebarLayout'
 import { useColorTheme } from './app/useColorTheme'
 useColorTheme()
+onScopeDispose(connectSystemLanguage())
+const componentLocales = {
+  en,
+  'zh-CN': zh_cn,
+  'zh-TW': zh_tw,
+  de,
+  es,
+  fr,
+  it,
+  ja,
+  ko,
+  pl,
+  'pt-BR': pt_br,
+  ru,
+}
 const PluginPanel = defineAsyncComponent(() => import('./components/PluginPanel.vue'))
 const application = createApplication()
 provideApplication(application)
@@ -98,7 +113,7 @@ watch(workspace.scope, () => {
 })
 </script>
 <template>
-  <UApp :locale="locale === 'en' ? en : zhCN" :toaster="null">
+  <UApp :locale="componentLocales[locale]" :toaster="null">
     <div
       class="app-layout"
       :class="{
