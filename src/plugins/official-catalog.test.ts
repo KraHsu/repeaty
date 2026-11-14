@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { externalPlugins } from '../../build/external-plugins'
 import {
   officialPluginBundles,
@@ -153,6 +154,13 @@ it.each([false, true])(
     for (const { path, installByDefault: _default, ...manifest } of catalog) {
       const bundled = installBundleSchema.parse(JSON.parse(files.get(path)!))
       expect(bundled.manifest).toEqual(manifest)
+      const sourceManifest = JSON.parse(
+        readFileSync(
+          new URL(`../../plugins/${manifest.id}/manifest.json`, import.meta.url),
+          'utf8',
+        ),
+      )
+      expect(bundled.manifest).toEqual(sourceManifest)
       expect(manifest.author).toBe('repeaty')
     }
     for (const retired of ['static-publish', 'wordpress-publish', 'discourse-publish']) {
@@ -160,7 +168,6 @@ it.each([false, true])(
       expect(files.has(`plugins/${retired}.repeaty-plugin`)).toBe(false)
     }
     expect(catalog.find(({ id }) => id === 'review-heatmap')).toMatchObject({
-      version: '1.1.2',
       path: 'plugins/review-heatmap.repeaty-plugin',
       installByDefault: false,
     })
@@ -173,7 +180,7 @@ it.each([false, true])(
       installByDefault: false,
     })
     const lookup = bundleSchema.parse(JSON.parse(files.get('plugins/web-lookup.repeaty-plugin')!))
-    expect(lookup.manifest).toMatchObject({ id: 'web-lookup', version: '1.0.1', kind: 'frontend' })
+    expect(lookup.manifest).toMatchObject({ id: 'web-lookup', kind: 'frontend' })
     expect(lookup.manifest.permissions).toBeUndefined()
     expect(lookup.readme).toContain('选区查询')
     const cleanup = bundleSchema.parse(
@@ -181,7 +188,6 @@ it.each([false, true])(
     )
     expect(cleanup.manifest).toMatchObject({
       id: 'format-cleanup',
-      version: '1.0.2',
       kind: 'frontend',
     })
     expect(cleanup.manifest.permissions).toBeUndefined()
@@ -194,7 +200,6 @@ it.each([false, true])(
     )
     expect(heatmap.manifest).toMatchObject({
       id: 'review-heatmap',
-      version: '1.1.2',
       kind: 'frontend',
       description: '在学习概览中以日历热力图展示最近 365 天的正式评分次数。',
     })

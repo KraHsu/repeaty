@@ -1,4 +1,5 @@
 import { expect, type Page, type TestInfo } from '@playwright/test'
+import heatmapManifest from '../../plugins/review-heatmap/manifest.json'
 import { fixture } from '../../src/core/test-fixtures'
 import { storedLibrary } from './stored-library'
 import {
@@ -38,7 +39,9 @@ async function installOfficialHeatmap(page: Page, screenshot?: { info: TestInfo;
   const entry = browser.locator(`[data-official-plugin="${pluginId}"]`)
   await expect(entry).toContainText('复习热力图')
   await selectPlugin(page, pluginId)
-  await expect(details(page).locator('.plugin-detail-version')).toHaveText('v1.1.2')
+  await expect(details(page).locator('.plugin-detail-version')).toHaveText(
+    `v${heatmapManifest.version}`,
+  )
   if (screenshot) {
     await page.setViewportSize({ width: screenshot.width, height: 1000 })
     expect(

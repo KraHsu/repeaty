@@ -234,11 +234,9 @@ fn write_bytes(file: &mut File, content: &[u8]) -> io::Result<()> {
 }
 fn sync_dir(dir: &Dir) -> Result<()> {
     #[cfg(unix)]
-    dir.try_clone()
-        .map_err(disk)?
-        .into_std_file()
-        .sync_all()
-        .map_err(disk)?;
+    // Capability directory handles may use O_PATH on Linux, which cannot be fsynced.
+    // Reopen the same directory for reading without resolving an ambient path.
+    dir.open(".").map_err(disk)?.sync_all().map_err(disk)?;
     #[cfg(not(unix))]
     let _ = dir;
     Ok(())
