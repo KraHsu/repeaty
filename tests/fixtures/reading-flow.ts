@@ -40,7 +40,7 @@ export async function importReading(
     .getByRole('button', { name: /^待阅读/ })
     .click()
   // Collection opens the imported material even if its list row is on a later page.
-  await expect(page.locator('.source-reader h2')).toHaveText(title)
+  await expect(page.locator('.source-reader h2').first()).toHaveText(title)
   await showSourceText(page)
   await expect(page.locator('.source-text')).toHaveValue(text)
   await expect(page.locator('.source-text')).toHaveAttribute('aria-busy', 'false')

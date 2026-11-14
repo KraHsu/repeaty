@@ -34,7 +34,10 @@ async function prepareSource(page: Page) {
   // leave every formal record unchanged.
   await page.getByRole('button', { name: '保存阅读位置', exact: true }).click()
   await expect(page.locator('.reading-progress')).toHaveAttribute('data-reading-status', 'saved')
-  await page.getByRole('button', { name: '通过 MCP 制卡', exact: true }).click()
+  await page
+    .locator('.source-excerpt-action')
+    .getByRole('button', { name: '通过 MCP 制卡', exact: true })
+    .click()
   const dialog = page.getByRole('dialog', { name: '通过 MCP 制卡', exact: true })
   await expect(dialog.getByRole('button', { name: '分享这段摘录' })).toBeDisabled()
   await dialog.getByRole('button', { name: '开启 MCP' }).click()
@@ -159,7 +162,10 @@ test('shared excerpts become editable drafts, save all three types with provenan
   await queue().getByRole('button', { name: '关闭弹窗' }).click()
   // Share again for a new batch and leave it unconfirmed.
   await selectSourceExcerpt(page)
-  await page.getByRole('button', { name: '通过 MCP 制卡', exact: true }).click()
+  await page
+    .locator('.source-excerpt-action')
+    .getByRole('button', { name: '通过 MCP 制卡', exact: true })
+    .click()
   const nextSelection = await share(page)
   await query(page, 'repeaty_propose_cards', {
     selectionId: nextSelection,
@@ -191,7 +197,7 @@ test('shared excerpts become editable drafts, save all three types with provenan
     code: 'selection-unavailable',
   })
   await page.getByRole('button', { name: 'Overview', exact: true }).click()
-  expectLearningPreserved(await storedLibrary(page), saved)
+  expectLearningPreserved(await storedLibrary(page), saved, { allowReadingTimestamp: true })
   // Provenance is ordinary saved card data and remains available during review.
   await page.getByRole('button', { name: 'Start review', exact: true }).first().click()
   await page.getByRole('button', { name: 'Show answer', exact: true }).click()

@@ -161,8 +161,6 @@ function toolbarKeydown(event: KeyboardEvent) {
   }
 }
 const content = computed(() => ({
-  // The non-modal popup contains a toolbar, rather than another application dialog.
-  role: 'presentation' as const,
   side: 'bottom' as const,
   sideOffset: 8,
   align: 'start' as const,

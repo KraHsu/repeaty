@@ -228,7 +228,7 @@ test('Markdown preview selections retain exact duplicate-text offsets in excerpt
   expect(after.practices).toEqual(before.practices)
   await expect(page.locator('.source-annotations')).toContainText('来自历史版本')
   await page.locator('.source-annotations .annotation-quote').click()
-  await expect(page.getByRole('dialog')).toContainText(quote)
+  await expect(page.getByRole('dialog', { name: source.title, exact: true })).toContainText(quote)
   await page.getByRole('button', { name: '关闭弹窗', exact: true }).click()
   await page.setViewportSize({ width: 760, height: 1000 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)

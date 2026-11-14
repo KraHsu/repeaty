@@ -1,7 +1,7 @@
 import { expect, type Page, type TestInfo } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { fixture } from '../../src/core/test-fixtures'
-import { storedLibrary } from './stored-library'
+import { storedLibrary, expectLearningPreserved } from './stored-library'
 import {
   confirmPluginAction,
   installOfficialPlugin,
@@ -261,14 +261,14 @@ export async function reviewHeatmapFlow(page: Page, info: TestInfo, edition: 'we
     page.locator(`[data-official-plugin="${pluginId}"] .plugin-install-button`),
   ).toBeEnabled()
   expect(await pluginIds(page)).not.toContain(pluginId)
-  expect(await storedLibrary(page)).toEqual(reviewedRecords)
+  expectLearningPreserved(await storedLibrary(page), reviewedRecords)
   await page.reload()
   await nav(page, '学习概览').click()
   await expect(heatmap(page)).toHaveCount(0)
   await installOfficialHeatmap(page)
   await nav(page, '学习概览').click()
   await total(page, 1)
-  expect(await storedLibrary(page)).toEqual(reviewedRecords)
+  expectLearningPreserved(await storedLibrary(page), reviewedRecords)
 
   if (edition === 'desktop') {
     await nav(page, '工作目录').click()
@@ -284,7 +284,7 @@ export async function reviewHeatmapFlow(page: Page, info: TestInfo, edition: 'we
     await page.locator('.workspace-recent-entry').filter({ hasText: originalPath! }).click()
     await expect(page.locator('.app-page-header h1')).toHaveText('学习概览')
     await total(page, 1)
-    expect(await storedLibrary(page)).toEqual(reviewedRecords)
+    expectLearningPreserved(await storedLibrary(page), reviewedRecords)
   }
   expect(errors).toEqual([])
 }

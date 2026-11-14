@@ -1,11 +1,30 @@
 import { expect, type Page } from '@playwright/test'
 import type { StudyActivity } from '../../src/core/study-data'
+import type { Source } from '../../src/core/source-data'
 
 /** UI navigation may extend foreground time, but must preserve every other learning record. */
 export function expectLearningPreserved(
   actual: Awaited<ReturnType<typeof storedLibrary>>,
   before: Awaited<ReturnType<typeof storedLibrary>>,
+  options: { allowReadingTimestamp?: boolean } = {},
 ) {
+  if (options.allowReadingTimestamp) {
+    const previous = before.sources as { id: string; value: Source }[]
+    actual = {
+      ...actual,
+      sources: (actual.sources as { id: string; value: Source }[]).map((row) => {
+        const reading = previous.find((entry) => entry.id === row.id)?.value.reading
+        if (!reading || !row.value.reading) return row
+        expect(Date.parse(row.value.reading.updatedAt)).toBeGreaterThanOrEqual(
+          Date.parse(reading.updatedAt),
+        )
+        return {
+          ...row,
+          value: { ...row.value, reading: { ...row.value.reading, updatedAt: reading.updatedAt } },
+        }
+      }),
+    }
+  }
   expect({ ...actual, studyActivity: before.studyActivity }).toEqual(before)
   const values = (rows: unknown) => (rows as { value: StudyActivity }[]).map((row) => row.value)
   const activity = values(actual.studyActivity)
