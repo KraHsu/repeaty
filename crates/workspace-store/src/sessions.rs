@@ -208,7 +208,20 @@ impl Sessions {
             active.library.guard(&active.library.token)?;
             return self.status();
         }
-        let active = self.open_library(path, None, create)?;
+        let active = match self.open_library(path, None, create) {
+            // Only an explicit folder choice may initialize a new workspace. The
+            // strict create path rechecks emptiness before writing; restore and
+            // recent-folder opens must never replace a missing library.
+            Err(Error("workspace-not-initialized")) if !create => {
+                match self.open_library(path, None, true) {
+                    Err(Error("workspace-not-empty")) => {
+                        return Err(Error("workspace-not-initialized"));
+                    }
+                    result => result?,
+                }
+            }
+            result => result?,
+        };
         self.select(active)
     }
     fn select(&mut self, active: Active) -> Result<Value> {

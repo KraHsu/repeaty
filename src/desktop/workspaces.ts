@@ -98,6 +98,8 @@ export function nativeError(issue: unknown) {
     'workspace-publication-pending': '工作目录仍有待完成的文件写入，请完成后重试备份。',
     'workspace-not-open': '请先创建或打开工作目录。',
     'workspace-not-empty': '请选择空文件夹。已有文件不会被覆盖。',
+    'workspace-not-initialized':
+      '所选文件夹不是 Repeaty 学习库。请选择空文件夹，或包含 workspace.json 的学习库文件夹。',
     'workspace-incompatible': '不支持这个工作目录格式。',
     'workspace-already-open': '这个学习库已在另一窗口中打开。',
     'workspace-missing': '找不到工作目录或必要文件。',
