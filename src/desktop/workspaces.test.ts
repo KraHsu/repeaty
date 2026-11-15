@@ -215,6 +215,25 @@ describe('desktop workspace lifecycle', () => {
     ).resolves.toEqual({})
     expect(store.workspaceStatus.value?.active).toEqual(selected)
   })
+  it('explains an ordinary folder selection without reporting a disk or permission failure', async () => {
+    const reload = vi.fn()
+    vi.stubGlobal('window', { location: { reload } })
+    invoke.mockResolvedValue(status(null))
+    const store = await import('./workspaces')
+    await store.initializeWorkspaces()
+    const { setLocale } = await import('../i18n')
+    for (const language of ['en', 'zh-CN'] as const) {
+      setLocale(language)
+      invoke.mockRejectedValueOnce('workspace-not-initialized')
+      await expect(store.chooseWorkspace('open')).rejects.toThrow(
+        language === 'en'
+          ? 'This folder is not a Repeaty workspace. Choose an empty folder or the workspace folder containing workspace.json.'
+          : '所选文件夹不是 Repeaty 学习库。请选择空文件夹，或包含 workspace.json 的学习库文件夹。',
+      )
+    }
+    expect(reload).not.toHaveBeenCalled()
+    await expect(store.currentWorkspace()).rejects.toThrow('请先创建或打开工作目录。')
+  })
   it('serializes a sync settings refresh with durable writes so a late read cannot overwrite new values', async () => {
     const selected = active()
     invoke.mockImplementation(async (command) =>

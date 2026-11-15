@@ -151,8 +151,14 @@ impl Library {
     pub fn open(root: &Path) -> Result<Self> {
         let root = fs::canonicalize(root).map_err(io_error)?;
         plain(&root, true)?;
+        let marker_path = root.join("workspace.json");
+        plain(&marker_path, false).map_err(|error| match error {
+            Error("workspace-missing") => fail("workspace-not-initialized"),
+            other => other,
+        })?;
         let marker: Marker =
-            serde_json::from_slice(&files::read_stable(&root.join("workspace.json"))?)?;
+            serde_json::from_slice(&files::read_stable(&marker_path).map_err(io_error)?)
+                .map_err(|_| fail("workspace-incompatible"))?;
         if marker.format != FORMAT || marker.version != 3 || Uuid::parse_str(&marker.id).is_err() {
             return Err(fail("workspace-incompatible"));
         }
@@ -179,12 +185,12 @@ impl Library {
         if lock_path.exists() {
             let _ = files::regular_file(&lock_path)?;
         }
-        let lock = options.open(&lock_path)?;
+        let lock = options.open(&lock_path).map_err(io_error)?;
         lock.try_lock()
             .map_err(|_| fail("workspace-already-open"))?;
         let lock = Lock(lock);
         let db_path = root.join(".repeaty/state.sqlite3");
-        let _ = files::regular_file(&db_path)?;
+        let _ = files::regular_file(&db_path).map_err(io_error)?;
         // Reject unknown databases before Database::open can create any tables.
         let check = rusqlite::Connection::open_with_flags(
             &db_path,

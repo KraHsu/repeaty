@@ -1763,6 +1763,8 @@ export const en = {
     'Recent folders changed. Use “Open folder” to choose it again.',
   '请先创建或打开工作目录。': 'Create or open a workspace first.',
   '请选择空文件夹。已有文件不会被覆盖。': 'Choose an empty folder. Existing files will be kept.',
+  '所选文件夹不是 Repeaty 学习库。请选择空文件夹，或包含 workspace.json 的学习库文件夹。':
+    'This folder is not a Repeaty workspace. Choose an empty folder or the workspace folder containing workspace.json.',
   '不支持这个工作目录格式。': 'This workspace format is not supported.',
   '这个学习库已在另一窗口中打开。': 'This workspace is already open in another window.',
   '找不到工作目录或必要文件。': 'The workspace or a required file could not be found.',
